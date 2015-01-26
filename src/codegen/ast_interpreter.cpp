@@ -147,6 +147,9 @@ const void* interpreter_instr_addr = (void*)&ASTInterpreter::execute;
 static_assert(THREADING_USE_GIL, "have to make the interpreter map thread safe!");
 static std::unordered_map<void*, ASTInterpreter*> s_interpreterMap;
 
+void generateBC(CompiledFunction* f, int nargs, BoxedClosure* _closure, BoxedGenerator* _generator, Box* arg1,
+                Box* arg2, Box* arg3, Box** args);
+
 Box* astInterpretFunction(CompiledFunction* cf, int nargs, Box* closure, Box* generator, Box* arg1, Box* arg2,
                           Box* arg3, Box** args) {
     if (unlikely(cf->times_called > REOPT_THRESHOLD)) {
@@ -162,6 +165,9 @@ Box* astInterpretFunction(CompiledFunction* cf, int nargs, Box* closure, Box* ge
     }
 
     ++cf->times_called;
+
+    generateBC(cf, nargs, (BoxedClosure*)closure, (BoxedGenerator*)generator, arg1, arg2, arg3, args);
+
     ASTInterpreter interpreter(cf);
 
     interpreter.initArguments(nargs, (BoxedClosure*)closure, (BoxedGenerator*)generator, arg1, arg2, arg3, args);
