@@ -15,32 +15,44 @@
 #ifndef PYSTON_CODEGEN_BC_GENERATOR_H
 #define PYSTON_CODEGEN_BC_GENERATOR_H
 
+#include "codegen/bc_instructions.h"
+
 namespace pyston {
 
-namespace gc {
-class GCVisitor;
-}
+class AST_Num;
+class AST_FunctionDef;
 
-class AST_stmt;
-class Box;
-class BoxedDict;
-struct CompiledFunction;
-struct LineInfo;
+class Constant {
+public:
+    Constant(AST_Num* node) : type(Type::Num), num_value(node) {}
+    Constant(AST_FunctionDef* functionDef) : type(Type::FunctionDef), functionDef_value(functionDef) {}
+    Constant(const std::string& str) : type(Type::String), string_value(str) {}
 
-extern const void* interpreter_instr_addr;
+    enum class Type { Num, String, FunctionDef } type;
+
+    Type getType() const { return type; }
+
+    std::string string_value;
+    union {
+        AST_Num* num_value;
+        AST_FunctionDef* functionDef_value;
+    };
+};
+
+struct BCFunction {
+    BCFunction(std::unordered_map<std::string, VRegIndex> reg_map, unsigned num_regs, unsigned num_args,
+               std::vector<Constant> const_pool, std::vector<unsigned char> bytecode)
+        : reg_map(reg_map), num_regs(num_regs), num_args(num_args), const_pool(const_pool), bytecode(bytecode) {}
 
 
-void generateBC(CompiledFunction* f);
+    std::unordered_map<std::string, VRegIndex> reg_map;
+    unsigned num_regs;
+    unsigned num_args;
+    std::vector<Constant> const_pool;
+    std::vector<unsigned char> bytecode;
+};
 
-Box* bcInterpretFunction(CompiledFunction* f, int nargs, Box* closure, Box* generator, Box* arg1, Box* arg2, Box* arg3,
-                         Box** args);
-Box* bcInterpretFrom(CompiledFunction* cf, AST_stmt* start_at, BoxedDict* locals);
-
-AST_stmt* getCurrentStatementForInterpretedFrame(void* frame_ptr);
-CompiledFunction* getCFForInterpretedFrame(void* frame_ptr);
-
-void gatherInterpreterRoots(gc::GCVisitor* visitor);
-BoxedDict* localsForInterpretedFrame(void* frame_ptr, bool only_user_visible);
+std::shared_ptr<BCFunction> generateBC(CompiledFunction* f);
 }
 
 #endif

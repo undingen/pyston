@@ -18,10 +18,12 @@
 namespace pyston {
 
 typedef uint32_t ConstPoolIndex;
+typedef uint32_t VRegIndex;
 
 enum class BCOp : unsigned char {
     LoadConst = 1, // reg, const index
     Return,
+    ReturnNone,
     Store,
     Print,
     SetAttrParent,
@@ -35,6 +37,8 @@ struct __attribute__((packed)) Instruction {
     BCOp op;
 
     Instruction(BCOp op) : op(op) {}
+
+    int sizeInBytes() const { return sizeof(Instruction); }
 };
 
 struct __attribute__((packed)) InstructionR : Instruction {

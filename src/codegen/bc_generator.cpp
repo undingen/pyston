@@ -20,6 +20,7 @@
 #include "analysis/function_analysis.h"
 #include "analysis/scoping_analysis.h"
 #include "codegen/bc_instructions.h"
+#include "codegen/bc_printer.h"
 #include "codegen/codegen.h"
 #include "codegen/compvars.h"
 #include "codegen/irgen.h"
@@ -66,16 +67,11 @@ private:
     bool is_unused;
 };
 
-
 class GenerateBC {
 public:
     typedef llvm::StringMap<Box*> SymMap;
 
     GenerateBC(CompiledFunction* compiled_function);
-
-    void initArguments(int nargs, BoxedClosure* closure, BoxedGenerator* generator, Box* arg1, Box* arg2, Box* arg3,
-                       Box** args);
-
 
 private:
     /*
@@ -131,8 +127,6 @@ private:
     SourceInfo* source_info;
     ScopeInfo* scope_info;
 
-
-
     void visit_stmt(AST_stmt* node);
     void visit_assign(AST_Assign* node);
     void visit_print(AST_Print* node);
@@ -144,32 +138,6 @@ private:
     VReg* visit_str(AST_Str* node);
     VReg* visit_binop(AST_BinOp* node);
     VReg* visit_call(AST_Call* node);
-
-    std::unordered_map<std::string, VReg*> reg_map;
-    unsigned num_regs;
-    unsigned num_args;
-
-
-
-    class Constant {
-    public:
-        Constant(AST_Num* node) : type(Type::Num), num_value(node) {}
-        Constant(AST_FunctionDef* functionDef) : type(Type::FunctionDef), functionDef_value(functionDef) {}
-        Constant(const std::string& str) : type(Type::String), string_value(str) {}
-
-        enum class Type { Num, String, FunctionDef } type;
-
-        Type getType() const { return type; }
-
-        std::string string_value;
-        union {
-            AST_Num* num_value;
-            AST_FunctionDef* functionDef_value;
-        };
-    };
-
-    std::vector<Constant> const_pool;
-
 
     template <class Inst> void addInstuction(const Inst& inst) {
         const uint8_t* begin = (const uint8_t*)&inst;
@@ -187,6 +155,7 @@ private:
         bytecode.insert(bytecode.end(), buf.begin(), buf.end());
     }
 
+
     void processBB(CFGBlock* bb);
     VReg* getInReg(AST_expr* node);
     VReg* allocReg();
@@ -194,17 +163,19 @@ private:
     ConstPoolIndex addConst(Constant constant);
 
 
-
     void doStore(AST_expr* node, VReg* value);
     void doStore(const std::string& name, VReg* value);
 
 
-    void BCPush(uint16_t v) {
-        bytecode.push_back((v & 0x00FF));
-        bytecode.push_back((v & 0xFF00) >> 8);
-    }
-
     std::string printConst(ConstPoolIndex index);
+    std::string printRegName(VReg reg);
+
+private:
+    std::unordered_map<std::string, VReg*> reg_map;
+    unsigned num_regs;
+    unsigned num_args;
+    std::vector<Constant> const_pool;
+    std::vector<unsigned char> bytecode;
 
 public:
     /*
@@ -216,18 +187,13 @@ public:
     CompiledFunction* getCF() { return compiled_func; }
     const SymMap& getSymbolTable() { return sym_table; }
     void gcVisit(GCVisitor* visitor);*/
-    std::vector<unsigned char> bytecode;
 
-    void disassemble();
+    std::shared_ptr<BCFunction> generate();
 };
-
-void GenerateBC::initArguments(int nargs, BoxedClosure* closure, BoxedGenerator* generator, Box* arg1, Box* arg2,
-                               Box* arg3, Box** args) {
-}
 
 VReg* GenerateBC::allocReg() {
     ++num_regs;
-    return new VReg(num_regs - 1);
+    return new VReg(++num_regs - 1);
 }
 
 ConstPoolIndex GenerateBC::addConst(Constant constant) {
@@ -280,10 +246,18 @@ GenerateBC::GenerateBC(CompiledFunction* compiled_function)
             ++num_args;
         }
     }
+}
 
-    CFG* cfg = f->source->cfg;
+std::shared_ptr<BCFunction> GenerateBC::generate() {
+    CFG* cfg = source_info->cfg;
     for (auto* bb : cfg->blocks)
         processBB(bb);
+
+    decltype(BCFunction::reg_map) newRegMap;
+    for (auto&& r : reg_map)
+        newRegMap[r.first] = r.second->num();
+
+    return std::make_shared<BCFunction>(std::move(newRegMap), num_regs, num_args, const_pool, bytecode);
 }
 
 void GenerateBC::processBB(CFGBlock* bb) {
@@ -326,8 +300,13 @@ void GenerateBC::visit_print(AST_Print* node) {
 }
 
 void GenerateBC::visit_return(AST_Return* node) {
-    VReg* src = node->value ? getInReg(node->value) : VReg::undefReg();
-    addInstuction(InstructionR(BCOp::Return, src->num()));
+    if (node->value)
+    {
+        VReg* src = getInReg(node->value);
+        addInstuction(InstructionR(BCOp::Return, src->num()));
+    } else {
+        addInstuction(Instruction(BCOp::ReturnNone));
+    }
 }
 
 void GenerateBC::visit_functionDef(AST_FunctionDef* node) {
@@ -464,6 +443,21 @@ std::string printReg(VReg reg) {
     return tmp;
 }
 
+std::string GenerateBC::printRegName(VReg reg) {
+    char tmp[50] = { 0 };
+    if (reg != (uint16_t)-1) {
+        for (auto&& i : reg_map) {
+            if (i.second->num() == reg.num()) {
+                if (i.first[0] != '#')
+                    sprintf(tmp, "%s=%s", printReg(reg).c_str(), i.first.c_str());
+                return tmp;
+            }
+        }
+    } else
+        sprintf(tmp, "%%undef");
+    return tmp;
+}
+
 std::string printConstPoolIndex(ConstPoolIndex index) {
     char tmp[30];
     sprintf(tmp, "#%u", index);
@@ -476,18 +470,18 @@ std::string GenerateBC::printConst(ConstPoolIndex index) {
     if (c.getType() == Constant::Type::Num) {
         AST_Num* node = c.num_value;
         if (node->num_type == AST_Num::INT) {
-            sprintf(tmp, "%ld", node->n_int);
+            sprintf(tmp, "int %ld", node->n_int);
         } else if (node->num_type == AST_Num::LONG) {
-            sprintf(tmp, "%sL", node->n_long.c_str());
+            sprintf(tmp, "long %sL", node->n_long.c_str());
         } else if (node->num_type == AST_Num::FLOAT) {
-            sprintf(tmp, "%f", node->n_float);
+            sprintf(tmp, "float %f", node->n_float);
         } else if (node->num_type == AST_Num::COMPLEX) {
-            sprintf(tmp, "%fj", node->n_float);
+            sprintf(tmp, "complex %fj", node->n_float);
         } else {
             RELEASE_ASSERT(0, "");
         }
     } else if (c.getType() == Constant::Type::String) {
-        sprintf(tmp, "'%s'", c.string_value.c_str());
+        sprintf(tmp, "string '%s'", c.string_value.c_str());
     } else if (c.getType() == Constant::Type::FunctionDef) {
         sprintf(tmp, "<code object %s at %p>", c.functionDef_value->name.c_str(), c.functionDef_value);
     } else {
@@ -497,96 +491,10 @@ std::string GenerateBC::printConst(ConstPoolIndex index) {
     return tmp;
 }
 
-
-void GenerateBC::disassemble() {
-    printf("; num args: %u num regs: %u num consts: %u\n", num_args, num_regs - num_args, (unsigned)const_pool.size());
-
-    unsigned char* bytecode_pc = &bytecode[0];
-    while (bytecode_pc != &bytecode[bytecode.size()]) {
-        Instruction* _inst = (Instruction*)bytecode_pc;
-
-        switch (_inst->op) {
-            case BCOp::LoadConst: {
-                InstructionRC* inst = (InstructionRC*)_inst;
-                printf("%s = loadConst %s ; %s\n", printReg(inst->reg_dst).c_str(),
-                       printConstPoolIndex(inst->const_pool_index).c_str(), printConst(inst->const_pool_index).c_str());
-                bytecode_pc += inst->sizeInBytes();
-                break;
-            }
-            case BCOp::Store: {
-                InstructionRR* inst = (InstructionRR*)_inst;
-                printf("store %s, %s\n", printReg(inst->reg_dst).c_str(), printReg(inst->reg_src).c_str());
-                // TODO pretty print varname
-                bytecode_pc += inst->sizeInBytes();
-                break;
-            }
-            case BCOp::BinOp: {
-                InstructionO8RRR* inst = (InstructionO8RRR*)_inst;
-                printf("%s = %s %s %s\n", printReg(inst->reg_dst).c_str(), printReg(inst->reg_src1).c_str(),
-                       getOpName(inst->other).c_str(), printReg(inst->reg_src2).c_str());
-                bytecode_pc += inst->sizeInBytes();
-                break;
-            }
-            case BCOp::Print: {
-                InstructionV* inst = (InstructionV*)_inst;
-                printf("print nl=%u dst: %s", inst->reg[0],
-                       inst->reg[1] == (uint16_t)-1 ? "stdout" : printReg(inst->reg[1]).c_str());
-                for (int i = 2; i < inst->num_args; ++i)
-                    printf(" %s", printReg(inst->reg[i]).c_str());
-                printf("\n");
-                bytecode_pc += inst->sizeInBytes();
-                break;
-            }
-            case BCOp::Return: {
-                InstructionR* inst = (InstructionR*)_inst;
-                printf("ret %s\n", printReg(inst->reg).c_str());
-                bytecode_pc += inst->sizeInBytes();
-                break;
-            }
-            case BCOp::SetAttrParent: {
-                InstructionRC* inst = (InstructionRC*)_inst;
-                printf("setAttrParent %s, %s ; %s\n", printConstPoolIndex(inst->const_pool_index).c_str(),
-                       printReg(inst->reg_dst).c_str(), printConst(inst->const_pool_index).c_str());
-                bytecode_pc += inst->sizeInBytes();
-                break;
-            }
-            case BCOp::GetGlobalParent: {
-                InstructionRC* inst = (InstructionRC*)_inst;
-                printf("%s = getGlobalParent %s ; %s\n", printReg(inst->reg_dst).c_str(),
-                       printConstPoolIndex(inst->const_pool_index).c_str(), printConst(inst->const_pool_index).c_str());
-                bytecode_pc += inst->sizeInBytes();
-                break;
-            }
-            case BCOp::CreateFunction: {
-                InstructionRC* inst = (InstructionRC*)_inst;
-                printf("%s = createFunction %s ; %s\n", printReg(inst->reg_dst).c_str(),
-                       printConstPoolIndex(inst->const_pool_index).c_str(), printConst(inst->const_pool_index).c_str());
-                bytecode_pc += inst->sizeInBytes();
-                break;
-            }
-            case BCOp::RuntimeCall: {
-                InstructionV* inst = (InstructionV*)_inst;
-                printf("%s = runtimeCall %s(", printReg(inst->reg[0]).c_str(), printReg(inst->reg[1]).c_str());
-                for (int i = 2; i < inst->num_args; ++i) {
-                    if (i != 2)
-                        printf(", ");
-                    printf("%s", printReg(inst->reg[i]).c_str());
-                }
-                printf(")\n");
-                bytecode_pc += inst->sizeInBytes();
-                break;
-            }
-            default:
-                RELEASE_ASSERT(0, "not implemented");
-                break;
-        }
-    }
-    printf("\n");
-}
-
-void generateBC(CompiledFunction* f, int nargs, BoxedClosure* _closure, BoxedGenerator* _generator, Box* arg1,
-                Box* arg2, Box* arg3, Box** args) {
+std::shared_ptr<BCFunction> generateBC(CompiledFunction* f) {
     GenerateBC generate(f);
-    generate.disassemble();
+    std::shared_ptr<BCFunction> bc_function = generate.generate();
+    printBC(bc_function);
+    return bc_function;
 }
 }

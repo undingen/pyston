@@ -12,24 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef PYSTON_CODEGEN_BC_INTERPRETER_H
-#define PYSTON_CODEGEN_BC_INTERPRETER_H
+#ifndef PYSTON_CODEGEN_BC_PRINTER_H
+#define PYSTON_CODEGEN_BC_PRINTER_H
 
 namespace pyston {
 
-namespace gc {
-class GCVisitor;
+struct BCFunction;
+
+void printBC(std::shared_ptr<BCFunction> bc_function);
 }
-
-class AST_stmt;
-class Box;
-class BoxedDict;
-struct CompiledFunction;
-struct LineInfo;
-
-Box* bcInterpretFunction(CompiledFunction* f, int nargs, Box* closure, Box* generator, Box* arg1, Box* arg2, Box* arg3,
-                         Box** args);
-}
-
 
 #endif
