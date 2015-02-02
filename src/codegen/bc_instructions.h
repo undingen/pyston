@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef PYSTON_CODEGEN_BC_INSTRUCTIONS_H
-#define PYSTON_CODEGEN_BC_INSTRUCTIONS_H
+#ifndef PYSTON_CODEGEN_BCINSTRUCTIONS_H
+#define PYSTON_CODEGEN_BCINSTRUCTIONS_H
 
 namespace pyston {
 

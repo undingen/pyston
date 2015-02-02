@@ -493,7 +493,8 @@ std::string GenerateBC::printConst(ConstPoolIndex index) {
 std::shared_ptr<BCFunction> generateBC(CompiledFunction* f) {
     GenerateBC generate(f);
     std::shared_ptr<BCFunction> bc_function = generate.generate();
-    printBC(bc_function);
+    if (VERBOSITY() > 1)
+        printBC(bc_function);
     return bc_function;
 }
 }
