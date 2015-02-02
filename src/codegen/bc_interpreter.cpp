@@ -13,7 +13,10 @@
 // limitations under the License.
 
 #include "codegen/bc_interpreter.h"
+
+#include "analysis/scoping_analysis.h"
 #include "codegen/bc_generator.h"
+#include "codegen/irgen/irgenerator.h"
 #include "core/ast.h"
 #include "runtime/inline/boxing.h"
 #include "runtime/long.h"
@@ -28,19 +31,23 @@ class BCInterpreter {
 public:
     BCInterpreter(const BCFunction& bc_function, CompiledFunction* cf);
 
-    ~BCInterpreter()
-    {
-        delete vregs;
-    }
+    ~BCInterpreter() { delete vregs; }
+
+    void initArguments(int nargs, BoxedClosure* closure, BoxedGenerator* generator, Box* arg1, Box* arg2, Box* arg3,
+                       Box** args);
 
     Box* run();
 
+private:
     Box* createConst(ConstPoolIndex index);
     std::string getStrConst(ConstPoolIndex index);
 
     void execute_binop(InstructionO8RRR* inst);
+    void execute_createFunction(InstructionRC* inst);
+    void execute_runtimeCall(InstructionV* inst);
     void execute_print(InstructionV* inst);
 
+    void dump_vregs();
 
 private:
     const BCFunction& bc_function;
@@ -50,13 +57,34 @@ private:
 
 
 BCInterpreter::BCInterpreter(const BCFunction& bc_function, CompiledFunction* cf)
-    : bc_function(bc_function), vregs(new Box*[bc_function.num_regs]), source_info(cf->clfunc->source)
-{
-
+    : bc_function(bc_function), vregs(new Box* [bc_function.num_regs]), source_info(cf->clfunc->source) {
+    memset(vregs, 0, sizeof(Box*) * bc_function.num_regs);
 }
 
-Box* BCInterpreter::createConst(ConstPoolIndex index)
-{
+void BCInterpreter::initArguments(int nargs, BoxedClosure* closure, BoxedGenerator* generator, Box* arg1, Box* arg2,
+                                  Box* arg3, Box** args) {
+    if (nargs >= 1) {
+        vregs[0] = arg1;
+        if (nargs >= 2) {
+            vregs[1] = arg2;
+            if (nargs >= 3)
+                vregs[2] = arg3;
+        }
+    }
+}
+
+void BCInterpreter::dump_vregs() {
+    printf("reg dump:\n");
+    for (int i = 0; i < bc_function.num_regs; ++i) {
+        printf("  %d %p ", i, vregs[i]);
+        if (vregs[i])
+            printf("%s", repr(vregs[i])->s.c_str());
+        printf("\n");
+    }
+    printf("\n");
+}
+
+Box* BCInterpreter::createConst(ConstPoolIndex index) {
     Constant c = bc_function.const_pool[index];
     if (c.getType() == Constant::Type::Num) {
         AST_Num* node = c.num_value;
@@ -69,37 +97,94 @@ Box* BCInterpreter::createConst(ConstPoolIndex index)
         else if (node->num_type == AST_Num::COMPLEX)
             return boxComplex(0.0, node->n_float);
         RELEASE_ASSERT(0, "not implemented");
-    }else if (c.getType() == Constant::Type::String)
-    {
+    } else if (c.getType() == Constant::Type::String) {
         return boxString(c.string_value);
     }
 
     RELEASE_ASSERT(0, "not implemented");
 }
 
-std::string BCInterpreter::getStrConst(ConstPoolIndex index)
-{
+std::string BCInterpreter::getStrConst(ConstPoolIndex index) {
     Constant c = bc_function.const_pool[index];
     RELEASE_ASSERT(c.getType() == Constant::Type::String, "not implemented");
     return c.string_value;
 }
 
-void BCInterpreter::execute_binop(InstructionO8RRR* inst)
-{
+void BCInterpreter::execute_binop(InstructionO8RRR* inst) {
     vregs[inst->reg_dst] = binop(vregs[inst->reg_src1], vregs[inst->reg_src2], inst->other);
 }
 
-void BCInterpreter::execute_print(InstructionV* inst)
-{
+void BCInterpreter::execute_createFunction(InstructionRC* inst) {
+    Constant c = bc_function.const_pool[inst->const_pool_index];
+    RELEASE_ASSERT(c.getType() == Constant::Type::FunctionDef, "error");
+
+    AST_FunctionDef* node = c.functionDef_value;
+    AST_arguments* args = node->args;
+    const std::vector<AST_stmt*>& body = node->body;
+
+
+    // copy from ASTInterpreter::createFunction
+    CLFunction* cl = wrapFunction(node, args, body, source_info);
+
+    std::vector<Box*> defaults;
+    for (AST_expr* d : args->defaults) {
+        RELEASE_ASSERT(0, "not implemented");
+        // defaults.push_back(visit_expr(d).o);
+    }
+    defaults.push_back(0);
+
+    // FIXME: Using initializer_list is pretty annoying since you're not supposed to create them:
+    union {
+        struct {
+            Box** ptr;
+            size_t s;
+        } d;
+        std::initializer_list<Box*> il = {};
+    } u;
+
+    u.d.ptr = &defaults[0];
+    u.d.s = defaults.size() - 1;
+
+    bool takes_closure;
+    // Optimization: when compiling a module, it's nice to not have to run analyses into the
+    // entire module's source code.
+    // If we call getScopeInfoForNode, that will trigger an analysis of that function tree,
+    // but we're only using it here to figure out if that function takes a closure.
+    // Top level functions never take a closure, so we can skip the analysis.
+    if (source_info->ast->type == AST_TYPE::Module)
+        takes_closure = false;
+    else {
+        takes_closure = source_info->scoping->getScopeInfoForNode(node)->takesClosure();
+    }
+
+    bool is_generator = cl->source->is_generator;
+
+    BoxedClosure* closure = 0;
+    if (takes_closure) {
+        RELEASE_ASSERT(0, "not implemented");
+        /*
+        if (scope_info->createsClosure()) {
+            closure = created_closure;
+        } else {
+            assert(scope_info->passesThroughClosure());
+            closure = passed_closure;
+        }
+        assert(closure);*/
+    }
+
+    vregs[inst->reg_dst] = boxCLFunction(cl, closure, is_generator, u.il);
+}
+
+void BCInterpreter::execute_print(InstructionV* inst) {
     static const std::string write_str("write");
     static const std::string newline_str("\n");
     static const std::string space_str(" ");
 
     int nl = inst->reg[0];
     Box* dest = (uint16_t)inst->reg[1] != (uint16_t)-1 ? vregs[inst->reg[1]] : getSysStdout();
-    int nvals = inst->num_args-2;
+    int nvals = inst->num_args - 2;
     for (int i = 0; i < nvals; i++) {
-        Box* var = vregs[inst->reg[i+2]];
+        Box* var = vregs[inst->reg[i + 2]];
 
         // begin code for handling of softspace
         bool new_softspace = (i < nvals - 1) || (!nl);
@@ -115,6 +200,20 @@ void BCInterpreter::execute_print(InstructionV* inst)
             softspace(dest, false);
         }
     }
+}
+
+void BCInterpreter::execute_runtimeCall(InstructionV* inst) {
+    int num_args = inst->num_args - 2;
+    Box* obj = vregs[inst->reg[1]];
+    ArgPassSpec arg_pass_spec(num_args);
+
+    Box* arg1 = num_args > 0 ? vregs[inst->reg[2 + 0]] : nullptr;
+    Box* arg2 = num_args > 1 ? vregs[inst->reg[2 + 1]] : nullptr;
+    Box* arg3 = num_args > 2 ? vregs[inst->reg[2 + 2]] : nullptr;
+    Box** args = nullptr;
+    RELEASE_ASSERT(num_args <= 2, "not implmented");
+
+    vregs[inst->reg[0]] = runtimeCall(obj, arg_pass_spec, arg1, arg2, arg3, args, {});
 }
 
 Box* BCInterpreter::run() {
@@ -178,21 +277,13 @@ Box* BCInterpreter::run() {
             }
             case BCOp::CreateFunction: {
                 InstructionRC* inst = (InstructionRC*)_inst;
-                /*printf("%s = createFunction %s ; %s\n", printReg(inst->reg_dst).c_str(),
-                       printConstPoolIndex(inst->const_pool_index).c_str(), printConst(inst->const_pool_index).c_str());*/
+                execute_createFunction(inst);
                 bytecode_pc += inst->sizeInBytes();
                 break;
             }
             case BCOp::RuntimeCall: {
                 InstructionV* inst = (InstructionV*)_inst;
-                /*
-                printf("%s = runtimeCall %s(", printReg(inst->reg[0]).c_str(), printReg(inst->reg[1]).c_str());
-                for (int i = 2; i < inst->num_args; ++i) {
-                    if (i != 2)
-                        printf(", ");
-                    printf("%s", printReg(inst->reg[i]).c_str());
-                }
-                printf(")\n");*/
+                execute_runtimeCall(inst);
                 bytecode_pc += inst->sizeInBytes();
                 break;
             }
@@ -201,7 +292,6 @@ Box* BCInterpreter::run() {
                 break;
         }
     }
-
 }
 }
 
@@ -210,6 +300,7 @@ Box* bcInterpretFunction(CompiledFunction* f, int nargs, Box* closure, Box* gene
     std::shared_ptr<BCFunction> bc_function = generateBC(f);
 
     BCInterpreter interpreter(*bc_function, f);
+    interpreter.initArguments(nargs, (BoxedClosure*)closure, (BoxedGenerator*)generator, arg1, arg2, arg3, args);
     return interpreter.run();
 }
 }

@@ -164,13 +164,14 @@ Box* astInterpretFunction(CompiledFunction* cf, int nargs, Box* closure, Box* ge
 
     ++cf->times_called;
 
-    bcInterpretFunction(cf, nargs, (BoxedClosure*)closure, (BoxedGenerator*)generator, arg1, arg2, arg3, args);
+    Value v
+        = bcInterpretFunction(cf, nargs, (BoxedClosure*)closure, (BoxedGenerator*)generator, arg1, arg2, arg3, args);
+    /*
+        ASTInterpreter interpreter(cf);
 
-    ASTInterpreter interpreter(cf);
-
-    interpreter.initArguments(nargs, (BoxedClosure*)closure, (BoxedGenerator*)generator, arg1, arg2, arg3, args);
-    Value v = ASTInterpreter::execute(interpreter);
-
+        interpreter.initArguments(nargs, (BoxedClosure*)closure, (BoxedGenerator*)generator, arg1, arg2, arg3, args);
+        Value v = ASTInterpreter::execute(interpreter);
+    */
     return v.o ? v.o : None;
 }
 

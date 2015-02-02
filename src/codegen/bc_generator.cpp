@@ -193,7 +193,7 @@ public:
 
 VReg* GenerateBC::allocReg() {
     ++num_regs;
-    return new VReg(++num_regs - 1);
+    return new VReg(num_regs - 1);
 }
 
 ConstPoolIndex GenerateBC::addConst(Constant constant) {
@@ -300,8 +300,7 @@ void GenerateBC::visit_print(AST_Print* node) {
 }
 
 void GenerateBC::visit_return(AST_Return* node) {
-    if (node->value)
-    {
+    if (node->value) {
         VReg* src = getInReg(node->value);
         addInstuction(InstructionR(BCOp::Return, src->num()));
     } else {
