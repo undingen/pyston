@@ -104,32 +104,32 @@ void BCPrinter::print() {
 
     const unsigned char* bytecode_pc = &bc_function.bytecode[0];
     while (bytecode_pc != &bc_function.bytecode[bc_function.bytecode.size()]) {
-        Instruction* _inst = (Instruction*)bytecode_pc;
+        const Instruction* _inst = (const Instruction*)bytecode_pc;
 
         switch (_inst->op) {
             case BCOp::LoadConst: {
-                InstructionRC* inst = (InstructionRC*)_inst;
+                const InstructionRC* inst = (const InstructionRC*)_inst;
                 printf("%s = loadConst %s ; %s\n", printReg(inst->reg_dst).c_str(),
                        printConstPoolIndex(inst->const_pool_index).c_str(), printConst(inst->const_pool_index).c_str());
                 bytecode_pc += inst->sizeInBytes();
                 break;
             }
             case BCOp::Store: {
-                InstructionRR* inst = (InstructionRR*)_inst;
+                const InstructionRR* inst = (const InstructionRR*)_inst;
                 printf("store %s, %s ; %s %s\n", printReg(inst->reg_dst).c_str(), printReg(inst->reg_src).c_str(),
                        printRegName(inst->reg_dst).c_str(), printRegName(inst->reg_src).c_str());
                 bytecode_pc += inst->sizeInBytes();
                 break;
             }
             case BCOp::BinOp: {
-                InstructionO8RRR* inst = (InstructionO8RRR*)_inst;
+                const InstructionO8RRR* inst = (const InstructionO8RRR*)_inst;
                 printf("%s = %s %s %s\n", printReg(inst->reg_dst).c_str(), printReg(inst->reg_src1).c_str(),
                        getOpName(inst->other).c_str(), printReg(inst->reg_src2).c_str());
                 bytecode_pc += inst->sizeInBytes();
                 break;
             }
             case BCOp::Print: {
-                InstructionV* inst = (InstructionV*)_inst;
+                const InstructionV* inst = (const InstructionV*)_inst;
                 printf("print nl=%u dst: %s", inst->reg[0],
                        inst->reg[1] == (uint16_t)-1 ? "stdout" : printReg(inst->reg[1]).c_str());
                 for (int i = 2; i < inst->num_args; ++i)
@@ -139,41 +139,41 @@ void BCPrinter::print() {
                 break;
             }
             case BCOp::Return: {
-                InstructionR* inst = (InstructionR*)_inst;
+                const InstructionR* inst = (const InstructionR*)_inst;
                 printf("ret %s\n", printReg(inst->reg).c_str());
                 bytecode_pc += inst->sizeInBytes();
                 break;
             }
             case BCOp::ReturnNone: {
-                Instruction* inst = (Instruction*)_inst;
+                const Instruction* inst = (const Instruction*)_inst;
                 printf("ret None\n");
                 bytecode_pc += inst->sizeInBytes();
                 break;
             }
 
             case BCOp::SetAttrParent: {
-                InstructionRC* inst = (InstructionRC*)_inst;
+                const InstructionRC* inst = (const InstructionRC*)_inst;
                 printf("setAttrParent %s, %s ; %s\n", printConstPoolIndex(inst->const_pool_index).c_str(),
                        printReg(inst->reg_dst).c_str(), printConst(inst->const_pool_index).c_str());
                 bytecode_pc += inst->sizeInBytes();
                 break;
             }
             case BCOp::GetGlobalParent: {
-                InstructionRC* inst = (InstructionRC*)_inst;
+                const InstructionRC* inst = (const InstructionRC*)_inst;
                 printf("%s = getGlobalParent %s ; %s\n", printReg(inst->reg_dst).c_str(),
                        printConstPoolIndex(inst->const_pool_index).c_str(), printConst(inst->const_pool_index).c_str());
                 bytecode_pc += inst->sizeInBytes();
                 break;
             }
             case BCOp::CreateFunction: {
-                InstructionRC* inst = (InstructionRC*)_inst;
+                const InstructionRC* inst = (const InstructionRC*)_inst;
                 printf("%s = createFunction %s ; %s\n", printReg(inst->reg_dst).c_str(),
                        printConstPoolIndex(inst->const_pool_index).c_str(), printConst(inst->const_pool_index).c_str());
                 bytecode_pc += inst->sizeInBytes();
                 break;
             }
             case BCOp::RuntimeCall: {
-                InstructionV* inst = (InstructionV*)_inst;
+                const InstructionV* inst = (const InstructionV*)_inst;
                 printf("%s = runtimeCall %s(", printReg(inst->reg[0]).c_str(), printReg(inst->reg[1]).c_str());
                 for (int i = 2; i < inst->num_args; ++i) {
                     if (i != 2)

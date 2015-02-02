@@ -15,6 +15,8 @@
 #ifndef PYSTON_CODEGEN_BCINSTRUCTIONS_H
 #define PYSTON_CODEGEN_BCINSTRUCTIONS_H
 
+#include <cstring>
+
 namespace pyston {
 
 typedef uint32_t ConstPoolIndex;

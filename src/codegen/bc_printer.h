@@ -15,6 +15,8 @@
 #ifndef PYSTON_CODEGEN_BCPRINTER_H
 #define PYSTON_CODEGEN_BCPRINTER_H
 
+#include <memory>
+
 namespace pyston {
 
 struct BCFunction;

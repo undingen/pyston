@@ -15,12 +15,16 @@
 #ifndef PYSTON_CODEGEN_BCGENERATOR_H
 #define PYSTON_CODEGEN_BCGENERATOR_H
 
+#include <memory>
+#include <unordered_map>
+#include <vector>
 #include "codegen/bc_instructions.h"
 
 namespace pyston {
 
 class AST_Num;
 class AST_FunctionDef;
+class CompiledFunction;
 
 class Constant {
 public:
