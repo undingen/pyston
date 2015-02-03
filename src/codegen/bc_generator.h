@@ -18,13 +18,14 @@
 #include <memory>
 #include <unordered_map>
 #include <vector>
+
 #include "codegen/bc_instructions.h"
 
 namespace pyston {
 
 class AST_Num;
 class AST_FunctionDef;
-class CompiledFunction;
+struct CompiledFunction;
 
 class Constant {
 public:
