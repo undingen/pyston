@@ -126,6 +126,7 @@ enum AST_TYPE {
     AugBinOp = 203,
     Invoke = 204,
     LangPrimitive = 205,
+    CCName = 206,
 
     // These aren't real AST types, but since we use AST types to represent binexp types
     // and divmod+truediv are essentially types of binops, we add them here (at least for now):
@@ -680,7 +681,25 @@ public:
     AST_Name(InternedString id, AST_TYPE::AST_TYPE ctx_type, int lineno, int col_offset = 0)
         : AST_expr(AST_TYPE::Name, lineno, col_offset), ctx_type(ctx_type), id(id), lookup_type(UNKNOWN) {}
 
+
+
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Name;
+};
+
+class AST_CCName : public AST_expr {
+public:
+    AST_TYPE::AST_TYPE ctx_type;
+    InternedString id;
+
+    unsigned reg_num = 0;
+
+    virtual void accept(ASTVisitor* v);
+    virtual void* accept_expr(ExprVisitor* v);
+
+    AST_CCName(InternedString id, AST_TYPE::AST_TYPE ctx_type, int lineno, int col_offset = 0)
+        : AST_expr(AST_TYPE::CCName, lineno, col_offset), ctx_type(ctx_type), id(id) {}
+
+    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::CCName;
 };
 
 class AST_Num : public AST_expr {
@@ -1061,6 +1080,7 @@ public:
     virtual bool visit_listcomp(AST_ListComp* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_module(AST_Module* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_name(AST_Name* node) { RELEASE_ASSERT(0, ""); }
+    virtual bool visit_ccname(AST_CCName* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_num(AST_Num* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_pass(AST_Pass* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_print(AST_Print* node) { RELEASE_ASSERT(0, ""); }
@@ -1129,6 +1149,7 @@ public:
     virtual bool visit_listcomp(AST_ListComp* node) { return false; }
     virtual bool visit_module(AST_Module* node) { return false; }
     virtual bool visit_name(AST_Name* node) { return false; }
+    virtual bool visit_ccname(AST_CCName* node) { return false; }
     virtual bool visit_num(AST_Num* node) { return false; }
     virtual bool visit_pass(AST_Pass* node) { return false; }
     virtual bool visit_print(AST_Print* node) { return false; }
@@ -1175,6 +1196,7 @@ public:
     virtual void* visit_list(AST_List* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_listcomp(AST_ListComp* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_name(AST_Name* node) { RELEASE_ASSERT(0, ""); }
+    virtual void* visit_ccname(AST_CCName* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_num(AST_Num* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_repr(AST_Repr* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_set(AST_Set* node) { RELEASE_ASSERT(0, ""); }
@@ -1271,6 +1293,7 @@ public:
     virtual bool visit_listcomp(AST_ListComp* node);
     virtual bool visit_module(AST_Module* node);
     virtual bool visit_name(AST_Name* node);
+    virtual bool visit_ccname(AST_CCName* node);
     virtual bool visit_num(AST_Num* node);
     virtual bool visit_pass(AST_Pass* node);
     virtual bool visit_print(AST_Print* node);

@@ -27,6 +27,7 @@ namespace pyston {
 class AST_arguments;
 class AST_Jump;
 class AST_Name;
+class AST_CCName;
 class CFG;
 class CFGBlock;
 class ScopeInfo;
@@ -47,6 +48,7 @@ public:
 
     // we don't keep track of node->parent_block relationships, so you have to pass both:
     bool isKill(AST_Name* node, CFGBlock* parent_block);
+    bool isKill(AST_CCName* node, CFGBlock* parent_block);
 
     bool isLiveAtEnd(InternedString name, CFGBlock* block);
 };

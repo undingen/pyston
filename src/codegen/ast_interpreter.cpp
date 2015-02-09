@@ -101,6 +101,7 @@ private:
     Value visit_lambda(AST_Lambda* node);
     Value visit_list(AST_List* node);
     Value visit_name(AST_Name* node);
+    Value visit_ccname(AST_CCName* node);
     Value visit_num(AST_Num* node);
     Value visit_repr(AST_Repr* node);
     Value visit_set(AST_Set* node);
@@ -122,6 +123,7 @@ private:
     CompiledFunction* compiled_func;
     SourceInfo* source_info;
     ScopeInfo* scope_info;
+    std::vector<Box*> regs;
 
     SymMap sym_table;
     CFGBlock* next_block, *current_block;
@@ -157,6 +159,10 @@ void ASTInterpreter::gcVisit(GCVisitor* visitor) {
         visitor->visitPotential(p2.second);
     }
 
+    for (const auto& p2 : regs) {
+        visitor->visitPotential(p2);
+    }
+
     if (passed_closure)
         visitor->visit(passed_closure);
     if (created_closure)
@@ -175,6 +181,8 @@ ASTInterpreter::ASTInterpreter(CompiledFunction* compiled_function)
         source_info->cfg = computeCFG(f->source, f->source->body);
 
     scope_info = source_info->getScopeInfo();
+
+    regs.resize(128, 0);
 }
 
 void ASTInterpreter::initArguments(int nargs, BoxedClosure* _closure, BoxedGenerator* _generator, Box* arg1, Box* arg2,
@@ -302,6 +310,8 @@ Value ASTInterpreter::doBinOp(Box* left, Box* right, int op, BinExpType exp_type
 }
 
 void ASTInterpreter::doStore(InternedString name, Value value) {
+    static StatCounter store_("store");
+    store_.log(1);
     if (scope_info->refersToGlobal(name)) {
         setattr(source_info->parent_module, name.c_str(), value.o);
     } else {
@@ -315,6 +325,11 @@ void ASTInterpreter::doStore(AST_expr* node, Value value) {
     if (node->type == AST_TYPE::Name) {
         AST_Name* name = (AST_Name*)node;
         doStore(name->id, value);
+    } else if (likely(node->type == AST_TYPE::CCName)) {
+        AST_CCName* name = (AST_CCName*)node;
+        if (unlikely(regs.size()<=name->reg_num))
+            regs.resize(name->reg_num+64, 0);
+        regs[name->reg_num] = value.o;
     } else if (node->type == AST_TYPE::Attribute) {
         AST_Attribute* attr = (AST_Attribute*)node;
         setattr(visit_expr(attr->value).o, attr->attr.c_str(), value.o);
@@ -495,7 +510,7 @@ Value ASTInterpreter::visit_langPrimitive(AST_LangPrimitive* node) {
         v = getPystonIter(visit_expr(node->args[0]).o);
     } else if (node->opcode == AST_LangPrimitive::IMPORT_FROM) {
         assert(node->args.size() == 2);
-        assert(node->args[0]->type == AST_TYPE::Name);
+        assert(node->args[0]->type == AST_TYPE::Name || node->args[0]->type == AST_TYPE::CCName);
         assert(node->args[1]->type == AST_TYPE::Str);
 
         Value module = visit_expr(node->args[0]);
@@ -514,7 +529,7 @@ Value ASTInterpreter::visit_langPrimitive(AST_LangPrimitive* node) {
         v = import(level, froms.o, &module_name);
     } else if (node->opcode == AST_LangPrimitive::IMPORT_STAR) {
         assert(node->args.size() == 1);
-        assert(node->args[0]->type == AST_TYPE::Name);
+        assert(node->args[0]->type == AST_TYPE::Name || node->args[0]->type == AST_TYPE::CCName);
 
         RELEASE_ASSERT(source_info->ast->type == AST_TYPE::Module, "import * not supported in functions");
 
@@ -853,6 +868,8 @@ Value ASTInterpreter::visit_expr(AST_expr* node) {
             return visit_list((AST_List*)node);
         case AST_TYPE::Name:
             return visit_name((AST_Name*)node);
+        case AST_TYPE::CCName:
+            return visit_ccname((AST_CCName*)node);
         case AST_TYPE::Num:
             return visit_num((AST_Num*)node);
         case AST_TYPE::Repr:
@@ -997,9 +1014,18 @@ Value ASTInterpreter::visit_str(AST_Str* node) {
     return boxString(node->s);
 }
 
+
+Value ASTInterpreter::visit_ccname(AST_CCName* node) {
+    return regs[node->reg_num];
+}
+
 Value ASTInterpreter::visit_name(AST_Name* node) {
+    static StatCounter load_("load");
+    load_.log(1);
+
     switch (node->lookup_type) {
         case AST_Name::UNKNOWN: {
+
             if (scope_info->refersToGlobal(node->id)) {
                 node->lookup_type = AST_Name::GLOBAL;
                 return getGlobal(source_info->parent_module, &node->id.str());

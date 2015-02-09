@@ -153,6 +153,9 @@ private:
             case AST_TYPE::Name:
                 _doSet(ast_cast<AST_Name>(target)->id, t);
                 break;
+            case AST_TYPE::CCName:
+                _doSet(ast_cast<AST_CCName>(target)->id, t);
+                break;
             case AST_TYPE::Subscript:
                 break;
             case AST_TYPE::Tuple: {
@@ -392,6 +395,29 @@ private:
     }
 
     void* visit_name(AST_Name* node) override {
+        if (scope_info->refersToGlobal(node->id)) {
+            if (node->id.str() == "xrange") {
+                // printf("TODO guard here and return the classobj\n");
+                // return typeOfClassobj(xrange_cls);
+            }
+            return UNKNOWN;
+        }
+
+        if (scope_info->refersToClosure(node->id)) {
+            return UNKNOWN;
+        }
+
+        CompilerType*& t = sym_table[node->id];
+        if (t == NULL) {
+            // if (VERBOSITY() >= 2) {
+            // printf("%s is undefined!\n", node->id.c_str());
+            // raise(SIGTRAP);
+            //}
+            t = UNDEF;
+        }
+        return t;
+    }
+    void* visit_ccname(AST_CCName* node) override {
         if (scope_info->refersToGlobal(node->id)) {
             if (node->id.str() == "xrange") {
                 // printf("TODO guard here and return the classobj\n");

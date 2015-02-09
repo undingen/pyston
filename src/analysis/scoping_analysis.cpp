@@ -266,6 +266,24 @@ public:
         return true;
     }
 
+    bool visit_ccname(AST_CCName* node) override {
+        mangleNameInPlace(node->id, cur->private_name, scoping->getInternedStrings());
+
+        switch (node->ctx_type) {
+            case AST_TYPE::Load:
+                doRead(node->id);
+                break;
+            case AST_TYPE::Param:
+            case AST_TYPE::Store:
+            case AST_TYPE::Del:
+                doWrite(node->id);
+                break;
+            default:
+                RELEASE_ASSERT(0, "%d", node->ctx_type);
+        }
+        return true;
+    }
+
     bool visit_assert(AST_Assert* node) override { return false; }
     bool visit_assign(AST_Assign* node) override { return false; }
     bool visit_augassign(AST_AugAssign* node) override { return false; }

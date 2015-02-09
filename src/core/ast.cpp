@@ -700,6 +700,14 @@ void* AST_Name::accept_expr(ExprVisitor* v) {
     return v->visit_name(this);
 }
 
+void AST_CCName::accept(ASTVisitor* v) {
+    bool skip = v->visit_ccname(this);
+}
+
+void* AST_CCName::accept_expr(ExprVisitor* v) {
+    return v->visit_ccname(this);
+}
+
 void AST_Num::accept(ASTVisitor* v) {
     bool skip = v->visit_num(this);
 }
@@ -1510,6 +1518,12 @@ bool PrintVisitor::visit_name(AST_Name* node) {
     return false;
 }
 
+bool PrintVisitor::visit_ccname(AST_CCName* node) {
+    printf("%s", node->id.c_str());
+    return false;
+}
+
+
 bool PrintVisitor::visit_num(AST_Num* node) {
     if (node->num_type == AST_Num::INT) {
         printf("%ld", node->n_int);
@@ -1957,6 +1971,10 @@ public:
         return !expand_scopes;
     }
     virtual bool visit_name(AST_Name* node) {
+        output->push_back(node);
+        return false;
+    }
+    virtual bool visit_ccname(AST_CCName* node) {
         output->push_back(node);
         return false;
     }

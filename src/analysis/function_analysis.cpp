@@ -50,13 +50,13 @@ private:
         }
     };
 
-    std::unordered_set<AST_Name*> kills;
-    std::unordered_map<InternedString, AST_Name*> last_uses;
+    std::unordered_set<AST_expr*> kills;
+    std::unordered_map<InternedString, AST_expr*> last_uses;
 
     std::unordered_map<InternedString, Status> statuses;
     LivenessAnalysis* analysis;
 
-    void _doLoad(InternedString name, AST_Name* node) {
+    void _doLoad(InternedString name, AST_expr* node) {
         Status& status = statuses[name];
         status.addUsage(Status::USED);
 
@@ -97,7 +97,21 @@ public:
         return false;
     }
 
+    bool isKilledAt(AST_CCName* node, bool is_live_at_end) {
+        if (kills.count(node))
+            return true;
 
+        // If it's not live at the end, then the last use is a kill
+        // even though we weren't able to determine that in a single
+        // pass
+        if (!is_live_at_end) {
+            auto it = last_uses.find(node->id);
+            if (it != last_uses.end() && node == it->second)
+                return true;
+        }
+
+        return false;
+    }
 
     bool visit_classdef(AST_ClassDef* node) {
         _doStore(node->name);
@@ -136,6 +150,20 @@ public:
         }
         return true;
     }
+
+    bool visit_ccname(AST_CCName* node) {
+        if (node->ctx_type == AST_TYPE::Load)
+            _doLoad(node->id, node);
+        else if (node->ctx_type == AST_TYPE::Store || node->ctx_type == AST_TYPE::Del
+                 || node->ctx_type == AST_TYPE::Param)
+            _doStore(node->id);
+        else {
+            ASSERT(0, "%d", node->ctx_type);
+            abort();
+        }
+        return true;
+    }
+
     bool visit_alias(AST_alias* node) {
         InternedString name = node->name;
         if (node->asname.str().size())
@@ -165,6 +193,11 @@ bool LivenessAnalysis::isKill(AST_Name* node, CFGBlock* parent_block) {
     if (node->id.str()[0] != '#')
         return false;
 
+    return liveness_cache[parent_block]->isKilledAt(node, isLiveAtEnd(node->id, parent_block));
+}
+
+bool LivenessAnalysis::isKill(AST_CCName* node, CFGBlock* parent_block) {
+    assert(node->id.str()[0] == '#');
     return liveness_cache[parent_block]->isKilledAt(node, isLiveAtEnd(node->id, parent_block));
 }
 
@@ -255,6 +288,9 @@ private:
                 break;
             case AST_TYPE::Name:
                 _doSet(((AST_Name*)t)->id);
+                break;
+            case AST_TYPE::CCName:
+                _doSet(((AST_CCName*)t)->id);
                 break;
             case AST_TYPE::Subscript:
                 break;

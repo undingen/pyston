@@ -966,6 +966,37 @@ private:
         }
     }
 
+    CompilerVariable* evalCCName(AST_CCName* node, UnwindInfo unw_info) {
+        assert(state != PARTIAL);
+
+        auto scope_info = irstate->getScopeInfo();
+
+        bool is_kill = irstate->getSourceInfo()->liveness->isKill(node, myblock);
+        assert(!is_kill || node->id.str()[0] == '#');
+
+        InternedString defined_name = getIsDefinedName(node->id);
+        ConcreteCompilerVariable* is_defined_var
+            = static_cast<ConcreteCompilerVariable*>(_getFake(defined_name, true));
+
+        if (is_defined_var) {
+
+            emitter.createCall(unw_info, g.funcs.assertNameDefined,
+                               { i1FromBool(emitter, is_defined_var), getStringConstantPtr(node->id.str() + '\0'),
+                                 embedConstantPtr(UnboundLocalError, g.llvm_class_type_ptr),
+                                 getConstantInt(true, g.i1) });
+
+            // At this point we know the name must be defined (otherwise the assert would have fired):
+            _popFake(defined_name);
+        }
+
+        CompilerVariable* rtn = symbol_table[node->id];
+        if (is_kill)
+            symbol_table.erase(node->id);
+        else
+            rtn->incvref();
+        return rtn;
+    }
+
     CompilerVariable* evalNum(AST_Num* node, UnwindInfo unw_info) {
         assert(state != PARTIAL);
 
@@ -1190,6 +1221,9 @@ private:
                     break;
                 case AST_TYPE::Name:
                     rtn = evalName(ast_cast<AST_Name>(node), unw_info);
+                    break;
+                case AST_TYPE::CCName:
+                    rtn = evalCCName(ast_cast<AST_CCName>(node), unw_info);
                     break;
                 case AST_TYPE::Num:
                     rtn = evalNum(ast_cast<AST_Num>(node), unw_info);
@@ -1473,7 +1507,7 @@ private:
 
 #ifndef NDEBUG
         for (auto e : target->elts) {
-            ASSERT(e->type == AST_TYPE::Name && ast_cast<AST_Name>(e)->id.str()[0] == '#',
+            ASSERT(e->type == AST_TYPE::CCName,
                    "should only be unpacking tuples into cfg-generated names!");
         }
 #endif
@@ -1493,6 +1527,9 @@ private:
                 break;
             case AST_TYPE::Name:
                 _doSet(ast_cast<AST_Name>(target)->id, val, unw_info);
+                break;
+            case AST_TYPE::CCName:
+                _doSet(ast_cast<AST_CCName>(target)->id, val, unw_info);
                 break;
             case AST_TYPE::Subscript:
                 _doSetitem(ast_cast<AST_Subscript>(target), val, unw_info);

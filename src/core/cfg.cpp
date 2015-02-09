@@ -31,6 +31,26 @@
 
 namespace pyston {
 
+class CCNameVisitor : public NoopASTVisitor
+{
+    std::unordered_map<InternedString, unsigned> reg_name;
+
+    unsigned getRegNum(InternedString id) {
+        auto it = reg_name.find(id);
+        if (it != reg_name.end())
+            return it->second;
+        reg_name[id] = reg_name.size();
+        return reg_name.size()-1;
+    }
+
+    bool visit_ccname(AST_CCName* node) override {
+        node->reg_num = getRegNum(node->id);
+        return true;
+    }
+};
+
+
+
 void CFGBlock::connectTo(CFGBlock* successor, bool allow_backedge) {
     assert(successors.size() <= 1);
 
@@ -104,7 +124,10 @@ private:
         return source->getInternedStrings().get(std::forward<T>(s));
     }
 
-    AST_Name* makeName(InternedString id, AST_TYPE::AST_TYPE ctx_type, int lineno, int col_offset = 0) {
+    AST_expr* makeName(InternedString id, AST_TYPE::AST_TYPE ctx_type, int lineno, int col_offset = 0) {
+        if (id.str()[0] == '#')
+            return new AST_CCName(id, ctx_type, lineno, col_offset);
+
         AST_Name* name = new AST_Name(id, ctx_type, lineno, col_offset);
         return name;
     }
@@ -220,14 +243,15 @@ private:
     }
 
     AST_Name* remapName(AST_Name* name) { return name; }
+    AST_CCName* remapCCName(AST_CCName* name) { return name; }
 
-    AST_expr* applyComprehensionCall(AST_DictComp* node, AST_Name* name) {
+    AST_expr* applyComprehensionCall(AST_DictComp* node, AST_expr* name) {
         AST_expr* key = remapExpr(node->key);
         AST_expr* value = remapExpr(node->value);
         return makeCall(makeLoadAttribute(name, internString("__setitem__"), true), key, value);
     }
 
-    AST_expr* applyComprehensionCall(AST_ListComp* node, AST_Name* name) {
+    AST_expr* applyComprehensionCall(AST_ListComp* node, AST_expr* name) {
         AST_expr* elt = remapExpr(node->elt);
         return makeCall(makeLoadAttribute(name, internString("append"), true), elt);
     }
@@ -443,6 +467,9 @@ private:
         if (target->type == AST_TYPE::Name) {
             assign->targets.push_back(remapName(ast_cast<AST_Name>(target)));
             push_back(assign);
+        } else if (target->type == AST_TYPE::CCName) {
+            assign->targets.push_back(remapCCName(ast_cast<AST_CCName>(target)));
+            push_back(assign);
         } else if (target->type == AST_TYPE::Subscript) {
             AST_Subscript* s = ast_cast<AST_Subscript>(target);
             assert(s->ctx_type == AST_TYPE::Store);
@@ -579,7 +606,11 @@ private:
 
         if (val->type == AST_TYPE::Name) {
             AST_Name* orig = ast_cast<AST_Name>(val);
-            AST_Name* made = makeName(orig->id, orig->ctx_type, orig->lineno, orig->col_offset);
+            AST_expr* made = makeName(orig->id, orig->ctx_type, orig->lineno, orig->col_offset);
+            return made;
+        } else if (val->type == AST_TYPE::CCName) {
+            AST_CCName* orig = ast_cast<AST_CCName>(val);
+            AST_expr* made = makeName(orig->id, orig->ctx_type, orig->lineno, orig->col_offset);
             return made;
         } else if (val->type == AST_TYPE::Num) {
             AST_Num* orig = ast_cast<AST_Num>(val);
@@ -1065,6 +1096,9 @@ private:
             case AST_TYPE::Name:
                 rtn = remapName(ast_cast<AST_Name>(node));
                 break;
+            case AST_TYPE::CCName:
+                rtn = remapCCName(ast_cast<AST_CCName>(node));
+                break;
             case AST_TYPE::Num:
                 return node;
             case AST_TYPE::Repr:
@@ -1123,7 +1157,7 @@ public:
 
         if (type == AST_TYPE::Branch) {
             AST_TYPE::AST_TYPE test_type = ast_cast<AST_Branch>(node)->test->type;
-            ASSERT(test_type == AST_TYPE::Name || test_type == AST_TYPE::Num, "%d", test_type);
+            ASSERT(test_type == AST_TYPE::Name || test_type == AST_TYPE::CCName || test_type == AST_TYPE::Num, "%d", test_type);
             curblock->push_back(node);
             return;
         }
@@ -1140,7 +1174,7 @@ public:
                 AST_Name* target = ast_cast<AST_Name>(asgn->targets[0]);
                 if (target->id.str()[0] != '#') {
 #ifndef NDEBUG
-                    if (!(asgn->value->type == AST_TYPE::Name && ast_cast<AST_Name>(asgn->value)->id.str()[0] == '#')
+                    if (!(asgn->value->type == AST_TYPE::Name && ast_cast<AST_Name>(asgn->value)->id.str()[0] == '#') && !(asgn->value->type == AST_TYPE::CCName && ast_cast<AST_CCName>(asgn->value)->id.str()[0] == '#')
                         && asgn->value->type != AST_TYPE::Str && asgn->value->type != AST_TYPE::Num) {
                         fprintf(stdout, "\nError: doing a non-trivial assignment in an invoke is not allowed:\n");
                         print_ast(node);
@@ -2496,6 +2530,15 @@ CFG* computeCFG(SourceInfo* source, std::vector<AST_stmt*> body) {
             delete b2;
         }
     }
+
+    CCNameVisitor ccname_visitor;
+    for (CFGBlock* b : rtn->blocks)
+    {
+        for (AST_stmt* s : b->body)
+            s->accept(&ccname_visitor);
+    }
+
+
 
     if (VERBOSITY("cfg") >= 1) {
         printf("Final cfg:\n");
