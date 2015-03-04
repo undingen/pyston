@@ -629,9 +629,12 @@ init_io(void)
         return;
 
     /* put os in the module state */
+// Pyston change:
+#if 0
     _PyIO_os_module = PyImport_ImportModule("os");
     if (_PyIO_os_module == NULL)
         goto fail;
+#endif
 
 #define ADD_TYPE(type, name) \
     if (PyType_Ready(type) < 0) \
@@ -647,9 +650,11 @@ init_io(void)
         goto fail;
 
     /* UnsupportedOperation inherits from ValueError and IOError */
-    _PyIO_unsupported_operation = PyObject_CallFunction(
-        (PyObject *)&PyType_Type, "s(OO){}",
-        "UnsupportedOperation", PyExc_ValueError, PyExc_IOError);
+// Pyston change:
+    _PyIO_unsupported_operation = PyExc_IOError;
+    //_PyIO_unsupported_operation = PyObject_CallFunction(
+    //    (PyObject *)&PyType_Type, "s(OO){}",
+    //    "UnsupportedOperation", PyExc_ValueError, PyExc_IOError);
     if (_PyIO_unsupported_operation == NULL)
         goto fail;
     Py_INCREF(_PyIO_unsupported_operation);

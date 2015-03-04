@@ -67,7 +67,7 @@ SEEK_END = 2
 # Method descriptions and default implementations are inherited from the C
 # version however.
 class IOBase(_io._IOBase):
-    __metaclass__ = abc.ABCMeta
+    #__metaclass__ = abc.ABCMeta Pyston change: tmp hack until we support weak refs
     __doc__ = _io._IOBase.__doc__
 
 class RawIOBase(_io._RawIOBase, IOBase):
@@ -79,6 +79,8 @@ class BufferedIOBase(_io._BufferedIOBase, IOBase):
 class TextIOBase(_io._TextIOBase, IOBase):
     __doc__ = _io._TextIOBase.__doc__
 
+# Pyston change: tmp hack until we support weak refs
+"""
 RawIOBase.register(FileIO)
 
 for klass in (BytesIO, BufferedReader, BufferedWriter, BufferedRandom,
@@ -88,3 +90,4 @@ for klass in (BytesIO, BufferedReader, BufferedWriter, BufferedRandom,
 for klass in (StringIO, TextIOWrapper):
     TextIOBase.register(klass)
 del klass
+"""

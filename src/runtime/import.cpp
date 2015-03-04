@@ -265,7 +265,15 @@ extern "C" PyObject* PyImport_ImportModule(const char* name) noexcept {
     if (strcmp("__builtin__", name) == 0)
         return builtins_module;
 
-    Py_FatalError("unimplemented");
+    try {
+        std::string str = name;
+        return import(-1, None, &str);
+    } catch (ExcInfo e) {
+        setCAPIException(e);
+        return NULL;
+    }
+
+    // Py_FatalError("unimplemented");
 }
 
 extern "C" Box* import(int level, Box* from_imports, const std::string* module_name) {

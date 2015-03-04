@@ -213,6 +213,8 @@ fileio_init(PyObject *oself, PyObject *args, PyObject *kwds)
         return -1;
     }
 
+    // Pyston change:
+#if 0
     fd = _PyLong_AsInt(nameobj);
     if (fd < 0) {
         if (!PyErr_Occurred()) {
@@ -222,7 +224,7 @@ fileio_init(PyObject *oself, PyObject *args, PyObject *kwds)
         }
         PyErr_Clear();
     }
-
+#endif
 #ifdef MS_WINDOWS
     if (PyUnicode_Check(nameobj))
         widename = PyUnicode_AS_UNICODE(nameobj);
