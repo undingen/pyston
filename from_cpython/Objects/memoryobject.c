@@ -801,7 +801,9 @@ static PyBufferProcs memory_as_buffer = {
 
 
 PyTypeObject PyMemoryView_Type = {
-    PyVarObject_HEAD_INIT(&PyType_Type, 0)
+    // Pyston change
+    //PyVarObject_HEAD_INIT(&PyType_Type, 0)
+    PyVarObject_HEAD_INIT(NULL, 0)
     "memoryview",
     sizeof(PyMemoryViewObject),
     0,
@@ -820,8 +822,8 @@ PyTypeObject PyMemoryView_Type = {
     PyObject_GenericGetAttr,                  /* tp_getattro */
     0,                                        /* tp_setattro */
     &memory_as_buffer,                        /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC |
-        Py_TPFLAGS_HAVE_NEWBUFFER,            /* tp_flags */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC /*pyston change |
+        Py_TPFLAGS_HAVE_NEWBUFFER*/,            /* tp_flags */
     memory_doc,                               /* tp_doc */
     (traverseproc)memory_traverse,            /* tp_traverse */
     (inquiry)memory_clear,                    /* tp_clear */

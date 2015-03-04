@@ -892,6 +892,8 @@ finisignal(void)
 int
 PyErr_CheckSignals(void)
 {
+    return 0;
+
     // Pyston change:
     Py_FatalError("TODO");
 
