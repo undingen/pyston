@@ -29,7 +29,7 @@ int PYTHON_VERSION_HEX = version_hex(PYTHON_VERSION_MAJOR, PYTHON_VERSION_MINOR,
 
 int MAX_OPT_ITERATIONS = 1;
 
-bool FORCE_INTERPRETER = false;
+bool FORCE_INTERPRETER = true;
 bool FORCE_OPTIMIZE = false;
 bool SHOW_DISASM = false;
 bool PROFILE = false;
@@ -37,7 +37,7 @@ bool DUMPJIT = false;
 bool TRAP = false;
 bool USE_STRIPPED_STDLIB = true; // always true
 bool ENABLE_INTERPRETER = true;
-bool ENABLE_PYPA_PARSER = false;
+bool ENABLE_PYPA_PARSER = true;
 bool USE_REGALLOC_BASIC = true;
 
 int OSR_THRESHOLD_INTERPRETER = 200;

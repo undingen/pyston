@@ -49,6 +49,8 @@ static Box* classLookup(BoxedClassobj* cls, const std::string& attr) {
         return r;
 
     for (auto b : cls->bases->elts) {
+        if (b->cls != classobj_cls)
+            continue;
         RELEASE_ASSERT(b->cls == classobj_cls, "");
         Box* r = classLookup(static_cast<BoxedClassobj*>(b), attr);
         if (r)

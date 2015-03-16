@@ -109,9 +109,9 @@ extern "C" PyObject* PystonType_GenericAlloc(BoxedClass* cls, Py_ssize_t nitems)
         assert(cls->tp_mro && "maybe we should just skip these checks if !mro");
         assert(cls->tp_mro->cls == tuple_cls);
         for (auto b : static_cast<BoxedTuple*>(cls->tp_mro)->elts) {
-            assert(isSubclass(b->cls, type_cls));
-            ASSERT(static_cast<BoxedClass*>(b)->is_pyston_class, "%s (%s)", cls->tp_name,
-                   static_cast<BoxedClass*>(b)->tp_name);
+            //assert(isSubclass(b->cls, type_cls));
+            //ASSERT(static_cast<BoxedClass*>(b)->is_pyston_class, "%s (%s)", cls->tp_name,
+            //       static_cast<BoxedClass*>(b)->tp_name);
         }
     }
 #endif
@@ -1042,6 +1042,19 @@ public:
         return value;
     }
 
+    static Box* delitem(Box* _self, Box* _key) {
+        RELEASE_ASSERT(_self->cls == attrwrapper_cls, "");
+        AttrWrapper* self = static_cast<AttrWrapper*>(_self);
+        BoxedString* key = (BoxedString*)coerceUnicodeToStr(_key);
+        RELEASE_ASSERT(key->cls == str_cls, "");
+
+        if (self->b->hasattr(key->s))
+            raiseExcHelper(KeyError, _key);
+
+        self->b->delattr(key->s, NULL);
+        return None;
+    }
+
     static Box* get(Box* _self, Box* _key, Box* def) {
         RELEASE_ASSERT(_self->cls == attrwrapper_cls, "");
         AttrWrapper* self = static_cast<AttrWrapper*>(_self);
@@ -1917,6 +1930,7 @@ void setupRuntime() {
 
     attrwrapper_cls->giveAttr("__setitem__", new BoxedFunction(boxRTFunction((void*)AttrWrapper::setitem, UNKNOWN, 3)));
     attrwrapper_cls->giveAttr("__getitem__", new BoxedFunction(boxRTFunction((void*)AttrWrapper::getitem, UNKNOWN, 2)));
+    attrwrapper_cls->giveAttr("__delitem__", new BoxedFunction(boxRTFunction((void*)AttrWrapper::delitem, UNKNOWN, 2)));
     attrwrapper_cls->giveAttr("setdefault",
                               new BoxedFunction(boxRTFunction((void*)AttrWrapper::setdefault, UNKNOWN, 3)));
     attrwrapper_cls->giveAttr(

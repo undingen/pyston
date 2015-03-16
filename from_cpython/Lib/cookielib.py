@@ -1198,7 +1198,7 @@ def deepvalues(mapping):
 # dict key from one with a None value.
 class Absent: pass
 
-class CookieJar:
+class CookieJar(object):
     """Collection of HTTP cookies.
 
     You may not need to know about this class: try

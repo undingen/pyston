@@ -77,6 +77,13 @@ def currentframe():
     try:
         raise Exception
     except:
+        tb = sys.exc_info()[2]
+        if tb and tb != None:
+            #print "\n".join(sys.exc_info()[2].getLines())
+            return sys.exc_info()[2].getLines()
+        return "(unknown file)", 0, "(unknown function)"
+
+
         return sys.exc_info()[2].tb_frame.f_back
 
 if hasattr(sys, '_getframe'): currentframe = lambda: sys._getframe(3)
@@ -1229,6 +1236,9 @@ class Logger(Filterer):
         file name, line number and function name.
         """
         f = currentframe()
+
+        return "(unknown file)", 0, "(unknown function)"
+
         #On some versions of IronPython, currentframe() returns None if
         #IronPython isn't run with -X:Frames.
         if f is not None:

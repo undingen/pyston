@@ -62,6 +62,10 @@ def simplegeneric(func):
         registry[typ] = func
         return func
 
+
+    func.register = register
+    return func
+
     wrapper.__dict__ = func.__dict__
     wrapper.__doc__ = func.__doc__
     wrapper.register = register

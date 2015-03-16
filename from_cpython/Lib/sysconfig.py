@@ -9,8 +9,8 @@ _INSTALL_SCHEMES = {
     'posix_prefix': {
         'stdlib': '{base}/lib/python{py_version_short}',
         'platstdlib': '{platbase}/lib/python{py_version_short}',
-        'purelib': '{base}/lib/python{py_version_short}/site-packages',
-        'platlib': '{platbase}/lib/python{py_version_short}/site-packages',
+        'purelib': '{base}/site-packages',
+        'platlib': '{base}/site-packages',
         'include': '{base}/include/python{py_version_short}',
         'platinclude': '{platbase}/include/python{py_version_short}',
         'scripts': '{base}/bin',
@@ -67,8 +67,8 @@ _INSTALL_SCHEMES = {
     'posix_user': {
         'stdlib': '{userbase}/lib/python{py_version_short}',
         'platstdlib': '{userbase}/lib/python{py_version_short}',
-        'purelib': '{userbase}/lib/python{py_version_short}/site-packages',
-        'platlib': '{userbase}/lib/python{py_version_short}/site-packages',
+        'purelib': '{base}/site-packages',
+        'platlib': '{base}/site-packages',
         'include': '{userbase}/include/python{py_version_short}',
         'scripts': '{userbase}/bin',
         'data'   : '{userbase}',

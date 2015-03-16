@@ -1203,9 +1203,12 @@ _shutdown = _MainThread()._exitfunc
 # module, or from the python fallback
 
 try:
+    raise ImportError
     from thread import _local as local
 except ImportError:
-    from _threading_local import local
+    class local(object):
+        pass
+    #from _threading_local import local
 
 
 def _after_fork():

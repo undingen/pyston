@@ -1013,7 +1013,7 @@ class HTTPConnection:
 
     def _send_request(self, method, url, body, headers):
         # Honor explicitly requested Host: and Accept-Encoding: headers.
-        header_names = dict.fromkeys([k.lower() for k in headers])
+        header_names = dict().fromkeys([k.lower() for k in headers])
         skips = {}
         if 'host' in header_names:
             skips['skip_host'] = 1

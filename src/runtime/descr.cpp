@@ -93,7 +93,7 @@ static Box* propertyDel(Box* self, Box* obj) {
 static Box* property_copy(BoxedProperty* old, Box* get, Box* set, Box* del) {
     // In CPython, I think this can take a subclass of property, and will call the subclass's
     // constructor... for now just enforce that it's a property object and inline the constructor:
-    RELEASE_ASSERT(old->cls == property_cls, "");
+    RELEASE_ASSERT(isSubclass(old->cls, property_cls), "");
 
     if (!get)
         get = old->prop_get;
@@ -102,7 +102,7 @@ static Box* property_copy(BoxedProperty* old, Box* get, Box* set, Box* del) {
     if (!del)
         del = old->prop_del;
 
-    return new BoxedProperty(get, set, del, old->prop_doc);
+    return new (old->cls) BoxedProperty(get, set, del, old->prop_doc);
 }
 
 static Box* propertyGetter(Box* self, Box* obj) {

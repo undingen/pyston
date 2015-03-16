@@ -116,9 +116,51 @@ class ResultMixin(object):
                     return port
         return None
 
-from collections import namedtuple
+#from collections import namedtuple
+from operator import itemgetter as _itemgetter
+_property = property
+_tuple = tuple
+class SplitResultT(tuple):
+    'SplitResult(scheme, netloc, path, query, fragment)'
+    __slots__ = ()
+    _fields = ('scheme', 'netloc', 'path', 'query', 'fragment')
+    def __new__(_cls, scheme, netloc, path, query, fragment):
+        'Create new instance of SplitResult(scheme, netloc, path, query, fragment)'
+        return _tuple.__new__(_cls, (scheme, netloc, path, query, fragment))
+    @classmethod
+    def _make(cls, iterable, new=tuple.__new__, len=len):
+        'Make a new SplitResult object from a sequence or iterable'
+        result = new(cls, iterable)
+        if len(result) != 5:
+            raise TypeError('Expected 5 arguments, got %d' % len(result))
+        return result
+    def __repr__(self):
+        'Return a nicely formatted representation string'
+        return 'SplitResult(scheme=%r, netloc=%r, path=%r, query=%r, fragment=%r)' % self
+    def _asdict(self):
+        'Return a new OrderedDict which maps field names to their values'
+        return OrderedDict(zip(self._fields, self))
+    def _replace(_self, **kwds):
+        'Return a new SplitResult object replacing specified fields with new values'
+        result = _self._make(map(kwds.pop, ('scheme', 'netloc', 'path', 'query', 'fragment'), _self))
+        if kwds:
+            raise ValueError('Got unexpected field names: %r' % kwds.keys())
+        return result
+    def __getnewargs__(self):
+        'Return self as a plain tuple.  Used by copy and pickle.'
+        return tuple(self)
+    __dict__ = _property(_asdict)
+    def __getstate__(self):
+        'Exclude the OrderedDict from pickling'
+        pass
+    scheme = _property(_itemgetter(0), doc='Alias for field number 0')
+    netloc = _property(_itemgetter(1), doc='Alias for field number 1')
+    path = _property(_itemgetter(2), doc='Alias for field number 2')
+    query = _property(_itemgetter(3), doc='Alias for field number 3')
+    fragment = _property(_itemgetter(4), doc='Alias for field number 4')
 
-class SplitResult(namedtuple('SplitResult', 'scheme netloc path query fragment'), ResultMixin):
+class SplitResult(SplitResultT, ResultMixin):
+#class SplitResult(namedtuple('SplitResult', 'scheme netloc path query fragment'), ResultMixin):
 
     __slots__ = ()
 
@@ -126,7 +168,52 @@ class SplitResult(namedtuple('SplitResult', 'scheme netloc path query fragment')
         return urlunsplit(self)
 
 
-class ParseResult(namedtuple('ParseResult', 'scheme netloc path params query fragment'), ResultMixin):
+#class ParseResult(namedtuple('ParseResult', 'scheme netloc path params query fragment'), ResultMixin):
+class ParseResultT(tuple):
+    'ParseResult(scheme, netloc, path, params, query, fragment)'
+    __slots__ = ()
+    _fields = ('scheme', 'netloc', 'path', 'params', 'query', 'fragment')
+    def __new__(_cls, scheme, netloc, path, params, query, fragment):
+        'Create new instance of ParseResult(scheme, netloc, path, params, query, fragment)'
+        return _tuple.__new__(_cls, (scheme, netloc, path, params, query, fragment))
+    @classmethod
+    def _make(cls, iterable, new=tuple.__new__, len=len):
+        'Make a new ParseResult object from a sequence or iterable'
+        result = new(cls, iterable)
+        if len(result) != 6:
+            raise TypeError('Expected 6 arguments, got %d' % len(result))
+        return result
+    def __repr__(self):
+        'Return a nicely formatted representation string'
+        return 'ParseResult(scheme=%r, netloc=%r, path=%r, params=%r, query=%r, fragment=%r)' % self
+    def _asdict(self):
+        'Return a new OrderedDict which maps field names to their values'
+        return OrderedDict(zip(self._fields, self))
+    def _replace(_self, **kwds):
+        'Return a new ParseResult object replacing specified fields with new values'
+        result = _self._make(map(kwds.pop, ('scheme', 'netloc', 'path', 'params', 'query', 'fragment'), _self))
+        if kwds:
+            raise ValueError('Got unexpected field names: %r' % kwds.keys())
+        return result
+    def __getnewargs__(self):
+        'Return self as a plain tuple.  Used by copy and pickle.'
+        return tuple(self)
+    __dict__ = _property(_asdict)
+    def __getstate__(self):
+        'Exclude the OrderedDict from pickling'
+        pass
+    scheme = _property(_itemgetter(0), doc='Alias for field number 0')
+    netloc = _property(_itemgetter(1), doc='Alias for field number 1')
+    path = _property(_itemgetter(2), doc='Alias for field number 2')
+    params = _property(_itemgetter(3), doc='Alias for field number 3')
+    query = _property(_itemgetter(4), doc='Alias for field number 4')
+    fragment = _property(_itemgetter(5), doc='Alias for field number 5')
+
+
+
+class ParseResult(ParseResultT, ResultMixin):
+#class ParseResult(namedtuple('ParseResult', 'scheme netloc path params query fragment'), ResultMixin):
+
 
     __slots__ = ()
 

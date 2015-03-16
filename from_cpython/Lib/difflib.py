@@ -31,10 +31,42 @@ __all__ = ['get_close_matches', 'ndiff', 'restore', 'SequenceMatcher',
            'unified_diff', 'HtmlDiff', 'Match']
 
 import heapq
-from collections import namedtuple as _namedtuple
+#from collections import namedtuple as _namedtuple
 from functools import reduce
 
-Match = _namedtuple('Match', 'a b size')
+import collections
+from operator import itemgetter as _itemgetter
+class Match(tuple):
+    __slots__ = ()
+    _fields = ('a', 'b', 'size')
+    def __new__(_cls, a, b, size):
+        'Create new instance of Match(a, b, size)'
+        return tuple.__new__(_cls, (a, b, size))
+    @classmethod
+    def _make(cls, iterable, new=tuple.__new__, len=len):
+        result = new(cls, iterable)
+        if len(result) != 3:
+            raise TypeError('Expected 3 arguments, got %d' % len(result))
+        return result
+    def __repr__(self):
+        return 'Match(a=%r, b=%r, size=%r)' % self
+    def _asdict(self):
+        return collections.OrderedDict(zip(self._fields, self))
+    def _replace(_self, **kwds):
+        result = _self._make(map(kwds.pop, ('a', 'b', 'size'), _self))
+        if kwds:
+            raise ValueError('Got unexpected field names: %r' % kwds.keys())
+        return result
+    def __getnewargs__(self):
+        return tuple(self)
+
+    __dict__ = property(_asdict)
+    def __getstate__(self):
+        pass
+    a = property(_itemgetter(0), doc='Alias for field number 0')
+    b = property(_itemgetter(1), doc='Alias for field number 1')
+    size = property(_itemgetter(2), doc='Alias for field number 2')
+#Match = _namedtuple('Match', 'a b size')
 
 def _calculate_ratio(matches, length):
     if length:

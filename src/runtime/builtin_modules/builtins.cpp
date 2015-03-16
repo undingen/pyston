@@ -1170,6 +1170,10 @@ void setupBuiltins() {
     builtins_module->giveAttr("staticmethod", staticmethod_cls);
     builtins_module->giveAttr("classmethod", classmethod_cls);
 
+    builtins_module->giveAttr("input", new BoxedBuiltinFunctionOrMethod(boxRTFunction((void*)abort, LIST, 2), "input"));
+    builtins_module->giveAttr("raw_input",
+                              new BoxedBuiltinFunctionOrMethod(boxRTFunction((void*)abort, LIST, 2), "raw_input"));
+
     assert(memoryview_cls);
     Py_TYPE(&PyMemoryView_Type) = &PyType_Type;
     PyType_Ready(&PyMemoryView_Type);

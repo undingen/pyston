@@ -683,6 +683,27 @@ Box* impLoadModule(Box* _name, Box* _file, Box* _pathname, Box** args) {
     Py_FatalError("unimplemented");
 }
 
+Box* impGetSuffixes() {
+    BoxedList* list = new BoxedList({});
+    listAppendInternal(list, new BoxedTuple({ new BoxedString(".x86_64-linux-gnu.so"), new BoxedString("rb"),
+                                              boxInt(SearchResult::C_EXTENSION) }));
+    listAppendInternal(
+        list, new BoxedTuple({ new BoxedString(".so"), new BoxedString("rb"), boxInt(SearchResult::C_EXTENSION) }));
+    listAppendInternal(list, new BoxedTuple({ new BoxedString("module.so"), new BoxedString("rb"),
+                                              boxInt(SearchResult::C_EXTENSION) }));
+    listAppendInternal(
+        list, new BoxedTuple({ new BoxedString(".py"), new BoxedString("U"), boxInt(SearchResult::PY_SOURCE) }));
+    return list;
+}
+
+Box* impAcquireLock() {
+    return None;
+}
+
+Box* impReleaseLock() {
+    return None;
+}
+
 void setupImport() {
     BoxedModule* imp_module = createModule("imp", "__builtin__");
 
@@ -711,5 +732,13 @@ void setupImport() {
                                                  ParamNames({ "name", "file", "pathname", "description" }, "", ""));
 
     imp_module->giveAttr("load_module", new BoxedBuiltinFunctionOrMethod(load_module_func, "load_module"));
+
+    CLFunction* get_suffixes_func = boxRTFunction((void*)impGetSuffixes, UNKNOWN, 0);
+    imp_module->giveAttr("get_suffixes", new BoxedBuiltinFunctionOrMethod(get_suffixes_func, "get_suffixes"));
+
+    imp_module->giveAttr("acquire_lock", new BoxedBuiltinFunctionOrMethod(boxRTFunction((void*)impAcquireLock, NONE, 0),
+                                                                          "acquire_lock"));
+    imp_module->giveAttr("release_lock", new BoxedBuiltinFunctionOrMethod(boxRTFunction((void*)impReleaseLock, NONE, 0),
+                                                                          "release_lock"));
 }
 }

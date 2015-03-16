@@ -1370,6 +1370,11 @@ extern "C" PyObject* PyNumber_Int(PyObject* o) noexcept {
         return PyInt_FromLong(io->n);
     }
 
+    if (PyFloat_Check(o)) {
+        BoxedFloat* io = (BoxedFloat*)o;
+        return boxInt(io->d);
+    }
+
     Py_FatalError("unimplemented __trunc__ and string -> int conversion");
 // the remainder of PyNumber_Int deals with __trunc__ usage, and converting from unicode/string to int
 #if 0
@@ -1442,6 +1447,9 @@ extern "C" Py_ssize_t PyNumber_AsSsize_t(PyObject* o, PyObject* exc) noexcept {
     } else if (isSubclass(o->cls, long_cls)) {
         return PyLong_AsSsize_t(o);
     }
+
+    PyErr_SetString(PyExc_TypeError, "an integer is required");
+    return -1;
 
     Py_FatalError("unimplemented");
 }
