@@ -1457,8 +1457,8 @@ def _sys_version(sys_version=None):
     elif "Pyston" in sys_version:
         # Pyston
         name = 'Pyston'
-        version, buildno, builddate, buildtime = ("2.7.6", "1", "", "")
-        compiler = ""
+        version, buildno, builddate, buildtime, compiler = (sys_version.split()[0], "", "", "", "")
+
     else:
         # CPython
         match = _sys_version_parser.match(sys_version)
