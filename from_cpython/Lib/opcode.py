@@ -5,7 +5,7 @@ operate on bytecodes (e.g. peephole optimizers).
 """
 
 # Pyston change: disable this module
-raise NotImplementedError()
+#raise NotImplementedError()
 
 __all__ = ["cmp_op", "hasconst", "hasname", "hasjrel", "hasjabs",
            "haslocal", "hascompare", "hasfree", "opname", "opmap",
