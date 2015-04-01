@@ -959,6 +959,9 @@ CompiledFunction* doCompile(SourceInfo* source, ParamNames* param_names, const O
         source->cfg->print();
 
     assert(g.cur_module == NULL);
+
+    resetEmbedCache();
+
     std::string name = getUniqueFunctionName(nameprefix, effort, entry_descriptor);
     g.cur_module = new llvm::Module(name, g.context);
 #if LLVMREV < 217070 // not sure if this is the right rev
@@ -1050,6 +1053,7 @@ CompiledFunction* doCompile(SourceInfo* source, ParamNames* param_names, const O
 
     IRGenState irstate(cf, source, param_names, getGCBuilder(), dbg_funcinfo);
 
+    initGlobalFuncs(g);
     emitBBs(&irstate, types, entry_descriptor, blocks);
 
     // De-opt handling:

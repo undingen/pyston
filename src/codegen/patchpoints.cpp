@@ -21,6 +21,7 @@
 #include "asm_writing/rewriter.h"
 #include "codegen/compvars.h"
 #include "codegen/stackmaps.h"
+#include "codegen/irgen/util.h"
 #include "core/common.h"
 #include "core/options.h"
 #include "core/stats.h"
@@ -165,7 +166,8 @@ void processStackmap(CompiledFunction* cf, StackMap* stackmap) {
         const StackMap::StackSizeRecord& stack_size_record = stackmap->stack_size_records[0];
         int stack_size = stack_size_record.stack_size;
 
-        PatchpointInfo* pp = reinterpret_cast<PatchpointInfo*>(r->id);
+        PatchpointInfo* pp = reinterpret_cast<PatchpointInfo*>(retrievePPForId(r->id));
+        // PatchpointInfo* pp = reinterpret_cast<PatchpointInfo*>(r->id);
         assert(pp);
 
         if (VERBOSITY()) {
@@ -182,6 +184,9 @@ void processStackmap(CompiledFunction* cf, StackMap* stackmap) {
 
         uint8_t* start_addr = (uint8_t*)pp->parentFunction()->code + r->offset;
         uint8_t* end_addr = start_addr + pp->patchpointSize();
+
+        RELEASE_ASSERT(pp->dst, "");
+        setSlowpathFunc(start_addr, pp->dst);
 
         // TODO shouldn't have to do it this way
         void* slowpath_func = extractSlowpathFunc(start_addr);

@@ -150,6 +150,7 @@ static void compileIR(CompiledFunction* cf, EffortLevel effort) {
 #endif
 
         g.cur_cf = cf;
+        // cf->func->getParent()->dump();
         void* compiled = (void*)g.engine->getFunctionAddress(cf->func->getName());
         g.cur_cf = NULL;
         assert(compiled);
@@ -245,7 +246,9 @@ CompiledFunction* compileFunction(CLFunction* f, FunctionSpecialization* spec, E
         cf = new CompiledFunction(0, spec, true, NULL, NULL, effort, 0);
     } else {
         cf = doCompile(source, &f->param_names, entry_descriptor, effort, spec, name);
+        cf->clfunc = f;
         compileIR(cf, effort);
+        cf->clfunc = 0;
     }
 
     f->addVersion(cf);

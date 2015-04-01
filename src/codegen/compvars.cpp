@@ -1584,7 +1584,7 @@ public:
         }
         llvm::FunctionType* ft = llvm::FunctionType::get(cf->spec->rtn_type->llvmType(), arg_types, false);
 
-        llvm::Value* linked_function = embedConstantPtr(cf->code, ft->getPointerTo());
+        llvm::Value* linked_function = embedConstantPtr(cf->code, ft->getPointerTo(), true);
 
         std::vector<CompilerVariable*> new_args;
         new_args.push_back(var);

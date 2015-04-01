@@ -215,7 +215,33 @@ private:
             assert(ic_stackmap_args.size() == 0);
 
         PatchpointInfo* info = PatchpointInfo::create(currentFunction(), pp, ic_stackmap_args.size());
-        int64_t pp_id = reinterpret_cast<int64_t>(info);
+
+        if (llvm::isa<llvm::BitCastOperator>(func)) {
+            llvm::BitCastOperator* cast = llvm::cast<llvm::BitCastOperator>(func);
+            llvm::Value* inst = cast->getOperand(0);
+            inst->dump();
+            if (llvm::isa<llvm::Function>(inst)) {
+                llvm::Function* _func = llvm::cast<llvm::Function>(inst);
+                // info->dst =
+            }
+        }
+
+        if (llvm::isa<llvm::ConstantExpr>(func)) {
+            llvm::ConstantExpr* cast = llvm::cast<llvm::ConstantExpr>(func);
+            llvm::Instruction* inst = cast->getAsInstruction();
+            if (llvm::isa<llvm::IntToPtrInst>(inst)) {
+                llvm::IntToPtrInst* cast = llvm::cast<llvm::IntToPtrInst>(inst);
+                if (llvm::isa<llvm::ConstantInt>(cast->getOperand(0))) {
+                    info->dst = (void*)llvm::cast<llvm::ConstantInt>(cast->getOperand(0))->getZExtValue();
+                }
+                // info->dst = cast->getOperand(0);
+            }
+            delete inst;
+        }
+
+        // int64_t pp_id = reinterpret_cast<int64_t>(info);
+        int64_t pp_id = getNextPPId();
+        registerPP(pp_id, info);
         int pp_size = pp ? pp->totalSize() : CALL_ONLY_SIZE;
 
         std::vector<llvm::Value*> pp_args;
@@ -288,6 +314,8 @@ public:
                                                                       ->getElementType())->getReturnType();
 
             llvm::Value* bitcasted = getBuilder()->CreateBitCast(callee, g.i8->getPointerTo());
+            // llvm::Value* bitcasted = getBuilder()->CreateBitCast(embedConstantPtr((void*)1, g.i8->getPointerTo(),
+            // true), g.i8->getPointerTo());
             llvm::CallSite cs = emitPatchpoint(rtn_type, NULL, bitcasted, args, {}, unw_info);
 
             if (rtn_type == cs->getType()) {
@@ -329,9 +357,14 @@ public:
 
         std::vector<llvm::Value*> stackmap_args;
 
+        /*
         llvm::CallSite rtn
             = emitPatchpoint(pp->hasReturnValue() ? g.i64 : g.void_, pp,
                              embedConstantPtr(func_addr, g.i8->getPointerTo()), args, stackmap_args, unw_info);
+        */
+        llvm::CallSite rtn
+            = emitPatchpoint(pp->hasReturnValue() ? g.i64 : g.void_, pp,
+                             embedConstantPtr(func_addr, g.i8->getPointerTo(), true), args, stackmap_args, unw_info);
 
         rtn.setCallingConv(pp->getCallingConvention());
         return rtn.getInstruction();

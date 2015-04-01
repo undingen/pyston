@@ -56,6 +56,8 @@ SourceInfo::SourceInfo(BoxedModule* m, ScopingAnalysis* scoping, AST* ast, const
 void FunctionAddressRegistry::registerFunction(const std::string& name, void* addr, int length,
                                                llvm::Function* llvm_func) {
     assert(addr);
+    if (functions.count(addr))
+        return;
     assert(functions.count(addr) == 0);
     functions.insert(std::make_pair(addr, FuncInfo(name, length, llvm_func)));
 }

@@ -55,10 +55,12 @@ private:
     std::vector<FrameVarInfo> frame_vars;
 
     PatchpointInfo(CompiledFunction* parent_cf, const ICSetupInfo* icinfo, int num_ic_stackmap_args)
-        : parent_cf(parent_cf), icinfo(icinfo), num_ic_stackmap_args(num_ic_stackmap_args),
-          num_frame_stackmap_args(-1) {}
+        : parent_cf(parent_cf), icinfo(icinfo), num_ic_stackmap_args(num_ic_stackmap_args), num_frame_stackmap_args(-1),
+          dst(0) {}
+
 
 public:
+    void* dst;
     const ICSetupInfo* getICInfo() { return icinfo; }
 
     int patchpointSize();

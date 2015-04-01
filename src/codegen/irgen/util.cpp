@@ -92,7 +92,60 @@ llvm::Constant* getStringConstantPtr(const char* str) {
 // to some associated compiler-level data structure.
 // It's slightly easier to emit them as integers (there are primitive integer constants but not pointer constants),
 // but doing it this way makes it clearer what's going on.
-llvm::Constant* embedConstantPtr(const void* addr, llvm::Type* type) {
+
+static std::unordered_map<const void*, int> addr_to_idx;
+static std::unordered_map<std::string, int> addrstr_to_idx;
+static std::vector<const void*> addr_vec;
+
+static std::unordered_map<int, void*> pp_map;
+static unsigned int next_id;
+
+void resetEmbedCache() {
+    addr_to_idx.clear();
+    addrstr_to_idx.clear();
+    addr_vec.clear();
+    pp_map.clear();
+    next_id = 0;
+}
+
+unsigned int getNextPPId() {
+    return ++next_id;
+}
+
+void registerPP(int id, void* ptr) {
+    RELEASE_ASSERT(!pp_map.count(id), "");
+    pp_map[id] = ptr;
+}
+
+void* retrievePPForId(int id) {
+    RELEASE_ASSERT(pp_map.count(id), "");
+    return pp_map[id];
+}
+
+void* retrivePtrForEmbedSym(const std::string& str) {
+    RELEASE_ASSERT(addrstr_to_idx.count(str), "");
+    int idx = addrstr_to_idx[str];
+    return (void*)addr_vec[idx];
+}
+
+void* retrivePtrForEmbedIdx(unsigned int index) {
+    RELEASE_ASSERT(addr_vec.size() > index, "");
+    return (void*)addr_vec[index];
+}
+
+llvm::Constant* embedConstantPtr(const void* addr, llvm::Type* type, bool orig) {
+    if (addr && g.cur_module && !orig) {
+        addr_to_idx[addr] = (int)addr_vec.size();
+        char buff[64];
+        sprintf(buff, "%s:%d", g.cur_module->getName().str().c_str(), (int)addr_vec.size());
+        addrstr_to_idx[buff] = (int)addr_vec.size();
+        addr_vec.push_back(addr);
+
+        llvm::GlobalVariable* var = new llvm::GlobalVariable(*g.cur_module, type->getPointerElementType(), false,
+                                                             llvm::GlobalVariable::ExternalLinkage, 0, buff);
+        return var;
+    }
+
     assert(type);
     llvm::Constant* int_val = llvm::ConstantInt::get(g.i64, reinterpret_cast<uintptr_t>(addr), false);
     llvm::Constant* ptr_val = llvm::ConstantExpr::getIntToPtr(int_val, type);

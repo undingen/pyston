@@ -31,6 +31,7 @@
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Host.h"
 #include "llvm/Support/Path.h"
+#include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Utils/Cloning.h"
@@ -168,6 +169,98 @@ public:
 }
 };
 
+
+class MyObjectCache2 : public llvm::ObjectCache {
+private:
+    bool loaded;
+    llvm::SmallString<128> CacheDir;
+
+public:
+    MyObjectCache2() : loaded(false) {
+        llvm::sys::fs::current_path(CacheDir);
+        llvm::sys::path::append(CacheDir, "toy_object_cache");
+    }
+
+#if LLVMREV < 216002
+    virtual void notifyObjectCompiled(const llvm::Module* M, const llvm::MemoryBuffer* Obj) {
+#else
+    virtual void notifyObjectCompiled(const llvm::Module* M, llvm::MemoryBufferRef Obj) {
+#endif
+        const std::string ModuleID = M->getModuleIdentifier();
+
+        // If we've flagged this as an IR file, cache it
+        if (1) {
+            std::string IRFileName = ModuleID;
+            if (llvm::StringRef(ModuleID).startswith("<module>"))
+                IRFileName = "_module_" + IRFileName.substr(8);
+
+            std::string f = g.cur_cf->clfunc->source->parent_module->fn;
+            for (auto& c : f) {
+                if (c == '/')
+                    c = '_';
+            }
+            IRFileName = f + "__" + IRFileName;
+
+
+            llvm::SmallString<128> IRCacheFile = CacheDir;
+            llvm::sys::path::append(IRCacheFile, IRFileName);
+            if (!llvm::sys::fs::exists(CacheDir.str()) && llvm::sys::fs::create_directory(CacheDir.str())) {
+                fprintf(stderr, "Unable to create cache directory\n");
+                return;
+            }
+            std::error_code ErrStr;
+            llvm::raw_fd_ostream IRObjectFile(IRCacheFile.c_str(), ErrStr, llvm::sys::fs::F_RW);
+            IRObjectFile << Obj.getBuffer();
+        }
+    }
+
+#if LLVMREV < 215566
+    virtual llvm::MemoryBuffer* getObject(const llvm::Module* M){
+#else
+    virtual std::unique_ptr<llvm::MemoryBuffer> getObject(const llvm::Module* M) {
+#endif
+
+        // Get the ModuleID
+        const std::string ModuleID = M->getModuleIdentifier();
+
+    // If we've flagged this as an IR file, cache it
+    if (1) {
+        std::string IRFileName = ModuleID;
+        if (llvm::StringRef(ModuleID).startswith("<module>"))
+            IRFileName = "_module_" + IRFileName.substr(8);
+
+        std::string f = g.cur_cf->clfunc->source->parent_module->fn;
+        for (auto& c : f) {
+            if (c == '/')
+                c = '_';
+        }
+        IRFileName = f + "__" + IRFileName;
+
+        llvm::SmallString<128> IRCacheFile = CacheDir;
+        llvm::sys::path::append(IRCacheFile, IRFileName);
+        if (!llvm::sys::fs::exists(IRCacheFile.str())) {
+            // This file isn't in our cache
+            return NULL;
+        }
+        std::unique_ptr<llvm::MemoryBuffer> IRObjectBuffer;
+
+        auto r = llvm::MemoryBuffer::getFile(IRCacheFile.c_str(), -1, false);
+        if (r)
+            IRObjectBuffer = std::move(r.get());
+
+        // MCJIT will want to write into this buffer, and we don't want that
+        // because the file has probably just been mmapped.  Instead we make
+        // a copy.  The filed-based buffer will be released when it goes
+        // out of scope.
+        return llvm::MemoryBuffer::getMemBufferCopy(IRObjectBuffer->getBuffer());
+    }
+
+    return NULL;
+}
+}
+;
+
+
 static void handle_sigusr1(int signum) {
     assert(signum == SIGUSR1);
     fprintf(stderr, "SIGUSR1, printing stack trace\n");
@@ -224,6 +317,7 @@ void initCodegen() {
     assert(g.engine && "engine creation failed?");
 
     // g.engine->setObjectCache(new MyObjectCache());
+    g.engine->setObjectCache(new MyObjectCache2());
 
     g.i1 = llvm::Type::getInt1Ty(g.context);
     g.i8 = llvm::Type::getInt8Ty(g.context);

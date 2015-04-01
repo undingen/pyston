@@ -27,10 +27,19 @@ namespace pyston {
 
 llvm::Constant* getStringConstantPtr(const std::string& str);
 llvm::Constant* getStringConstantPtr(const char* str);
-llvm::Constant* embedConstantPtr(const void* addr, llvm::Type*);
+llvm::Constant* embedConstantPtr(const void* addr, llvm::Type*, bool orig = false);
 llvm::Constant* getConstantInt(int64_t val);
 llvm::Constant* getConstantDouble(double val);
 llvm::Constant* getConstantInt(int64_t val, llvm::Type*);
+
+
+void resetEmbedCache();
+unsigned int getNextPPId();
+void registerPP(int id, void* ptr);
+void* retrievePPForId(int id);
+
+void* retrivePtrForEmbedSym(const std::string& str);
+void* retrivePtrForEmbedIdx(unsigned int index);
 
 void dumpPrettyIR(llvm::Function* f);
 }
