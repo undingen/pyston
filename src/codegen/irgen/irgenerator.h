@@ -41,7 +41,7 @@ class TypeAnalysis;
 
 typedef std::unordered_map<InternedString, CompilerVariable*> SymbolTable;
 typedef std::map<InternedString, CompilerVariable*> SortedSymbolTable;
-typedef std::unordered_map<InternedString, ConcreteCompilerVariable*> ConcreteSymbolTable;
+typedef std::map<InternedString, ConcreteCompilerVariable*> ConcreteSymbolTable;
 
 extern const std::string CREATED_CLOSURE_NAME;
 extern const std::string PASSED_CLOSURE_NAME;

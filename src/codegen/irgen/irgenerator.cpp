@@ -1324,6 +1324,8 @@ private:
 
     CompilerVariable* evalExpr(AST_expr* node, UnwindInfo unw_info) {
         // printf("%d expr: %d\n", node->type, node->lineno);
+        assert(node->lineno < 30000 || node->lineno == ~0);
+
         if (node->lineno) {
             emitter.getBuilder()->SetCurrentDebugLocation(
                 llvm::DebugLoc::get(node->lineno, 0, irstate->getFuncDbgInfo()));
@@ -2105,6 +2107,9 @@ private:
 
     void doStmt(AST_stmt* node, UnwindInfo unw_info) {
         // printf("%d stmt: %d\n", node->type, node->lineno);
+
+        assert(node->lineno < 30000 || node->lineno == ~0);
+
         if (node->lineno) {
             emitter.getBuilder()->SetCurrentDebugLocation(
                 llvm::DebugLoc::get(node->lineno, 0, irstate->getFuncDbgInfo()));

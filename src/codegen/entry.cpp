@@ -188,6 +188,23 @@ public:
         llvm::SmallString<128> cache_file = cache_dir;
         llvm::sys::path::append(cache_file, hash_before_codegen);
         if (!llvm::sys::fs::exists(cache_file.str())) {
+            std::string s;
+            llvm::raw_string_ostream sstr(s);
+            M->print(sstr, 0);
+            //llvm::WriteBitcodeToFile(M, sstr);
+            sstr.flush();
+
+            std::string filename = cache_dir.str().str() + "/" + module_identifier + "_0";
+            if (llvm::sys::fs::exists(filename))
+            {
+                filename = cache_dir.str().str() + "/" + module_identifier + "_1";
+            }
+            FILE* f = fopen(filename.c_str(), "wt");
+            fwrite(s.c_str(), 1, s.size(), f);
+            fclose(f);
+
+            hash_before_codegen = std::to_string(module_hash);
+
             // This file isn't in our cache
             jit_objectcache_misses.log();
             return NULL;

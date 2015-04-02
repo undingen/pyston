@@ -150,7 +150,7 @@ public:
     virtual ~AST() {}
 
     const AST_TYPE::AST_TYPE type;
-    uint32_t lineno, col_offset;
+    uint32_t lineno = -1, col_offset = -1;
 
     virtual void accept(ASTVisitor* v) = 0;
 

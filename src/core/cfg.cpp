@@ -1398,12 +1398,17 @@ public:
         curblock = exc_dest;
         AST_Assign* exc_asgn = new AST_Assign();
         AST_Tuple* target = new AST_Tuple();
+        exc_asgn->lineno = -1;
+        exc_asgn->col_offset = -1;
+
         target->elts.push_back(makeName(exc_info.exc_type_name, AST_TYPE::Store, node->lineno));
         target->elts.push_back(makeName(exc_info.exc_value_name, AST_TYPE::Store, node->lineno));
         target->elts.push_back(makeName(exc_info.exc_traceback_name, AST_TYPE::Store, node->lineno));
         exc_asgn->targets.push_back(target);
 
         exc_asgn->value = new AST_LangPrimitive(AST_LangPrimitive::LANDINGPAD);
+        exc_asgn->value->lineno = -1;
+        exc_asgn->value->col_offset = -1;
         curblock->push_back(exc_asgn);
 
         pushJump(exc_info.exc_dest);
@@ -2179,6 +2184,8 @@ public:
                     AST_expr* handled_type = remapExpr(exc_handler->type);
 
                     AST_LangPrimitive* is_caught_here = new AST_LangPrimitive(AST_LangPrimitive::CHECK_EXC_MATCH);
+                    is_caught_here->lineno = -1;
+                    is_caught_here->col_offset = -1;
                     is_caught_here->args.push_back(_dup(exc_obj));
                     is_caught_here->args.push_back(handled_type);
 

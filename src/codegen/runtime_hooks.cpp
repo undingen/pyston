@@ -64,6 +64,14 @@ static llvm::Value* getFunc(void* func, const char* name) {
     return embedConstantPtr(func, f->getType());
 }
 
+static llvm::Value* getFuncRelocatable(void* func, const char* name) {
+    llvm::Function* f = lookupFunction(name);
+    ASSERT(f, "%s", name);
+    g.func_addr_registry.registerFunction(name, func, 0, f);
+
+    return f;
+}
+
 static llvm::Value* addFunc(void* func, llvm::Type* rtn_type, llvm::ArrayRef<llvm::Type*> arg_types,
                             bool varargs = false) {
     llvm::FunctionType* ft = llvm::FunctionType::get(rtn_type, arg_types, varargs);
@@ -256,7 +264,8 @@ void initGlobalFuncs(GlobalState& g) {
     g.funcs.reoptCompiledFunc = addFunc((void*)reoptCompiledFunc, g.i8_ptr, g.i8_ptr);
     g.funcs.compilePartialFunc = addFunc((void*)compilePartialFunc, g.i8_ptr, g.i8_ptr);
 
-    GET(__cxa_begin_catch);
+    //GET(__cxa_begin_catch);
+    g.funcs.__cxa_begin_catch = getFuncRelocatable((void*)__cxa_begin_catch, "__cxa_begin_catch");
     g.funcs.__cxa_end_catch = addFunc((void*)__cxa_end_catch, g.void_);
     GET(raise0);
     GET(raise3);

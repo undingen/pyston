@@ -18,6 +18,7 @@
 #include <iostream>
 #include <sstream>
 #include <stdint.h>
+#include <set>
 
 #include "llvm/Analysis/Passes.h"
 #include "llvm/IR/DIBuilder.h"
@@ -632,7 +633,7 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
             }
 
 
-            std::unordered_set<InternedString> names;
+            std::set<InternedString> names;
             for (const auto& s : source->phis->getAllRequiredFor(block)) {
                 names.insert(s);
                 if (source->phis->isPotentiallyUndefinedAfter(s, block->predecessors[0])) {
@@ -739,6 +740,7 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
                 // NB. This is where most `typical' phi nodes get added.
                 // And go through and add phi nodes:
                 ConcreteSymbolTable* pred_st = phi_ending_symbol_tables[pred];
+
                 for (auto it = pred_st->begin(); it != pred_st->end(); ++it) {
                     InternedString name = it->first;
                     ConcreteCompilerVariable* cv = it->second; // incoming CCV from predecessor block
