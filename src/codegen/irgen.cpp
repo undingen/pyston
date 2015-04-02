@@ -1080,10 +1080,8 @@ CompiledFunction* doCompile(SourceInfo* source, ParamNames* param_names, const O
     static StatCounter us_irgen("us_compiling_irgen");
     us_irgen.log(irgen_us);
 
-    //if (!haveCached(f->getParent(), source)) {
-        if (ENABLE_LLVMOPTS)
-            optimizeIR(f, effort);
-    //}
+    if (ENABLE_LLVMOPTS)
+        optimizeIR(f, effort);
 
     g.cur_module = NULL;
 

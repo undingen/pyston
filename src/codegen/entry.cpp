@@ -17,6 +17,7 @@
 #include <cstdio>
 #include <iostream>
 #include <unordered_map>
+#include <zlib.h>
 
 #include "llvm/Analysis/Passes.h"
 #include "llvm/Bitcode/ReaderWriter.h"
@@ -119,181 +120,93 @@ static llvm::Module* loadStdlib() {
     return m;
 }
 
-class MyObjectCache : public llvm::ObjectCache {
+class PystonObjectCache : public llvm::ObjectCache {
 private:
-    bool loaded;
+    class HashOStream : public llvm::raw_ostream {
+        unsigned int hash = 0;
+        void write_impl(const char* ptr, size_t size) override { hash = crc32(hash, (const unsigned char*)ptr, size); }
+        uint64_t current_pos() const override { return 0; }
+
+    public:
+        unsigned int getHash() {
+            flush();
+            return hash;
+        }
+    };
+
+
+    llvm::SmallString<128> cache_dir;
+    std::string module_identifier;
+    std::string hash_before_codegen;
 
 public:
-    MyObjectCache() : loaded(false) {}
-
-#if LLVMREV < 216002
-    virtual void notifyObjectCompiled(const llvm::Module* M, const llvm::MemoryBuffer* Obj) {}
-#else
-    virtual void notifyObjectCompiled(const llvm::Module* M, llvm::MemoryBufferRef Obj) {}
-#endif
-
-#if LLVMREV < 215566
-    virtual llvm::MemoryBuffer* getObject(const llvm::Module* M){
-#else
-    virtual std::unique_ptr<llvm::MemoryBuffer> getObject(const llvm::Module* M) {
-#endif
-        assert(!loaded);
-    loaded = true;
-    g.engine->setObjectCache(NULL);
-    std::unique_ptr<MyObjectCache> del_at_end(this);
-
-#if 0
-            if (!USE_STRIPPED_STDLIB) {
-                stajt = STDLIB_CACHE_START;
-                size = (intptr_t)&STDLIB_CACHE_SIZE;
-            } else {
-                start = STRIPPED_STDLIB_CACHE_START;
-                size = (intptr_t)&STRIPPED_STDLIB_CACHE_SIZE;
-            }
-#else
-        RELEASE_ASSERT(0, "");
-        char* start = NULL;
-        intptr_t size = 0;
-#endif
-
-    // Make sure the stdlib got linked in correctly; check the magic number at the beginning:
-    assert(start[0] == 0x7f);
-    assert(start[1] == 'E');
-    assert(start[2] == 'L');
-    assert(start[3] == 'F');
-
-    assert(size > 0 && size < 1 << 30); // make sure the size is being loaded correctly
-
-    llvm::StringRef data(start, size);
-    return llvm::MemoryBuffer::getMemBufferCopy(data, "");
-}
-};
-
-
-static std::string getCacheDir() {
-    llvm::SmallString<128> CacheDir;
-    llvm::sys::fs::current_path(CacheDir);
-    llvm::sys::path::append(CacheDir, "toy_object_cache");
-    return CacheDir.str();
-}
-
-bool haveCached(const llvm::Module* M, SourceInfo* source) {
-    // Get the ModuleID
-    const std::string ModuleID = M->getModuleIdentifier();
-
-    // If we've flagged this as an IR file, cache it
-    std::string IRFileName = ModuleID;
-    if (llvm::StringRef(ModuleID).startswith("<module>"))
-        IRFileName = "_module_" + IRFileName.substr(8);
-
-    std::string f = source->parent_module->fn;
-    for (auto& c : f) {
-        if (c == '/')
-            c = '_';
+    PystonObjectCache() {
+        llvm::sys::fs::current_path(cache_dir);
+        llvm::sys::path::append(cache_dir, "pyston_object_cache");
     }
-    IRFileName = f + "__" + IRFileName;
-
-    llvm::SmallString<128> IRCacheFile;
-    llvm::sys::path::append(IRCacheFile, getCacheDir());
-    llvm::sys::path::append(IRCacheFile, IRFileName);
-    if (!llvm::sys::fs::exists(IRCacheFile.str())) {
-        // This file isn't in our cache
-        return false;
-    }
-    return true;
-}
-
-class MyObjectCache2 : public llvm::ObjectCache {
-private:
-    bool loaded;
-    llvm::SmallString<128> CacheDir;
-
-public:
-    MyObjectCache2() : loaded(false) {
-        llvm::sys::fs::current_path(CacheDir);
-        llvm::sys::path::append(CacheDir, "toy_object_cache");
-    }
-
 
 
 #if LLVMREV < 216002
-    virtual void notifyObjectCompiled(const llvm::Module* M, const llvm::MemoryBuffer* Obj) {
+    virtual void notifyObjectCompiled(const llvm::Module* M, const llvm::MemoryBuffer* Obj)
 #else
-    virtual void notifyObjectCompiled(const llvm::Module* M, llvm::MemoryBufferRef Obj) {
+    virtual void notifyObjectCompiled(const llvm::Module* M, llvm::MemoryBufferRef Obj)
 #endif
-        const std::string ModuleID = M->getModuleIdentifier();
+    {
+        RELEASE_ASSERT(module_identifier == M->getModuleIdentifier(), "");
+        RELEASE_ASSERT(!hash_before_codegen.empty(), "");
 
-        // If we've flagged this as an IR file, cache it
-        if (1) {
-            std::string IRFileName = ModuleID;
-            if (llvm::StringRef(ModuleID).startswith("<module>"))
-                IRFileName = "_module_" + IRFileName.substr(8);
-
-            std::string f = g.cur_cf->clfunc->source->parent_module->fn;
-            for (auto& c : f) {
-                if (c == '/')
-                    c = '_';
-            }
-            IRFileName = f + "__" + IRFileName;
-
-
-            llvm::SmallString<128> IRCacheFile = CacheDir;
-            llvm::sys::path::append(IRCacheFile, IRFileName);
-            if (!llvm::sys::fs::exists(CacheDir.str()) && llvm::sys::fs::create_directory(CacheDir.str())) {
-                fprintf(stderr, "Unable to create cache directory\n");
-                return;
-            }
-            std::error_code ErrStr;
-            llvm::raw_fd_ostream IRObjectFile(IRCacheFile.c_str(), ErrStr, llvm::sys::fs::F_RW);
-            IRObjectFile << Obj.getBuffer();
+        llvm::SmallString<128> cache_file = cache_dir;
+        llvm::sys::path::append(cache_file, hash_before_codegen);
+        if (!llvm::sys::fs::exists(cache_dir.str()) && llvm::sys::fs::create_directory(cache_dir.str())) {
+            fprintf(stderr, "Unable to create cache directory\n");
+            return;
         }
+        std::error_code error_code;
+        llvm::raw_fd_ostream IRObjectFile(cache_file.c_str(), error_code, llvm::sys::fs::F_RW);
+        RELEASE_ASSERT(!error_code, "");
+        IRObjectFile << Obj.getBuffer();
     }
 
 #if LLVMREV < 215566
-    virtual llvm::MemoryBuffer* getObject(const llvm::Module* M){
+    virtual llvm::MemoryBuffer* getObject(const llvm::Module* M)
 #else
-    virtual std::unique_ptr<llvm::MemoryBuffer> getObject(const llvm::Module* M) {
+    virtual std::unique_ptr<llvm::MemoryBuffer> getObject(const llvm::Module* M)
 #endif
+    {
+        static StatCounter jit_objectcache_hits("num_jit_objectcache_hits");
+        static StatCounter jit_objectcache_misses("num_jit_objectcache_misses");
 
-        // Get the ModuleID
-        const std::string ModuleID = M->getModuleIdentifier();
+        module_identifier = M->getModuleIdentifier();
 
-    // If we've flagged this as an IR file, cache it
-    if (1) {
-        std::string IRFileName = ModuleID;
-        if (llvm::StringRef(ModuleID).startswith("<module>"))
-            IRFileName = "_module_" + IRFileName.substr(8);
+        // Generate a hash for them module
+        HashOStream hash_stream;
+        llvm::WriteBitcodeToFile(M, hash_stream);
+        unsigned int module_hash = hash_stream.getHash();
+        hash_before_codegen = std::to_string(module_hash);
 
-        std::string f = g.cur_cf->clfunc->source->parent_module->fn;
-        for (auto& c : f) {
-            if (c == '/')
-                c = '_';
-        }
-        IRFileName = f + "__" + IRFileName;
-
-        llvm::SmallString<128> IRCacheFile = CacheDir;
-        llvm::sys::path::append(IRCacheFile, IRFileName);
-        if (!llvm::sys::fs::exists(IRCacheFile.str())) {
+        llvm::SmallString<128> cache_file = cache_dir;
+        llvm::sys::path::append(cache_file, hash_before_codegen);
+        if (!llvm::sys::fs::exists(cache_file.str())) {
             // This file isn't in our cache
+            jit_objectcache_misses.log();
             return NULL;
         }
-        std::unique_ptr<llvm::MemoryBuffer> IRObjectBuffer;
 
-        auto r = llvm::MemoryBuffer::getFile(IRCacheFile.c_str(), -1, false);
-        if (r)
-            IRObjectBuffer = std::move(r.get());
+        auto rtn = llvm::MemoryBuffer::getFile(cache_file.str(), -1, false);
+        if (!rtn) {
+            jit_objectcache_misses.log();
+            return NULL;
+        }
+
+        jit_objectcache_hits.log();
 
         // MCJIT will want to write into this buffer, and we don't want that
         // because the file has probably just been mmapped.  Instead we make
         // a copy.  The filed-based buffer will be released when it goes
         // out of scope.
-        return llvm::MemoryBuffer::getMemBufferCopy(IRObjectBuffer->getBuffer());
+        return llvm::MemoryBuffer::getMemBufferCopy((*rtn)->getBuffer());
     }
-
-    return NULL;
-}
-}
-;
+};
 
 
 static void handle_sigusr1(int signum) {
@@ -352,7 +265,7 @@ void initCodegen() {
     assert(g.engine && "engine creation failed?");
 
     // g.engine->setObjectCache(new MyObjectCache());
-    g.engine->setObjectCache(new MyObjectCache2());
+    g.engine->setObjectCache(new PystonObjectCache());
 
     g.i1 = llvm::Type::getInt1Ty(g.context);
     g.i8 = llvm::Type::getInt8Ty(g.context);

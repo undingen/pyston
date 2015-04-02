@@ -216,16 +216,6 @@ private:
 
         PatchpointInfo* info = PatchpointInfo::create(currentFunction(), pp, ic_stackmap_args.size());
 
-        if (llvm::isa<llvm::BitCastOperator>(func)) {
-            llvm::BitCastOperator* cast = llvm::cast<llvm::BitCastOperator>(func);
-            llvm::Value* inst = cast->getOperand(0);
-            inst->dump();
-            if (llvm::isa<llvm::Function>(inst)) {
-                llvm::Function* _func = llvm::cast<llvm::Function>(inst);
-                // info->dst =
-            }
-        }
-
         if (llvm::isa<llvm::ConstantExpr>(func)) {
             llvm::ConstantExpr* cast = llvm::cast<llvm::ConstantExpr>(func);
             llvm::Instruction* inst = cast->getAsInstruction();
@@ -247,7 +237,8 @@ private:
         std::vector<llvm::Value*> pp_args;
         pp_args.push_back(getConstantInt(pp_id, g.i64)); // pp_id: will fill this in later
         pp_args.push_back(getConstantInt(pp_size, g.i32));
-        pp_args.push_back(func);
+        pp_args.push_back(embedConstantPtr((void*)~(0UL), g.i8_ptr, true));
+        // pp_args.push_back(func);
         pp_args.push_back(getConstantInt(args.size(), g.i32));
 
         pp_args.insert(pp_args.end(), args.begin(), args.end());
