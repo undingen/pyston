@@ -41,7 +41,6 @@ void registerPP(int id, void* ptr);
 void* retrievePPForId(int id);
 
 void* retrivePtrForEmbedSym(const std::string& str);
-void* retrivePtrForEmbedIdx(unsigned int index);
 
 void dumpPrettyIR(llvm::Function* f);
 }

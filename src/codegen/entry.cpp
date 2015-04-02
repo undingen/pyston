@@ -178,11 +178,12 @@ public:
 
         module_identifier = M->getModuleIdentifier();
 
-        // Generate a hash for them module
+        // Generate a hash for the module
         HashOStream hash_stream;
         llvm::WriteBitcodeToFile(M, hash_stream);
         unsigned int module_hash = hash_stream.getHash();
         hash_before_codegen = std::to_string(module_hash);
+
 
         llvm::SmallString<128> cache_file = cache_dir;
         llvm::sys::path::append(cache_file, hash_before_codegen);

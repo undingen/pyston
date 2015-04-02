@@ -93,17 +93,13 @@ llvm::Constant* getStringConstantPtr(const char* str) {
 // It's slightly easier to emit them as integers (there are primitive integer constants but not pointer constants),
 // but doing it this way makes it clearer what's going on.
 
-static std::unordered_map<const void*, int> addr_to_idx;
-static std::unordered_map<std::string, int> addrstr_to_idx;
-static std::vector<const void*> addr_vec;
+static std::unordered_map<std::string, void*> addrstr_to_idx;
 
 static std::unordered_map<int, void*> pp_map;
 static unsigned int next_id;
 
 void resetEmbedCache() {
-    addr_to_idx.clear();
     addrstr_to_idx.clear();
-    addr_vec.clear();
     pp_map.clear();
     next_id = 0;
 }
@@ -123,25 +119,19 @@ void* retrievePPForId(int id) {
 }
 
 void* retrivePtrForEmbedSym(const std::string& str) {
-    RELEASE_ASSERT(addrstr_to_idx.count(str), "");
-    int idx = addrstr_to_idx[str];
-    return (void*)addr_vec[idx];
-}
-
-void* retrivePtrForEmbedIdx(unsigned int index) {
-    RELEASE_ASSERT(addr_vec.size() > index, "");
-    return (void*)addr_vec[index];
+    if (!addrstr_to_idx.count(str))
+        return NULL;
+    return (void*)addrstr_to_idx[str];
 }
 
 llvm::Constant* embedRelocatablePtr(const void* addr, llvm::Type* type) {
-    addr_to_idx[addr] = (int)addr_vec.size();
-    char buff[64];
-    sprintf(buff, "T%d", (int)addr_vec.size());
-    addrstr_to_idx[buff] = (int)addr_vec.size();
-    addr_vec.push_back(addr);
+    assert(addr);
+
+    std::string name = "T" + std::to_string(addrstr_to_idx.size());
+    addrstr_to_idx[name] = (void*)addr;
 
     llvm::GlobalVariable* var = new llvm::GlobalVariable(*g.cur_module, type->getPointerElementType(), false,
-                                                         llvm::GlobalVariable::ExternalLinkage, 0, buff);
+                                                         llvm::GlobalVariable::ExternalLinkage, 0, name);
     return var;
 }
 

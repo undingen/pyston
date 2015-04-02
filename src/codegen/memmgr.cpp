@@ -204,22 +204,19 @@ void PystonMemoryManager::invalidateInstructionCache() {
     for (int i = 0, e = CodeMem.AllocatedMem.size(); i != e; ++i)
         sys::Memory::InvalidateInstructionCache(CodeMem.AllocatedMem[i].base(), CodeMem.AllocatedMem[i].size());
 }
-
-void* retrivePtrForEmbedSym(const std::string&);
+void* retrivePtrForEmbedSym(const std::string& str);
 uint64_t PystonMemoryManager::getSymbolAddress(const std::string& name) {
-    uint64_t base = RTDyldMemoryManager::getSymbolAddress(name);
+    uint64_t base = (uint64_t)retrivePtrForEmbedSym(name);
+    if (base)
+        return base;
+
+    base = RTDyldMemoryManager::getSymbolAddress(name);
     if (base)
         return base;
 
     if (startswith(name, "__PRETTY_FUNCTION__")) {
         return getSymbolAddress(".L" + name);
     }
-
-    base = (uint64_t)retrivePtrForEmbedSym(name);
-
-    // printf("getSymbolAddress(%s); %lx\n", name.c_str(), base);
-    if (base)
-        return base;
 
     RELEASE_ASSERT(0, "");
     return 0;
