@@ -1013,7 +1013,7 @@ CompiledFunction* doCompile(SourceInfo* source, ParamNames* param_names, const O
 
 
     CompiledFunction* cf
-        = new CompiledFunction(NULL, spec, (effort == EffortLevel::INTERPRETED), NULL, NULL, effort, entry_descriptor);
+        = new CompiledFunction(NULL, spec, (effort == EffortLevel::INTERPRETED), NULL, effort, entry_descriptor);
 
     llvm::FunctionType* ft = llvm::FunctionType::get(cf->getReturnType()->llvmType(), llvm_arg_types, false /*vararg*/);
 

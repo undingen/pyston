@@ -150,13 +150,10 @@ static void compileIR(CompiledFunction* cf, EffortLevel effort) {
 #endif
 
         g.cur_cf = cf;
-        // cf->func->getParent()->dump();
         void* compiled = (void*)g.engine->getFunctionAddress(cf->func->getName());
         g.cur_cf = NULL;
         assert(compiled);
         ASSERT(compiled == cf->code, "cf->code should have gotten filled in");
-
-        cf->llvm_code = embedConstantPtr(compiled, cf->func->getType());
 
         long us = _t.end();
         static StatCounter us_jitting("us_compiling_jitting");
@@ -243,7 +240,7 @@ CompiledFunction* compileFunction(CLFunction* f, FunctionSpecialization* spec, E
     CompiledFunction* cf = 0;
     if (effort == EffortLevel::INTERPRETED) {
         assert(!entry_descriptor);
-        cf = new CompiledFunction(0, spec, true, NULL, NULL, effort, 0);
+        cf = new CompiledFunction(0, spec, true, NULL, effort, 0);
     } else {
         cf = doCompile(source, &f->param_names, entry_descriptor, effort, spec, name);
         cf->clfunc = f;
@@ -596,7 +593,6 @@ void addRTFunction(CLFunction* cl_f, void* f, ConcreteCompilerType* rtn_type,
 
     llvm::FunctionType* ft = llvm::FunctionType::get(g.llvm_value_type_ptr, llvm_arg_types, false);
 
-    cl_f->addVersion(new CompiledFunction(NULL, spec, false, f, embedConstantPtr(f, ft->getPointerTo()),
-                                          EffortLevel::MAXIMAL, NULL));
+    cl_f->addVersion(new CompiledFunction(NULL, spec, false, f, EffortLevel::MAXIMAL, NULL));
 }
 }
