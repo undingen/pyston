@@ -80,7 +80,7 @@ llvm::Constant* getStringConstantPtr(const std::string& str) {
         strings[str] = buf;
         c = buf;
     }
-    return embedConstantPtr(c, g.i8->getPointerTo());
+    return embedRelocatablePtr(c, g.i8->getPointerTo());
 }
 
 // Returns a llvm::Constant char* to a global string constant
@@ -133,19 +133,19 @@ void* retrivePtrForEmbedIdx(unsigned int index) {
     return (void*)addr_vec[index];
 }
 
-llvm::Constant* embedConstantPtr(const void* addr, llvm::Type* type, bool orig) {
-    if (g.cur_module && !orig) {
-        addr_to_idx[addr] = (int)addr_vec.size();
-        char buff[64];
-        sprintf(buff, "%s:%d", g.cur_module->getName().str().c_str(), (int)addr_vec.size());
-        addrstr_to_idx[buff] = (int)addr_vec.size();
-        addr_vec.push_back(addr);
+llvm::Constant* embedRelocatablePtr(const void* addr, llvm::Type* type) {
+    addr_to_idx[addr] = (int)addr_vec.size();
+    char buff[64];
+    sprintf(buff, "%s:%d", g.cur_module->getName().str().c_str(), (int)addr_vec.size());
+    addrstr_to_idx[buff] = (int)addr_vec.size();
+    addr_vec.push_back(addr);
 
-        llvm::GlobalVariable* var = new llvm::GlobalVariable(*g.cur_module, type->getPointerElementType(), false,
-                                                             llvm::GlobalVariable::ExternalLinkage, 0, buff);
-        return var;
-    }
+    llvm::GlobalVariable* var = new llvm::GlobalVariable(*g.cur_module, type->getPointerElementType(), false,
+                                                         llvm::GlobalVariable::ExternalLinkage, 0, buff);
+    return var;
+}
 
+llvm::Constant* embedConstantPtr(const void* addr, llvm::Type* type) {
     assert(type);
     llvm::Constant* int_val = llvm::ConstantInt::get(g.i64, reinterpret_cast<uintptr_t>(addr), false);
     llvm::Constant* ptr_val = llvm::ConstantExpr::getIntToPtr(int_val, type);

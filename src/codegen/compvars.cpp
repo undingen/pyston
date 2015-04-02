@@ -293,7 +293,8 @@ public:
 
         llvm::Value* cls_value = emitter.getBuilder()->CreateLoad(cls_ptr);
         assert(cls_value->getType() == g.llvm_class_type_ptr);
-        llvm::Value* rtn = emitter.getBuilder()->CreateICmpEQ(cls_value, embedConstantPtr(cls, g.llvm_class_type_ptr));
+        llvm::Value* rtn
+            = emitter.getBuilder()->CreateICmpEQ(cls_value, embedRelocatablePtr(cls, g.llvm_class_type_ptr));
         return rtn;
     }
 
@@ -367,8 +368,8 @@ public:
         }
 
         // We don't know the type so we have to check at runtime if __iter__ is implemented
-        llvm::Value* cmp = emitter.getBuilder()->CreateICmpNE(converted_iter_call->getValue(),
-                                                              getNullPtr(g.llvm_value_type_ptr));
+        llvm::Value* cmp
+            = emitter.getBuilder()->CreateICmpNE(converted_iter_call->getValue(), getNullPtr(g.llvm_value_type_ptr));
 
         llvm::BasicBlock* bb_has_iter = emitter.createBasicBlock("has_iter");
         bb_has_iter->moveAfter(emitter.currentBasicBlock());
@@ -569,10 +570,10 @@ static ConcreteCompilerVariable* _call(IREmitter& emitter, const OpInfo& info, l
         llvm_args.push_back(arg_array);
 
         if (pass_keyword_names)
-            llvm_args.push_back(embedConstantPtr(keyword_names, g.vector_ptr));
+            llvm_args.push_back(embedRelocatablePtr(keyword_names, g.vector_ptr));
     } else if (pass_keyword_names) {
         llvm_args.push_back(getNullPtr(g.llvm_value_type_ptr->getPointerTo()));
-        llvm_args.push_back(embedConstantPtr(keyword_names, g.vector_ptr));
+        llvm_args.push_back(embedRelocatablePtr(keyword_names, g.vector_ptr));
     }
 
     // f->dump();
@@ -683,7 +684,7 @@ CompilerVariable* UnknownType::callattr(IREmitter& emitter, const OpInfo& info, 
 
     std::vector<llvm::Value*> other_args;
     other_args.push_back(var->getValue());
-    other_args.push_back(embedConstantPtr(attr, g.llvm_str_type_ptr));
+    other_args.push_back(embedRelocatablePtr(attr, g.llvm_str_type_ptr));
     other_args.push_back(getConstantInt(flags_to_int.value, g.i8));
 
     llvm::Value* llvm_argspec = llvm::ConstantInt::get(g.i32, argspec.asInt(), false);
@@ -761,8 +762,8 @@ CompilerVariable* makeFunction(IREmitter& emitter, CLFunction* f, CompilerVariab
     // emitter.createCall().
     llvm::Value* boxed = emitter.getBuilder()->CreateCall(
         g.funcs.boxCLFunction,
-        std::vector<llvm::Value*>{ embedConstantPtr(f, g.llvm_clfunction_type_ptr), closure_v, isGenerator_v, scratch,
-                                   getConstantInt(defaults.size(), g.i64) });
+        std::vector<llvm::Value*>{ embedRelocatablePtr(f, g.llvm_clfunction_type_ptr), closure_v, isGenerator_v,
+                                   scratch, getConstantInt(defaults.size(), g.i64) });
 
     if (convertedClosure)
         convertedClosure->decvref(emitter);
@@ -1478,7 +1479,7 @@ public:
             ASSERT(rtattr, "%s.%s", debugName().c_str(), attr->c_str());
             if (rtattr->cls == function_cls) {
                 CompilerVariable* clattr = new ConcreteCompilerVariable(
-                    typeFromClass(function_cls), embedConstantPtr(rtattr, g.llvm_value_type_ptr), false);
+                    typeFromClass(function_cls), embedRelocatablePtr(rtattr, g.llvm_value_type_ptr), false);
                 return InstanceMethodType::makeIM(var, clattr);
             }
         }
@@ -1584,7 +1585,11 @@ public:
         }
         llvm::FunctionType* ft = llvm::FunctionType::get(cf->spec->rtn_type->llvmType(), arg_types, false);
 
-        llvm::Value* linked_function = embedConstantPtr(cf->code, ft->getPointerTo(), true);
+        llvm::Value* linked_function;
+        if (cf->func) // for JITed functions we need to make the desination address relocatable.
+            linked_function = embedRelocatablePtr(cf->code, ft->getPointerTo());
+        else
+            linked_function = embedConstantPtr(cf->code, ft->getPointerTo());
 
         std::vector<CompilerVariable*> new_args;
         new_args.push_back(var);
@@ -1593,8 +1598,8 @@ public:
         for (int i = args.size() + 1; i < cl->num_args; i++) {
             // TODO should _call() be able to take llvm::Value's directly?
             new_args.push_back(new ConcreteCompilerVariable(
-                UNKNOWN, embedConstantPtr(rtattr_func->defaults->elts[i - cl->num_args + cl->num_defaults],
-                                          g.llvm_value_type_ptr),
+                UNKNOWN, embedRelocatablePtr(rtattr_func->defaults->elts[i - cl->num_args + cl->num_defaults],
+                                             g.llvm_value_type_ptr),
                 true));
         }
 
@@ -1870,8 +1875,8 @@ public:
 
     ConcreteCompilerVariable* makeConverted(IREmitter& emitter, VAR* var, ConcreteCompilerType* other_type) override {
         assert(other_type == STR || other_type == UNKNOWN);
-        llvm::Value* boxed = emitter.getBuilder()->CreateCall(g.funcs.boxStringPtr,
-                                                              embedConstantPtr(var->getValue(), g.llvm_str_type_ptr));
+        llvm::Value* boxed = emitter.getBuilder()->CreateCall(
+            g.funcs.boxStringPtr, embedRelocatablePtr(var->getValue(), g.llvm_str_type_ptr));
         return new ConcreteCompilerVariable(other_type, boxed, true);
     }
 
@@ -1925,7 +1930,7 @@ public:
     }
 
     void serializeToFrame(VAR* var, std::vector<llvm::Value*>& stackmap_args) override {
-        stackmap_args.push_back(embedConstantPtr(var->getValue(), g.i8_ptr));
+        stackmap_args.push_back(embedRelocatablePtr(var->getValue(), g.i8_ptr));
     }
 
     Box* deserializeFromFrame(const FrameVals& vals) override {
@@ -1944,7 +1949,7 @@ CompilerVariable* makeStr(const std::string* s) {
 
 CompilerVariable* makeUnicode(IREmitter& emitter, const std::string* s) {
     llvm::Value* boxed
-        = emitter.getBuilder()->CreateCall(g.funcs.decodeUTF8StringPtr, embedConstantPtr(s, g.llvm_str_type_ptr));
+        = emitter.getBuilder()->CreateCall(g.funcs.decodeUTF8StringPtr, embedRelocatablePtr(s, g.llvm_str_type_ptr));
     return new ConcreteCompilerVariable(typeFromClass(unicode_cls), boxed, true);
 }
 
