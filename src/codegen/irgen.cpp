@@ -946,7 +946,7 @@ static std::string getUniqueFunctionName(std::string nameprefix, EffortLevel eff
     num_functions++;
     return os.str();
 }
-
+bool haveCached(const llvm::Module* M, SourceInfo* source);
 CompiledFunction* doCompile(SourceInfo* source, ParamNames* param_names, const OSREntryDescriptor* entry_descriptor,
                             EffortLevel effort, FunctionSpecialization* spec, std::string nameprefix) {
     Timer _t("in doCompile");
@@ -1080,8 +1080,10 @@ CompiledFunction* doCompile(SourceInfo* source, ParamNames* param_names, const O
     static StatCounter us_irgen("us_compiling_irgen");
     us_irgen.log(irgen_us);
 
-    if (ENABLE_LLVMOPTS)
-        optimizeIR(f, effort);
+    //if (!haveCached(f->getParent(), source)) {
+        if (ENABLE_LLVMOPTS)
+            optimizeIR(f, effort);
+    //}
 
     g.cur_module = NULL;
 

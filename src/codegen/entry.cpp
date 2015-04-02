@@ -170,6 +170,39 @@ public:
 };
 
 
+static std::string getCacheDir() {
+    llvm::SmallString<128> CacheDir;
+    llvm::sys::fs::current_path(CacheDir);
+    llvm::sys::path::append(CacheDir, "toy_object_cache");
+    return CacheDir.str();
+}
+
+bool haveCached(const llvm::Module* M, SourceInfo* source) {
+    // Get the ModuleID
+    const std::string ModuleID = M->getModuleIdentifier();
+
+    // If we've flagged this as an IR file, cache it
+    std::string IRFileName = ModuleID;
+    if (llvm::StringRef(ModuleID).startswith("<module>"))
+        IRFileName = "_module_" + IRFileName.substr(8);
+
+    std::string f = source->parent_module->fn;
+    for (auto& c : f) {
+        if (c == '/')
+            c = '_';
+    }
+    IRFileName = f + "__" + IRFileName;
+
+    llvm::SmallString<128> IRCacheFile;
+    llvm::sys::path::append(IRCacheFile, getCacheDir());
+    llvm::sys::path::append(IRCacheFile, IRFileName);
+    if (!llvm::sys::fs::exists(IRCacheFile.str())) {
+        // This file isn't in our cache
+        return false;
+    }
+    return true;
+}
+
 class MyObjectCache2 : public llvm::ObjectCache {
 private:
     bool loaded;
@@ -180,6 +213,8 @@ public:
         llvm::sys::fs::current_path(CacheDir);
         llvm::sys::path::append(CacheDir, "toy_object_cache");
     }
+
+
 
 #if LLVMREV < 216002
     virtual void notifyObjectCompiled(const llvm::Module* M, const llvm::MemoryBuffer* Obj) {

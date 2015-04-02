@@ -20,8 +20,8 @@
 #include "asm_writing/icinfo.h"
 #include "asm_writing/rewriter.h"
 #include "codegen/compvars.h"
-#include "codegen/stackmaps.h"
 #include "codegen/irgen/util.h"
+#include "codegen/stackmaps.h"
 #include "core/common.h"
 #include "core/options.h"
 #include "core/stats.h"
@@ -186,6 +186,7 @@ void processStackmap(CompiledFunction* cf, StackMap* stackmap) {
         uint8_t* end_addr = start_addr + pp->patchpointSize();
 
         RELEASE_ASSERT(pp->dst, "");
+        // printf("setSlowpathFunc: %lx\n", (unsigned long)pp->dst);
         setSlowpathFunc(start_addr, pp->dst);
 
         // TODO shouldn't have to do it this way

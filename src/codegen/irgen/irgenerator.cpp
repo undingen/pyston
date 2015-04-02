@@ -2313,7 +2313,10 @@ public:
         stackmap_args.push_back(irstate->getFrameInfoVar());
 
         assert(INT->llvmType() == g.i64);
-        stackmap_args.push_back(getConstantInt((uint64_t)current_stmt, g.i64));
+        // stackmap_args.push_back(getConstantInt((uint64_t)current_stmt, g.i64));
+
+        llvm::Value* v = emitter.getBuilder()->CreatePtrToInt(embedConstantPtr(current_stmt, g.i8_ptr), g.i64);
+        stackmap_args.push_back(v);
         pp->addFrameVar("!current_stmt", INT);
 
         if (ENABLE_FRAME_INTROSPECTION) {
