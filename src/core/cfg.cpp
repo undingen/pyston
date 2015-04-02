@@ -172,6 +172,8 @@ private:
     std::vector<ContInfo> continuations;
     std::vector<ExcBlockInfo> exc_handlers;
 
+    unsigned int unique_var = 0;
+
     friend CFG* computeCFG(SourceInfo* source, std::vector<AST_stmt*> body);
 
 public:
@@ -194,6 +196,11 @@ public:
 private:
     template <typename T> InternedString internString(T&& s) {
         return source->getInternedStrings().get(std::forward<T>(s));
+    }
+
+    template <typename T> InternedString createUniqueName(T&& prefix) {
+        std::string name = prefix + std::to_string(unique_var++);
+        return source->getInternedStrings().get(name);
     }
 
     AST_Name* makeName(InternedString id, AST_TYPE::AST_TYPE ctx_type, int lineno, int col_offset = 0) {
@@ -601,6 +608,8 @@ private:
     }
 
     InternedString nodeName(AST* node) {
+        return createUniqueName("#");
+
         char buf[40];
         int bytes = snprintf(buf, 40, "#%p", node);
         assert(bytes < 40); // double-check
@@ -619,6 +628,8 @@ private:
     }
 
     InternedString nodeName(AST* node, const std::string& suffix) {
+        return createUniqueName("#"+suffix+"_");
+
         char buf[50];
         int bytes = snprintf(buf, 50, "#%p_%s", node, suffix.c_str());
         assert(bytes < 50); // double-check
@@ -626,6 +637,8 @@ private:
     }
 
     InternedString nodeName(AST* node, const std::string& suffix, int idx) {
+        return createUniqueName("#"+suffix+"_" + std::to_string(idx) + "_");
+
         char buf[50];
         int bytes = snprintf(buf, 50, "#%p_%s_%d", node, suffix.c_str(), idx);
         assert(bytes < 50); // double-check
@@ -1992,9 +2005,7 @@ public:
         AST_LangPrimitive* iter_call = new AST_LangPrimitive(AST_LangPrimitive::GET_ITER);
         iter_call->args.push_back(remapped_iter);
 
-        char itername_buf[80];
-        snprintf(itername_buf, 80, "#iter_%p", node);
-        InternedString itername = internString(itername_buf);
+        InternedString itername = createUniqueName("#iter_");
         pushAssign(itername, iter_call);
 
         AST_expr* next_attr = makeLoadAttribute(makeLoad(itername, node), internString("next"), true);
