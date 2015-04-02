@@ -136,7 +136,7 @@ void* retrivePtrForEmbedIdx(unsigned int index) {
 llvm::Constant* embedRelocatablePtr(const void* addr, llvm::Type* type) {
     addr_to_idx[addr] = (int)addr_vec.size();
     char buff[64];
-    sprintf(buff, "%s:%d", g.cur_module->getName().str().c_str(), (int)addr_vec.size());
+    sprintf(buff, "T%d", (int)addr_vec.size());
     addrstr_to_idx[buff] = (int)addr_vec.size();
     addr_vec.push_back(addr);
 
