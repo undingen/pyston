@@ -368,7 +368,7 @@ public:
 
         // We don't know the type so we have to check at runtime if __iter__ is implemented
         llvm::Value* cmp = emitter.getBuilder()->CreateICmpNE(converted_iter_call->getValue(),
-                                                              embedConstantPtr(0, g.llvm_value_type_ptr));
+                                                              getNullPtr(g.llvm_value_type_ptr));
 
         llvm::BasicBlock* bb_has_iter = emitter.createBasicBlock("has_iter");
         bb_has_iter->moveAfter(emitter.currentBasicBlock());
@@ -529,19 +529,19 @@ static ConcreteCompilerVariable* _call(IREmitter& emitter, const OpInfo& info, l
     if (args.size() >= 1) {
         llvm_args.push_back(converted_args[0]->getValue());
     } else if (pass_keyword_names) {
-        llvm_args.push_back(embedConstantPtr(NULL, g.llvm_value_type_ptr));
+        llvm_args.push_back(getNullPtr(g.llvm_value_type_ptr));
     }
 
     if (args.size() >= 2) {
         llvm_args.push_back(converted_args[1]->getValue());
     } else if (pass_keyword_names) {
-        llvm_args.push_back(embedConstantPtr(NULL, g.llvm_value_type_ptr));
+        llvm_args.push_back(getNullPtr(g.llvm_value_type_ptr));
     }
 
     if (args.size() >= 3) {
         llvm_args.push_back(converted_args[2]->getValue());
     } else if (pass_keyword_names) {
-        llvm_args.push_back(embedConstantPtr(NULL, g.llvm_value_type_ptr));
+        llvm_args.push_back(getNullPtr(g.llvm_value_type_ptr));
     }
 
     llvm::Value* mallocsave = NULL;
@@ -571,7 +571,7 @@ static ConcreteCompilerVariable* _call(IREmitter& emitter, const OpInfo& info, l
         if (pass_keyword_names)
             llvm_args.push_back(embedConstantPtr(keyword_names, g.vector_ptr));
     } else if (pass_keyword_names) {
-        llvm_args.push_back(embedConstantPtr(NULL, g.llvm_value_type_ptr->getPointerTo()));
+        llvm_args.push_back(getNullPtr(g.llvm_value_type_ptr->getPointerTo()));
         llvm_args.push_back(embedConstantPtr(keyword_names, g.vector_ptr));
     }
 
@@ -737,7 +737,7 @@ CompilerVariable* makeFunction(IREmitter& emitter, CLFunction* f, CompilerVariab
         convertedClosure = closure->makeConverted(emitter, closure->getConcreteType());
         closure_v = convertedClosure->getValue();
     } else {
-        closure_v = embedConstantPtr(nullptr, g.llvm_closure_type_ptr);
+        closure_v = getNullPtr(g.llvm_closure_type_ptr);
     }
 
     llvm::Value* scratch;
@@ -752,7 +752,7 @@ CompilerVariable* makeFunction(IREmitter& emitter, CLFunction* f, CompilerVariab
             i++;
         }
     } else {
-        scratch = embedConstantPtr(nullptr, g.llvm_value_type_ptr_ptr);
+        scratch = getNullPtr(g.llvm_value_type_ptr_ptr);
     }
 
     llvm::Value* isGenerator_v = llvm::ConstantInt::get(g.i1, isGenerator, false);

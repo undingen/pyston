@@ -31,6 +31,7 @@ llvm::Constant* embedConstantPtr(const void* addr, llvm::Type*, bool orig = fals
 llvm::Constant* getConstantInt(int64_t val);
 llvm::Constant* getConstantDouble(double val);
 llvm::Constant* getConstantInt(int64_t val, llvm::Type*);
+llvm::Constant* getNullPtr(llvm::Type* t);
 
 
 void resetEmbedCache();

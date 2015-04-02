@@ -134,7 +134,7 @@ void* retrivePtrForEmbedIdx(unsigned int index) {
 }
 
 llvm::Constant* embedConstantPtr(const void* addr, llvm::Type* type, bool orig) {
-    if (addr && g.cur_module && !orig) {
+    if (g.cur_module && !orig) {
         addr_to_idx[addr] = (int)addr_vec.size();
         char buff[64];
         sprintf(buff, "%s:%d", g.cur_module->getName().str().c_str(), (int)addr_vec.size());
@@ -150,6 +150,11 @@ llvm::Constant* embedConstantPtr(const void* addr, llvm::Type* type, bool orig) 
     llvm::Constant* int_val = llvm::ConstantInt::get(g.i64, reinterpret_cast<uintptr_t>(addr), false);
     llvm::Constant* ptr_val = llvm::ConstantExpr::getIntToPtr(int_val, type);
     return ptr_val;
+}
+
+llvm::Constant* getNullPtr(llvm::Type* t) {
+    assert(llvm::isa<llvm::PointerType>(t));
+    return llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(t));
 }
 
 llvm::Constant* getConstantInt(int64_t n, llvm::Type* t) {

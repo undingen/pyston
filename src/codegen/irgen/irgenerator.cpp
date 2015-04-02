@@ -149,11 +149,11 @@ llvm::Value* IRGenState::getFrameInfoVar() {
             // The "normal" case
 
             // frame_info.exc.type = NULL
-            builder.CreateStore(embedConstantPtr(NULL, g.llvm_value_type_ptr), getExcinfoGep(builder, al));
+            builder.CreateStore(getNullPtr(g.llvm_value_type_ptr), getExcinfoGep(builder, al));
 
             // frame_info.boxedLocals = NULL
             llvm::Value* boxed_locals_gep = getBoxedLocalsGep(builder, al);
-            builder.CreateStore(embedConstantPtr(NULL, g.llvm_value_type_ptr), boxed_locals_gep);
+            builder.CreateStore(getNullPtr(g.llvm_value_type_ptr), boxed_locals_gep);
 
             if (getScopeInfo()->usesNameLookup()) {
                 // frame_info.boxedLocals = createDict()
@@ -238,7 +238,6 @@ private:
         pp_args.push_back(getConstantInt(pp_id, g.i64)); // pp_id: will fill this in later
         pp_args.push_back(getConstantInt(pp_size, g.i32));
         pp_args.push_back(embedConstantPtr((void*)~(0UL), g.i8_ptr, true));
-        // pp_args.push_back(func);
         pp_args.push_back(getConstantInt(args.size(), g.i32));
 
         pp_args.insert(pp_args.end(), args.begin(), args.end());
@@ -677,7 +676,7 @@ private:
                 llvm::Value* exc_info = builder->CreateConstInBoundsGEP2_32(frame_info, 0, 0);
                 assert(exc_info->getType() == g.llvm_excinfo_type->getPointerTo());
 
-                llvm::Constant* v = embedConstantPtr(0, g.llvm_value_type_ptr);
+                llvm::Constant* v = getNullPtr(g.llvm_value_type_ptr);
                 builder->CreateStore(v, builder->CreateConstInBoundsGEP2_32(exc_info, 0, 0));
                 builder->CreateStore(v, builder->CreateConstInBoundsGEP2_32(exc_info, 0, 1));
                 builder->CreateStore(v, builder->CreateConstInBoundsGEP2_32(exc_info, 0, 2));
@@ -965,7 +964,7 @@ private:
                 = llvm::BasicBlock::Create(g.context, "deref_undefined", irstate->getLLVMFunction());
 
             llvm::Value* check_val
-                = emitter.getBuilder()->CreateICmpEQ(lookupResult, embedConstantPtr(NULL, g.llvm_value_type_ptr));
+                = emitter.getBuilder()->CreateICmpEQ(lookupResult, getNullPtr(g.llvm_value_type_ptr));
             llvm::BranchInst* non_null_check = emitter.getBuilder()->CreateCondBr(check_val, fail_bb, success_bb);
 
             // Case that it is undefined: call the assert fail function.
@@ -1623,7 +1622,7 @@ private:
             msg->decvref(emitter);
             llvm_args.push_back(converted_msg->getValue());
         } else {
-            llvm_args.push_back(embedConstantPtr(NULL, g.llvm_value_type_ptr));
+            llvm_args.push_back(getNullPtr(g.llvm_value_type_ptr));
         }
         llvm::CallSite call = emitter.createCall(unw_info, g.funcs.assertFail, llvm_args);
         call.setDoesNotReturn();
@@ -2444,7 +2443,7 @@ public:
 
         if (scope_info->createsClosure()) {
             if (!passed_closure)
-                passed_closure = embedConstantPtr(nullptr, g.llvm_closure_type_ptr);
+                passed_closure = getNullPtr(g.llvm_closure_type_ptr);
 
             llvm::Value* new_closure = emitter.getBuilder()->CreateCall2(
                 g.funcs.createClosure, passed_closure, getConstantInt(scope_info->getClosureSize(), g.i64));
