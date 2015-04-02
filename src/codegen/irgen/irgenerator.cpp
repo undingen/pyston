@@ -1824,7 +1824,7 @@ private:
                 return;
             }
 
-            val = new ConcreteCompilerVariable(NONE, embedRelocatablePtr(None, g.llvm_value_type_ptr), false);
+            val = getNone();
         } else {
             val = evalExpr(node->value, unw_info);
         }
@@ -2093,7 +2093,7 @@ private:
                 v->decvref(emitter);
                 args.push_back(converted->getValue());
             } else {
-                args.push_back(embedRelocatablePtr(None, g.llvm_value_type_ptr));
+                args.push_back(getNone()->getValue());
             }
         }
 
