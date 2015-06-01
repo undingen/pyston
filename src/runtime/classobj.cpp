@@ -102,9 +102,9 @@ Box* classobjNew(Box* _cls, Box* _name, Box* _bases, Box** _args) {
     made->giveAttr("__module__", boxString(getCurrentModule()->name()));
     made->giveAttr("__doc__", None);
 
-    for (auto& p : dict->d) {
-        RELEASE_ASSERT(p.first->cls == str_cls, "");
-        made->setattr(std::string(static_cast<BoxedString*>(p.first)->s()), p.second, NULL);
+    RELEASE_ASSERT(dict->getRole() == DictRoleBase::Role::StrRole, "");
+    for (auto& p : dict->getDictStrRole()->d) {
+        made->setattr(p.first(), p.second, NULL);
     }
 
     // Note: make sure to do this after assigning the attrs, since it will overwrite any defined __name__
@@ -134,7 +134,7 @@ Box* classobjCall(Box* _cls, Box* _args, Box* _kwargs) {
         if (init_rtn != None)
             raiseExcHelper(TypeError, "__init__() should return None");
     } else {
-        if (args->size() || kwargs->d.size())
+        if (args->size() || kwargs->size())
             raiseExcHelper(TypeError, "this constructor takes no arguments");
     }
     return made;

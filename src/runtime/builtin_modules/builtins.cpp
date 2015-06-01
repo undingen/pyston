@@ -854,23 +854,19 @@ Box* print(BoxedTuple* args, BoxedDict* kwargs) {
 
     Box* dest, *end;
 
-    auto it = kwargs->d.find(boxStrConstant("file"));
-    if (it != kwargs->d.end()) {
-        dest = it->second;
-        kwargs->d.erase(it);
-    } else {
+    Box* fileStr = boxStrConstant("file");
+    if (kwargs->has_key(fileStr))
+        dest = kwargs->erase(fileStr);
+    else
         dest = getSysStdout();
-    }
 
-    it = kwargs->d.find(boxStrConstant("end"));
-    if (it != kwargs->d.end()) {
-        end = it->second;
-        kwargs->d.erase(it);
-    } else {
+    Box* endStr = boxStrConstant("end");
+    if (kwargs->has_key(endStr))
+        end = kwargs->erase(endStr);
+    else
         end = boxStrConstant("\n");
-    }
 
-    RELEASE_ASSERT(kwargs->d.size() == 0, "print() got unexpected keyword arguments");
+    RELEASE_ASSERT(kwargs->size() == 0, "print() got unexpected keyword arguments");
 
     static const std::string write_str("write");
 

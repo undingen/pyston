@@ -361,7 +361,7 @@ extern "C" Box* tupleNew(Box* _cls, BoxedTuple* args, BoxedDict* kwargs) {
                        getNameOfClass(cls));
 
     int args_sz = args->size();
-    int kwargs_sz = kwargs->d.size();
+    int kwargs_sz = kwargs->size();
 
     if (args_sz + kwargs_sz > 1)
         raiseExcHelper(TypeError, "tuple() takes at most 1 argument (%d given)", args_sz + kwargs_sz);
@@ -373,13 +373,10 @@ extern "C" Box* tupleNew(Box* _cls, BoxedTuple* args, BoxedDict* kwargs) {
             elements = args->elts[0];
         } else {
             assert(kwargs_sz);
-            auto const seq = *(kwargs->d.begin());
-            auto const kw = static_cast<BoxedString*>(seq.first);
-
-            if (kw->s() == "sequence")
-                elements = seq.second;
-            else
-                raiseExcHelper(TypeError, "'%s' is an invalid keyword argument for this function", kw->data());
+            if (!kwargs->has_key(boxString("sequence")))
+                raiseExcHelper(TypeError, "'%s' is an invalid keyword argument for this function", "lala");
+            // raiseExcHelper(TypeError, "'%s' is an invalid keyword argument for this function", kw->data());
+            elements = kwargs->get(boxString("sequence"));
         }
 
         std::vector<Box*, StlCompatAllocator<Box*>> elts;

@@ -29,7 +29,7 @@ Box* dictRepr(BoxedDict* self) {
     std::vector<char> chars;
     chars.push_back('{');
     bool first = true;
-    for (const auto& p : self->d) {
+    for (const auto& p : self->d()) {
         if (!first) {
             chars.push_back(',');
             chars.push_back(' ');
@@ -52,7 +52,7 @@ Box* dictClear(BoxedDict* self) {
     if (!isSubclass(self->cls, dict_cls))
         raiseExcHelper(TypeError, "descriptor 'clear' requires a 'dict' object but received a '%s'", getTypeName(self));
 
-    self->d.clear();
+    self->clear();
     return None;
 }
 
@@ -61,13 +61,12 @@ Box* dictCopy(BoxedDict* self) {
     if (!isSubclass(self->cls, dict_cls))
         raiseExcHelper(TypeError, "descriptor 'copy' requires a 'dict' object but received a '%s'", getTypeName(self));
 
-    BoxedDict* r = new BoxedDict();
-    r->d.insert(self->d.begin(), self->d.end());
-    return r;
+    return self->copy();
 }
 
 Box* dictItems(BoxedDict* self) {
     STAT_TIMER(t0, "us_timer_dictItems");
+    /*
     BoxedList* rtn = new BoxedList();
 
     rtn->ensure(self->d.size());
@@ -77,28 +76,36 @@ Box* dictItems(BoxedDict* self) {
     }
 
     return rtn;
+    */
+    return self->items();
 }
 
 Box* dictValues(BoxedDict* self) {
     STAT_TIMER(t0, "us_timer_dictValues");
+    /*
     BoxedList* rtn = new BoxedList();
     rtn->ensure(self->d.size());
     for (const auto& p : self->d) {
         listAppendInternal(rtn, p.second);
     }
     return rtn;
+    */
+    return self->values();
 }
 
 Box* dictKeys(BoxedDict* self) {
     STAT_TIMER(t0, "us_timer_dictKeys");
     RELEASE_ASSERT(isSubclass(self->cls, dict_cls), "");
-
+    /*
     BoxedList* rtn = new BoxedList();
     rtn->ensure(self->d.size());
     for (const auto& p : self->d) {
         listAppendInternal(rtn, p.first);
     }
     return rtn;
+    */
+
+    return self->keys();
 }
 
 static PyObject* dict_helper(PyObject* mp, std::function<Box*(BoxedDict*)> f) noexcept {
@@ -159,17 +166,17 @@ Box* dictLen(BoxedDict* self) {
         raiseExcHelper(TypeError, "descriptor '__len__' requires a 'dict' object but received a '%s'",
                        getTypeName(self));
 
-    return boxInt(self->d.size());
+    return boxInt(self->size());
 }
 
 extern "C" Py_ssize_t PyDict_Size(PyObject* op) noexcept {
     RELEASE_ASSERT(PyDict_Check(op), "");
-    return static_cast<BoxedDict*>(op)->d.size();
+    return static_cast<BoxedDict*>(op)->size();
 }
 
 extern "C" void PyDict_Clear(PyObject* op) noexcept {
     RELEASE_ASSERT(PyDict_Check(op), "");
-    static_cast<BoxedDict*>(op)->d.clear();
+    static_cast<BoxedDict*>(op)->clear();
 }
 
 extern "C" PyObject* PyDict_Copy(PyObject* o) noexcept {
@@ -192,8 +199,7 @@ Box* dictGetitem(BoxedDict* self, Box* k) {
         raiseExcHelper(TypeError, "descriptor '__getitem__' requires a 'dict' object but received a '%s'",
                        getTypeName(self));
 
-    auto it = self->d.find(k);
-    if (it == self->d.end()) {
+    if (!self->has_key(k)) {
         // Try calling __missing__ if this is a subclass
         if (self->cls != dict_cls) {
             static const std::string missing("__missing__");
@@ -206,9 +212,7 @@ Box* dictGetitem(BoxedDict* self, Box* k) {
         raiseExcHelper(KeyError, k);
     }
 
-    Box* pos = self->d[k];
-
-    return pos;
+    return self->get(k);
 }
 
 extern "C" PyObject* PyDict_New() noexcept {
@@ -281,28 +285,30 @@ extern "C" int PyDict_Next(PyObject* op, Py_ssize_t* ppos, PyObject** pkey, PyOb
     // Results in lots of indirection unfortunately.  If it becomes an issue we can try to switch
     // to storing the iterator directly in the stack slot.
 
-    typedef BoxedDict::DictMap::iterator iterator;
+    abort(); /*
 
-    static_assert(sizeof(Py_ssize_t) == sizeof(iterator*), "");
-    iterator** it_ptr = reinterpret_cast<iterator**>(ppos);
+     typedef BoxedDict::Iterator iterator;
 
-    // Clients are supposed to zero-initialize *ppos:
-    if (*it_ptr == NULL) {
-        *it_ptr = (iterator*)malloc(sizeof(iterator));
-        **it_ptr = self->d.begin();
-    }
+     static_assert(sizeof(Py_ssize_t) == sizeof(iterator*), "");
+     iterator** it_ptr = reinterpret_cast<iterator**>(ppos);
 
-    iterator* it = *it_ptr;
+     // Clients are supposed to zero-initialize *ppos:
+     if (*it_ptr == NULL) {
+         *it_ptr = (iterator*)malloc(sizeof(iterator));
+         **it_ptr = self->begin();
+     }
 
-    if (*it == self->d.end()) {
-        free(it);
-        return 0;
-    }
+     iterator* it = *it_ptr;
 
-    *pkey = (*it)->first;
-    *pvalue = (*it)->second;
+     if (*it == self->end()) {
+         free(it);
+         return 0;
+     }
 
-    ++(*it);
+     *pkey = (*it)->first;
+     *pvalue = (*it)->second;
+
+     ++(*it);*/
 
     return 1;
 }
@@ -319,16 +325,7 @@ extern "C" PyObject* PyDict_GetItemString(PyObject* dict, const char* key) noexc
 
 Box* dictSetitem(BoxedDict* self, Box* k, Box* v) {
     STAT_TIMER(t0, "us_timer_dictSetitem");
-    // printf("Starting setitem\n");
-    Box*& pos = self->d[k];
-    // printf("Got the pos\n");
-
-    if (pos != NULL) {
-        pos = v;
-    } else {
-        pos = v;
-    }
-
+    self->set(k, v);
     return None;
 }
 
@@ -338,12 +335,11 @@ Box* dictDelitem(BoxedDict* self, Box* k) {
         raiseExcHelper(TypeError, "descriptor '__delitem__' requires a 'dict' object but received a '%s'",
                        getTypeName(self));
 
-    auto it = self->d.find(k);
-    if (it == self->d.end()) {
+    if (!self->has_key(k)) {
         raiseExcHelper(KeyError, k);
     }
 
-    self->d.erase(it);
+    self->erase(k);
 
     return None;
 }
@@ -374,17 +370,14 @@ Box* dictPop(BoxedDict* self, Box* k, Box* d) {
     if (!isSubclass(self->cls, dict_cls))
         raiseExcHelper(TypeError, "descriptor 'pop' requires a 'dict' object but received a '%s'", getTypeName(self));
 
-    auto it = self->d.find(k);
-    if (it == self->d.end()) {
+    if (!self->has_key(k)) {
         if (d)
             return d;
 
         raiseExcHelper(KeyError, k);
     }
 
-    Box* rtn = it->second;
-    self->d.erase(it);
-    return rtn;
+    return self->erase(k);
 }
 
 Box* dictPopitem(BoxedDict* self) {
@@ -392,16 +385,12 @@ Box* dictPopitem(BoxedDict* self) {
         raiseExcHelper(TypeError, "descriptor 'popitem' requires a 'dict' object but received a '%s'",
                        getTypeName(self));
 
-    auto it = self->d.begin();
-    if (it == self->d.end()) {
+    if (self->size() == 0) {
         raiseExcHelper(KeyError, "popitem(): dictionary is empty");
     }
 
-    Box* key = it->first;
-    Box* value = it->second;
-    self->d.erase(it);
-
-    auto rtn = BoxedTuple::create({ key, value });
+    auto item = self->popItem();
+    auto rtn = BoxedTuple::create({ item.first, item.second });
     return rtn;
 }
 
@@ -409,11 +398,10 @@ Box* dictGet(BoxedDict* self, Box* k, Box* d) {
     if (!isSubclass(self->cls, dict_cls))
         raiseExcHelper(TypeError, "descriptor 'get' requires a 'dict' object but received a '%s'", getTypeName(self));
 
-    auto it = self->d.find(k);
-    if (it == self->d.end())
+    if (!self->has_key(k))
         return d;
 
-    return it->second;
+    return self->get(k);
 }
 
 Box* dictSetdefault(BoxedDict* self, Box* k, Box* v) {
@@ -421,11 +409,10 @@ Box* dictSetdefault(BoxedDict* self, Box* k, Box* v) {
         raiseExcHelper(TypeError, "descriptor 'setdefault' requires a 'dict' object but received a '%s'",
                        getTypeName(self));
 
-    auto it = self->d.find(k);
-    if (it != self->d.end())
-        return it->second;
+    if (self->has_key(k))
+        return self->get(k);
 
-    self->d.insert(it, std::make_pair(k, v));
+    self->insert(k, v);
     return v;
 }
 
@@ -434,7 +421,7 @@ Box* dictContains(BoxedDict* self, Box* k) {
         raiseExcHelper(TypeError, "descriptor '__contains__' requires a 'dict' object but received a '%s'",
                        getTypeName(self));
 
-    return boxBool(self->d.count(k) != 0);
+    return boxBool(self->has_key(k));
 }
 
 /* Return 1 if `key` is in dict `op`, 0 if not, and -1 on error. */
@@ -459,7 +446,7 @@ extern "C" int PyDict_Contains(PyObject* op, PyObject* key) noexcept {
 
 
 Box* dictNonzero(BoxedDict* self) {
-    return boxBool(self->d.size());
+    return boxBool(self->size());
 }
 
 Box* dictFromkeys(Box* cls, Box* iterable, Box* default_value) {
@@ -481,9 +468,13 @@ Box* dictEq(BoxedDict* self, Box* _rhs) {
 
     BoxedDict* rhs = static_cast<BoxedDict*>(_rhs);
 
-    if (self->d.size() != rhs->d.size())
+    if (self->size() != rhs->size())
         return False;
 
+    if (self->getRole() != rhs->getRole())
+        return False;
+
+    /*
     for (const auto& p : self->d) {
         auto it = rhs->d.find(p.first);
         if (it == rhs->d.end())
@@ -491,6 +482,10 @@ Box* dictEq(BoxedDict* self, Box* _rhs) {
         if (!nonzero(compare(p.second, it->second, AST_TYPE::Eq)))
             return False;
     }
+    */
+
+    return boxBool(self->eq(rhs));
+
 
     return True;
 }
@@ -519,8 +514,8 @@ extern "C" Box* dictNew(Box* _cls, BoxedTuple* args, BoxedDict* kwargs) {
 
 void dictMerge(BoxedDict* self, Box* other) {
     if (isSubclass(other->cls, dict_cls)) {
-        for (const auto& p : static_cast<BoxedDict*>(other)->d)
-            self->d[p.first] = p.second;
+        for (const auto& p : static_cast<BoxedDict*>(other)->d())
+            self->set(p.first, p.second);
         return;
     }
 
@@ -530,7 +525,7 @@ void dictMerge(BoxedDict* self, Box* other) {
     assert(keys);
 
     for (Box* k : keys->pyElements()) {
-        self->d[k] = getitem(other, k);
+        self->set(k, getitem(other, k));
     }
 }
 
@@ -547,14 +542,13 @@ void dictMergeFromSeq2(BoxedDict* self, Box* other) {
                 raiseExcHelper(ValueError, "dictionary update sequence element #%d has length %d; 2 is required", idx,
                                list->size);
 
-            self->d[list->elts->elts[0]] = list->elts->elts[1];
+            self->set(list->elts->elts[0], list->elts->elts[1]);
         } else if (element->cls == tuple_cls) {
             BoxedTuple* tuple = static_cast<BoxedTuple*>(element);
             if (tuple->size() != 2)
                 raiseExcHelper(ValueError, "dictionary update sequence element #%d has length %d; 2 is required", idx,
                                tuple->size());
-
-            self->d[tuple->elts[0]] = tuple->elts[1];
+            self->set(tuple->elts[0], tuple->elts[1]);
         } else
             raiseExcHelper(TypeError, "cannot convert dictionary update sequence element #%d to a sequence", idx);
 
@@ -595,7 +589,7 @@ Box* dictUpdate(BoxedDict* self, BoxedTuple* args, BoxedDict* kwargs) {
         }
     }
 
-    if (kwargs->d.size())
+    if (kwargs->size())
         dictMerge(self, kwargs);
 
     return None;
@@ -603,7 +597,6 @@ Box* dictUpdate(BoxedDict* self, BoxedTuple* args, BoxedDict* kwargs) {
 
 extern "C" Box* dictInit(BoxedDict* self, BoxedTuple* args, BoxedDict* kwargs) {
     int args_sz = args->size();
-    int kwargs_sz = kwargs->d.size();
 
     // CPython accepts a single positional and keyword arguments, in any combination
     if (args_sz > 1)
@@ -614,8 +607,7 @@ extern "C" Box* dictInit(BoxedDict* self, BoxedTuple* args, BoxedDict* kwargs) {
     // handle keyword arguments by merging (possibly over positional entries per CPy)
     assert(kwargs->cls == dict_cls);
 
-    for (const auto& p : kwargs->d)
-        self->d[p.first] = p.second;
+    dictMerge(self, kwargs);
 
     return None;
 }
@@ -660,8 +652,8 @@ static Box* dict_repr(PyObject* self) noexcept {
 }
 
 void setupDict() {
-    dict_iterator_cls = BoxedHeapClass::create(type_cls, object_cls, &dictIteratorGCHandler, 0, 0, sizeof(BoxedDict),
-                                               false, "dictionary-itemiterator");
+    dict_iterator_cls = BoxedHeapClass::create(type_cls, object_cls, &dictIteratorGCHandler, 0, 0,
+                                               sizeof(BoxedDictIterator), false, "dictionary-itemiterator");
 
     dict_keys_cls = BoxedHeapClass::create(type_cls, object_cls, &dictViewGCHandler, 0, 0, sizeof(BoxedDictView), false,
                                            "dict_keys");

@@ -68,16 +68,16 @@ public:
         int flags = self->method_def->ml_flags;
         auto func = self->method_def->ml_meth;
         if (flags == METH_VARARGS) {
-            assert(kwargs->d.size() == 0);
+            assert(kwargs->size() == 0);
             rtn = (Box*)func(self->passthrough, varargs);
         } else if (flags == (METH_VARARGS | METH_KEYWORDS)) {
             rtn = (Box*)((PyCFunctionWithKeywords)func)(self->passthrough, varargs, kwargs);
         } else if (flags == METH_NOARGS) {
-            assert(kwargs->d.size() == 0);
+            assert(kwargs->size() == 0);
             assert(varargs->size() == 0);
             rtn = (Box*)func(self->passthrough, NULL);
         } else if (flags == METH_O) {
-            if (kwargs->d.size() != 0) {
+            if (kwargs->size() != 0) {
                 raiseExcHelper(TypeError, "%s() takes no keyword arguments", self->method_def->ml_name);
             }
             if (varargs->size() != 1) {

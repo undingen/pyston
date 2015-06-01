@@ -1614,7 +1614,7 @@ BoxedModule* importCExtension(const std::string& full_name, const std::string& l
 
     BoxedDict* sys_modules = getSysModulesDict();
     Box* s = boxStrConstant(full_name.c_str());
-    Box* _m = sys_modules->d[s];
+    Box* _m = sys_modules->get(s);
     RELEASE_ASSERT(_m, "dynamic module not initialized properly");
     assert(_m->cls == module_cls);
 

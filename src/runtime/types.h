@@ -15,6 +15,7 @@
 #ifndef PYSTON_RUNTIME_TYPES_H
 #define PYSTON_RUNTIME_TYPES_H
 
+#include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/StringMap.h>
 #include <llvm/ADT/Twine.h>
 #include <ucontext.h>
@@ -623,21 +624,607 @@ struct PyLt {
     bool operator()(Box*, Box*) const;
 };
 
+class DictRoleBase {
+public:
+    enum class Role : unsigned char { IntRole, StrRole, ObjectRole, EmptyRole };
+
+    typedef std::unordered_map<Box*, Box*, PyHasher, PyEq, StlCompatAllocator<std::pair<Box*, Box*>>> DictObjectMap;
+    typedef llvm::StringMap<Box*> DictStrMap;
+    typedef llvm::DenseMap<long, Box*> DictIntMap;
+
+    union Iterator {
+        Iterator() {}
+        DictObjectMap::iterator object_it;
+        DictStrMap::iterator str_it;
+        DictIntMap::iterator int_it;
+    };
+
+    virtual ~DictRoleBase() {}
+
+    virtual Role getRole() = 0;
+
+    virtual void clear() = 0;
+
+    virtual size_t size() = 0;
+
+    virtual std::pair<bool, Box*> getBoxed(Box* key) = 0;
+
+    virtual BoxedList* getItems() = 0;
+
+    virtual BoxedList* getValues() = 0;
+
+    virtual BoxedList* getKeys() = 0;
+
+    virtual bool has_key(Box* key) = 0;
+
+    virtual DictRoleBase* copy() = 0;
+
+    virtual void set(Box* key, Box* value) = 0;
+    virtual bool insert(Box* key, Box* value) = 0;
+
+    virtual Box* erase(Box* key) = 0;
+
+    virtual std::pair<Box*, Box*> popItem() = 0;
+
+    virtual bool eq(DictRoleBase* dict) = 0;
+
+    virtual class DictRoleObject* convertToObjectRole() = 0;
+
+    virtual void gcVisit(GCVisitor* v) = 0;
+};
+
+template <typename T> class DictRoleShared : public DictRoleBase {
+public:
+    T d;
+    void clear() { d.clear(); }
+
+    size_t size() { return d.size(); }
+};
+
+class DictRoleInt : public DictRoleShared<llvm::DenseMap<long, Box*>> {
+public:
+    std::pair<bool, Box*> getBoxed(Box* key) {
+        assert(key->cls == int_cls);
+        auto it = d.find(((BoxedInt*)key)->n);
+        if (it == d.end())
+            return std::make_pair(false, nullptr);
+        return std::make_pair(true, it->second);
+    }
+
+    DictRoleBase::Role getRole() { return Role::IntRole; }
+
+    BoxedList* getItems() {
+        BoxedList* rtn = new BoxedList();
+
+        rtn->ensure(d.size());
+        for (const auto& p : d) {
+            BoxedTuple* t = BoxedTuple::create({ boxInt(p.first), p.second });
+            listAppendInternal(rtn, t);
+        }
+
+        return rtn;
+    }
+
+    BoxedList* getValues() {
+        BoxedList* rtn = new BoxedList();
+        rtn->ensure(d.size());
+        for (const auto& p : d)
+            listAppendInternal(rtn, p.second);
+        return rtn;
+    }
+
+    BoxedList* getKeys() {
+        BoxedList* rtn = new BoxedList();
+        rtn->ensure(d.size());
+        for (const auto& p : d)
+            listAppendInternal(rtn, boxInt(p.first));
+        return rtn;
+    }
+
+    bool has_key(Box* key) {
+        assert(key->cls == int_cls);
+        return d.count(((BoxedInt*)key)->n);
+    }
+
+    DictRoleBase* copy() {
+        DictRoleInt* roleStr = new DictRoleInt;
+        roleStr->d = d;
+        return roleStr;
+    }
+
+    void set(Box* key, Box* value) {
+        assert(key->cls == int_cls);
+        d[((BoxedInt*)key)->n] = value;
+    }
+
+    bool insert(Box* key, Box* value) {
+        assert(key->cls == int_cls);
+        return d.insert(std::make_pair(((BoxedInt*)key)->n, value)).second;
+    }
+
+    Box* erase(Box* key) {
+        assert(key->cls == int_cls);
+        auto it = d.find(((BoxedInt*)key)->n);
+        if (it == d.end())
+            return nullptr;
+        Box* rtn = it->second;
+        d.erase(it);
+        return rtn;
+    }
+
+    std::pair<Box*, Box*> popItem() {
+        auto it = d.begin();
+        auto rtn = std::make_pair(boxInt(it->first), it->second);
+        d.erase(it);
+        return rtn;
+    }
+
+    bool eq(DictRoleBase* dict) {
+        abort();
+        // return d == ((DictRoleInt*)dict)->d;
+    }
+
+    void gcVisit(GCVisitor* v) {
+        for (auto i : d)
+            v->visit(i.second);
+    }
+
+    DictRoleObject* convertToObjectRole();
+};
+
+class DictRoleStr : public DictRoleShared<llvm::StringMap<Box*>> {
+public:
+    std::pair<bool, Box*> getBoxed(Box* key) {
+        assert(key->cls == str_cls);
+        auto it = d.find(((BoxedString*)key)->s());
+        if (it == d.end())
+            return std::make_pair(false, nullptr);
+        return std::make_pair(true, it->second);
+    }
+
+    DictRoleBase::Role getRole() { return Role::StrRole; }
+
+    BoxedList* getItems() {
+        BoxedList* rtn = new BoxedList();
+
+        rtn->ensure(d.size());
+        for (const auto& p : d) {
+            BoxedTuple* t = BoxedTuple::create({ boxStringRef(p.first()), p.second });
+            listAppendInternal(rtn, t);
+        }
+
+        return rtn;
+    }
+
+    BoxedList* getValues() {
+        BoxedList* rtn = new BoxedList();
+        rtn->ensure(d.size());
+        for (const auto& p : d)
+            listAppendInternal(rtn, p.second);
+        return rtn;
+    }
+
+    BoxedList* getKeys() {
+        BoxedList* rtn = new BoxedList();
+        rtn->ensure(d.size());
+        for (const auto& p : d)
+            listAppendInternal(rtn, boxStringRef(p.first()));
+        return rtn;
+    }
+
+    bool has_key(Box* key) {
+        assert(key->cls == str_cls);
+        return d.count(((BoxedString*)key)->s());
+    }
+
+    DictRoleBase* copy() {
+        DictRoleStr* roleStr = new DictRoleStr;
+        for (auto&& i : d)
+            roleStr->d[i.first()] = i.second;
+        return roleStr;
+    }
+
+    void set(Box* key, Box* value) {
+        assert(key->cls == str_cls);
+        d[((BoxedString*)key)->s()] = value;
+    }
+
+    bool insert(Box* key, Box* value) {
+        assert(key->cls == str_cls);
+        return d.insert(std::make_pair(((BoxedString*)key)->s(), value)).second;
+    }
+
+    Box* erase(Box* key) {
+        assert(key->cls == str_cls);
+        auto it = d.find(((BoxedString*)key)->s());
+        if (it == d.end())
+            return nullptr;
+        Box* rtn = it->second;
+        d.erase(it);
+        return rtn;
+    }
+
+    std::pair<Box*, Box*> popItem() {
+        auto it = d.begin();
+        auto rtn = std::make_pair(boxString(it->first()), it->second);
+        d.erase(it);
+        return rtn;
+    }
+
+    bool eq(DictRoleBase* dict) {
+        if (size() != dict->size())
+            return false;
+        DictRoleStr* dictStr = (DictRoleStr*)dict;
+
+        for (auto&& i : d) {
+            if (dictStr->d.lookup(i.first()) != i.second)
+                return false;
+        }
+
+        return true;
+    }
+
+    void gcVisit(GCVisitor* v) {
+        for (auto&& i : d)
+            v->visit(i.second);
+    }
+    DictRoleObject* convertToObjectRole();
+};
+
+class DictRoleObject
+    : public DictRoleShared<std::unordered_map<Box*, Box*, PyHasher, PyEq, StlCompatAllocator<std::pair<Box*, Box*>>>> {
+public:
+    std::pair<bool, Box*> getBoxed(Box* key) {
+        auto it = d.find(key);
+        if (it == d.end())
+            return std::make_pair(false, nullptr);
+        return std::make_pair(true, it->second);
+    }
+
+    DictRoleBase::Role getRole() { return Role::ObjectRole; }
+
+    BoxedList* getItems() {
+        BoxedList* rtn = new BoxedList();
+
+        rtn->ensure(d.size());
+        for (const auto& p : d) {
+            BoxedTuple* t = BoxedTuple::create({ p.first, p.second });
+            listAppendInternal(rtn, t);
+        }
+
+        return rtn;
+    }
+
+    BoxedList* getValues() {
+        BoxedList* rtn = new BoxedList();
+        rtn->ensure(d.size());
+        for (const auto& p : d)
+            listAppendInternal(rtn, p.second);
+        return rtn;
+    }
+
+    BoxedList* getKeys() {
+        BoxedList* rtn = new BoxedList();
+        rtn->ensure(d.size());
+        for (const auto& p : d)
+            listAppendInternal(rtn, p.first);
+        return rtn;
+    }
+
+    bool has_key(Box* key) { return d.count(key); }
+
+    DictRoleBase* copy() {
+        DictRoleObject* roleStr = new DictRoleObject;
+        roleStr->d = d;
+        return roleStr;
+    }
+
+    void set(Box* key, Box* value) { d[key] = value; }
+
+    bool insert(Box* key, Box* value) { return d.insert(std::make_pair(key, value)).second; }
+
+    Box* erase(Box* key) {
+        auto it = d.find(key);
+        if (it == d.end())
+            return nullptr;
+        Box* rtn = it->second;
+        d.erase(it);
+        return rtn;
+    }
+
+    std::pair<Box*, Box*> popItem() {
+        auto it = d.begin();
+        auto rtn = std::make_pair(it->first, it->second);
+        d.erase(it);
+        return rtn;
+    }
+
+    bool eq(DictRoleBase* dict) {
+        abort();
+        // return d == ((DictRoleInt*)dict)->d;
+    }
+
+    void gcVisit(GCVisitor* v) {
+        for (auto&& i : d) {
+            v->visit(i.first);
+            v->visit(i.second);
+        }
+    }
+
+    DictRoleObject* convertToObjectRole() { return this; }
+};
+
+
+inline DictRoleObject* DictRoleInt::convertToObjectRole() {
+    DictRoleObject* objectDict = new DictRoleObject;
+    for (auto&& i : d) {
+        objectDict->d[boxInt(i.first)] = i.second;
+    }
+    return objectDict;
+}
+
+inline DictRoleObject* DictRoleStr::convertToObjectRole() {
+    DictRoleObject* objectDict = new DictRoleObject;
+    for (auto&& i : d) {
+        objectDict->d[boxStringRef(i.first())] = i.second;
+    }
+    return objectDict;
+}
+
 class BoxedDict : public Box {
 public:
-    typedef std::unordered_map<Box*, Box*, PyHasher, PyEq, StlCompatAllocator<std::pair<Box*, Box*>>> DictMap;
+    class MyIterator {
+        DictRoleBase::Iterator it;
+        DictRoleBase::Role role;
 
-    DictMap d;
+    public:
+        MyIterator() : role(DictRoleBase::Role::EmptyRole) { memset(&it, 0, sizeof(it)); }
 
-    BoxedDict() __attribute__((visibility("default"))) {}
+        MyIterator(const MyIterator& other) : role(other.role) { memcpy(&it, &other.it, sizeof(it)); }
+
+
+        static MyIterator getBegin(BoxedDict* dict) {
+            MyIterator it;
+            it.role = dict->getRole();
+            if (it.role == DictRoleBase::Role::IntRole)
+                it.it.int_it = ((DictRoleInt*)dict->roleImpl)->d.begin();
+            else if (it.role == DictRoleBase::Role::StrRole)
+                it.it.str_it = ((DictRoleStr*)dict->roleImpl)->d.begin();
+            else if (it.role == DictRoleBase::Role::ObjectRole)
+                it.it.object_it = ((DictRoleObject*)dict->roleImpl)->d.begin();
+            else if (it.role == DictRoleBase::Role::EmptyRole) {
+            } else
+                abort();
+            return it;
+        }
+
+        static MyIterator getEnd(BoxedDict* dict) {
+            MyIterator it;
+            it.role = dict->getRole();
+            if (it.role == DictRoleBase::Role::IntRole)
+                it.it.int_it = ((DictRoleInt*)dict->roleImpl)->d.end();
+            else if (it.role == DictRoleBase::Role::StrRole)
+                it.it.str_it = ((DictRoleStr*)dict->roleImpl)->d.end();
+            else if (it.role == DictRoleBase::Role::ObjectRole)
+                it.it.object_it = ((DictRoleObject*)dict->roleImpl)->d.end();
+            else if (it.role == DictRoleBase::Role::EmptyRole) {
+
+            } else
+                abort();
+            return it;
+        }
+
+        MyIterator& operator++() {
+            if (role == DictRoleBase::Role::IntRole)
+                ++it.int_it;
+            else if (role == DictRoleBase::Role::StrRole)
+                ++it.str_it;
+            else if (role == DictRoleBase::Role::ObjectRole)
+                ++it.object_it;
+            else
+                abort();
+            return *this;
+        }
+
+        Box* getKey() const {
+            if (role == DictRoleBase::Role::IntRole)
+                return boxInt(it.int_it->first);
+            else if (role == DictRoleBase::Role::StrRole)
+                return boxStringRef(it.str_it->first());
+            else if (role == DictRoleBase::Role::ObjectRole)
+                return it.object_it->first;
+
+            abort();
+        }
+
+        Box* getValue() const {
+            if (role == DictRoleBase::Role::IntRole)
+                return it.int_it->second;
+            else if (role == DictRoleBase::Role::StrRole)
+                return it.str_it->second;
+            else if (role == DictRoleBase::Role::ObjectRole)
+                return it.object_it->second;
+
+            abort();
+        }
+
+        std::pair<Box*, Box*> operator*() const { return std::make_pair(getKey(), getValue()); }
+
+
+        bool operator==(MyIterator b) {
+            if (role != b.role)
+                return false;
+            if (role == DictRoleBase::Role::IntRole)
+                return it.int_it == b.it.int_it;
+            else if (role == DictRoleBase::Role::StrRole)
+                return it.str_it == b.it.str_it;
+            else if (role == DictRoleBase::Role::ObjectRole)
+                return it.object_it == b.it.object_it;
+            else if (role == DictRoleBase::Role::EmptyRole)
+                return true;
+            else
+                abort();
+        }
+
+        bool operator!=(MyIterator b) { return !(*this == b); }
+    };
+
+
+    typedef MyIterator Iterator;
+
+    // Iterator begin() { return MyIterator::getBegin(this); }
+
+    // Iterator end() { return MyIterator::getEnd(this); }
+
+    DictRoleBase* roleImpl;
+
+    DictRoleBase::Role getRole() {
+        if (!roleImpl)
+            return DictRoleBase::Role::EmptyRole;
+        return roleImpl->getRole();
+    }
+
+    size_t size() {
+        if (!roleImpl)
+            return 0;
+        return roleImpl->size();
+    }
+
+    bool empty() { return size() == 0; }
+
+    bool insert(Box* key, Box* value) {
+        if (!roleImpl) {
+            if (key->cls == int_cls)
+                roleImpl = new DictRoleInt;
+            else if (key->cls == str_cls)
+                roleImpl = new DictRoleStr;
+            else
+                roleImpl = new DictRoleObject;
+        } else {
+            DictRoleBase::Role role = getRole();
+            if (role == DictRoleBase::Role::StrRole && key->cls != str_cls)
+                roleImpl = getDictObjectRole();
+            else if (role == DictRoleBase::Role::IntRole && key->cls != int_cls)
+                roleImpl = getDictObjectRole();
+        }
+        return roleImpl->insert(key, value);
+    }
+
+    void set(Box* key, Box* value) {
+        if (!roleImpl) {
+            if (key->cls == int_cls)
+                roleImpl = new DictRoleInt;
+            else if (key->cls == str_cls)
+                roleImpl = new DictRoleStr;
+            else
+                roleImpl = new DictRoleObject;
+        } else {
+            DictRoleBase::Role role = getRole();
+            if (role == DictRoleBase::Role::StrRole && key->cls != str_cls)
+                roleImpl = getDictObjectRole();
+            else if (role == DictRoleBase::Role::IntRole && key->cls != int_cls)
+                roleImpl = getDictObjectRole();
+        }
+
+        roleImpl->set(key, value);
+    }
+
+    Box* erase(Box* key) {
+        if (!roleImpl)
+            return 0;
+        return roleImpl->erase(key);
+    }
+
+    Box* get(Box* key) {
+        if (!roleImpl)
+            return 0;
+        return roleImpl->getBoxed(key).second;
+    }
+
+    void clear() {
+        if (roleImpl) {
+            roleImpl->clear();
+            delete roleImpl;
+            roleImpl = 0;
+        }
+    }
+
+    Box* copy() {
+        BoxedDict* newDict = new BoxedDict;
+        if (roleImpl)
+            newDict->roleImpl = roleImpl->copy();
+        return newDict;
+    }
+    Box* items() {
+        if (roleImpl)
+            return roleImpl->getItems();
+        return new BoxedList();
+    }
+    Box* keys() {
+        if (roleImpl)
+            return roleImpl->getKeys();
+        return new BoxedList();
+    }
+    Box* values() {
+        if (roleImpl)
+            return roleImpl->getValues();
+        return new BoxedList();
+    }
+
+    bool has_key(Box* key) {
+        if (roleImpl) {
+            DictRoleBase::Role role = getRole();
+            if (role == DictRoleBase::Role::StrRole && key->cls != str_cls)
+                roleImpl = getDictObjectRole();
+            else if (role == DictRoleBase::Role::IntRole && key->cls != int_cls)
+                roleImpl = getDictObjectRole();
+
+            return roleImpl->has_key(key);
+        }
+        return false;
+    }
+
+    std::pair<Box*, Box*> popItem() { return roleImpl->popItem(); }
+
+    DictRoleStr* getDictStrRole() {
+        assert(getRole() == DictRoleBase::Role::StrRole);
+        return (DictRoleStr*)roleImpl;
+    }
+
+    void gcHandler(GCVisitor* v) {
+        if (roleImpl)
+            roleImpl->gcVisit(v);
+    }
+
+    bool eq(BoxedDict* dict) {
+        if (size() != dict->size())
+            return false;
+        if (getRole() != dict->getRole())
+            return false;
+        return roleImpl->eq(dict->roleImpl);
+    }
+
+    DictRoleObject* getDictObjectRole() {
+        if (roleImpl)
+            return roleImpl->convertToObjectRole();
+        return new DictRoleObject;
+    }
+
+    DictRoleBase::DictObjectMap getObjectDict() { return getDictObjectRole()->d; }
+
+    llvm::iterator_range<MyIterator> d() {
+        return llvm::iterator_range<Iterator>(MyIterator::getBegin(this), MyIterator::getEnd(this));
+    }
+
+
+    BoxedDict() __attribute__((visibility("default"))) : roleImpl(0) {}
 
     DEFAULT_CLASS_SIMPLE(dict_cls);
 
     Box* getOrNull(Box* k) {
-        const auto& p = d.find(k);
-        if (p != d.end())
-            return p->second;
-        return NULL;
+        if (!roleImpl)
+            return NULL;
+        return roleImpl->getBoxed(k).second;
     }
 };
 static_assert(sizeof(BoxedDict) == sizeof(PyDictObject), "");

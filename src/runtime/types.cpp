@@ -655,15 +655,54 @@ extern "C" void dictGCHandler(GCVisitor* v, Box* b) {
     boxGCHandler(v, b);
 
     BoxedDict* d = (BoxedDict*)b;
+    /*
+        static StatCounter dictEmpty("dict_num_dict_empty");
+        static StatCounter dictInt("dict_num_dict_int");
+        static StatCounter dictFloat("dict_num_dict_float");
+        static StatCounter dictStr("dict_num_dict_str");
+        static StatCounter dictUnicode("dict_num_dict_unicode");
+        static StatCounter dictMixed("dict_num_dict_mixed");
+        static StatCounter dictElse("dict_num_dict_else");
+        if (d->d.empty())
+            dictEmpty.log(1);
 
-    // This feels like a cludge, but we need to find anything that
-    // the unordered_map might have allocated.
-    // Another way to handle this would be to rt_alloc the unordered_map
-    // as well, though that incurs extra memory dereferences which would
-    // be nice to avoid.
-    void** start = (void**)&d->d;
-    void** end = start + (sizeof(d->d) / 8);
-    v->visitPotentialRange(start, end);
+        Box* last_cls = NULL;
+        bool mixed = false;
+        for (auto i : d->d) {
+            if (last_cls) {
+                if (i.first->cls != last_cls) {
+                    dictMixed.log();
+                    mixed = true;
+                    last_cls = NULL;
+                    break;
+                }
+            }
+            last_cls = i.first->cls;
+        }
+        if (last_cls == str_cls)
+            dictStr.log();
+        else if (last_cls == int_cls)
+            dictInt.log();
+        else if (last_cls == unicode_cls)
+            dictUnicode.log();
+        else if (last_cls == float_cls)
+            dictFloat.log();
+        else if (!d->d.empty() && !mixed)
+            dictElse.log();
+    */
+    d->gcHandler(v);
+
+
+    /*
+        // This feels like a cludge, but we need to find anything that
+        // the unordered_map might have allocated.
+        // Another way to handle this would be to rt_alloc the unordered_map
+        // as well, though that incurs extra memory dereferences which would
+        // be nice to avoid.
+        void** start = (void**)&d->d;
+        void** end = start + (sizeof(d->d) / 8);
+        v->visitPotentialRange(start, end);
+        */
 }
 
 extern "C" void closureGCHandler(GCVisitor* v, Box* b) {
@@ -1561,7 +1600,7 @@ public:
         HCAttrs* attrs = self->b->getHCAttrsPtr();
         RELEASE_ASSERT(attrs->hcls->type == HiddenClass::NORMAL || attrs->hcls->type == HiddenClass::SINGLETON, "");
         for (const auto& p : attrs->hcls->getStrAttrOffsets()) {
-            rtn->d[boxString(p.first())] = attrs->attr_list->attrs[p.second];
+            rtn->set(boxString(p.first()), attrs->attr_list->attrs[p.second]);
         }
         return rtn;
     }
@@ -1624,7 +1663,7 @@ public:
                 assert(isSubclass(_container->cls, dict_cls));
                 BoxedDict* container = static_cast<BoxedDict*>(_container);
 
-                for (const auto& p : container->d) {
+                for (const auto& p : container->d()) {
                     AttrWrapper::setitem(self, p.first, p.second);
                 }
             }
@@ -2803,7 +2842,7 @@ BoxedModule* createModule(const std::string& name, const char* fn, const char* d
     if (fn)
         module->giveAttr("__file__", boxString(fn));
 
-    d->d[b_name] = module;
+    d->set(b_name, module);
     if (name == "__main__")
         module->giveAttr("__builtins__", builtins_module);
     return module;

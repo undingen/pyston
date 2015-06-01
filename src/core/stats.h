@@ -28,7 +28,7 @@ namespace pyston {
 
 #define DISABLE_STATS 0
 
-#define STAT_ALLOCATIONS 0 && !DISABLE_STATS
+#define STAT_ALLOCATIONS 1 && !DISABLE_STATS
 #define STAT_TIMERS 0 && !DISABLE_STATS
 
 #if STAT_TIMERS

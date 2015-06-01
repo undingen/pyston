@@ -910,8 +910,9 @@ Value ASTInterpreter::visit_delete(AST_Delete* node) {
                 } else if (vst == ScopeInfo::VarScopeType::NAME) {
                     assert(frame_info.boxedLocals != NULL);
                     if (frame_info.boxedLocals->cls == dict_cls) {
-                        auto& d = static_cast<BoxedDict*>(frame_info.boxedLocals)->d;
-                        auto it = d.find(boxString(target->id.str()));
+                        BoxedDict* dict = static_cast<BoxedDict*>(frame_info.boxedLocals);
+                        auto& d = dict->getDictStrRole()->d;
+                        auto it = d.find(target->id.str());
                         if (it == d.end()) {
                             assertNameDefined(0, target->id.c_str(), NameError, false /* local_var_msg */);
                         }
@@ -1150,7 +1151,7 @@ Value ASTInterpreter::visit_dict(AST_Dict* node) {
     for (size_t i = 0; i < node->keys.size(); ++i) {
         Box* v = visit_expr(node->values[i]).o;
         Box* k = visit_expr(node->keys[i]).o;
-        dict->d[k] = v;
+        dict->insert(k, v);
     }
 
     return dict;
@@ -1316,9 +1317,9 @@ Box* astInterpretFrom(CompiledFunction* cf, AST_expr* after_expr, AST_stmt* encl
     assert(cf->clfunc->source->scoping->areGlobalsFromModule());
     interpreter.setGlobals(source_info->parent_module);
 
-    for (const auto& p : frame_state.locals->d) {
-        assert(p.first->cls == str_cls);
-        auto name = static_cast<BoxedString*>(p.first)->s();
+
+    for (const auto& p : frame_state.locals->getDictStrRole()->d) {
+        auto name = p.first();
         if (name == PASSED_GENERATOR_NAME) {
             interpreter.setGenerator(p.second);
         } else if (name == PASSED_CLOSURE_NAME) {
@@ -1418,7 +1419,7 @@ BoxedDict* localsForInterpretedFrame(void* frame_ptr, bool only_user_visible) {
         if (only_user_visible && (l.first.str()[0] == '!' || l.first.str()[0] == '#'))
             continue;
 
-        rtn->d[boxString(l.first.str())] = interpreter->getSymbolTable().getMapped(l.second);
+        rtn->insert(boxString(l.first.str()), interpreter->getSymbolTable().getMapped(l.second));
     }
 
     return rtn;

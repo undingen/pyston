@@ -94,8 +94,9 @@ struct _dictobject {
 #endif
 typedef struct {
     PyObject_HEAD;
-    char _filler[48];           // gcc 4.8
+    // char _filler[48];           // gcc 4.8
     // char _filler[56];           // gcc 4.9
+    char _filler[8];
 } PyDictObject;
 
 // Pyston change: these are no longer static objects:

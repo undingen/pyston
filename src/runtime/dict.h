@@ -29,8 +29,8 @@ public:
     enum IteratorType { KeyIterator, ValueIterator, ItemIterator };
 
     BoxedDict* d;
-    BoxedDict::DictMap::iterator it;
-    const BoxedDict::DictMap::iterator itEnd;
+    BoxedDict::Iterator it;
+    const BoxedDict::Iterator itEnd;
     const IteratorType type;
 
     BoxedDictIterator(BoxedDict* d, IteratorType type);

@@ -755,7 +755,8 @@ FrameStackState getFrameStackState() {
                         Box* v = e.type->deserializeFromFrame(vals);
                         // printf("%s: (pp id %ld) %p\n", p.first.c_str(), e._debug_pp_id, v);
                         ASSERT(gc::isValidGCObject(v), "%p", v);
-                        d->d[boxString(p.first)] = v;
+                        d->insert(boxString(p.first), v);
+                        // d->d[boxString(p.first)] = v;
                     }
                 }
             }
@@ -854,7 +855,8 @@ Box* PythonFrameIterator::fastLocalsToBoxedLocals() {
                     Box* v = e.type->deserializeFromFrame(vals);
                     // printf("%s: (pp id %ld) %p\n", p.first.c_str(), e._debug_pp_id, v);
                     assert(gc::isValidGCObject(v));
-                    d->d[boxString(p.first)] = v;
+                    d->insert(boxString(p.first), v);
+                    // d->d[boxString(p.first)] = v;
                 }
             }
         }
@@ -908,9 +910,9 @@ Box* PythonFrameIterator::fastLocalsToBoxedLocals() {
         Box* val = closure->elts[derefInfo.offset];
         Box* boxedName = boxString(name.str());
         if (val != NULL) {
-            d->d[boxedName] = val;
+            d->set(boxedName, val);
         } else {
-            d->d.erase(boxedName);
+            d->erase(boxedName);
         }
     }
 
@@ -918,7 +920,7 @@ Box* PythonFrameIterator::fastLocalsToBoxedLocals() {
     // TODO Right now d just has all the python variables that are *initialized*
     // But we also need to loop through all the uninitialized variables that we have
     // access to and delete them from the locals dict
-    for (const auto& p : d->d) {
+    for (const auto& p : d->d()) {
         Box* varname = p.first;
         Box* value = p.second;
         setitem(frame_info->boxedLocals, varname, value);
