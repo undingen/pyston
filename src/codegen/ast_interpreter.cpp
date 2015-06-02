@@ -1317,18 +1317,19 @@ Box* astInterpretFrom(CompiledFunction* cf, AST_expr* after_expr, AST_stmt* encl
     assert(cf->clfunc->source->scoping->areGlobalsFromModule());
     interpreter.setGlobals(source_info->parent_module);
 
-
-    for (const auto& p : frame_state.locals->getDictStrRole()->d) {
-        auto name = p.first();
-        if (name == PASSED_GENERATOR_NAME) {
-            interpreter.setGenerator(p.second);
-        } else if (name == PASSED_CLOSURE_NAME) {
-            interpreter.setPassedClosure(p.second);
-        } else if (name == CREATED_CLOSURE_NAME) {
-            interpreter.setCreatedClosure(p.second);
-        } else {
-            InternedString interned = cf->clfunc->source->getInternedStrings().get(name);
-            interpreter.addSymbol(interned, p.second, false);
+    if (frame_state.locals->size()) {
+        for (const auto& p : frame_state.locals->getDictStrRole()->d) {
+            auto name = p.first();
+            if (name == PASSED_GENERATOR_NAME) {
+                interpreter.setGenerator(p.second);
+            } else if (name == PASSED_CLOSURE_NAME) {
+                interpreter.setPassedClosure(p.second);
+            } else if (name == CREATED_CLOSURE_NAME) {
+                interpreter.setCreatedClosure(p.second);
+            } else {
+                InternedString interned = cf->clfunc->source->getInternedStrings().get(name);
+                interpreter.addSymbol(interned, p.second, false);
+            }
         }
     }
 

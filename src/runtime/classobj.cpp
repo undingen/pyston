@@ -102,9 +102,10 @@ Box* classobjNew(Box* _cls, Box* _name, Box* _bases, Box** _args) {
     made->giveAttr("__module__", boxString(getCurrentModule()->name()));
     made->giveAttr("__doc__", None);
 
-    RELEASE_ASSERT(dict->getRole() == DictRoleBase::Role::StrRole, "");
-    for (auto& p : dict->getDictStrRole()->d) {
-        made->setattr(p.first(), p.second, NULL);
+    if (dict->size()) {
+        for (auto& p : dict->getDictStrRole()->d) {
+            made->setattr(p.first(), p.second, NULL);
+        }
     }
 
     // Note: make sure to do this after assigning the attrs, since it will overwrite any defined __name__

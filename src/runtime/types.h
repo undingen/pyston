@@ -628,7 +628,7 @@ class DictRoleBase {
 public:
     enum class Role : unsigned char { IntRole, StrRole, ObjectRole, EmptyRole };
 
-    typedef std::unordered_map<Box*, Box*, PyHasher, PyEq, StlCompatAllocator<std::pair<Box*, Box*>>> DictObjectMap;
+    typedef std::unordered_map<Box*, Box*, PyHasher, PyEq> DictObjectMap;
     typedef llvm::StringMap<Box*> DictStrMap;
     typedef llvm::DenseMap<long, Box*> DictIntMap;
 
@@ -760,8 +760,16 @@ public:
     }
 
     bool eq(DictRoleBase* dict) {
-        abort();
-        // return d == ((DictRoleInt*)dict)->d;
+        if (size() != dict->size())
+            return false;
+        DictRoleInt* dictInt = (DictRoleInt*)dict;
+
+        for (auto&& i : d) {
+            if (dictInt->d.lookup(i.first) != i.second)
+                return false;
+        }
+
+        return true;
     }
 
     void gcVisit(GCVisitor* v) {
@@ -871,8 +879,7 @@ public:
     DictRoleObject* convertToObjectRole();
 };
 
-class DictRoleObject
-    : public DictRoleShared<std::unordered_map<Box*, Box*, PyHasher, PyEq, StlCompatAllocator<std::pair<Box*, Box*>>>> {
+class DictRoleObject : public DictRoleShared<std::unordered_map<Box*, Box*, PyHasher, PyEq>> {
 public:
     std::pair<bool, Box*> getBoxed(Box* key) {
         auto it = d.find(key);
@@ -1069,6 +1076,13 @@ public:
         bool operator!=(MyIterator b) { return !(*this == b); }
     };
 
+    void checkIfEmpty() {
+        if (roleImpl && empty()) {
+            delete roleImpl;
+            roleImpl = 0;
+        }
+    }
+
 
     typedef MyIterator Iterator;
 
@@ -1132,7 +1146,9 @@ public:
     Box* erase(Box* key) {
         if (!roleImpl)
             return 0;
-        return roleImpl->erase(key);
+        auto rtn = roleImpl->erase(key);
+        checkIfEmpty();
+        return rtn;
     }
 
     Box* get(Box* key) {
@@ -1184,7 +1200,9 @@ public:
         return false;
     }
 
-    std::pair<Box*, Box*> popItem() { return roleImpl->popItem(); }
+    std::pair<Box*, Box*> popItem() { auto rtn = roleImpl->popItem();
+                                      checkIfEmpty();
+                                      return rtn; }
 
     DictRoleStr* getDictStrRole() {
         assert(getRole() == DictRoleBase::Role::StrRole);
@@ -1201,6 +1219,8 @@ public:
             return false;
         if (getRole() != dict->getRole())
             return false;
+        if (!roleImpl && !roleImpl)
+            return true;
         return roleImpl->eq(dict->roleImpl);
     }
 

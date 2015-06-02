@@ -285,30 +285,30 @@ extern "C" int PyDict_Next(PyObject* op, Py_ssize_t* ppos, PyObject** pkey, PyOb
     // Results in lots of indirection unfortunately.  If it becomes an issue we can try to switch
     // to storing the iterator directly in the stack slot.
 
-    abort(); /*
+    typedef BoxedDict::Iterator iterator;
 
-     typedef BoxedDict::Iterator iterator;
+    static_assert(sizeof(Py_ssize_t) == sizeof(iterator*), "");
+    iterator** it_ptr = reinterpret_cast<iterator**>(ppos);
 
-     static_assert(sizeof(Py_ssize_t) == sizeof(iterator*), "");
-     iterator** it_ptr = reinterpret_cast<iterator**>(ppos);
+    auto range = self->d();
 
-     // Clients are supposed to zero-initialize *ppos:
-     if (*it_ptr == NULL) {
-         *it_ptr = (iterator*)malloc(sizeof(iterator));
-         **it_ptr = self->begin();
-     }
+    // Clients are supposed to zero-initialize *ppos:
+    if (*it_ptr == NULL) {
+        *it_ptr = (iterator*)malloc(sizeof(iterator));
+        **it_ptr = range.begin();
+    }
 
-     iterator* it = *it_ptr;
+    iterator* it = *it_ptr;
 
-     if (*it == self->end()) {
-         free(it);
-         return 0;
-     }
+    if (*it == range.end()) {
+        free(it);
+        return 0;
+    }
 
-     *pkey = (*it)->first;
-     *pvalue = (*it)->second;
+    *pkey = it->getKey();
+    *pvalue = it->getValue();
 
-     ++(*it);*/
+    ++(*it);
 
     return 1;
 }
