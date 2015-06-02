@@ -51,7 +51,7 @@ Box* createAndRunModule(const std::string& name, const std::string& fn) {
         raiseRaw(e);
     }
 
-    Box* r = getSysModulesDict()->getOrNull(boxString(name));
+    Box* r = getSysModulesDict()->getOrNull(name);
     if (!r)
         raiseExcHelper(ImportError, "Loaded module %.200s not found in sys.modules", name.c_str());
     return r;
@@ -76,7 +76,7 @@ static Box* createAndRunModule(const std::string& name, const std::string& fn, c
         raiseRaw(e);
     }
 
-    Box* r = getSysModulesDict()->getOrNull(boxString(name));
+    Box* r = getSysModulesDict()->getOrNull(name);
     if (!r)
         raiseExcHelper(ImportError, "Loaded module %.200s not found in sys.modules", name.c_str());
     return r;

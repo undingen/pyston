@@ -737,7 +737,7 @@ extern "C" Box* createUserClass(const std::string* name, Box* _bases, Box* _attr
     BoxedTuple* bases = static_cast<BoxedTuple*>(_bases);
 
     Box* metaclass = NULL;
-    metaclass = attr_dict->getOrNull(boxStrConstant("__metaclass__"));
+    metaclass = attr_dict->getOrNull("__metaclass__");
 
     if (metaclass != NULL) {
     } else if (bases->size() > 0) {

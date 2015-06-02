@@ -171,7 +171,7 @@ void setupThread() {
     initthread();
     RELEASE_ASSERT(!PyErr_Occurred(), "");
 
-    Box* thread_module = getSysModulesDict()->getOrNull(boxString("thread"));
+    Box* thread_module = getSysModulesDict()->getOrNull("thread");
     assert(thread_module);
 
     thread_module->giveAttr("start_new_thread", new BoxedBuiltinFunctionOrMethod(

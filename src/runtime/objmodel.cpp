@@ -4808,8 +4808,8 @@ extern "C" Box* getGlobal(Box* globals, const std::string* name) {
             rewriter.reset(NULL);
             REWRITE_ABORTED("Rewriting not implemented for getGlobals with a dict globals yet");
 
-            if (d->has_key(boxString(*name))) {
-                return d->get(boxString(*name));
+            if (d->has_key(*name)) {
+                return d->get(*name);
             }
         }
 
@@ -4959,8 +4959,8 @@ extern "C" Box* boxedLocalsGet(Box* boxedLocals, const char* attr, Box* globals)
 
     if (boxedLocals->cls == dict_cls) {
         BoxedDict* d = static_cast<BoxedDict*>(boxedLocals);
-        if (d->has_key(boxString(attr))) {
-            return d->get(boxString(attr));
+        if (d->has_key(attr)) {
+            return d->get(attr);
         }
     } else {
         try {

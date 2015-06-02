@@ -373,10 +373,10 @@ extern "C" Box* tupleNew(Box* _cls, BoxedTuple* args, BoxedDict* kwargs) {
             elements = args->elts[0];
         } else {
             assert(kwargs_sz);
-            if (!kwargs->has_key(boxString("sequence")))
+            if (!kwargs->has_key("sequence"))
                 raiseExcHelper(TypeError, "'%s' is an invalid keyword argument for this function", "lala");
             // raiseExcHelper(TypeError, "'%s' is an invalid keyword argument for this function", kw->data());
-            elements = kwargs->get(boxString("sequence"));
+            elements = kwargs->get("sequence");
         }
 
         std::vector<Box*, StlCompatAllocator<Box*>> elts;

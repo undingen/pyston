@@ -783,8 +783,19 @@ public:
 class DictRoleStr : public DictRoleShared<llvm::StringMap<Box*>> {
 public:
     std::pair<bool, Box*> getBoxed(Box* key) {
+        if (key->cls == unicode_cls)
+            key = PyUnicode_AsUTF8String(key);
+
+
         assert(key->cls == str_cls);
         auto it = d.find(((BoxedString*)key)->s());
+        if (it == d.end())
+            return std::make_pair(false, nullptr);
+        return std::make_pair(true, it->second);
+    }
+
+    std::pair<bool, Box*> getBoxed(llvm::StringRef s) {
+        auto it = d.find(s);
         if (it == d.end())
             return std::make_pair(false, nullptr);
         return std::make_pair(true, it->second);
@@ -821,8 +832,14 @@ public:
     }
 
     bool has_key(Box* key) {
+        if (key->cls == unicode_cls)
+            key = PyUnicode_AsUTF8String(key);
         assert(key->cls == str_cls);
         return d.count(((BoxedString*)key)->s());
+    }
+
+    bool has_key(llvm::StringRef s) {
+        return d.count(s);
     }
 
     DictRoleBase* copy() {
@@ -833,16 +850,23 @@ public:
     }
 
     void set(Box* key, Box* value) {
+        if (key->cls == unicode_cls)
+            key = PyUnicode_AsUTF8String(key);
         assert(key->cls == str_cls);
         d[((BoxedString*)key)->s()] = value;
     }
 
     bool insert(Box* key, Box* value) {
+        if (key->cls == unicode_cls)
+            key = PyUnicode_AsUTF8String(key);
         assert(key->cls == str_cls);
         return d.insert(std::make_pair(((BoxedString*)key)->s(), value)).second;
     }
 
     Box* erase(Box* key) {
+        if (key->cls == unicode_cls)
+            key = PyUnicode_AsUTF8String(key);
+
         assert(key->cls == str_cls);
         auto it = d.find(((BoxedString*)key)->s());
         if (it == d.end())
@@ -1204,7 +1228,7 @@ public:
         }
     }
 
-
+#define MULTIDICT 1
     typedef MyIterator Iterator;
 
     // Iterator begin() { return MyIterator::getBegin(this); }
@@ -1229,17 +1253,21 @@ public:
 
     bool insert(Box* key, Box* value) {
         if (!roleImpl) {
+#if MULTIDICT
             if (key->cls == int_cls)
                 roleImpl = new DictRoleInt;
             else if (key->cls == str_cls)
                 roleImpl = new DictRoleStr;
-            else if (key->cls == unicode_cls)
-                roleImpl = new DictRoleUnicode;
+            //else if (key->cls == unicode_cls)
+            //    roleImpl = new DictRoleUnicode;
             else
                 roleImpl = new DictRoleObject;
+#else
+            roleImpl = new DictRoleObject;
+#endif
         } else {
             DictRoleBase::Role role = getRole();
-            if (role == DictRoleBase::Role::StrRole && key->cls != str_cls)
+            if (role == DictRoleBase::Role::StrRole && (key->cls != str_cls && key->cls != unicode_cls))
                 roleImpl = getDictObjectRole();
             else if (role == DictRoleBase::Role::UnicodeRole && key->cls != unicode_cls)
                 roleImpl = getDictObjectRole();
@@ -1251,17 +1279,21 @@ public:
 
     void set(Box* key, Box* value) {
         if (!roleImpl) {
+#if MULTIDICT
             if (key->cls == int_cls)
                 roleImpl = new DictRoleInt;
             else if (key->cls == str_cls)
                 roleImpl = new DictRoleStr;
-            else if (key->cls == unicode_cls)
-                roleImpl = new DictRoleUnicode;
+            //else if (key->cls == unicode_cls)
+            //    roleImpl = new DictRoleUnicode;
             else
                 roleImpl = new DictRoleObject;
+#else
+            roleImpl = new DictRoleObject;
+#endif
         } else {
             DictRoleBase::Role role = getRole();
-            if (role == DictRoleBase::Role::StrRole && key->cls != str_cls)
+            if (role == DictRoleBase::Role::StrRole && (key->cls != str_cls && key->cls != unicode_cls))
                 roleImpl = getDictObjectRole();
             else if (role == DictRoleBase::Role::UnicodeRole && key->cls != unicode_cls)
                 roleImpl = getDictObjectRole();
@@ -1285,7 +1317,7 @@ public:
             return 0;
 
         DictRoleBase::Role role = getRole();
-        if (role == DictRoleBase::Role::StrRole && key->cls != str_cls)
+        if (role == DictRoleBase::Role::StrRole && (key->cls != str_cls && key->cls != unicode_cls))
             roleImpl = getDictObjectRole();
         else if (role == DictRoleBase::Role::IntRole && key->cls != int_cls)
             roleImpl = getDictObjectRole();
@@ -1294,6 +1326,22 @@ public:
 
         return roleImpl->getBoxed(key).second;
     }
+
+    Box* get(llvm::StringRef s) {
+        if (!roleImpl)
+            return 0;
+
+        DictRoleBase::Role role = getRole();
+        if (role == DictRoleBase::Role::StrRole)
+            return ((DictRoleStr*)roleImpl)->getBoxed(s).second;
+        else if (role == DictRoleBase::Role::IntRole)
+            roleImpl = getDictObjectRole();
+        else if (role == DictRoleBase::Role::UnicodeRole)
+            roleImpl = getDictObjectRole();
+
+        return roleImpl->getBoxed(boxStringRef(s)).second;
+    }
+
 
     void clear() {
         if (roleImpl) {
@@ -1328,7 +1376,7 @@ public:
     bool has_key(Box* key) {
         if (roleImpl) {
             DictRoleBase::Role role = getRole();
-            if (role == DictRoleBase::Role::StrRole && key->cls != str_cls)
+            if (role == DictRoleBase::Role::StrRole && (key->cls != str_cls && key->cls != unicode_cls))
                 roleImpl = getDictObjectRole();
             else if (role == DictRoleBase::Role::IntRole && key->cls != int_cls)
                 roleImpl = getDictObjectRole();
@@ -1336,6 +1384,21 @@ public:
                 roleImpl = getDictObjectRole();
 
             return roleImpl->has_key(key);
+        }
+        return false;
+    }
+
+    bool has_key(llvm::StringRef s) {
+        if (roleImpl) {
+            DictRoleBase::Role role = getRole();
+            if (role == DictRoleBase::Role::StrRole)
+                return ((DictRoleStr*)roleImpl)->has_key(s);
+            else if (role == DictRoleBase::Role::IntRole)
+                roleImpl = getDictObjectRole();
+            else if (role == DictRoleBase::Role::UnicodeRole)
+                roleImpl = getDictObjectRole();
+
+            return roleImpl->has_key(boxStringRef(s));
         }
         return false;
     }
@@ -1385,6 +1448,10 @@ public:
 
     Box* getOrNull(Box* k) {
         return get(k);
+    }
+
+    Box* getOrNull(llvm::StringRef s) {
+        return get(s);
     }
 };
 static_assert(sizeof(BoxedDict) == sizeof(PyDictObject), "");
