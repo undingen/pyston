@@ -539,10 +539,11 @@ Box* eval(Box* boxedCode, Box* globals, Box* locals) {
         globals = getGlobals();
 
     BoxedModule* module = getCurrentModule();
-    if (globals && globals->cls == attrwrapper_cls && unwrapAttrWrapper(globals) == module)
+    if (globals && globals->cls == dict_cls && ((BoxedDict*)globals)->isAttrWrapper()
+        && unwrapAttrWrapper(globals) == module)
         globals = module;
 
-    if (globals->cls == attrwrapper_cls)
+    if (globals->cls == dict_cls && ((BoxedDict*)globals)->isAttrWrapper())
         globals = unwrapAttrWrapper(globals);
 
     assert(globals && (globals->cls == module_cls || globals->cls == dict_cls));
@@ -597,10 +598,11 @@ Box* exec(Box* boxedCode, Box* globals, Box* locals) {
         globals = getGlobals();
 
     BoxedModule* module = getCurrentModule();
-    if (globals && globals->cls == attrwrapper_cls && unwrapAttrWrapper(globals) == module)
+    if (globals && globals->cls == dict_cls && ((BoxedDict*)globals)->isAttrWrapper()
+        && unwrapAttrWrapper(globals) == module)
         globals = module;
 
-    if (globals->cls == attrwrapper_cls)
+    if (globals->cls == dict_cls && ((BoxedDict*)globals)->isAttrWrapper())
         globals = unwrapAttrWrapper(globals);
 
     assert(globals && (globals->cls == module_cls || globals->cls == dict_cls));

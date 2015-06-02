@@ -4841,7 +4841,7 @@ extern "C" Box* getGlobal(Box* globals, const std::string* name) {
 }
 
 Box* getFromGlobals(Box* globals, llvm::StringRef name) {
-    if (globals->cls == attrwrapper_cls) {
+    if (globals->cls == dict_cls && ((BoxedDict*)globals)->isAttrWrapper()) {
         globals = unwrapAttrWrapper(globals);
         RELEASE_ASSERT(globals->cls == module_cls, "%s", globals->cls->tp_name);
     }
@@ -4861,10 +4861,11 @@ Box* getFromGlobals(Box* globals, llvm::StringRef name) {
 }
 
 void setGlobal(Box* globals, llvm::StringRef name, Box* value) {
+    /*
     if (globals->cls == attrwrapper_cls) {
         globals = unwrapAttrWrapper(globals);
         RELEASE_ASSERT(globals->cls == module_cls, "%s", globals->cls->tp_name);
-    }
+    }*/
 
     if (globals->cls == module_cls) {
         setattr(static_cast<BoxedModule*>(globals), name.data(), value);

@@ -2924,7 +2924,7 @@ void commonClassSetup(BoxedClass* cls) {
             inherit_slots(cls, static_cast<BoxedClass*>(b));
     }
 
-    assert(cls->tp_dict && cls->tp_dict->cls == attrwrapper_cls);
+    assert(cls->tp_dict && cls->tp_dict->cls == dict_cls);
 }
 
 extern "C" void PyType_Modified(PyTypeObject* type) noexcept {

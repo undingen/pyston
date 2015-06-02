@@ -224,7 +224,7 @@ extern "C" PyObject* PyDict_New() noexcept {
 // The performance should hopefully be comparable to the CPython fast case, since we can use
 // runtimeICs.
 extern "C" int PyDict_SetItem(PyObject* mp, PyObject* _key, PyObject* _item) noexcept {
-    ASSERT(isSubclass(mp->cls, dict_cls) || mp->cls == attrwrapper_cls, "%s", getTypeName(mp));
+    ASSERT(isSubclass(mp->cls, dict_cls), "%s", getTypeName(mp));
 
     assert(mp);
     Box* b = static_cast<Box*>(mp);
@@ -251,7 +251,7 @@ extern "C" int PyDict_SetItemString(PyObject* mp, const char* key, PyObject* ite
 }
 
 extern "C" PyObject* PyDict_GetItem(PyObject* dict, PyObject* key) noexcept {
-    ASSERT(isSubclass(dict->cls, dict_cls) || dict->cls == attrwrapper_cls, "%s", getTypeName(dict));
+    ASSERT(isSubclass(dict->cls, dict_cls), "%s", getTypeName(dict));
     if (isSubclass(dict->cls, dict_cls)) {
         BoxedDict* d = static_cast<BoxedDict*>(dict);
         return d->getOrNull(key);
@@ -345,7 +345,7 @@ Box* dictDelitem(BoxedDict* self, Box* k) {
 }
 
 extern "C" int PyDict_DelItem(PyObject* op, PyObject* key) noexcept {
-    ASSERT(isSubclass(op->cls, dict_cls) || op->cls == attrwrapper_cls, "%s", getTypeName(op));
+    ASSERT(isSubclass(op->cls, dict_cls), "%s", getTypeName(op));
     try {
         delitem(op, key);
         return 0;
@@ -426,15 +426,7 @@ Box* dictContains(BoxedDict* self, Box* k) {
 
 /* Return 1 if `key` is in dict `op`, 0 if not, and -1 on error. */
 extern "C" int PyDict_Contains(PyObject* op, PyObject* key) noexcept {
-
     try {
-        if (op->cls == attrwrapper_cls) {
-            Box* rtn = PyObject_CallMethod(op, "__contains__", "O", key);
-            if (!rtn)
-                return -1;
-            return rtn == True;
-        }
-
         BoxedDict* mp = (BoxedDict*)op;
         assert(isSubclass(mp->cls, dict_cls));
         return mp->getOrNull(key) ? 1 : 0;
@@ -468,26 +460,7 @@ Box* dictEq(BoxedDict* self, Box* _rhs) {
 
     BoxedDict* rhs = static_cast<BoxedDict*>(_rhs);
 
-    if (self->size() != rhs->size())
-        return False;
-
-    if (self->getRole() != rhs->getRole())
-        return False;
-
-    /*
-    for (const auto& p : self->d) {
-        auto it = rhs->d.find(p.first);
-        if (it == rhs->d.end())
-            return False;
-        if (!nonzero(compare(p.second, it->second, AST_TYPE::Eq)))
-            return False;
-    }
-    */
-
     return boxBool(self->eq(rhs));
-
-
-    return True;
 }
 
 Box* dictNe(BoxedDict* self, Box* _rhs) {

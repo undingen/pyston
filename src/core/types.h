@@ -503,6 +503,7 @@ public:
     Box* nextIC();
 
     friend class AttrWrapper;
+    friend class DictRoleAttrWrapper;
 };
 static_assert(offsetof(Box, cls) == offsetof(struct _object, ob_type), "");
 

@@ -520,7 +520,7 @@ static void typeSubSetDict(Box* obj, Box* val, void* context) {
     }
 
     if (obj->cls->instancesHaveHCAttrs()) {
-        RELEASE_ASSERT(val->cls == dict_cls || val->cls == attrwrapper_cls, "");
+        RELEASE_ASSERT(val->cls == dict_cls, "");
 
         auto new_attr_list
             = (HCAttrs::AttrList*)gc_alloc(sizeof(HCAttrs::AttrList) + sizeof(Box*), gc::GCKind::PRECISE);
@@ -1738,7 +1738,7 @@ Box* Box::getAttrWrapper() {
 
     int offset = hcls->getAttrwrapperOffset();
     if (offset == -1) {
-        Box* aw = new AttrWrapper(this);
+        Box* aw = BoxedDict::fromBox(this);
         if (hcls->type == HiddenClass::NORMAL) {
             auto new_hcls = hcls->getAttrwrapperChild();
             appendNewHCAttr(aw, NULL);
@@ -1755,16 +1755,8 @@ Box* Box::getAttrWrapper() {
 }
 
 Box* unwrapAttrWrapper(Box* b) {
-    assert(b->cls == attrwrapper_cls);
-    return static_cast<AttrWrapper*>(b)->getUnderlying();
-}
-
-Box* attrwrapperKeys(Box* b) {
-    return AttrWrapper::keys(b);
-}
-
-void attrwrapperDel(Box* b, const std::string& attr) {
-    AttrWrapper::delitem(b, boxString(attr));
+    assert(b->cls == dict_cls);
+    return ((BoxedDict*)b)->getUnderlying();
 }
 
 Box* objectNewNoArgs(BoxedClass* cls) {
@@ -1937,11 +1929,12 @@ static PyObject* reduce_2(PyObject* obj) noexcept {
             Py_INCREF(state);
         } else {
             // Pyston change: convert attrwrapper to a real dict
+            /*
             if (state->cls == attrwrapper_cls) {
                 PyObject* real_dict = PyDict_New();
                 PyDict_Update(real_dict, state);
                 state = real_dict;
-            }
+            }*/
         }
         names = slotnames(cls);
         if (names == NULL)

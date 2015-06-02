@@ -626,24 +626,26 @@ struct PyLt {
 
 class DictRoleBase {
 public:
-    enum class Role : unsigned char { IntRole, StrRole, ObjectRole, EmptyRole, UnicodeRole };
+    enum class Role : unsigned char { IntRole, StrRole, ObjectRole, EmptyRole, UnicodeRole, AttrWrapperRole };
 
     typedef std::unordered_map<Box*, Box*, PyHasher, PyEq> DictObjectMap;
     typedef llvm::StringMap<Box*> DictStrMap;
+    typedef llvm::StringMap<int> DictAttrWrapperMap;
     typedef llvm::DenseMap<long, Box*> DictIntMap;
 
     union Iterator {
         Iterator() {}
         DictObjectMap::iterator object_it;
-        DictStrMap::iterator str_it;
+        DictStrMap::const_iterator str_it;
+        DictAttrWrapperMap::const_iterator attrwrapper_it;
         DictIntMap::iterator int_it;
     };
 
     virtual ~DictRoleBase() {}
 
-    virtual Role getRole() = 0;
+    virtual Role getRole() const = 0;
 
-    virtual void clear() = 0;
+    virtual void clear(Box*) = 0;
 
     virtual size_t size() = 0;
 
@@ -676,7 +678,7 @@ public:
 template <typename T> class DictRoleShared : public DictRoleBase {
 public:
     T d;
-    void clear() { d.clear(); }
+    void clear(Box*) { d.clear(); }
 
     size_t size() { return d.size(); }
 };
@@ -691,7 +693,7 @@ public:
         return std::make_pair(true, it->second);
     }
 
-    DictRoleBase::Role getRole() { return Role::IntRole; }
+    DictRoleBase::Role getRole() const { return Role::IntRole; }
 
     BoxedList* getItems() {
         BoxedList* rtn = new BoxedList();
@@ -801,7 +803,7 @@ public:
         return std::make_pair(true, it->second);
     }
 
-    DictRoleBase::Role getRole() { return Role::StrRole; }
+    DictRoleBase::Role getRole() const { return Role::StrRole; }
 
     BoxedList* getItems() {
         BoxedList* rtn = new BoxedList();
@@ -838,9 +840,7 @@ public:
         return d.count(((BoxedString*)key)->s());
     }
 
-    bool has_key(llvm::StringRef s) {
-        return d.count(s);
-    }
+    bool has_key(llvm::StringRef s) { return d.count(s); }
 
     DictRoleBase* copy() {
         DictRoleStr* roleStr = new DictRoleStr;
@@ -912,7 +912,7 @@ public:
         return std::make_pair(true, it->second);
     }
 
-    DictRoleBase::Role getRole() { return Role::ObjectRole; }
+    DictRoleBase::Role getRole() const { return Role::ObjectRole; }
 
     BoxedList* getItems() {
         BoxedList* rtn = new BoxedList();
@@ -985,15 +985,167 @@ public:
     DictRoleObject* convertToObjectRole() { return this; }
 };
 
+Box* coerceUnicodeToStr(Box* unicode);
+class DictRoleAttrWrapper : public DictRoleBase {
+public:
+    Box* b;
+
+    const llvm::StringMap<int>& attrs() {
+        HCAttrs* attrs = b->getHCAttrsPtr();
+        RELEASE_ASSERT(attrs->hcls->type == HiddenClass::NORMAL || attrs->hcls->type == HiddenClass::SINGLETON, "");
+        return attrs->hcls->getStrAttrOffsets();
+    }
+
+    DictRoleAttrWrapper(Box* b) : b(b) {
+        assert(b->cls->instancesHaveHCAttrs());
+
+        // We currently don't support creating an attrwrapper around a dict-backed object,
+        // so try asserting that here.
+        // This check doesn't cover all cases, since an attrwrapper could be created around
+        // a normal object which then becomes dict-backed, so we RELEASE_ASSERT later
+        // that that doesn't happen.
+        assert(b->getHCAttrsPtr()->hcls->type == HiddenClass::NORMAL
+               || b->getHCAttrsPtr()->hcls->type == HiddenClass::SINGLETON);
+    }
+
+    void clear(Box* self) {
+
+        HCAttrs* attrs = b->getHCAttrsPtr();
+        RELEASE_ASSERT(attrs->hcls->type == HiddenClass::NORMAL || attrs->hcls->type == HiddenClass::SINGLETON, "");
+
+        // Clear the attrs array:
+        new ((void*)attrs) HCAttrs(root_hcls);
+        // Add the existing attrwrapper object (ie self) back as the attrwrapper:
+        b->appendNewHCAttr(self, NULL);
+        attrs->hcls = attrs->hcls->getAttrwrapperChild();
+    }
+
+    size_t size() {
+        HCAttrs* attrs = b->getHCAttrsPtr();
+        RELEASE_ASSERT(attrs->hcls->type == HiddenClass::NORMAL || attrs->hcls->type == HiddenClass::SINGLETON, "");
+        return attrs->hcls->getStrAttrOffsets().size();
+    }
+
+    Box* getUnderlying() { return b; }
+
+
+
+    std::pair<bool, Box*> getBoxed(Box* _key) {
+        _key = coerceUnicodeToStr(_key);
+
+        RELEASE_ASSERT(_key->cls == str_cls, "%s", _key->cls->tp_name);
+        BoxedString* key = static_cast<BoxedString*>(_key);
+        Box* r = b->getattr(key->s());
+        if (!r)
+            return std::make_pair(false, nullptr);
+        return std::make_pair(true, r);
+    }
+
+    DictRoleBase::Role getRole() const { return Role::AttrWrapperRole; }
+
+    BoxedList* getItems() {
+        BoxedList* rtn = new BoxedList();
+        HCAttrs* attrs = b->getHCAttrsPtr();
+        RELEASE_ASSERT(attrs->hcls->type == HiddenClass::NORMAL || attrs->hcls->type == HiddenClass::SINGLETON, "");
+        for (const auto& p : attrs->hcls->getStrAttrOffsets()) {
+            BoxedTuple* t = BoxedTuple::create({ boxString(p.first()), attrs->attr_list->attrs[p.second] });
+            listAppendInternal(rtn, t);
+        }
+        return rtn;
+    }
+
+    BoxedList* getValues() {
+        BoxedList* rtn = new BoxedList();
+        HCAttrs* attrs = b->getHCAttrsPtr();
+        RELEASE_ASSERT(attrs->hcls->type == HiddenClass::NORMAL || attrs->hcls->type == HiddenClass::SINGLETON, "");
+        for (const auto& p : attrs->hcls->getStrAttrOffsets()) {
+            listAppendInternal(rtn, attrs->attr_list->attrs[p.second]);
+        }
+        return rtn;
+    }
+
+    BoxedList* getKeys() {
+        BoxedList* rtn = new BoxedList();
+        HCAttrs* attrs = b->getHCAttrsPtr();
+        RELEASE_ASSERT(attrs->hcls->type == HiddenClass::NORMAL || attrs->hcls->type == HiddenClass::SINGLETON, "");
+        for (const auto& p : attrs->hcls->getStrAttrOffsets()) {
+            listAppendInternal(rtn, boxString(p.first()));
+        }
+        return rtn;
+    }
+
+    bool has_key(Box* _key) {
+        _key = coerceUnicodeToStr(_key);
+
+        RELEASE_ASSERT(_key->cls == str_cls, "");
+        BoxedString* key = static_cast<BoxedString*>(_key);
+        return b->hasattr(key->s());
+    }
+
+    DictRoleBase* copy() {
+        DictRoleStr* roleStr = new DictRoleStr;
+        HCAttrs* attrs = b->getHCAttrsPtr();
+        RELEASE_ASSERT(attrs->hcls->type == HiddenClass::NORMAL || attrs->hcls->type == HiddenClass::SINGLETON, "");
+        for (const auto& p : attrs->hcls->getStrAttrOffsets()) {
+            roleStr->set(boxString(p.first()), attrs->attr_list->attrs[p.second]);
+        }
+        return roleStr;
+    }
+
+    void set(Box* _key, Box* value) {
+        _key = coerceUnicodeToStr(_key);
+
+        RELEASE_ASSERT(_key->cls == str_cls, "");
+        BoxedString* key = static_cast<BoxedString*>(_key);
+        b->setattr(key->s(), value, NULL);
+    }
+
+    bool insert(Box* key, Box* value) {
+        if (has_key(key))
+            return false;
+        set(key, value);
+        return true;
+    }
+
+    Box* erase(Box* _key) {
+        _key = coerceUnicodeToStr(_key);
+
+        RELEASE_ASSERT(_key->cls == str_cls, "%s", _key->cls->tp_name);
+        BoxedString* key = static_cast<BoxedString*>(_key);
+        Box* rtn = b->getattr(key->s());
+        if (rtn)
+            b->delattr(key->s(), NULL);
+        else
+            abort();
+        return rtn;
+    }
+
+    std::pair<Box*, Box*> popItem() { abort(); }
+
+    bool eq(DictRoleBase* dict) { return b == ((DictRoleAttrWrapper*)dict)->b; }
+
+    void gcVisit(GCVisitor* v) { v->visit(b); }
+
+    DictRoleObject* convertToObjectRole() {
+        DictRoleObject* roleStr = new DictRoleObject;
+        HCAttrs* attrs = b->getHCAttrsPtr();
+        RELEASE_ASSERT(attrs->hcls->type == HiddenClass::NORMAL || attrs->hcls->type == HiddenClass::SINGLETON, "");
+        for (const auto& p : attrs->hcls->getStrAttrOffsets()) {
+            roleStr->set(boxString(p.first()), attrs->attr_list->attrs[p.second]);
+        }
+        return roleStr;
+    }
+};
+
+
 class DictRoleUnicode : public DictRoleShared<llvm::StringMap<Box*>> {
 public:
-
     static llvm::StringRef fromBox(Box* box) {
         return llvm::StringRef(PyUnicode_AS_DATA(box), PyUnicode_GET_DATA_SIZE(box));
     }
 
     static Box* toUni(llvm::StringRef str) {
-        return PyUnicode_FromUnicode((Py_UNICODE*)str.data(), str.size()/sizeof(Py_UNICODE));
+        return PyUnicode_FromUnicode((Py_UNICODE*)str.data(), str.size() / sizeof(Py_UNICODE));
     }
 
     std::pair<bool, Box*> getBoxed(Box* key) {
@@ -1004,7 +1156,7 @@ public:
         return std::make_pair(true, it->second);
     }
 
-    DictRoleBase::Role getRole() { return Role::UnicodeRole; }
+    DictRoleBase::Role getRole() const { return Role::UnicodeRole; }
 
     BoxedList* getItems() {
         BoxedList* rtn = new BoxedList();
@@ -1122,16 +1274,18 @@ public:
     class MyIterator {
         DictRoleBase::Iterator it;
         DictRoleBase::Role role;
+        BoxedDict* dict;
 
     public:
-        MyIterator() : role(DictRoleBase::Role::EmptyRole) { memset(&it, 0, sizeof(it)); }
+        MyIterator() : role(DictRoleBase::Role::EmptyRole), dict(0) { memset(&it, 0, sizeof(it)); }
 
-        MyIterator(const MyIterator& other) : role(other.role) { memcpy(&it, &other.it, sizeof(it)); }
+        MyIterator(const MyIterator& other) : role(other.role), dict(other.dict) { memcpy(&it, &other.it, sizeof(it)); }
 
 
         static MyIterator getBegin(BoxedDict* dict) {
             MyIterator it;
             it.role = dict->getRole();
+            it.dict = dict;
             if (it.role == DictRoleBase::Role::IntRole)
                 it.it.int_it = ((DictRoleInt*)dict->roleImpl)->d.begin();
             else if (it.role == DictRoleBase::Role::StrRole)
@@ -1140,6 +1294,8 @@ public:
                 it.it.str_it = ((DictRoleUnicode*)dict->roleImpl)->d.begin();
             else if (it.role == DictRoleBase::Role::ObjectRole)
                 it.it.object_it = ((DictRoleObject*)dict->roleImpl)->d.begin();
+            else if (it.role == DictRoleBase::Role::AttrWrapperRole)
+                it.it.attrwrapper_it = ((DictRoleAttrWrapper*)dict->roleImpl)->attrs().begin();
             else if (it.role == DictRoleBase::Role::EmptyRole) {
             } else
                 abort();
@@ -1149,6 +1305,7 @@ public:
         static MyIterator getEnd(BoxedDict* dict) {
             MyIterator it;
             it.role = dict->getRole();
+            it.dict = dict;
             if (it.role == DictRoleBase::Role::IntRole)
                 it.it.int_it = ((DictRoleInt*)dict->roleImpl)->d.end();
             else if (it.role == DictRoleBase::Role::StrRole)
@@ -1157,6 +1314,8 @@ public:
                 it.it.str_it = ((DictRoleUnicode*)dict->roleImpl)->d.end();
             else if (it.role == DictRoleBase::Role::ObjectRole)
                 it.it.object_it = ((DictRoleObject*)dict->roleImpl)->d.end();
+            else if (it.role == DictRoleBase::Role::AttrWrapperRole)
+                it.it.attrwrapper_it = ((DictRoleAttrWrapper*)dict->roleImpl)->attrs().end();
             else if (it.role == DictRoleBase::Role::EmptyRole) {
 
             } else
@@ -1171,6 +1330,8 @@ public:
                 ++it.str_it;
             else if (role == DictRoleBase::Role::ObjectRole)
                 ++it.object_it;
+            else if (role == DictRoleBase::Role::AttrWrapperRole)
+                ++it.attrwrapper_it;
             else
                 abort();
             return *this;
@@ -1185,6 +1346,8 @@ public:
                 return DictRoleUnicode::toUni(it.str_it->first());
             else if (role == DictRoleBase::Role::ObjectRole)
                 return it.object_it->first;
+            else if (role == DictRoleBase::Role::AttrWrapperRole)
+                return boxStringRef(it.attrwrapper_it->first());
 
             abort();
         }
@@ -1196,6 +1359,8 @@ public:
                 return it.str_it->second;
             else if (role == DictRoleBase::Role::ObjectRole)
                 return it.object_it->second;
+            else if (role == DictRoleBase::Role::AttrWrapperRole)
+                return dict->get(it.attrwrapper_it->first());
 
             abort();
         }
@@ -1214,6 +1379,8 @@ public:
                 return it.object_it == b.it.object_it;
             else if (role == DictRoleBase::Role::EmptyRole)
                 return true;
+            else if (role == DictRoleBase::Role::AttrWrapperRole)
+                return it.attrwrapper_it == b.it.attrwrapper_it;
             else
                 abort();
         }
@@ -1222,7 +1389,7 @@ public:
     };
 
     void checkIfEmpty() {
-        if (roleImpl && empty()) {
+        if (roleImpl && empty() && getRole() != DictRoleBase::Role::AttrWrapperRole) {
             delete roleImpl;
             roleImpl = 0;
         }
@@ -1237,7 +1404,7 @@ public:
 
     DictRoleBase* roleImpl;
 
-    DictRoleBase::Role getRole() {
+    DictRoleBase::Role getRole() const {
         if (!roleImpl)
             return DictRoleBase::Role::EmptyRole;
         return roleImpl->getRole();
@@ -1258,7 +1425,7 @@ public:
                 roleImpl = new DictRoleInt;
             else if (key->cls == str_cls)
                 roleImpl = new DictRoleStr;
-            //else if (key->cls == unicode_cls)
+            // else if (key->cls == unicode_cls)
             //    roleImpl = new DictRoleUnicode;
             else
                 roleImpl = new DictRoleObject;
@@ -1284,7 +1451,7 @@ public:
                 roleImpl = new DictRoleInt;
             else if (key->cls == str_cls)
                 roleImpl = new DictRoleStr;
-            //else if (key->cls == unicode_cls)
+            // else if (key->cls == unicode_cls)
             //    roleImpl = new DictRoleUnicode;
             else
                 roleImpl = new DictRoleObject;
@@ -1345,9 +1512,8 @@ public:
 
     void clear() {
         if (roleImpl) {
-            roleImpl->clear();
-            delete roleImpl;
-            roleImpl = 0;
+            roleImpl->clear(this);
+            checkIfEmpty();
         }
     }
 
@@ -1403,9 +1569,11 @@ public:
         return false;
     }
 
-    std::pair<Box*, Box*> popItem() { auto rtn = roleImpl->popItem();
-                                      checkIfEmpty();
-                                      return rtn; }
+    std::pair<Box*, Box*> popItem() {
+        auto rtn = roleImpl->popItem();
+        checkIfEmpty();
+        return rtn;
+    }
 
     DictRoleStr* getDictStrRole() {
         assert(getRole() == DictRoleBase::Role::StrRole);
@@ -1420,11 +1588,22 @@ public:
     bool eq(BoxedDict* dict) {
         if (size() != dict->size())
             return false;
-        if (getRole() != dict->getRole())
-            return false;
+
         if (!roleImpl && !roleImpl)
             return true;
-        return roleImpl->eq(dict->roleImpl);
+
+        bool sameRole = getRole() == dict->getRole();
+        if (!sameRole && isSingleType() && dict->isSingleType())
+            return false;
+
+        if (sameRole)
+            return roleImpl->eq(dict->roleImpl);
+
+        for (auto&& e : llvm::iterator_range<Iterator>(Iterator::getBegin(dict), Iterator::getEnd(dict))) {
+            if (!has_key(e.first) || get(e.first) != e.second)
+                return false;
+        }
+        return true;
     }
 
     DictRoleObject* getDictObjectRole() {
@@ -1435,6 +1614,13 @@ public:
         return new DictRoleObject;
     }
 
+    bool isSingleType() {
+        auto role = getRole();
+        return role == DictRoleBase::Role::StrRole || role == DictRoleBase::Role::IntRole
+               || role == DictRoleBase::Role::UnicodeRole || role == DictRoleBase::Role::EmptyRole;
+    }
+
+
     DictRoleBase::DictObjectMap getObjectDict() { return getDictObjectRole()->d; }
 
     llvm::iterator_range<MyIterator> d() {
@@ -1444,15 +1630,25 @@ public:
 
     BoxedDict() __attribute__((visibility("default"))) : roleImpl(0) {}
 
+    static BoxedDict* fromBox(Box* b) {
+        BoxedDict* d = new BoxedDict;
+        d->roleImpl = new DictRoleAttrWrapper(b);
+        return d;
+    }
+
+    bool isAttrWrapper() const { return getRole() == DictRoleBase::Role::AttrWrapperRole; }
+
+    Box* getUnderlying() {
+        assert(isAttrWrapper());
+        return ((DictRoleAttrWrapper*)roleImpl)->getUnderlying();
+    }
+
+
     DEFAULT_CLASS_SIMPLE(dict_cls);
 
-    Box* getOrNull(Box* k) {
-        return get(k);
-    }
+    Box* getOrNull(Box* k) { return get(k); }
 
-    Box* getOrNull(llvm::StringRef s) {
-        return get(s);
-    }
+    Box* getOrNull(llvm::StringRef s) { return get(s); }
 };
 static_assert(sizeof(BoxedDict) == sizeof(PyDictObject), "");
 
@@ -1667,8 +1863,6 @@ Box* objectNewNoArgs(BoxedClass* cls);
 Box* objectSetattr(Box* obj, Box* attr, Box* value);
 
 Box* unwrapAttrWrapper(Box* b);
-Box* attrwrapperKeys(Box* b);
-void attrwrapperDel(Box* b, const std::string& attr);
 
 Box* boxAst(AST* ast);
 AST* unboxAst(Box* b);
