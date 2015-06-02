@@ -626,7 +626,7 @@ struct PyLt {
 
 class DictRoleBase {
 public:
-    enum class Role : unsigned char { IntRole, StrRole, ObjectRole, EmptyRole };
+    enum class Role : unsigned char { IntRole, StrRole, ObjectRole, EmptyRole, UnicodeRole };
 
     typedef std::unordered_map<Box*, Box*, PyHasher, PyEq> DictObjectMap;
     typedef llvm::StringMap<Box*> DictStrMap;
@@ -961,6 +961,113 @@ public:
     DictRoleObject* convertToObjectRole() { return this; }
 };
 
+class DictRoleUnicode : public DictRoleShared<llvm::StringMap<Box*>> {
+public:
+
+    static llvm::StringRef fromBox(Box* box) {
+        return llvm::StringRef(PyUnicode_AS_DATA(box), PyUnicode_GET_DATA_SIZE(box));
+    }
+
+    static Box* toUni(llvm::StringRef str) {
+        return PyUnicode_FromUnicode((Py_UNICODE*)str.data(), str.size()/sizeof(Py_UNICODE));
+    }
+
+    std::pair<bool, Box*> getBoxed(Box* key) {
+        assert(key->cls == unicode_cls);
+        auto it = d.find(fromBox(key));
+        if (it == d.end())
+            return std::make_pair(false, nullptr);
+        return std::make_pair(true, it->second);
+    }
+
+    DictRoleBase::Role getRole() { return Role::UnicodeRole; }
+
+    BoxedList* getItems() {
+        BoxedList* rtn = new BoxedList();
+
+        rtn->ensure(d.size());
+        for (const auto& p : d) {
+            BoxedTuple* t = BoxedTuple::create({ toUni(p.first()), p.second });
+            listAppendInternal(rtn, t);
+        }
+
+        return rtn;
+    }
+
+    BoxedList* getValues() {
+        BoxedList* rtn = new BoxedList();
+        rtn->ensure(d.size());
+        for (const auto& p : d)
+            listAppendInternal(rtn, p.second);
+        return rtn;
+    }
+
+    BoxedList* getKeys() {
+        BoxedList* rtn = new BoxedList();
+        rtn->ensure(d.size());
+        for (const auto& p : d)
+            listAppendInternal(rtn, toUni(p.first()));
+        return rtn;
+    }
+
+    bool has_key(Box* key) {
+        assert(key->cls == unicode_cls);
+        return d.count(fromBox(key));
+    }
+
+    DictRoleBase* copy() {
+        DictRoleUnicode* roleStr = new DictRoleUnicode;
+        for (auto&& i : d)
+            roleStr->d[i.first()] = i.second;
+        return roleStr;
+    }
+
+    void set(Box* key, Box* value) {
+        assert(key->cls == unicode_cls);
+        d[fromBox(key)] = value;
+    }
+
+    bool insert(Box* key, Box* value) {
+        assert(key->cls == unicode_cls);
+        return d.insert(std::make_pair(fromBox(key), value)).second;
+    }
+
+    Box* erase(Box* key) {
+        assert(key->cls == unicode_cls);
+        auto it = d.find(fromBox(key));
+        if (it == d.end())
+            return nullptr;
+        Box* rtn = it->second;
+        d.erase(it);
+        return rtn;
+    }
+
+    std::pair<Box*, Box*> popItem() {
+        auto it = d.begin();
+        auto rtn = std::make_pair(boxString(it->first()), it->second);
+        d.erase(it);
+        return rtn;
+    }
+
+    bool eq(DictRoleBase* dict) {
+        if (size() != dict->size())
+            return false;
+        DictRoleUnicode* dictStr = (DictRoleUnicode*)dict;
+
+        for (auto&& i : d) {
+            if (dictStr->d.lookup(i.first()) != i.second)
+                return false;
+        }
+
+        return true;
+    }
+
+    void gcVisit(GCVisitor* v) {
+        for (auto&& i : d)
+            v->visit(i.second);
+    }
+    DictRoleObject* convertToObjectRole();
+};
 
 inline DictRoleObject* DictRoleInt::convertToObjectRole() {
     DictRoleObject* objectDict = new DictRoleObject;
@@ -974,6 +1081,14 @@ inline DictRoleObject* DictRoleStr::convertToObjectRole() {
     DictRoleObject* objectDict = new DictRoleObject;
     for (auto&& i : d) {
         objectDict->d[boxStringRef(i.first())] = i.second;
+    }
+    return objectDict;
+}
+
+inline DictRoleObject* DictRoleUnicode::convertToObjectRole() {
+    DictRoleObject* objectDict = new DictRoleObject;
+    for (auto&& i : d) {
+        objectDict->d[toUni(i.first())] = i.second;
     }
     return objectDict;
 }
@@ -997,6 +1112,8 @@ public:
                 it.it.int_it = ((DictRoleInt*)dict->roleImpl)->d.begin();
             else if (it.role == DictRoleBase::Role::StrRole)
                 it.it.str_it = ((DictRoleStr*)dict->roleImpl)->d.begin();
+            else if (it.role == DictRoleBase::Role::UnicodeRole)
+                it.it.str_it = ((DictRoleUnicode*)dict->roleImpl)->d.begin();
             else if (it.role == DictRoleBase::Role::ObjectRole)
                 it.it.object_it = ((DictRoleObject*)dict->roleImpl)->d.begin();
             else if (it.role == DictRoleBase::Role::EmptyRole) {
@@ -1012,6 +1129,8 @@ public:
                 it.it.int_it = ((DictRoleInt*)dict->roleImpl)->d.end();
             else if (it.role == DictRoleBase::Role::StrRole)
                 it.it.str_it = ((DictRoleStr*)dict->roleImpl)->d.end();
+            else if (it.role == DictRoleBase::Role::UnicodeRole)
+                it.it.str_it = ((DictRoleUnicode*)dict->roleImpl)->d.end();
             else if (it.role == DictRoleBase::Role::ObjectRole)
                 it.it.object_it = ((DictRoleObject*)dict->roleImpl)->d.end();
             else if (it.role == DictRoleBase::Role::EmptyRole) {
@@ -1024,7 +1143,7 @@ public:
         MyIterator& operator++() {
             if (role == DictRoleBase::Role::IntRole)
                 ++it.int_it;
-            else if (role == DictRoleBase::Role::StrRole)
+            else if (role == DictRoleBase::Role::StrRole || role == DictRoleBase::Role::UnicodeRole)
                 ++it.str_it;
             else if (role == DictRoleBase::Role::ObjectRole)
                 ++it.object_it;
@@ -1038,6 +1157,8 @@ public:
                 return boxInt(it.int_it->first);
             else if (role == DictRoleBase::Role::StrRole)
                 return boxStringRef(it.str_it->first());
+            else if (role == DictRoleBase::Role::UnicodeRole)
+                return DictRoleUnicode::toUni(it.str_it->first());
             else if (role == DictRoleBase::Role::ObjectRole)
                 return it.object_it->first;
 
@@ -1047,7 +1168,7 @@ public:
         Box* getValue() const {
             if (role == DictRoleBase::Role::IntRole)
                 return it.int_it->second;
-            else if (role == DictRoleBase::Role::StrRole)
+            else if (role == DictRoleBase::Role::StrRole || role == DictRoleBase::Role::UnicodeRole)
                 return it.str_it->second;
             else if (role == DictRoleBase::Role::ObjectRole)
                 return it.object_it->second;
@@ -1063,7 +1184,7 @@ public:
                 return false;
             if (role == DictRoleBase::Role::IntRole)
                 return it.int_it == b.it.int_it;
-            else if (role == DictRoleBase::Role::StrRole)
+            else if (role == DictRoleBase::Role::StrRole || role == DictRoleBase::Role::UnicodeRole)
                 return it.str_it == b.it.str_it;
             else if (role == DictRoleBase::Role::ObjectRole)
                 return it.object_it == b.it.object_it;
@@ -1112,11 +1233,15 @@ public:
                 roleImpl = new DictRoleInt;
             else if (key->cls == str_cls)
                 roleImpl = new DictRoleStr;
+            else if (key->cls == unicode_cls)
+                roleImpl = new DictRoleUnicode;
             else
                 roleImpl = new DictRoleObject;
         } else {
             DictRoleBase::Role role = getRole();
             if (role == DictRoleBase::Role::StrRole && key->cls != str_cls)
+                roleImpl = getDictObjectRole();
+            else if (role == DictRoleBase::Role::UnicodeRole && key->cls != unicode_cls)
                 roleImpl = getDictObjectRole();
             else if (role == DictRoleBase::Role::IntRole && key->cls != int_cls)
                 roleImpl = getDictObjectRole();
@@ -1130,11 +1255,15 @@ public:
                 roleImpl = new DictRoleInt;
             else if (key->cls == str_cls)
                 roleImpl = new DictRoleStr;
+            else if (key->cls == unicode_cls)
+                roleImpl = new DictRoleUnicode;
             else
                 roleImpl = new DictRoleObject;
         } else {
             DictRoleBase::Role role = getRole();
             if (role == DictRoleBase::Role::StrRole && key->cls != str_cls)
+                roleImpl = getDictObjectRole();
+            else if (role == DictRoleBase::Role::UnicodeRole && key->cls != unicode_cls)
                 roleImpl = getDictObjectRole();
             else if (role == DictRoleBase::Role::IntRole && key->cls != int_cls)
                 roleImpl = getDictObjectRole();
@@ -1154,6 +1283,15 @@ public:
     Box* get(Box* key) {
         if (!roleImpl)
             return 0;
+
+        DictRoleBase::Role role = getRole();
+        if (role == DictRoleBase::Role::StrRole && key->cls != str_cls)
+            roleImpl = getDictObjectRole();
+        else if (role == DictRoleBase::Role::IntRole && key->cls != int_cls)
+            roleImpl = getDictObjectRole();
+        else if (role == DictRoleBase::Role::UnicodeRole && key->cls != unicode_cls)
+            roleImpl = getDictObjectRole();
+
         return roleImpl->getBoxed(key).second;
     }
 
@@ -1194,6 +1332,8 @@ public:
                 roleImpl = getDictObjectRole();
             else if (role == DictRoleBase::Role::IntRole && key->cls != int_cls)
                 roleImpl = getDictObjectRole();
+            else if (role == DictRoleBase::Role::UnicodeRole && key->cls != unicode_cls)
+                roleImpl = getDictObjectRole();
 
             return roleImpl->has_key(key);
         }
@@ -1225,6 +1365,8 @@ public:
     }
 
     DictRoleObject* getDictObjectRole() {
+        static StatCounter s("dict_num_getDictObjectRole");
+        s.log(1);
         if (roleImpl)
             return roleImpl->convertToObjectRole();
         return new DictRoleObject;
@@ -1242,9 +1384,7 @@ public:
     DEFAULT_CLASS_SIMPLE(dict_cls);
 
     Box* getOrNull(Box* k) {
-        if (!roleImpl)
-            return NULL;
-        return roleImpl->getBoxed(k).second;
+        return get(k);
     }
 };
 static_assert(sizeof(BoxedDict) == sizeof(PyDictObject), "");
