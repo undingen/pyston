@@ -69,6 +69,8 @@ union Value {
     }
 };
 
+llvm::DenseMap<CFGBlock*, class Tracer*> tracers;
+
 class ASTInterpreter {
 public:
     typedef ContiguousMap<InternedString, Box*> SymMap;
@@ -221,16 +223,19 @@ public:
 
     int stack;
 
+    const int code_size = 4096;
+
     //assembler::Assembler* a;
 
     Tracer(CFGBlock* start, ASTInterpreter* interp) : start(start), failed(false), finished(false), interp(interp), entry(0), stack(0) {     
-        buf = (unsigned char*)malloc(2048);
+        buf = (unsigned char*)malloc(code_size+16);
         buf = (unsigned char*)((((uint64_t)buf) + 15) & ~(15ul)) ;
         assert(((uint64_t)buf%16) == 0);
-        a = std::unique_ptr<assembler::Assembler>(new assembler::Assembler(buf, 2048));
-        //a->trap();
+        a = std::unique_ptr<assembler::Assembler>(new assembler::Assembler(buf, code_size));
+        a->trap();
         a->push(assembler::RBP);
         a->mov(assembler::RSP, assembler::RBP);
+        a->push(assembler::RDI); // interp
         entry = a->bytesWritten();
     }
 
@@ -310,20 +315,47 @@ public:
         stack++;
     }
 
+    void setAttr(const char* s) {
+        a->pop(assembler::RDI);
+        a->mov(assembler::Immediate((uint64_t)s), assembler::RSI);
+        a->pop(assembler::RDX);
+        a->emitCall((void*)pyston::setattr, assembler::Register(11));
+        stack -= 2;
+    }
 
+    void getAttr(const char* s) {
+        a->pop(assembler::RDI);
+        a->mov(assembler::Immediate((uint64_t)s), assembler::RSI);
+        a->emitCall((void*)pyston::getattr, assembler::Register(11));
+        a->push(assembler::RAX);
+    }
+
+    assembler::Indirect getInterp() {
+        return assembler::Indirect(assembler::RBP, -8);
+    }
 
     void getLocal(InternedString s) {
-        emitCall((void*)ASTInterpreter::tracerHelperGetLocal, (uint64_t)interp, toArg(s));
+        a->mov(getInterp(), assembler::RDI);
+        a->mov(assembler::Immediate((uint64_t)toArg(s)), assembler::RSI);
+        a->emitCall((void*)ASTInterpreter::tracerHelperGetLocal, assembler::Register(11));
         a->push(assembler::RAX);
         stack++;
     }
 
     void storeLocal(InternedString s) {
-        a->mov(assembler::Immediate(interp), assembler::RDI);
+        a->mov(getInterp(), assembler::RDI);
         a->mov(assembler::Immediate(toArg(s)), assembler::RSI);
         a->pop(assembler::RDX);
         a->emitCall((void*)ASTInterpreter::tracerHelperSetLocal, assembler::Register(11));
         stack--;
+    }
+
+    void setItem() {
+        a->pop(assembler::RSI);
+        a->pop(assembler::RDI);
+        a->pop(assembler::RDX);
+        a->emitCall((void*)pyston::setitem, assembler::Register(11));
+        stack -= 3;
     }
 
     static long nonzeroHelper(Box* b) {
@@ -343,23 +375,35 @@ public:
     void addGuard(bool t, CFGBlock* cont) {
         a->pop(assembler::RSI);
         stack--;
-
         a->test(assembler::RSI, assembler::RSI);
         if (t)
-            a->jne(assembler::JumpDestination::fromStart(a->bytesWritten()+2+1+10+1+3));
+            a->jne(assembler::JumpDestination::fromStart(a->bytesWritten()+/*2+1+10+1+3+2+1*/18+1));
         else
-            a->je(assembler::JumpDestination::fromStart(a->bytesWritten()+2+1+10+1+3));
+            a->je(assembler::JumpDestination::fromStart(a->bytesWritten()+/*2+1+10+1+3+2+1*/18+1));
+        a->pop(assembler::RAX); // dummy pop for scratch
         a->mov(assembler::Immediate(cont), assembler::RAX);
         assert(stack == 0);
         a->mov(assembler::RBP, assembler::RSP);
         a->pop(assembler::RBP);
+        a->trap();
         a->retq();
 
     }
 
+    void emitReturn() {
+        assert(stack == 0);
+        a->pop(assembler::RAX); // dummy pop for scratch
+        a->mov(assembler::Immediate(0ul), assembler::RAX);
+        a->mov(assembler::RBP, assembler::RSP);
+        a->pop(assembler::RBP);
+        a->retq();
+    }
+
     void compile() {
         assert(stack == 0);
+        RELEASE_ASSERT(!a->hasFailed(), "asm failed");
         a->jmp(assembler::JumpDestination::fromStart(entry));
+        printf("wrote %d\n", (int)a->bytesWritten());
         a->fillWithNops();
         llvm::sys::Memory::InvalidateInstructionCache(buf, a->bytesWritten());
         finished = true;
@@ -410,7 +454,7 @@ public:
     }
 
     void uncacheExcInfo() {
-        a->mov(assembler::Immediate((void*)interp), assembler::RDI);
+        a->mov(getInterp(), assembler::RDI); // interp pointer
         emitCall((void*)uncacheExcInfoHelper);
         a->push(assembler::RAX);
         stack++;
@@ -420,6 +464,10 @@ public:
         emitCall((void*)pyston::boxInt, n);
         a->push(assembler::RAX);
         stack++;
+    }
+
+    void numFloat(double n) {
+        push((uint64_t)boxFloat(n));
     }
 
     static Box* callattrHelper(Box* b, const std::string* attr, CallattrFlags flags, ArgPassSpec args, Box* arg1, Box* arg2) {
@@ -446,13 +494,18 @@ public:
         a->push(assembler::RAX);
     }
 
-    static Box* runtimeCallHelper(Box* obj, ArgPassSpec argspec, Box* arg1, Box* arg2) {
-        return pyston::runtimeCall(obj, argspec, arg1, arg2, NULL, NULL, NULL);
+    static Box* runtimeCallHelper(Box* obj, ArgPassSpec argspec, Box* arg1, Box* arg2, Box* arg3) {
+        return pyston::runtimeCall(obj, argspec, arg1, arg2, arg3, NULL, NULL);
     }
 
     void runtimeCall(ArgPassSpec args) {
         //a->trap();
-        RELEASE_ASSERT(args.num_args <= 2, "");
+        RELEASE_ASSERT(args.num_args <= 3, "");
+        if (args.num_args > 2) {
+            a->pop(assembler::R8);
+            stack--;
+        }
+
         if (args.num_args > 1) {
             a->pop(assembler::RCX);
             stack--;
@@ -494,7 +547,9 @@ public:
     }
 
     void setCurrentInst(AST_stmt* node) {
-        emitCall((void*)setCurrentInstHelper, (uint64_t)interp, (uint64_t)node);
+        a->mov(getInterp(), assembler::RDI);
+        a->mov(assembler::Immediate((uint64_t)node), assembler::RSI);
+        a->emitCall((void*)setCurrentInstHelper, assembler::Register(11));
     }
 };
 
@@ -658,8 +713,8 @@ Value ASTInterpreter::execute(ASTInterpreter& interpreter, CFGBlock* start_block
 
         if (interpreter.tracer && interpreter.tracer->start == interpreter.current_block) {
             if (interpreter.tracer->finished) {
-                typedef CFGBlock* (*Foo)(long);
-                interpreter.next_block = ((Foo)(interpreter.tracer->buf))(42);
+                typedef CFGBlock* (*Foo)(ASTInterpreter*);
+                interpreter.next_block = ((Foo)(interpreter.tracer->buf))(&interpreter);
                 continue;
             }
         }
@@ -730,8 +785,10 @@ void ASTInterpreter::doStore(AST_expr* node, Value value) {
         doStore(name->id, value);
     } else if (node->type == AST_TYPE::Attribute) {
         AST_Attribute* attr = (AST_Attribute*)node;
-        abortTracing();
-        setattr(visit_expr(attr->value).o, attr->attr.c_str(), value.o);
+        Value o = visit_expr(attr->value);
+        if (istracing)
+            tracer->setAttr(attr->attr.c_str());
+        setattr(o.o, attr->attr.c_str(), value.o);
     } else if (node->type == AST_TYPE::Tuple) {
         abortTracing();
         AST_Tuple* tuple = (AST_Tuple*)node;
@@ -747,11 +804,13 @@ void ASTInterpreter::doStore(AST_expr* node, Value value) {
         for (AST_expr* e : list->elts)
             doStore(e, array[i++]);
     } else if (node->type == AST_TYPE::Subscript) {
-        abortTracing();
         AST_Subscript* subscript = (AST_Subscript*)node;
 
         Value target = visit_expr(subscript->value);
         Value slice = visit_expr(subscript->slice);
+
+        if (istracing)
+            tracer->setItem();
 
         setitem(target.o, slice.o, value.o);
     } else {
@@ -816,8 +875,16 @@ Value ASTInterpreter::visit_jump(AST_Jump* node) {
 
     ++edgecount;
     if (1 && backedge && edgecount == 5 && !tracer) {
-        tracer = new Tracer(node->target, this);
-        istracing = true;
+        Tracer*& t = tracers[node->target];
+        if (!t) {
+            tracer = new Tracer(node->target, this);
+            t = tracer;
+            istracing = true;
+        } else {
+            printf("reusing\n");
+            tracer = t;
+            t->interp = this;
+        }
     }
 
     if (0 && ENABLE_OSR && backedge && edgecount == OSR_THRESHOLD_INTERPRETER) {
@@ -1142,8 +1209,14 @@ Value ASTInterpreter::visit_stmt(AST_stmt* node) {
 }
 
 Value ASTInterpreter::visit_return(AST_Return* node) {
-    abortTracing();
     Value s(node->value ? visit_expr(node->value) : None);
+
+    if (node->value)
+        abortTracing();
+
+    if (istracing)
+        tracer->emitReturn();
+
     next_block = 0;
     return s;
 }
@@ -1509,13 +1582,16 @@ Value ASTInterpreter::visit_call(AST_Call* node) {
 
     ArgPassSpec argspec(node->args.size(), node->keywords.size(), node->starargs, node->kwargs);
 
-    if (argspec != ArgPassSpec(0) && argspec != ArgPassSpec(1) && argspec != ArgPassSpec(2))
-        abortTracing();
 
-    if (args.size() > 2)
-        abortTracing();
 
     if (is_callattr) {
+        if (argspec != ArgPassSpec(0) && argspec != ArgPassSpec(1) && argspec != ArgPassSpec(2))
+            abortTracing();
+
+        if (args.size() > 2)
+            abortTracing();
+
+
         CallattrFlags flags{.cls_only = callattr_clsonly, .null_on_nonexistent = false };
 
         if (istracing) {
@@ -1526,6 +1602,12 @@ Value ASTInterpreter::visit_call(AST_Call* node) {
                         args.size() > 0 ? args[0] : 0, args.size() > 1 ? args[1] : 0, args.size() > 2 ? args[2] : 0,
                         args.size() > 3 ? &args[3] : 0, &keywords);
     } else {
+        if (argspec != ArgPassSpec(0) && argspec != ArgPassSpec(1) && argspec != ArgPassSpec(2) && argspec != ArgPassSpec(3))
+            abortTracing();
+
+        if (args.size() > 3)
+            abortTracing();
+
         if (istracing) {
             tracer->runtimeCall(argspec);
         }
@@ -1549,7 +1631,9 @@ Value ASTInterpreter::visit_num(AST_Num* node) {
         }
         return boxInt(node->n_int);
     } else if (node->num_type == AST_Num::FLOAT) {
-        abortTracing();
+        if (istracing) {
+            tracer->numFloat(node->n_float);
+        }
         return boxFloat(node->n_float);
 }    else if (node->num_type == AST_Num::LONG) {
         abortTracing();
@@ -1691,8 +1775,10 @@ Value ASTInterpreter::visit_tuple(AST_Tuple* node) {
 }
 
 Value ASTInterpreter::visit_attribute(AST_Attribute* node) {
-    abortTracing();
-    return getattr(visit_expr(node->value).o, node->attr.c_str());
+    Value val = visit_expr(node->value);
+    if (istracing)
+        tracer->getAttr(node->attr.c_str());
+    return getattr(val.o, node->attr.c_str());
 }
 }
 
