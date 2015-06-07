@@ -20,6 +20,7 @@
 
 #include "analysis/function_analysis.h"
 #include "analysis/scoping_analysis.h"
+#include "asm_writing/assembler.h"
 #include "codegen/codegen.h"
 #include "codegen/compvars.h"
 #include "codegen/irgen.h"
@@ -150,6 +151,9 @@ private:
     // This is either a module or a dict
     Box* globals;
 
+
+    llvm::DenseMap<CFGBlock*, int> freq;
+
 public:
     AST_stmt* getCurrentStatement() {
         assert(current_inst);
@@ -176,7 +180,324 @@ public:
     void setGlobals(Box* globals);
 
     void gcVisit(GCVisitor* visitor);
+
+    friend class Tracer;
+
+    class Tracer* tracer = 0;
+    bool istracing = 0;
+
+    void abortTracing() {
+        if (istracing) {
+            istracing = false;
+            tracer = 0;
+            printf("FAILED\n");
+        }
+    }
+
+    static Box* tracerHelperGetLocal(ASTInterpreter* i, InternedString id) {
+        SymMap::iterator it = i->sym_table.find(id);
+        if (it != i->sym_table.end())
+            return i->sym_table.getMapped(it->second);
+
+        assertNameDefined(0, id.c_str(), UnboundLocalError, true);
+        return 0;
+    }
+
+    static void tracerHelperSetLocal(ASTInterpreter* i, InternedString id, Box* v) {
+        i->sym_table[id] = v;
+    }
+
 };
+
+class Tracer {
+public:
+    CFGBlock* start;
+    bool failed, finished;
+    ASTInterpreter* interp;
+
+    unsigned char* buf = 0;
+    unsigned long entry;
+    std::unique_ptr<assembler::Assembler> a;
+
+    int stack;
+
+    //assembler::Assembler* a;
+
+    Tracer(CFGBlock* start, ASTInterpreter* interp) : start(start), failed(false), finished(false), interp(interp), entry(0), stack(0) {     
+        buf = (unsigned char*)malloc(2048);
+        buf = (unsigned char*)((((uint64_t)buf) + 15) & ~(15ul)) ;
+        assert(((uint64_t)buf%16) == 0);
+        a = std::unique_ptr<assembler::Assembler>(new assembler::Assembler(buf, 2048));
+        //a->trap();
+        a->push(assembler::RBP);
+        a->mov(assembler::RSP, assembler::RBP);
+        entry = a->bytesWritten();
+    }
+
+    void emitCall(void* addr) {
+        a->emitCall(addr, assembler::Register(11));
+    }
+
+    void emitCall(void* addr, uint64_t arg1) {
+        a->mov(assembler::Immediate(arg1), assembler::RDI);
+        a->emitCall(addr, assembler::Register(11));
+    }
+
+    void emitCall(void* addr, uint64_t arg1, uint64_t arg2) {
+        a->mov(assembler::Immediate(arg1), assembler::RDI);
+        a->mov(assembler::Immediate(arg2), assembler::RSI);
+        a->emitCall(addr, assembler::Register(11));
+    }
+
+    void emitCall(void* addr, uint64_t arg1, uint64_t arg2, uint64_t arg3) {
+        a->mov(assembler::Immediate(arg1), assembler::RDI);
+        a->mov(assembler::Immediate(arg2), assembler::RSI);
+        a->mov(assembler::Immediate(arg3), assembler::RDX);
+        a->emitCall(addr, assembler::Register(11));
+    }
+
+    void emitCall(void* addr, uint64_t arg1, uint64_t arg2, uint64_t arg3, uint64_t arg4) {
+        a->mov(assembler::Immediate(arg1), assembler::RDI);
+        a->mov(assembler::Immediate(arg2), assembler::RSI);
+        a->mov(assembler::Immediate(arg3), assembler::RDX);
+        a->mov(assembler::Immediate(arg4), assembler::RCX);
+        a->emitCall(addr, assembler::Register(11));
+    }
+
+    void emitCall(void* addr, uint64_t arg1, uint64_t arg2, uint64_t arg3, uint64_t arg4, uint64_t arg5) {
+        a->mov(assembler::Immediate(arg1), assembler::RDI);
+        a->mov(assembler::Immediate(arg2), assembler::RSI);
+        a->mov(assembler::Immediate(arg3), assembler::RDX);
+        a->mov(assembler::Immediate(arg4), assembler::RCX);
+        a->mov(assembler::Immediate(arg5), assembler::R8);
+        a->emitCall(addr, assembler::Register(11));
+    }
+
+    void emitCall(void* addr, uint64_t arg1, uint64_t arg2, uint64_t arg3, uint64_t arg4, uint64_t arg5, uint64_t arg6) {
+        a->mov(assembler::Immediate(arg1), assembler::RDI);
+        a->mov(assembler::Immediate(arg2), assembler::RSI);
+        a->mov(assembler::Immediate(arg3), assembler::RDX);
+        a->mov(assembler::Immediate(arg4), assembler::RCX);
+        a->mov(assembler::Immediate(arg5), assembler::R8);
+        a->mov(assembler::Immediate(arg6), assembler::R9);
+        a->emitCall(addr, assembler::Register(11));
+    }
+
+
+    uint64_t toArg(InternedString s) {
+        union U {
+            U() {}
+            InternedString is;
+            uint64_t s;
+        };
+        U u;
+        u.is = s;
+        return u.s;
+    }
+
+    void setGlobal(Box* global, llvm::StringRef s) {
+        a->mov(assembler::Immediate((uint64_t)global), assembler::RDI);
+        a->mov(assembler::Immediate((uint64_t)s.data()), assembler::RSI);
+        a->mov(assembler::Immediate((uint64_t)s.size()), assembler::RDX);
+        a->pop(assembler::RCX);
+        a->emitCall((void*)pyston::setGlobal, assembler::Register(11));
+        stack--;
+    }
+
+    void getGlobal(Box* global, const std::string* s) {
+        emitCall((void*)pyston::getGlobal, (uint64_t)global, (uint64_t)s);
+        a->push(assembler::RAX);
+        stack++;
+    }
+
+
+
+    void getLocal(InternedString s) {
+        emitCall((void*)ASTInterpreter::tracerHelperGetLocal, (uint64_t)interp, toArg(s));
+        a->push(assembler::RAX);
+        stack++;
+    }
+
+    void storeLocal(InternedString s) {
+        a->mov(assembler::Immediate(interp), assembler::RDI);
+        a->mov(assembler::Immediate(toArg(s)), assembler::RSI);
+        a->pop(assembler::RDX);
+        a->emitCall((void*)ASTInterpreter::tracerHelperSetLocal, assembler::Register(11));
+        stack--;
+    }
+
+    static long nonzeroHelper(Box* b) {
+        bool result = pyston::nonzero(b);
+        if (result == true)
+            return 1;
+        return 0;
+    }
+
+    void nonzero() {
+        a->pop(assembler::RDI);
+        emitCall((void*)nonzeroHelper);
+        a->push(assembler::RAX);
+    }
+
+
+    void addGuard(bool t, CFGBlock* cont) {
+        a->pop(assembler::RSI);
+        stack--;
+
+        a->test(assembler::RSI, assembler::RSI);
+        if (t)
+            a->jne(assembler::JumpDestination::fromStart(a->bytesWritten()+2+1+10+1+3));
+        else
+            a->je(assembler::JumpDestination::fromStart(a->bytesWritten()+2+1+10+1+3));
+        a->mov(assembler::Immediate(cont), assembler::RAX);
+        assert(stack == 0);
+        a->mov(assembler::RBP, assembler::RSP);
+        a->pop(assembler::RBP);
+        a->retq();
+
+    }
+
+    void compile() {
+        assert(stack == 0);
+        a->jmp(assembler::JumpDestination::fromStart(entry));
+        a->fillWithNops();
+        llvm::sys::Memory::InvalidateInstructionCache(buf, a->bytesWritten());
+        finished = true;
+    }
+
+    void compare(int op) {
+        a->pop(assembler::RSI);
+        a->pop(assembler::RDI);
+        a->mov(assembler::Immediate(op), assembler::RDX);
+        a->emitCall((void*)pyston::compare, assembler::Register(11));
+        a->push(assembler::RAX);
+        stack--;
+    }
+
+    void augbinop(int op) {
+        a->pop(assembler::RSI);
+        a->pop(assembler::RDI);
+        a->mov(assembler::Immediate(op), assembler::RDX);
+        a->emitCall((void*)pyston::augbinop, assembler::Register(11));
+        a->push(assembler::RAX);
+        stack--;
+    }
+
+    void binop(int op) {
+        a->pop(assembler::RSI);
+        a->pop(assembler::RDI);
+        a->mov(assembler::Immediate(op), assembler::RDX);
+        a->emitCall((void*)pyston::binop, assembler::Register(11));
+        a->push(assembler::RAX);
+        stack--;
+    }
+
+    void yield(Box* generator, bool hasvalue) {
+        a->mov(assembler::Immediate((void*)generator), assembler::RDI);
+        if (hasvalue) {
+            a->pop(assembler::RSI);
+            stack--;
+        } else
+            a->mov(assembler::Immediate((void*)None), assembler::RSI);
+        a->emitCall((void*)pyston::yield, assembler::Register(11));
+        a->push(assembler::RAX);
+        stack++;
+    }
+
+    static Box* uncacheExcInfoHelper(ASTInterpreter* inter) {
+        inter->getFrameInfo()->exc = ExcInfo(NULL, NULL, NULL);
+        return None;
+    }
+
+    void uncacheExcInfo() {
+        a->mov(assembler::Immediate((void*)interp), assembler::RDI);
+        emitCall((void*)uncacheExcInfoHelper);
+        a->push(assembler::RAX);
+        stack++;
+    }
+
+    void numInt(long n) {
+        emitCall((void*)pyston::boxInt, n);
+        a->push(assembler::RAX);
+        stack++;
+    }
+
+    static Box* callattrHelper(Box* b, const std::string* attr, CallattrFlags flags, ArgPassSpec args, Box* arg1, Box* arg2) {
+        return pyston::callattr(b, attr, flags, args, arg1, arg2, NULL, NULL, NULL);
+    }
+
+    void callattr(const std::string* attr, CallattrFlags flags, ArgPassSpec args) {
+        //a->trap();
+        RELEASE_ASSERT(args.num_args <= 2, "");
+        if (args.num_args > 1) {
+            a->pop(assembler::R9);
+            stack--;
+        }
+        if (args.num_args > 0) {
+            a->pop(assembler::R8);
+            stack--;
+        }
+
+        a->pop(assembler::RDI);
+        a->mov(assembler::Immediate((void*)attr), assembler::RSI);
+        a->mov(assembler::Immediate(flags.asInt()), assembler::RDX);
+        a->mov(assembler::Immediate(args.asInt()), assembler::RCX);
+        a->emitCall((void*)callattrHelper, assembler::Register(11));
+        a->push(assembler::RAX);
+    }
+
+    static Box* runtimeCallHelper(Box* obj, ArgPassSpec argspec, Box* arg1, Box* arg2) {
+        return pyston::runtimeCall(obj, argspec, arg1, arg2, NULL, NULL, NULL);
+    }
+
+    void runtimeCall(ArgPassSpec args) {
+        //a->trap();
+        RELEASE_ASSERT(args.num_args <= 2, "");
+        if (args.num_args > 1) {
+            a->pop(assembler::RCX);
+            stack--;
+        }
+        if (args.num_args > 0) {
+            a->pop(assembler::RDX);
+            stack--;
+        }
+
+        a->pop(assembler::RDI);
+        a->mov(assembler::Immediate(args.asInt()), assembler::RSI);
+        a->emitCall((void*)runtimeCallHelper, assembler::Register(11));
+        a->push(assembler::RAX);
+    }
+
+    void push(uint64_t val) {
+        a->mov(assembler::Immediate(val), assembler::RSI);
+        a->push(assembler::RSI);
+        stack++;
+    }
+
+    void pop() {
+        a->pop(assembler::RAX);
+        stack--;
+    }
+
+    static Box* hasnextHelper(Box* b) {
+        return boxBool(pyston::hasnext(b));
+    }
+
+    void hasnext() {
+        a->pop(assembler::RDI);
+        a->emitCall((void*)hasnextHelper, assembler::Register(11));
+        a->push(assembler::RAX);
+    }
+
+    static void setCurrentInstHelper(ASTInterpreter* interp, AST_stmt* node) {
+        interp->current_inst = node;
+    }
+
+    void setCurrentInst(AST_stmt* node) {
+        emitCall((void*)setCurrentInstHelper, (uint64_t)interp, (uint64_t)node);
+    }
+};
+
 
 void ASTInterpreter::addSymbol(InternedString name, Box* value, bool allow_duplicates) {
     if (!allow_duplicates)
@@ -335,6 +656,14 @@ Value ASTInterpreter::execute(ASTInterpreter& interpreter, CFGBlock* start_block
         interpreter.current_block = interpreter.next_block;
         interpreter.next_block = 0;
 
+        if (interpreter.tracer && interpreter.tracer->start == interpreter.current_block) {
+            if (interpreter.tracer->finished) {
+                typedef CFGBlock* (*Foo)(long);
+                interpreter.next_block = ((Foo)(interpreter.tracer->buf))(42);
+                continue;
+            }
+        }
+
         for (AST_stmt* s : interpreter.current_block->body) {
             interpreter.current_inst = s;
             v = interpreter.visit_stmt(s);
@@ -349,10 +678,19 @@ Value ASTInterpreter::doBinOp(Box* left, Box* right, int op, BinExpType exp_type
     }
     switch (exp_type) {
         case BinExpType::AugBinOp:
+            if (istracing) {
+                tracer->augbinop(op);
+            }
             return augbinop(left, right, op);
         case BinExpType::BinOp:
+            if (istracing) {
+                tracer->binop(op);
+            }
             return binop(left, right, op);
         case BinExpType::Compare:
+            if (istracing) {
+                tracer->compare(op);
+            }
             return compare(left, right, op);
         default:
             RELEASE_ASSERT(0, "not implemented");
@@ -363,14 +701,24 @@ Value ASTInterpreter::doBinOp(Box* left, Box* right, int op, BinExpType exp_type
 void ASTInterpreter::doStore(InternedString name, Value value) {
     ScopeInfo::VarScopeType vst = scope_info->getScopeTypeOfName(name);
     if (vst == ScopeInfo::VarScopeType::GLOBAL) {
+        if (istracing) {
+            tracer->setGlobal(globals, name);
+        }
         setGlobal(globals, name, value.o);
     } else if (vst == ScopeInfo::VarScopeType::NAME) {
+        abortTracing();
         assert(frame_info.boxedLocals != NULL);
         // TODO should probably pre-box the names when it's a scope that usesNameLookup
         setitem(frame_info.boxedLocals, boxString(name.str()), value.o);
     } else {
+        if (tracer && istracing) {
+            tracer->storeLocal(name);
+        }
+
+
         sym_table[name] = value.o;
         if (vst == ScopeInfo::VarScopeType::CLOSURE) {
+            abortTracing();
             created_closure->elts[scope_info->getClosureOffset(name)] = value.o;
         }
     }
@@ -382,20 +730,24 @@ void ASTInterpreter::doStore(AST_expr* node, Value value) {
         doStore(name->id, value);
     } else if (node->type == AST_TYPE::Attribute) {
         AST_Attribute* attr = (AST_Attribute*)node;
+        abortTracing();
         setattr(visit_expr(attr->value).o, attr->attr.c_str(), value.o);
     } else if (node->type == AST_TYPE::Tuple) {
+        abortTracing();
         AST_Tuple* tuple = (AST_Tuple*)node;
         Box** array = unpackIntoArray(value.o, tuple->elts.size());
         unsigned i = 0;
         for (AST_expr* e : tuple->elts)
             doStore(e, array[i++]);
     } else if (node->type == AST_TYPE::List) {
+        abortTracing();
         AST_List* list = (AST_List*)node;
         Box** array = unpackIntoArray(value.o, list->elts.size());
         unsigned i = 0;
         for (AST_expr* e : list->elts)
             doStore(e, array[i++]);
     } else if (node->type == AST_TYPE::Subscript) {
+        abortTracing();
         AST_Subscript* subscript = (AST_Subscript*)node;
 
         Value target = visit_expr(subscript->value);
@@ -408,6 +760,7 @@ void ASTInterpreter::doStore(AST_expr* node, Value value) {
 }
 
 Value ASTInterpreter::visit_unaryop(AST_UnaryOp* node) {
+    abortTracing();
     Value operand = visit_expr(node->operand);
     if (node->op_type == AST_TYPE::Not)
         return boxBool(!nonzero(operand.o));
@@ -422,6 +775,7 @@ Value ASTInterpreter::visit_binop(AST_BinOp* node) {
 }
 
 Value ASTInterpreter::visit_slice(AST_Slice* node) {
+    abortTracing();
     Value lower = node->lower ? visit_expr(node->lower) : None;
     Value upper = node->upper ? visit_expr(node->upper) : None;
     Value step = node->step ? visit_expr(node->step) : None;
@@ -429,6 +783,7 @@ Value ASTInterpreter::visit_slice(AST_Slice* node) {
 }
 
 Value ASTInterpreter::visit_extslice(AST_ExtSlice* node) {
+    abortTracing();
     int num_slices = node->dims.size();
     BoxedTuple* rtn = BoxedTuple::create(num_slices);
     for (int i = 0; i < num_slices; ++i)
@@ -440,6 +795,8 @@ Value ASTInterpreter::visit_branch(AST_Branch* node) {
     Value v = visit_expr(node->test);
     ASSERT(v.o == True || v.o == False, "Should have called NONZERO before this branch");
 
+    if (istracing)
+        tracer->addGuard(v.o == True, v.o == True ? node->iffalse : node->iftrue);
     if (v.o == True)
         next_block = node->iftrue;
     else
@@ -452,7 +809,18 @@ Value ASTInterpreter::visit_jump(AST_Jump* node) {
     if (backedge)
         threading::allowGLReadPreemption();
 
-    if (ENABLE_OSR && backedge && edgecount++ == OSR_THRESHOLD_INTERPRETER) {
+    if (tracer && istracing && node->target == tracer->start) {
+        tracer->compile();
+        istracing = false;
+    }
+
+    ++edgecount;
+    if (1 && backedge && edgecount == 5 && !tracer) {
+        tracer = new Tracer(node->target, this);
+        istracing = true;
+    }
+
+    if (0 && ENABLE_OSR && backedge && edgecount == OSR_THRESHOLD_INTERPRETER) {
         bool can_osr = !FORCE_INTERPRETER && source_info->scoping->areGlobalsFromModule();
         if (can_osr) {
             static StatCounter ast_osrs("num_ast_osrs");
@@ -578,6 +946,7 @@ Value ASTInterpreter::visit_jump(AST_Jump* node) {
 }
 
 Value ASTInterpreter::visit_invoke(AST_Invoke* node) {
+    abortTracing();
     Value v;
     try {
         v = visit_stmt(node->stmt);
@@ -591,6 +960,7 @@ Value ASTInterpreter::visit_invoke(AST_Invoke* node) {
 }
 
 Value ASTInterpreter::visit_clsAttribute(AST_ClsAttribute* node) {
+    abortTracing();
     return getclsattr(visit_expr(node->value).o, node->attr.c_str());
 }
 
@@ -605,9 +975,11 @@ Value ASTInterpreter::visit_augBinOp(AST_AugBinOp* node) {
 Value ASTInterpreter::visit_langPrimitive(AST_LangPrimitive* node) {
     Value v;
     if (node->opcode == AST_LangPrimitive::GET_ITER) {
+        abortTracing();
         assert(node->args.size() == 1);
         v = getPystonIter(visit_expr(node->args[0]).o);
     } else if (node->opcode == AST_LangPrimitive::IMPORT_FROM) {
+        abortTracing();
         assert(node->args.size() == 2);
         assert(node->args[0]->type == AST_TYPE::Name);
         assert(node->args[1]->type == AST_TYPE::Str);
@@ -619,6 +991,7 @@ Value ASTInterpreter::visit_langPrimitive(AST_LangPrimitive* node) {
         assert(name.size());
         v = importFrom(module.o, &name);
     } else if (node->opcode == AST_LangPrimitive::IMPORT_NAME) {
+        abortTracing();
         assert(node->args.size() == 3);
         assert(node->args[0]->type == AST_TYPE::Num);
         assert(static_cast<AST_Num*>(node->args[0])->num_type == AST_Num::INT);
@@ -631,6 +1004,7 @@ Value ASTInterpreter::visit_langPrimitive(AST_LangPrimitive* node) {
         const std::string& module_name = ast_str->str_data;
         v = import(level, froms.o, &module_name);
     } else if (node->opcode == AST_LangPrimitive::IMPORT_STAR) {
+        abortTracing();
         assert(node->args.size() == 1);
         assert(node->args[0]->type == AST_TYPE::Name);
 
@@ -641,8 +1015,10 @@ Value ASTInterpreter::visit_langPrimitive(AST_LangPrimitive* node) {
 
         v = importStar(module.o, globals);
     } else if (node->opcode == AST_LangPrimitive::NONE) {
+        abortTracing();
         v = None;
     } else if (node->opcode == AST_LangPrimitive::LANDINGPAD) {
+        abortTracing();
         assert(last_exception.type);
         Box* type = last_exception.type;
         Box* value = last_exception.value ? last_exception.value : None;
@@ -650,6 +1026,7 @@ Value ASTInterpreter::visit_langPrimitive(AST_LangPrimitive* node) {
         v = BoxedTuple::create({ type, value, traceback });
         last_exception = ExcInfo(NULL, NULL, NULL);
     } else if (node->opcode == AST_LangPrimitive::CHECK_EXC_MATCH) {
+        abortTracing();
         assert(node->args.size() == 2);
         Value obj = visit_expr(node->args[0]);
         Value cls = visit_expr(node->args[1]);
@@ -657,13 +1034,18 @@ Value ASTInterpreter::visit_langPrimitive(AST_LangPrimitive* node) {
         v = boxBool(exceptionMatches(obj.o, cls.o));
 
     } else if (node->opcode == AST_LangPrimitive::LOCALS) {
+        abortTracing();
         assert(frame_info.boxedLocals != NULL);
         v = frame_info.boxedLocals;
     } else if (node->opcode == AST_LangPrimitive::NONZERO) {
         assert(node->args.size() == 1);
         Value obj = visit_expr(node->args[0]);
+        if (tracer && istracing) {
+            tracer->nonzero();
+        }
         v = boxBool(nonzero(obj.o));
     } else if (node->opcode == AST_LangPrimitive::SET_EXC_INFO) {
+        abortTracing();
         assert(node->args.size() == 3);
 
         Value type = visit_expr(node->args[0]);
@@ -677,11 +1059,18 @@ Value ASTInterpreter::visit_langPrimitive(AST_LangPrimitive* node) {
         v = None;
     } else if (node->opcode == AST_LangPrimitive::UNCACHE_EXC_INFO) {
         assert(node->args.empty());
+        if (istracing)
+            tracer->uncacheExcInfo();
+
         getFrameInfo()->exc = ExcInfo(NULL, NULL, NULL);
         v = None;
     } else if (node->opcode == AST_LangPrimitive::HASNEXT) {
         assert(node->args.size() == 1);
         Value obj = visit_expr(node->args[0]);
+
+        if (istracing)
+            tracer->hasnext();
+
         v = boxBool(hasnext(obj.o));
     } else
         RELEASE_ASSERT(0, "unknown opcode %d", node->opcode);
@@ -691,6 +1080,11 @@ Value ASTInterpreter::visit_langPrimitive(AST_LangPrimitive* node) {
 Value ASTInterpreter::visit_yield(AST_Yield* node) {
     Value value = node->value ? visit_expr(node->value) : None;
     assert(generator && generator->cls == generator_cls);
+
+    if (istracing) {
+        tracer->yield(generator, node->value != 0);
+    }
+
     return yield(generator, value.o);
 }
 
@@ -699,11 +1093,14 @@ Value ASTInterpreter::visit_stmt(AST_stmt* node) {
     threading::allowGLReadPreemption();
 #endif
 
-    if (0) {
+    if (1 && istracing) {
         printf("%20s % 2d ", source_info->getName().c_str(), current_block->idx);
         print_ast(node);
         printf("\n");
     }
+
+    if (istracing)
+        tracer->setCurrentInst(node);
 
     switch (node->type) {
         case AST_TYPE::Assert:
@@ -745,12 +1142,14 @@ Value ASTInterpreter::visit_stmt(AST_stmt* node) {
 }
 
 Value ASTInterpreter::visit_return(AST_Return* node) {
+    abortTracing();
     Value s(node->value ? visit_expr(node->value) : None);
     next_block = 0;
     return s;
 }
 
 Box* ASTInterpreter::createFunction(AST* node, AST_arguments* args, const std::vector<AST_stmt*>& body) {
+    abortTracing();
     CLFunction* cl = wrapFunction(node, args, body, source_info);
 
     std::vector<Box*, StlCompatAllocator<Box*>> defaults;
@@ -800,6 +1199,7 @@ Box* ASTInterpreter::createFunction(AST* node, AST_arguments* args, const std::v
 }
 
 Value ASTInterpreter::visit_makeFunction(AST_MakeFunction* mkfn) {
+    abortTracing();
     AST_FunctionDef* node = mkfn->function_def;
     AST_arguments* args = node->args;
 
@@ -816,6 +1216,7 @@ Value ASTInterpreter::visit_makeFunction(AST_MakeFunction* mkfn) {
 }
 
 Value ASTInterpreter::visit_makeClass(AST_MakeClass* mkclass) {
+    abortTracing();
     AST_ClassDef* node = mkclass->class_def;
     ScopeInfo* scope_info = source_info->scoping->getScopeInfoForNode(node);
     assert(scope_info);
@@ -854,6 +1255,7 @@ Value ASTInterpreter::visit_makeClass(AST_MakeClass* mkclass) {
 }
 
 Value ASTInterpreter::visit_raise(AST_Raise* node) {
+    abortTracing();
     if (node->arg0 == NULL) {
         assert(!node->arg1);
         assert(!node->arg2);
@@ -866,6 +1268,7 @@ Value ASTInterpreter::visit_raise(AST_Raise* node) {
 }
 
 Value ASTInterpreter::visit_assert(AST_Assert* node) {
+    abortTracing();
 #ifndef NDEBUG
     // Currently we only generate "assert 0" statements
     Value v = visit_expr(node->test);
@@ -880,12 +1283,14 @@ Value ASTInterpreter::visit_assert(AST_Assert* node) {
 }
 
 Value ASTInterpreter::visit_global(AST_Global* node) {
+    abortTracing();
     for (auto name : node->names)
         sym_table.erase(name);
     return Value();
 }
 
 Value ASTInterpreter::visit_delete(AST_Delete* node) {
+    abortTracing();
     for (AST_expr* target_ : node->targets) {
         switch (target_->type) {
             case AST_TYPE::Subscript: {
@@ -951,6 +1356,7 @@ Value ASTInterpreter::visit_assign(AST_Assign* node) {
 }
 
 Value ASTInterpreter::visit_print(AST_Print* node) {
+    abortTracing();
     static const std::string write_str("write");
     static const std::string newline_str("\n");
     static const std::string space_str(" ");
@@ -983,6 +1389,7 @@ Value ASTInterpreter::visit_print(AST_Print* node) {
 }
 
 Value ASTInterpreter::visit_exec(AST_Exec* node) {
+    abortTracing();
     // TODO implement the locals and globals arguments
     Box* code = visit_expr(node->body).o;
     Box* globals = node->globals == NULL ? NULL : visit_expr(node->globals).o;
@@ -995,7 +1402,9 @@ Value ASTInterpreter::visit_exec(AST_Exec* node) {
 
 Value ASTInterpreter::visit_compare(AST_Compare* node) {
     RELEASE_ASSERT(node->comparators.size() == 1, "not implemented");
-    return doBinOp(visit_expr(node->left).o, visit_expr(node->comparators[0]).o, node->ops[0], BinExpType::Compare);
+    Box* left = visit_expr(node->left).o;
+    Box* right = visit_expr(node->comparators[0]).o;
+    return doBinOp(left, right, node->ops[0], BinExpType::Compare);
 }
 
 Value ASTInterpreter::visit_expr(AST_expr* node) {
@@ -1058,6 +1467,7 @@ Value ASTInterpreter::visit_expr(AST_expr* node) {
 
 
 Value ASTInterpreter::visit_call(AST_Call* node) {
+
     Value v;
     Value func;
 
@@ -1099,12 +1509,26 @@ Value ASTInterpreter::visit_call(AST_Call* node) {
 
     ArgPassSpec argspec(node->args.size(), node->keywords.size(), node->starargs, node->kwargs);
 
+    if (argspec != ArgPassSpec(0) && argspec != ArgPassSpec(1) && argspec != ArgPassSpec(2))
+        abortTracing();
+
+    if (args.size() > 2)
+        abortTracing();
+
     if (is_callattr) {
-        return callattr(func.o, &attr.str(),
-                        CallattrFlags({.cls_only = callattr_clsonly, .null_on_nonexistent = false }), argspec,
+        CallattrFlags flags{.cls_only = callattr_clsonly, .null_on_nonexistent = false };
+
+        if (istracing) {
+            tracer->callattr(&attr.str(), flags, argspec);
+        }
+
+        return callattr(func.o, &attr.str(), flags, argspec,
                         args.size() > 0 ? args[0] : 0, args.size() > 1 ? args[1] : 0, args.size() > 2 ? args[2] : 0,
                         args.size() > 3 ? &args[3] : 0, &keywords);
     } else {
+        if (istracing) {
+            tracer->runtimeCall(argspec);
+        }
         return runtimeCall(func.o, argspec, args.size() > 0 ? args[0] : 0, args.size() > 1 ? args[1] : 0,
                            args.size() > 2 ? args[2] : 0, args.size() > 3 ? &args[3] : 0, &keywords);
     }
@@ -1112,18 +1536,28 @@ Value ASTInterpreter::visit_call(AST_Call* node) {
 
 
 Value ASTInterpreter::visit_expr(AST_Expr* node) {
-    return visit_expr(node->value);
+    Value rtn = visit_expr(node->value);
+    if (istracing)
+        tracer->pop();
+    return rtn;
 }
 
 Value ASTInterpreter::visit_num(AST_Num* node) {
-    if (node->num_type == AST_Num::INT)
+    if (node->num_type == AST_Num::INT) {
+        if (istracing) {
+            tracer->numInt(node->n_int);
+        }
         return boxInt(node->n_int);
-    else if (node->num_type == AST_Num::FLOAT)
+    } else if (node->num_type == AST_Num::FLOAT) {
+        abortTracing();
         return boxFloat(node->n_float);
-    else if (node->num_type == AST_Num::LONG)
+}    else if (node->num_type == AST_Num::LONG) {
+        abortTracing();
         return createLong(&node->n_long);
-    else if (node->num_type == AST_Num::COMPLEX)
+    } else if (node->num_type == AST_Num::COMPLEX) {
+        abortTracing();
         return boxComplex(0.0, node->n_float);
+    }
     RELEASE_ASSERT(0, "not implemented");
     return Value();
 }
@@ -1133,10 +1567,12 @@ Value ASTInterpreter::visit_index(AST_Index* node) {
 }
 
 Value ASTInterpreter::visit_repr(AST_Repr* node) {
+    abortTracing();
     return repr(visit_expr(node->value).o);
 }
 
 Value ASTInterpreter::visit_lambda(AST_Lambda* node) {
+    abortTracing();
     AST_Return* expr = new AST_Return();
     expr->value = node->body;
 
@@ -1145,6 +1581,7 @@ Value ASTInterpreter::visit_lambda(AST_Lambda* node) {
 }
 
 Value ASTInterpreter::visit_dict(AST_Dict* node) {
+    abortTracing();
     RELEASE_ASSERT(node->keys.size() == node->values.size(), "not implemented");
     BoxedDict* dict = new BoxedDict();
     for (size_t i = 0; i < node->keys.size(); ++i) {
@@ -1157,6 +1594,7 @@ Value ASTInterpreter::visit_dict(AST_Dict* node) {
 }
 
 Value ASTInterpreter::visit_set(AST_Set* node) {
+    abortTracing();
     BoxedSet::Set set;
     for (AST_expr* e : node->elts)
         set.insert(visit_expr(e).o);
@@ -1166,8 +1604,11 @@ Value ASTInterpreter::visit_set(AST_Set* node) {
 
 Value ASTInterpreter::visit_str(AST_Str* node) {
     if (node->str_type == AST_Str::STR) {
+        if (istracing)
+            tracer->push((uint64_t)source_info->parent_module->getStringConstant(node->str_data));
         return source_info->parent_module->getStringConstant(node->str_data);
     } else if (node->str_type == AST_Str::UNICODE) {
+        abortTracing();
         return decodeUTF8StringPtr(&node->str_data);
     } else {
         RELEASE_ASSERT(0, "%d", node->str_type);
@@ -1181,8 +1622,13 @@ Value ASTInterpreter::visit_name(AST_Name* node) {
 
     switch (node->lookup_type) {
         case ScopeInfo::VarScopeType::GLOBAL:
+            if (tracer && istracing) {
+                tracer->getGlobal(globals, &node->id.str());
+            }
+
             return getGlobal(globals, &node->id.str());
         case ScopeInfo::VarScopeType::DEREF: {
+            abortTracing();
             DerefInfo deref_info = scope_info->getDerefInfo(node->id);
             assert(passed_closure);
             BoxedClosure* closure = passed_closure;
@@ -1198,6 +1644,10 @@ Value ASTInterpreter::visit_name(AST_Name* node) {
         }
         case ScopeInfo::VarScopeType::FAST:
         case ScopeInfo::VarScopeType::CLOSURE: {
+            if (tracer && istracing) {
+                tracer->getLocal(node->id);
+            }
+
             SymMap::iterator it = sym_table.find(node->id);
             if (it != sym_table.end())
                 return sym_table.getMapped(it->second);
@@ -1206,6 +1656,7 @@ Value ASTInterpreter::visit_name(AST_Name* node) {
             return Value();
         }
         case ScopeInfo::VarScopeType::NAME: {
+            abortTracing();
             return boxedLocalsGet(frame_info.boxedLocals, node->id.c_str(), globals);
         }
         default:
@@ -1215,12 +1666,14 @@ Value ASTInterpreter::visit_name(AST_Name* node) {
 
 
 Value ASTInterpreter::visit_subscript(AST_Subscript* node) {
+    abortTracing();
     Value value = visit_expr(node->value);
     Value slice = visit_expr(node->slice);
     return getitem(value.o, slice.o);
 }
 
 Value ASTInterpreter::visit_list(AST_List* node) {
+    abortTracing();
     BoxedList* list = new BoxedList;
     list->ensure(node->elts.size());
     for (AST_expr* e : node->elts)
@@ -1229,6 +1682,7 @@ Value ASTInterpreter::visit_list(AST_List* node) {
 }
 
 Value ASTInterpreter::visit_tuple(AST_Tuple* node) {
+    abortTracing();
     BoxedTuple* rtn = BoxedTuple::create(node->elts.size());
     int rtn_idx = 0;
     for (AST_expr* e : node->elts)
@@ -1237,6 +1691,7 @@ Value ASTInterpreter::visit_tuple(AST_Tuple* node) {
 }
 
 Value ASTInterpreter::visit_attribute(AST_Attribute* node) {
+    abortTracing();
     return getattr(visit_expr(node->value).o, node->attr.c_str());
 }
 }
