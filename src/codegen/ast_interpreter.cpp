@@ -23,6 +23,8 @@
 #include "asm_writing/assembler.h"
 #include "codegen/codegen.h"
 #include "codegen/compvars.h"
+#include "codegen/memmgr.h"
+#include "codegen/unwinding.h"
 #include "codegen/irgen.h"
 #include "codegen/irgen/hooks.h"
 #include "codegen/irgen/irgenerator.h"
@@ -211,6 +213,40 @@ public:
 
 };
 
+static const char _eh_frame_template[] =
+    // CIE
+    "\x14\x00\x00\x00" // size of the CIE
+    "\x00\x00\x00\x00" // specifies this is an CIE
+    "\x03"             // version number
+    "\x7a\x52\x00"     // augmentation string "zR"
+    "\x01\x78\x10"     // code factor 1, data factor -8, return address 16
+    "\x01\x1b"         // augmentation data: 1b (CIE pointers as 4-byte-signed pcrel values)
+    "\x0c\x07\x08\x90\x01\x00\x00"
+    // Instructions:
+    // - DW_CFA_def_cfa: r7 (rsp) ofs 8
+    // - DW_CFA_offset: r16 (rip) at cfa-8
+    // - nop, nop
+
+    // FDE:
+    "\x1c\x00\x00\x00" // size of the FDE
+    "\x1c\x00\x00\x00" // offset to the CIE
+    "\x00\x00\x00\x00" // prcel offset to function address [to be filled in]
+    "\x10\x00\x00\x00" // function size [to be filled in]
+    "\x00"             // augmentation data (none)
+    "\x41\x0e\x10\x86\x02\x43\x0d\x06"
+    // Instructions:
+    // - DW_CFA_advance_loc: 1 to 00000001
+    // - DW_CFA_def_cfa_offset: 16
+    // - DW_CFA_offset: r6 (rbp) at cfa-16
+    // - DW_CFA_advance_loc: 3 to 00000004
+    // - DW_CFA_def_cfa_register: r6 (rbp)
+    // - nops
+    "\x00\x00\x00\x00\x00\x00\x00" // padding
+
+    "\x00\x00\x00\x00" // terminator
+    ;
+#define EH_FRAME_SIZE (sizeof(_eh_frame_template) - 1) // omit string-terminating null byte
+
 class Tracer {
 public:
     CFGBlock* start;
@@ -218,25 +254,34 @@ public:
     ASTInterpreter* interp;
 
     unsigned char* buf = 0;
-    unsigned long entry;
+    unsigned long entry, epilog;
     std::unique_ptr<assembler::Assembler> a;
 
     int stack;
 
     const int code_size = 4096;
+    const int epilog_size = 2;//3+1+1;
 
     //assembler::Assembler* a;
 
-    Tracer(CFGBlock* start, ASTInterpreter* interp) : start(start), failed(false), finished(false), interp(interp), entry(0), stack(0) {     
+    Tracer(CFGBlock* start, ASTInterpreter* interp) : start(start), failed(false), finished(false), interp(interp), entry(0), epilog(0), stack(0) {
         buf = (unsigned char*)malloc(code_size+16);
         buf = (unsigned char*)((((uint64_t)buf) + 15) & ~(15ul)) ;
         assert(((uint64_t)buf%16) == 0);
         a = std::unique_ptr<assembler::Assembler>(new assembler::Assembler(buf, code_size));
-        a->trap();
+        //a->trap();
         a->push(assembler::RBP);
         a->mov(assembler::RSP, assembler::RBP);
         a->push(assembler::RDI); // interp
         entry = a->bytesWritten();
+
+        epilog = code_size-(epilog_size);
+        assembler::Assembler endAsm(buf+epilog, epilog_size);
+        //endAsm.mov(assembler::RBP, assembler::RSP);
+        //endAsm.pop(assembler::RBP);
+        endAsm.leave();
+        endAsm.retq();
+        RELEASE_ASSERT(!endAsm.hasFailed(), "");
     }
 
     void emitCall(void* addr) {
@@ -377,35 +422,57 @@ public:
         stack--;
         a->test(assembler::RSI, assembler::RSI);
         if (t)
-            a->jne(assembler::JumpDestination::fromStart(a->bytesWritten()+/*2+1+10+1+3+2+1*/18+1));
+            a->jne(assembler::JumpDestination::fromStart(a->bytesWritten()+17));
         else
-            a->je(assembler::JumpDestination::fromStart(a->bytesWritten()+/*2+1+10+1+3+2+1*/18+1));
-        a->pop(assembler::RAX); // dummy pop for scratch
-        a->mov(assembler::Immediate(cont), assembler::RAX);
+            a->je(assembler::JumpDestination::fromStart(a->bytesWritten()+17));
         assert(stack == 0);
-        a->mov(assembler::RBP, assembler::RSP);
-        a->pop(assembler::RBP);
-        a->trap();
-        a->retq();
-
+        a->mov(assembler::Immediate(cont), assembler::RAX);
+        a->jmp(assembler::JumpDestination::fromStart(epilog));
     }
 
     void emitReturn() {
         assert(stack == 0);
-        a->pop(assembler::RAX); // dummy pop for scratch
         a->mov(assembler::Immediate(0ul), assembler::RAX);
-        a->mov(assembler::RBP, assembler::RSP);
-        a->pop(assembler::RBP);
-        a->retq();
+        a->jmp(assembler::JumpDestination::fromStart(epilog));
     }
+
+    static void writeTrivialEhFrame(void* eh_frame_addr, void* func_addr, uint64_t func_size) {
+        memcpy(eh_frame_addr, _eh_frame_template, EH_FRAME_SIZE);
+
+        int32_t* offset_ptr = (int32_t*)((uint8_t*)eh_frame_addr + 0x20);
+        int32_t* size_ptr = (int32_t*)((uint8_t*)eh_frame_addr + 0x24);
+
+        int64_t offset = (int8_t*)func_addr - (int8_t*)offset_ptr;
+        assert(offset >= INT_MIN && offset <= INT_MAX);
+        *offset_ptr = offset;
+
+        assert(func_size <= UINT_MAX);
+        *size_ptr = func_size;
+    }
+
+    void EHwriteAndRegister(void* func_addr, uint64_t func_size) {
+        void* eh_frame_addr = 0;
+        eh_frame_addr = malloc(EH_FRAME_SIZE);
+        writeTrivialEhFrame(eh_frame_addr, func_addr, func_size);
+        // (EH_FRAME_SIZE - 4) to omit the 4-byte null terminator, otherwise we trip an assert in parseEhFrame.
+        // TODO: can we omit the terminator in general?
+        registerDynamicEhFrame((uint64_t)func_addr, func_size, (uint64_t)eh_frame_addr, EH_FRAME_SIZE - 4);
+        registerEHFrames((uint8_t*)eh_frame_addr, (uint64_t)eh_frame_addr, EH_FRAME_SIZE);
+    }
+
 
     void compile() {
         assert(stack == 0);
         RELEASE_ASSERT(!a->hasFailed(), "asm failed");
         a->jmp(assembler::JumpDestination::fromStart(entry));
         printf("wrote %d\n", (int)a->bytesWritten());
-        a->fillWithNops();
+        a->fillWithNopsExcept(epilog_size);
         llvm::sys::Memory::InvalidateInstructionCache(buf, a->bytesWritten());
+
+        // generate eh frame... :-(
+        EHwriteAndRegister((void*)buf, code_size);
+
+
         finished = true;
     }
 
