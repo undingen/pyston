@@ -53,6 +53,9 @@
 #define DEBUG 0
 #endif
 
+#define ENABLE_TRACING 1
+#define ENABLE_TRACING_FUNC 1
+
 namespace pyston {
 
 namespace {
@@ -97,7 +100,7 @@ union Value {
     }
 };
 
-llvm::DenseMap<std::pair<CFGBlock*, CFGBlock*>, class Tracer*> tracers;
+llvm::DenseMap<CFGBlock*, class Tracer*> tracers;
 
 llvm::DenseSet<CFGBlock*> tracers_aborted;
 
@@ -318,6 +321,7 @@ public:
     std::unique_ptr<assembler::Assembler> a;
 
     int stack;
+    bool abort_on_backage;
 
     const int code_size = 4096 * 2;
     const int epilog_size = 2; // 3+1+1;
@@ -325,7 +329,14 @@ public:
     // assembler::Assembler* a;
 
     Tracer(CFGBlock* start, ASTInterpreter* interp)
-        : start(start), failed(false), finished(false), interp(interp), entry(0), epilog(0), stack(0) {
+        : start(start),
+          failed(false),
+          finished(false),
+          interp(interp),
+          entry(0),
+          epilog(0),
+          stack(0),
+          abort_on_backage(false) {
         buf = (unsigned char*)malloc(code_size + 16);
         buf = (unsigned char*)((((uint64_t)buf) + 15) & ~(15ul));
         assert(((uint64_t)buf % 16) == 0);
@@ -405,11 +416,19 @@ public:
         stack += emitCallHelper<0>(*a, args...);
         a->emitCall(func, assembler::R11);
         pushResult();
+        if (a->hasFailed()) {
+            interp->abortTracing();
+            interp = 0;
+        }
     }
 
     template <typename... Args> void emitVoidCall(void* func, Args&&... args) {
         stack += emitCallHelper<0>(*a, args...);
         a->emitCall(func, assembler::R11);
+        if (a->hasFailed()) {
+            interp->abortTracing();
+            interp = 0;
+        }
     }
 
     void pushResult() {
@@ -471,7 +490,9 @@ public:
     void emitDeref(InternedString s) { emitCall((void*)derefHelper, Mem(getInterp()), Imm(toArg(s))); }
 
     void emitCreateTuple(uint64_t num) {
-        if (num == 1)
+        if (num == 0)
+            emitCall((void*)BoxedTuple::create0);
+        else if (num == 1)
             emitCall((void*)BoxedTuple::create1, Pop());
         else if (num == 2)
             emitCall((void*)BoxedTuple::create2, PopO<1>(), PopO<0>());
@@ -509,6 +530,7 @@ public:
 
     void emitNotNonzero() { emitCall((void*)notHelper, Pop()); }
 
+    void emitGetPystonIter() { emitCall((void*)getPystonIter, Pop()); }
 
     void emitUnpackIntoArray(uint64_t num) {
         emitVoidCall((void*)unpackIntoArray, Pop(), Imm(num));
@@ -571,6 +593,8 @@ public:
         a->mov(assembler::Immediate(args.asInt()), assembler::RCX);
         a->emitCall((void*)callattrHelper, assembler::Register(11));
         pushResult();
+
+        assert(stack == 1);
     }
 
     static Box* runtimeCallHelper(Box* obj, ArgPassSpec argspec, Box* arg1, Box* arg2, Box* arg3, Box** args) {
@@ -638,6 +662,7 @@ public:
         a->mov(assembler::Immediate(0ul), assembler::RAX);
         a->pop(assembler::RDX);
         a->jmp(assembler::JumpDestination::fromStart(epilog));
+        --stack;
     }
 
     static void writeTrivialEhFrame(void* eh_frame_addr, void* func_addr, uint64_t func_size) {
@@ -683,6 +708,7 @@ public:
         // generate eh frame... :-(
         EHwriteAndRegister((void*)buf, code_size);
         finished = true;
+        printf("SUCCESS\n");
     }
 };
 
@@ -822,10 +848,18 @@ Value ASTInterpreter::execute(ASTInterpreter& interpreter, CFGBlock* start_block
 
     Value v;
 
+    bool trace = false;
+    bool from_start = start_block == NULL && start_at == NULL;
+
     assert((start_block == NULL) == (start_at == NULL));
     if (start_block == NULL) {
         start_block = interpreter.source_info->cfg->getStartingBlock();
         start_at = start_block->body[0];
+
+        if (ENABLE_TRACING && interpreter.compiled_func->times_called == 25) {
+            if (tracers_aborted.count(start_block) == 0)
+                trace = true;
+        }
     }
 
     // Important that this happens after RegisterHelper:
@@ -834,17 +868,37 @@ Value ASTInterpreter::execute(ASTInterpreter& interpreter, CFGBlock* start_block
     interpreter.current_inst = NULL;
 
     interpreter.current_block = start_block;
-    bool started = false;
-    for (auto s : start_block->body) {
-        if (!started) {
-            if (s != start_at)
-                continue;
-            started = true;
-        }
 
-        interpreter.current_inst = s;
-        v = interpreter.visit_stmt(s);
+    bool started = false;
+    if (trace && from_start) {
+        interpreter.istracing = true;
+        interpreter.tracer = new Tracer(start_block, &interpreter);
+        interpreter.tracer->abort_on_backage = true;
+    } else if (ENABLE_TRACING_FUNC && ENABLE_TRACING && from_start && tracers.count(start_block)) {
+        started = true;
+        assert(tracers[start_block]->interp == 0);
+        typedef std::pair<CFGBlock*, Box*>(*Foo)(ASTInterpreter*);
+
+        std::pair<CFGBlock*, Box*> rtn = ((Foo)(tracers[start_block]->buf))(&interpreter);
+        interpreter.next_block = rtn.first;
+        if (!interpreter.next_block)
+            return rtn.second;
     }
+
+    if (!started) {
+        for (auto s : start_block->body) {
+            if (!started) {
+                if (s != start_at)
+                    continue;
+                started = true;
+            }
+
+            interpreter.current_inst = s;
+            v = interpreter.visit_stmt(s);
+        }
+    }
+
+
 
     int num_aborts = 0;
     static StatCounter num_trace_aborts("num_trace_aborts");
@@ -853,19 +907,20 @@ Value ASTInterpreter::execute(ASTInterpreter& interpreter, CFGBlock* start_block
         interpreter.current_block = interpreter.next_block;
         interpreter.next_block = 0;
 
-        if (interpreter.tracer && interpreter.tracer->start == interpreter.current_block) {
-            if (interpreter.tracer->finished) {
-                assert(interpreter.tracer->interp == 0);
+        if (ENABLE_TRACING && !interpreter.istracing) {
+            auto it = tracers.find(interpreter.current_block);
+            if (it != tracers.end()) {
+                assert(it->second->finished);
+                assert(it->second->interp == 0);
                 typedef std::pair<CFGBlock*, Box*>(*Foo)(ASTInterpreter*);
-
-                std::pair<CFGBlock*, Box*> rtn = ((Foo)(interpreter.tracer->buf))(&interpreter);
+                std::pair<CFGBlock*, Box*> rtn = ((Foo)(it->second->buf))(&interpreter);
                 interpreter.next_block = rtn.first;
-                if (!interpreter.next_block)
+                if (!interpreter.next_block) {
                     v = rtn.second;
+                    continue;
+                }
                 ++num_aborts;
                 if (num_aborts >= 5) {
-                    // tracers.erase(interpreter.current_block);
-                    interpreter.tracer = 0;
                     interpreter.edgecount = 0;
                     num_aborts = 0;
                     num_trace_aborts.log(5);
@@ -1036,20 +1091,22 @@ Value ASTInterpreter::visit_jump(AST_Jump* node) {
         // assert(tracers.count(std::make_pair(node->target, current_block)) == 0);
         tracer->compile();
         if (istracing)
-            tracers[std::make_pair(node->target, current_block)] = tracer;
+            tracers[node->target] = tracer;
         istracing = false;
+        tracer = 0;
     }
 
     if (backedge)
         ++edgecount;
-    if (1 && backedge && edgecount == 5 && !tracer && tracers_aborted.count(node->target) == 0) {
-        auto t = tracers.find(std::make_pair(node->target, current_block));
+
+    if (backedge && tracer && istracing && tracer->abort_on_backage)
+        abortTracing();
+
+    if (ENABLE_TRACING && backedge && edgecount == 5 && !tracer && tracers_aborted.count(node->target) == 0) {
+        auto t = tracers.find(node->target);
         if (t == tracers.end()) {
             tracer = new Tracer(node->target, this);
             istracing = true;
-        } else {
-            tracer = t->second;
-            tracers[std::make_pair(node->target, current_block)] = tracer;
         }
     }
 
@@ -1208,9 +1265,13 @@ Value ASTInterpreter::visit_augBinOp(AST_AugBinOp* node) {
 Value ASTInterpreter::visit_langPrimitive(AST_LangPrimitive* node) {
     Value v;
     if (node->opcode == AST_LangPrimitive::GET_ITER) {
-        abortTracing();
         assert(node->args.size() == 1);
-        v = getPystonIter(visit_expr(node->args[0]).o);
+
+        Value val = visit_expr(node->args[0]);
+        if (istracing)
+            tracer->emitGetPystonIter();
+
+        v = getPystonIter(val.o);
     } else if (node->opcode == AST_LangPrimitive::IMPORT_FROM) {
         abortTracing();
         assert(node->args.size() == 2);
@@ -1325,7 +1386,7 @@ Value ASTInterpreter::visit_stmt(AST_stmt* node) {
     threading::allowGLReadPreemption();
 #endif
 
-    if (0 && istracing) {
+    if (1 && istracing) {
         printf("%20s % 2d ", source_info->getName().c_str(), current_block->idx);
         print_ast(node);
         printf("\n");
@@ -1379,8 +1440,15 @@ Value ASTInterpreter::visit_return(AST_Return* node) {
     if (istracing && !node->value)
         tracer->emitPush((uint64_t)None);
 
-    if (istracing)
+    if (istracing) {
         tracer->emitReturn();
+        if (istracing) {
+            tracer->compile();
+            if (istracing)
+                tracers[tracer->start] = tracer;
+            istracing = false;
+        }
+    }
 
     next_block = 0;
     return s;
@@ -1747,7 +1815,7 @@ Value ASTInterpreter::visit_call(AST_Call* node) {
     ArgPassSpec argspec(node->args.size(), node->keywords.size(), node->starargs, node->kwargs);
 
     if (is_callattr) {
-        if (argspec.has_starargs || argspec.num_keywords)
+        if (argspec.has_starargs || argspec.num_keywords || argspec.has_kwargs)
             abortTracing();
 
         if (args.size() > 2)
@@ -1796,7 +1864,8 @@ Value ASTInterpreter::visit_num(AST_Num* node) {
             tracer->emitFloat(node->n_float);
         return boxFloat(node->n_float);
     } else if (node->num_type == AST_Num::LONG) {
-        abortTracing();
+        if (istracing)
+            tracer->emitPush((uint64_t)createLong(node->n_long));
         return createLong(node->n_long);
     } else if (node->num_type == AST_Num::COMPLEX) {
         abortTracing();
