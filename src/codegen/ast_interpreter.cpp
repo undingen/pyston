@@ -20,13 +20,16 @@
 
 #include "analysis/function_analysis.h"
 #include "analysis/scoping_analysis.h"
+#include "asm_writing/assembler.h"
 #include "codegen/codegen.h"
 #include "codegen/compvars.h"
 #include "codegen/irgen.h"
 #include "codegen/irgen/hooks.h"
 #include "codegen/irgen/irgenerator.h"
 #include "codegen/irgen/util.h"
+#include "codegen/memmgr.h"
 #include "codegen/osrentry.h"
+#include "codegen/unwinding.h"
 #include "core/ast.h"
 #include "core/cfg.h"
 #include "core/common.h"
@@ -36,6 +39,7 @@
 #include "core/util.h"
 #include "runtime/capi.h"
 #include "runtime/generator.h"
+#include "runtime/ics.h"
 #include "runtime/import.h"
 #include "runtime/inline/boxing.h"
 #include "runtime/long.h"
@@ -48,6 +52,10 @@
 #else
 #define DEBUG 0
 #endif
+
+#define ENABLE_TRACING 1
+#define ENABLE_TRACING_FUNC 1
+#define ENABLE_TRACING_IC 0
 
 namespace pyston {
 
@@ -89,6 +97,8 @@ union Value {
             ASSERT(gc::isValidGCObject(o), "%p", o);
     }
 };
+
+llvm::DenseSet<CFGBlock*> tracers_aborted;
 
 class ASTInterpreter : public Box {
 public:
@@ -212,7 +222,768 @@ public:
     }
 
     friend class RegisterHelper;
+    friend class JitFragment;
+    friend class JitedCode;
+
+    std::unique_ptr<class JitFragment> tracer;
+
+    void abortTracing();
+    void startTracing(CFGBlock* block);
+
+    static Box* tracerHelperGetLocal(ASTInterpreter* i, InternedString id) {
+        SymMap::iterator it = i->sym_table.find(id);
+        if (it != i->sym_table.end()) {
+            return i->sym_table.getMapped(it->second);
+        }
+
+        assertNameDefined(0, id.c_str(), UnboundLocalError, true);
+        return 0;
+    }
+
+    static void tracerHelperSetLocal(ASTInterpreter* i, InternedString id, Box* v, bool set_closure) {
+        i->sym_table[id] = v;
+
+        if (set_closure) {
+            i->created_closure->elts[i->scope_info->getClosureOffset(id)] = v;
+        }
+    }
 };
+
+#if 1
+static const char _eh_frame_template[] =
+    // CIE
+    "\x14\x00\x00\x00" // size of the CIE
+    "\x00\x00\x00\x00" // specifies this is an CIE
+    "\x03"             // version number
+    "\x7a\x52\x00"     // augmentation string "zR"
+    "\x01\x78\x10"     // code factor 1, data factor -8, return address 16
+    "\x01\x1b"         // augmentation data: 1b (CIE pointers as 4-byte-signed pcrel values)
+    "\x0c\x07\x08\x90\x01\x00\x00"
+    // Instructions:
+    // - DW_CFA_def_cfa: r7 (rsp) ofs 8
+    // - DW_CFA_offset: r16 (rip) at cfa-8
+    // - nop, nop
+
+    // FDE:
+    "\x1c\x00\x00\x00" // size of the FDE
+    "\x1c\x00\x00\x00" // offset to the CIE
+    "\x00\x00\x00\x00" // prcel offset to function address [to be filled in]
+    "\x10\x00\x00\x00" // function size [to be filled in]
+    "\x00"             // augmentation data (none)
+    "\x41\x0e\x10\x86\x02\x43\x0d\x06"
+    // Instructions:
+    // - DW_CFA_advance_loc: 1 to 00000001
+    // - DW_CFA_def_cfa_offset: 16
+    // - DW_CFA_offset: r6 (rbp) at cfa-16
+    // - DW_CFA_advance_loc: 3 to 00000004
+    // - DW_CFA_def_cfa_register: r6 (rbp)
+    // - nops
+    "\x00\x00\x00\x00\x00\x00\x00" // padding
+
+    "\x00\x00\x00\x00" // terminator
+    ;
+#else
+static const char _eh_frame_template[] =
+#if 0
+    /*00*/ "\x14\x00\x00\x00" "\x00\x00\x00\x00" "\x01\x7a\x52\x00" "\x01\x78\x10\x01"  //.........zR..x..
+    /*10*/ "\x1b\x0c\x07\x08" "\x90\x01\x00\x00" "\x1c\x00\x00\x00" "\x1c\x00\x00\x00"  //................
+    /*20*/ "\x00\x00\x00\x00" "\x5a\x00\x00\x00" "\x00\x41\x0e\x10" "\x86\x02\x43\x0d"  //....Z....A....C.
+    /*30*/ "\x06\x02\x55\x0c" "\x07\x08\x00\x00"                                        //..U.....
+    ;
+#else
+    /*00*/ "\x14\x00\x00\x00"
+           "\x00\x00\x00\x00"
+           "\x01\x7a\x52\x00"
+           "\x01\x78\x10\x01" //.........zR..x..
+           /*10*/ "\x1b\x0c\x07\x08"
+           "\x90\x01\x00\x00"
+           "\x1c\x00\x00\x00"
+           "\x1c\x00\x00\x00" //................
+           /*20*/ "\x00\x00\x00\x00"
+           "\x5a\x00\x00\x00"
+           "\x00\x41\x0e\x10"
+           "\x86\x02\x43\x0d" //....Z....A....C.
+           /*30*/ "\x06\x02\x55\x0c"
+           "\x07\x08\x00\x00" //..U.....
+           "\x00\x00\x00\x00";
+#endif
+#endif
+
+#define EH_FRAME_SIZE (sizeof(_eh_frame_template) - 1) // omit string-terminating null byte
+
+
+struct JitCallHelper {
+    struct Regs {
+        const assembler::Register regs[6]
+            = { assembler::RDI, assembler::RSI, assembler::RDX, assembler::RCX, assembler::R8, assembler::R9 };
+    };
+
+    template <int offset> struct PopO : public Regs {
+        int emit(assembler::Assembler& a, int arg_num) {
+            a.pop(regs[offset == -1 ? arg_num : offset]);
+            return -1;
+        }
+    };
+
+    struct Pop : public PopO<-1> {};
+
+    struct Rsp : public Regs {
+        int emit(assembler::Assembler& a, int arg_num) {
+            a.mov(assembler::RSP, regs[arg_num]);
+            return 0;
+        }
+    };
+
+    struct Imm : public Regs {
+        const uint64_t val;
+        Imm(int64_t val) : val(val) {}
+        Imm(void* val) : val((uint64_t)val) {}
+        int emit(assembler::Assembler& a, int arg_num) {
+            a.mov(assembler::Immediate(val), regs[arg_num]);
+            return 0;
+        }
+    };
+
+    struct Mem : public Regs {
+        const assembler::Indirect ind;
+        Mem(assembler::Indirect ind) : ind(ind) {}
+        int emit(assembler::Assembler& a, int arg_num) {
+            a.mov(ind, regs[arg_num]);
+            return 0;
+        }
+    };
+
+    template <int arg_num, typename Arg1, typename... Args>
+    static int emitCallHelper(assembler::Assembler& a, Arg1&& arg1, Args... args) {
+        int stack_level = arg1.emit(a, arg_num);
+        return stack_level + emitCallHelper<arg_num + 1>(a, args...);
+    }
+
+    template <int arg_num> static int emitCallHelper(assembler::Assembler& a) {
+        static_assert(arg_num <= 6, "too many args");
+        return 0;
+    }
+};
+
+class JitFragment : public JitCallHelper {
+private:
+    assembler::Assembler& a;
+    CFGBlock* block;
+    int epilog_offset;
+    int stack_level;
+    void* code, *entry_code;
+    std::function<void(void)> abort_callback;
+    bool finished;
+    bool& iscurrently_tracing;
+
+public:
+    JitFragment(CFGBlock* block, assembler::Assembler& a, int epilog_offset, std::function<void(void)> abort_callback,
+                void* entry_code, bool& iscurrently_tracing)
+        : a(a),
+          block(block),
+          epilog_offset(epilog_offset),
+          stack_level(0),
+          code(0),
+          entry_code(entry_code),
+          abort_callback(abort_callback),
+          finished(false),
+          iscurrently_tracing(iscurrently_tracing) {
+        code = (void*)a.curInstPointer();
+    }
+
+    CFGBlock* getBlock() { return block; }
+
+    uint64_t asArg(InternedString s) {
+        union U {
+            U() {}
+            InternedString is;
+            uint64_t s;
+        };
+        U u;
+        u.is = s;
+        return u.s;
+    }
+
+    template <typename... Args> void emitCall(void* func, Args&&... args) {
+        emitVoidCall(func, args...);
+        pushResult();
+    }
+
+    template <typename... Args> void emitVarArgCall(void* func, uint64_t stack_adjustment, Args&&... args) {
+        emitVoidVarArgCall(func, stack_adjustment, args...);
+        pushResult();
+    }
+
+    template <typename... Args> void emitVoidCall(void* func, Args&&... args) {
+        return emitVoidVarArgCall(func, 0, args...);
+    }
+
+    template <typename... Args> void emitVoidVarArgCall(void* func, uint64_t stack_adjustment, Args&&... args) {
+        stack_level += emitCallHelper<0>(a, args...);
+        if (stack_level & 1) { // we have to align the stack :-(
+            ++stack_adjustment;
+            a.sub(assembler::Immediate(8), assembler::RSP);
+            ++stack_level;
+        }
+        a.emitCall(func, assembler::R11);
+        if (stack_adjustment) {
+            a.add(assembler::Immediate(stack_adjustment * 8), assembler::RSP);
+            stack_level -= stack_adjustment;
+        }
+    }
+
+    void pushResult() {
+        a.push(assembler::RAX);
+        ++stack_level;
+    }
+
+    assembler::Indirect getInterp() { return assembler::Indirect(assembler::RBP, -8); }
+    assembler::Indirect getCurInst() { return assembler::Indirect(assembler::RBP, -16); }
+
+    void emitSetGlobal(Box* global, BoxedString* s) {
+        emitVoidCall((void*)setGlobal, Imm(global), Imm((void*)s), Pop());
+        assert(stack_level == 0);
+    }
+
+    static Box* getGlobalICHelper(GetGlobalIC* ic, Box* o, BoxedString* s) { return ic->call(o, s); }
+
+    void emitGetGlobal(Box* global, BoxedString* s) {
+#if ENABLE_TRACING_IC
+        emitCall((void*)getGlobalICHelper, Imm((void*)new GetGlobalIC), Imm((void*)global), Imm((void*)s));
+#else
+        emitCall((void*)getGlobal, Imm((void*)global), Imm((void*)s));
+#endif
+    }
+
+    static Box* setAttrICHelper(SetAttrIC* ic, Box* o, BoxedString* attr, Box* value) {
+        return ic->call(o, attr, value);
+    }
+
+    void emitSetAttr(BoxedString* s) {
+#if ENABLE_TRACING_IC
+        emitVoidCall((void*)setAttrICHelper, Imm((void*)new SetAttrIC), Pop(), Imm((void*)s), Pop());
+#else
+        emitVoidCall((void*)setattr, Pop(), Imm((void*)s), Pop());
+#endif
+        assert(stack_level == 0);
+    }
+
+    static Box* getAttrICHelper(GetAttrIC* ic, Box* o, BoxedString* attr) { return ic->call(o, attr); }
+
+    void emitGetAttr(BoxedString* s) {
+#if ENABLE_TRACING_IC
+        emitCall((void*)getAttrICHelper, Imm((void*)new GetAttrIC), Pop(), Imm((void*)s));
+#else
+        emitCall((void*)getattr, Pop(), Imm((void*)s));
+#endif
+    }
+
+    void emitGetLocal(InternedString s) {
+        emitCall((void*)ASTInterpreter::tracerHelperGetLocal, Mem(getInterp()), Imm(asArg(s)));
+    }
+    void emitSetLocal(InternedString s, bool set_closure) {
+        emitVoidCall((void*)ASTInterpreter::tracerHelperSetLocal, Mem(getInterp()), Imm(asArg(s)), Pop(),
+                     Imm((uint64_t)set_closure));
+    }
+
+    static Box* boxedLocalsGetHelper(ASTInterpreter* interp, BoxedString* s) {
+        return boxedLocalsGet(interp->frame_info.boxedLocals, s, interp->globals);
+    }
+
+    void emitBoxedLocalsGet(BoxedString* s) { emitCall((void*)boxedLocalsGetHelper, Mem(getInterp()), Imm((void*)s)); }
+
+    static Box* setitemICHelper(SetItemIC* ic, Box* o, Box* attr, Box* value) { return ic->call(o, attr, value); }
+
+    void emitSetItem() {
+#if ENABLE_TRACING_IC
+        emitVoidCall((void*)setitemICHelper, Imm((void*)new SetItemIC), PopO<2>(), PopO<1>(), PopO<3>());
+#else
+        emitVoidCall((void*)setitem, PopO<1>(), PopO<0>(), PopO<2>());
+#endif
+    }
+
+    static Box* getitemICHelper(GetItemIC* ic, Box* o, Box* attr) { return ic->call(o, attr); }
+
+    void emitGetItem() {
+#if ENABLE_TRACING_IC
+        emitCall((void*)getitemICHelper, Imm((void*)new GetItemIC), PopO<2>(), PopO<1>());
+#else
+        emitCall((void*)getitem, PopO<1>(), PopO<0>());
+#endif
+    }
+
+    static void setItemNameHelper(ASTInterpreter* interp, Box* str, Box* val) {
+        assert(interp->frame_info.boxedLocals != NULL);
+        setitem(interp->frame_info.boxedLocals, str, val);
+    }
+
+    void emitSetItemName(BoxedString* s) {
+        emitVoidCall((void*)setItemNameHelper, Mem(getInterp()), Imm((void*)s), Pop());
+        assert(stack_level == 0);
+    }
+
+
+    static Box* derefHelper(ASTInterpreter* i, InternedString s) {
+        DerefInfo deref_info = i->scope_info->getDerefInfo(s);
+        assert(i->passed_closure);
+        BoxedClosure* closure = i->passed_closure;
+        for (int i = 0; i < deref_info.num_parents_from_passed_closure; i++) {
+            closure = closure->parent;
+        }
+        Box* val = closure->elts[deref_info.offset];
+        if (val == NULL) {
+            raiseExcHelper(NameError, "free variable '%s' referenced before assignment in enclosing scope", s.c_str());
+        }
+        return val;
+    }
+
+    void emitDeref(InternedString s) { emitCall((void*)derefHelper, Mem(getInterp()), Imm(asArg(s))); }
+
+    static BoxedTuple* createTupleHelper(uint64_t num, Box** data) {
+        BoxedTuple* tuple = (BoxedTuple*)BoxedTuple::create(num);
+        for (uint64_t i = 0; i < num; ++i)
+            tuple->elts[i] = data[num - i - 1];
+        return tuple;
+    }
+
+    void emitCreateTuple(uint64_t num) {
+        if (num == 0)
+            emitCall((void*)BoxedTuple::create0);
+        else if (num == 1)
+            emitCall((void*)BoxedTuple::create1, Pop());
+        else if (num == 2)
+            emitCall((void*)BoxedTuple::create2, PopO<1>(), PopO<0>());
+        else if (num == 3)
+            emitCall((void*)BoxedTuple::create3, PopO<2>(), PopO<1>(), PopO<0>());
+        else if (num == 4)
+            emitCall((void*)BoxedTuple::create4, PopO<3>(), PopO<2>(), PopO<1>(), PopO<0>());
+        else if (num == 5)
+            emitCall((void*)BoxedTuple::create5, PopO<4>(), PopO<3>(), PopO<2>(), PopO<1>(), PopO<0>());
+        else
+            emitVarArgCall((void*)createTupleHelper, num, Imm(num), Rsp());
+    }
+
+    static BoxedList* createListHelper(uint64_t num, Box** data) {
+        BoxedList* list = (BoxedList*)createList();
+        list->ensure(num);
+        for (uint64_t i = 0; i < num; ++i)
+            listAppendInternal(list, data[num - i - 1]);
+        return list;
+    }
+
+    void emitCreateList(uint64_t num) {
+        if (num == 0)
+            emitCall((void*)createList);
+        else
+            emitVarArgCall((void*)createListHelper, num, Imm(num), Rsp());
+    }
+
+    void emitCreateDict() { emitCall((void*)createDict); }
+    void emitCreateSlice() { emitCall((void*)createSlice, PopO<2>(), PopO<1>(), PopO<0>()); }
+
+    static Box* nonzeroHelper(Box* b) {
+        bool result = b->nonzeroIC();
+        if (result == true)
+            return True;
+        return False;
+    }
+
+    void emitNonzero() { emitCall((void*)nonzeroHelper, Pop()); }
+
+    static Box* notHelper(Box* b) {
+        bool result = b->nonzeroIC();
+        if (result == true)
+            return False;
+        return True;
+    }
+
+    void emitNotNonzero() { emitCall((void*)notHelper, Pop()); }
+    void emitGetPystonIter() { emitCall((void*)getPystonIter, Pop()); }
+    void emitUnpackIntoArray(uint64_t num) {
+        emitVoidCall((void*)unpackIntoArray, Pop(), Imm(num));
+        for (int i = 0; i < num; ++i) {
+            a.mov(assembler::Indirect(assembler::RAX, (num - i - 1) * 8), assembler::RDI);
+            a.push(assembler::RDI);
+            ++stack_level;
+        }
+    }
+
+    static Box* compareICHelper(CompareIC* ic, Box* lhs, Box* rhs, int op) { return ic->call(lhs, rhs, op); }
+
+    void emitCompare(int op) {
+#if ENABLE_TRACING_IC
+        emitCall((void*)compareICHelper, Imm((void*)new CompareIC), PopO<2>(), PopO<1>(), Imm(op));
+#else
+        emitCall((void*)compare, PopO<1>(), PopO<0>(), Imm(op));
+#endif
+    }
+
+    static Box* augbinopICHelper(AugBinopIC* ic, Box* lhs, Box* rhs, int op) { return ic->call(lhs, rhs, op); }
+    void emitAugbinop(int op) {
+#if ENABLE_TRACING_IC
+        emitCall((void*)augbinopICHelper, Imm((void*)new AugBinopIC), PopO<2>(), PopO<1>(), Imm(op));
+#else
+        emitCall((void*)augbinop, PopO<1>(), PopO<0>(), Imm(op));
+#endif
+    }
+
+    static Box* binopICHelper(BinopIC* ic, Box* lhs, Box* rhs, int op) { return ic->call(lhs, rhs, op); }
+    void emitBinop(int op) {
+#if ENABLE_TRACING_IC
+        emitCall((void*)binopICHelper, Imm((void*)new BinopIC), PopO<2>(), PopO<1>(), Imm(op));
+#else
+        emitCall((void*)binop, PopO<1>(), PopO<0>(), Imm(op));
+#endif
+    }
+
+    static Box* unaryopICHelper(UnaryopIC* ic, Box* obj, int op) { return ic->call(obj, op); }
+    void emitUnaryop(int op) {
+#if ENABLE_TRACING_IC
+        emitCall((void*)unaryopICHelper, Imm((void*)new UnaryopIC), Pop(), Imm(op));
+#else
+        emitCall((void*)unaryop, Pop(), Imm(op));
+#endif
+    }
+
+    static Box* yieldHelper(ASTInterpreter* inter, Box* val) { return yield(inter->generator, val); }
+
+    void emitYield(bool hasvalue) {
+        if (hasvalue)
+            emitCall((void*)yieldHelper, Mem(getInterp()), Pop());
+        else
+            emitCall((void*)yieldHelper, Mem(getInterp()), Imm((void*)None));
+    }
+
+    static Box* uncacheExcInfoHelper(ASTInterpreter* inter) {
+        inter->getFrameInfo()->exc = ExcInfo(NULL, NULL, NULL);
+        return None;
+    }
+
+    void emitUncacheExcInfo() { emitCall((void*)uncacheExcInfoHelper, Mem(getInterp())); }
+    // TODO remove the gc hack...
+    void emitInt(long n) { emitPush((uint64_t)PyGC_AddRoot(boxInt(n))); }
+    void emitFloat(double n) { emitPush((uint64_t)PyGC_AddRoot(boxFloat(n))); }
+    void emitLong(llvm::StringRef s) { emitPush((uint64_t)PyGC_AddRoot(createLong(s))); }
+    void emitUnicodeStr(llvm::StringRef s) {
+        emitCall((void*)decodeUTF8StringPtr, Imm((void*)s.data()), Imm(s.size()));
+    }
+
+#if ENABLE_TRACING_IC
+    static Box* callattrHelperIC(ArgPassSpec argspec, BoxedString* attr, CallattrFlags flags, Box** args,
+                                 std::vector<BoxedString*>* keyword_names, CallattrIC* ic) {
+        int num = argspec.totalPassed();
+        Box* obj = args[num];
+        Box* arg1 = (num > 0) ? (Box*)args[num - 1] : NULL;
+        Box* arg2 = (num > 1) ? (Box*)args[num - 2] : NULL;
+        Box* arg3 = (num > 2) ? (Box*)args[num - 3] : NULL;
+        llvm::SmallVector<Box*, 4> addition_args;
+        for (int i = 3; i < num; ++i) {
+            addition_args.push_back((Box*)args[num - i - 1]);
+        }
+        return ic->call(obj, attr, flags, argspec, arg1, arg2, arg3, addition_args.size() ? &addition_args[0] : NULL,
+                        keyword_names);
+    }
+#endif
+    static Box* callattrHelper(ArgPassSpec argspec, BoxedString* attr, CallattrFlags flags, Box** args,
+                               std::vector<BoxedString*>* keyword_names) {
+        int num = argspec.totalPassed();
+        Box* obj = args[num];
+        Box* arg1 = (num > 0) ? (Box*)args[num - 1] : NULL;
+        Box* arg2 = (num > 1) ? (Box*)args[num - 2] : NULL;
+        Box* arg3 = (num > 2) ? (Box*)args[num - 3] : NULL;
+        llvm::SmallVector<Box*, 4> addition_args;
+        for (int i = 3; i < num; ++i) {
+            addition_args.push_back((Box*)args[num - i - 1]);
+        }
+        return pyston::callattr(obj, attr, flags, argspec, arg1, arg2, arg3,
+                                addition_args.size() ? &addition_args[0] : NULL, keyword_names);
+    }
+
+
+    void emitCallattr(BoxedString* attr, CallattrFlags flags, ArgPassSpec argspec,
+                      std::vector<BoxedString*>* keyword_names) {
+        // We could make this faster but for now: keep it simple, stupid...
+        int num_stack_args = argspec.totalPassed() + 1;
+        assert(num_stack_args == stack_level);
+#if ENABLE_TRACING_IC
+        if (argspec.totalPassed() >= 3
+            || keyword_names) // looks like runtime ICs with 7 or more args don't work right now..
+            emitVarArgCall((void*)callattrHelper, num_stack_args, Imm(argspec.asInt()), Imm((void*)attr),
+                           Imm(flags.asInt()), Rsp(), Imm((void*)keyword_names));
+        else
+            emitVarArgCall((void*)callattrHelper, num_stack_args, Imm(argspec.asInt()), Imm((void*)attr),
+                           Imm(flags.asInt()), Rsp(), Imm((void*)keyword_names), Imm((void*)new CallattrIC));
+#else
+        emitVarArgCall((void*)callattrHelper, num_stack_args, Imm(argspec.asInt()), Imm((void*)attr),
+                       Imm(flags.asInt()), Rsp(), Imm((void*)keyword_names));
+#endif
+    }
+
+
+#if ENABLE_TRACING_IC
+    static Box* runtimeCallHelperIC(ArgPassSpec argspec, Box** args, std::vector<BoxedString*>* keyword_names,
+                                    RuntimeCallIC* ic) {
+        int num = argspec.totalPassed();
+        Box* obj = args[num];
+        Box* arg1 = (num > 0) ? (Box*)args[num - 1] : NULL;
+        Box* arg2 = (num > 1) ? (Box*)args[num - 2] : NULL;
+        Box* arg3 = (num > 2) ? (Box*)args[num - 3] : NULL;
+        llvm::SmallVector<Box*, 4> addition_args;
+        for (int i = 3; i < num; ++i) {
+            addition_args.push_back((Box*)args[num - i - 1]);
+        }
+        return ic->call(obj, argspec, arg1, arg2, arg3, addition_args.size() ? &addition_args[0] : NULL, keyword_names);
+    }
+#endif
+    static Box* runtimeCallHelper(ArgPassSpec argspec, Box** args, std::vector<BoxedString*>* keyword_names) {
+        int num = argspec.totalPassed();
+        Box* obj = args[num];
+        Box* arg1 = (num > 0) ? (Box*)args[num - 1] : NULL;
+        Box* arg2 = (num > 1) ? (Box*)args[num - 2] : NULL;
+        Box* arg3 = (num > 2) ? (Box*)args[num - 3] : NULL;
+        llvm::SmallVector<Box*, 4> addition_args;
+        for (int i = 3; i < num; ++i) {
+            addition_args.push_back((Box*)args[num - i - 1]);
+        }
+        return runtimeCall(obj, argspec, arg1, arg2, arg3, addition_args.size() ? &addition_args[0] : NULL,
+                           keyword_names);
+    }
+
+
+    void emitRuntimeCall(ArgPassSpec argspec, std::vector<BoxedString*>* keyword_names) {
+        // We could make this faster but for now: keep it simple, stupid..
+        int num_stack_args = argspec.totalPassed() + 1;
+        assert(num_stack_args == stack_level);
+#if ENABLE_TRACING_IC
+        if (keyword_names) // looks like runtime ICs with 7 or more args don't work right now..
+            emitVarArgCall((void*)runtimeCallHelper, num_stack_args, Imm(argspec.asInt()), Rsp(),
+                           Imm((void*)keyword_names), Imm((void*)new RuntimeCallIC));
+        else
+            emitVarArgCall((void*)runtimeCallHelperIC, num_stack_args, Imm(argspec.asInt()), Rsp(),
+                           Imm((void*)keyword_names), Imm((void*)new RuntimeCallIC));
+#else
+        emitVarArgCall((void*)runtimeCallHelper, num_stack_args, Imm(argspec.asInt()), Rsp(),
+                       Imm((void*)keyword_names));
+#endif
+    }
+
+    void emitPush(uint64_t val) {
+        a.mov(assembler::Immediate(val), assembler::RSI);
+        a.push(assembler::RSI);
+        ++stack_level;
+    }
+
+    void emitPop() {
+        a.pop(assembler::RAX);
+        --stack_level;
+    }
+
+    static Box* hasnextHelper(Box* b) { return boxBool(pyston::hasnext(b)); }
+
+    void emitHasnext() { emitCall((void*)hasnextHelper, Pop()); }
+
+    static void setCurrentInstHelper(ASTInterpreter* interp, AST_stmt* node) { interp->current_inst = node; }
+
+    void emitSetCurrentInst(AST_stmt* node) {
+        assert(stack_level == 0);
+
+        // dont call the helper to save a few bytes...
+        emitVoidCall((void*)setCurrentInstHelper, Mem(getInterp()), Imm((void*)node));
+        /*
+        assert((uint32_t)(uint64_t)node == (uint64_t)node && "only support 32 offset for now");
+        a.mov(getCurInst(), assembler::RDX);
+        a.movq(assembler::Immediate((void*)node), assembler::Indirect(assembler::RDX, 0));
+        */
+    }
+
+    void addGuard(bool t, CFGBlock* cont) {
+        a.pop(assembler::RSI);
+        stack_level--;
+
+        a.mov(assembler::Immediate((void*)(t ? False : True)), assembler::RDI);
+        a.cmp(assembler::RSI, assembler::RDI);
+        a.jne(assembler::JumpDestination::fromStart(a.bytesWritten() + 17 + 11 + 1));
+        assert(stack_level == 0);
+        a.mov(assembler::Immediate(cont), assembler::RAX);
+        a.mov(assembler::Indirect(assembler::RAX, 8), assembler::RSI);
+        a.test(assembler::RSI, assembler::RSI);
+        a.je(assembler::JumpDestination::fromStart(a.bytesWritten() + 4 + 1));
+        a.emitByte(0xFF);
+        a.emitByte(0x60);
+        a.emitByte(0x08); // jmp qword ptr [rax+8]
+        a.jmp(assembler::JumpDestination::fromStart(epilog_offset));
+    }
+
+    void emitJump(CFGBlock* b) {
+        assert(stack_level == 0);
+        if (b->code) {
+            a.jmp(assembler::JumpDestination::fromStart(((uint64_t)b->code) - (uint64_t)a.getStartAddr()));
+        } else {
+            // TODO we could patch this later...
+            a.mov(assembler::Immediate(b), assembler::RAX);
+            a.mov(assembler::Indirect(assembler::RAX, 8), assembler::RSI);
+            a.test(assembler::RSI, assembler::RSI);
+            a.je(assembler::JumpDestination::fromStart(a.bytesWritten() + 4 + 1));
+            a.emitByte(0xFF);
+            a.emitByte(0x60);
+            a.emitByte(0x08); // jmp qword ptr [rax+8]
+            a.jmp(assembler::JumpDestination::fromStart(epilog_offset));
+        }
+    }
+
+    void emitReturn() {
+        assert(stack_level == 1);
+        a.mov(assembler::Immediate(0ul), assembler::RAX);
+        a.pop(assembler::RDX);
+        a.jmp(assembler::JumpDestination::fromStart(epilog_offset));
+        --stack_level;
+    }
+
+    void abort() {
+        if (finished)
+            return;
+        a.setCurInstPointer((uint8_t*)code);
+        a.mov(assembler::Immediate(block), assembler::RAX);
+        a.jmp(assembler::JumpDestination::fromStart(epilog_offset));
+
+        RELEASE_ASSERT(!a.hasFailed(), "");
+        llvm::sys::Memory::InvalidateInstructionCache(code, (uint64_t)a.curInstPointer() - (uint64_t)code);
+        stack_level = 0;
+        finished = true;
+        iscurrently_tracing = false;
+    }
+
+    void compile() {
+        if (finished)
+            return;
+        iscurrently_tracing = false;
+        if (a.hasFailed()) {
+            a.resetFailed();
+            if (abort_callback)
+                abort_callback();
+            tracers_aborted.insert(block);
+            abort();
+            /*
+                        FILE* f = fopen((llvm::Twine("block") + llvm::Twine(block->idx)).str().c_str(), "wb");
+                        fwrite(code, 1, a.curInstPointer() - ((uint8_t*)code), f);
+                        fclose(f);
+            */
+            return;
+        }
+        assert(stack_level == 0);
+        RELEASE_ASSERT(!a.hasFailed(), "asm failed");
+        llvm::sys::Memory::InvalidateInstructionCache(code, (uint64_t)a.curInstPointer() - (uint64_t)code);
+        block->code = code;
+        if (entry_code)
+            block->entry_code = entry_code;
+
+        /*
+                FILE* f = fopen((llvm::Twine("block") + llvm::Twine(block->idx)).str().c_str(), "wb");
+                fwrite(code, 1, a.curInstPointer() - ((uint8_t*)code), f);
+                fclose(f);
+        */
+        finished = true;
+    }
+};
+
+class JitedCode {
+    static constexpr int code_size = 4096 * 20;
+    static constexpr int epilog_size = 2;
+
+    void* code;
+    int entry_offset;
+    int epilog_offset;
+    assembler::Assembler a;
+    bool iscurrently_tracing;
+    std::function<void(void)> abort_callback;
+
+public:
+    JitedCode(std::function<void(void)> abort_callback)
+        : code(malloc(code_size)),
+          entry_offset(0),
+          epilog_offset(0),
+          a((uint8_t*)code, code_size - epilog_size),
+          iscurrently_tracing(false),
+          abort_callback(abort_callback) {
+        // emit prolog
+        a.push(assembler::RBP);
+        a.mov(assembler::RSP, assembler::RBP);
+
+        // create stack layout:
+        // [RBP- 8] -> ASTInterpreter*
+        // [RBP-16] -> &ASTInterpreter->current_inst
+        a.push(assembler::RDI); // push interpreter pointer
+
+        static_assert(offsetof(ASTInterpreter, current_inst) == 0x80, "");
+        // lea rdi,[rdi+0x80]
+        for (unsigned char c : { 0x48, 0x8d, 0xbf, 0x80, 0x00, 0x00, 0x00 })
+            a.emitByte(c);
+        // push &ASTInterpreter->current_inst
+        a.push(assembler::RDI);
+
+        a.emitByte(0xFF);
+        a.emitByte(0x66);
+        a.emitByte(0x08); // jmp    QWORD PTR [rsi+0x8]
+        entry_offset = a.bytesWritten();
+
+        // emit epilog
+        epilog_offset = code_size - epilog_size;
+        assembler::Assembler endAsm((uint8_t*)code + epilog_offset, epilog_size);
+        endAsm.leave();
+        endAsm.retq();
+        RELEASE_ASSERT(!endAsm.hasFailed(), "");
+
+        // generate eh frame...
+        EHwriteAndRegister(code, code_size);
+    }
+
+    std::unique_ptr<JitFragment> newFragment(CFGBlock* block) {
+        if (iscurrently_tracing)
+            return std::unique_ptr<JitFragment>();
+        if (a.bytesLeft() < 50)
+            return std::unique_ptr<JitFragment>();
+
+        iscurrently_tracing = true;
+
+        return std::unique_ptr<JitFragment>(
+            new JitFragment(block, a, epilog_offset, abort_callback, a.getStartAddr(), iscurrently_tracing));
+    }
+
+
+    static void writeTrivialEhFrame(void* eh_frame_addr, void* func_addr, uint64_t func_size) {
+        memcpy(eh_frame_addr, _eh_frame_template, EH_FRAME_SIZE);
+
+        int32_t* offset_ptr = (int32_t*)((uint8_t*)eh_frame_addr + 0x20);
+        int32_t* size_ptr = (int32_t*)((uint8_t*)eh_frame_addr + 0x24);
+
+        int64_t offset = (int8_t*)func_addr - (int8_t*)offset_ptr;
+        assert(offset >= INT_MIN && offset <= INT_MAX);
+        *offset_ptr = offset;
+
+        assert(func_size <= UINT_MAX);
+        *size_ptr = func_size;
+    }
+
+    void EHwriteAndRegister(void* func_addr, uint64_t func_size) {
+        void* eh_frame_addr = 0;
+        eh_frame_addr = malloc(EH_FRAME_SIZE);
+        writeTrivialEhFrame(eh_frame_addr, func_addr, func_size);
+        // (EH_FRAME_SIZE - 4) to omit the 4-byte null terminator, otherwise we trip an assert in parseEhFrame.
+        // TODO: can we omit the terminator in general?
+        registerDynamicEhFrame((uint64_t)func_addr, func_size, (uint64_t)eh_frame_addr, EH_FRAME_SIZE - 4);
+        registerEHFrames((uint8_t*)eh_frame_addr, (uint64_t)eh_frame_addr, EH_FRAME_SIZE);
+    }
+};
+
+
+void ASTInterpreter::abortTracing() {
+    if (tracer) {
+        tracer->abort();
+        tracers_aborted.insert(tracer->getBlock());
+        tracer.reset();
+        // printf("FAILED\n");
+    }
+}
 
 void ASTInterpreter::addSymbol(InternedString name, Box* value, bool allow_duplicates) {
     if (!allow_duplicates)
@@ -342,17 +1113,39 @@ void RegisterHelper::deregister(void* frame_addr) {
     s_interpreterMap.erase(frame_addr);
 }
 
+void jitError() {
+    printf("jit error!\n");
+}
+
+void ASTInterpreter::startTracing(CFGBlock* block) {
+    // printf("Starting trace: %d\n", block->idx);
+    if (!compiled_func->jitted_code)
+        compiled_func->jitted_code = (void*)(new JitedCode(jitError));
+    assert(!tracer);
+    JitedCode* jitted_code = (JitedCode*)compiled_func->jitted_code;
+    tracer = jitted_code->newFragment(block);
+}
+
 Value ASTInterpreter::executeInner(ASTInterpreter& interpreter, CFGBlock* start_block, AST_stmt* start_at,
                                    RegisterHelper* reg) {
+
     void* frame_addr = __builtin_frame_address(0);
     reg->doRegister(frame_addr, &interpreter);
 
     Value v;
 
+    bool trace = false;
+    bool from_start = start_block == NULL && start_at == NULL;
+
     assert((start_block == NULL) == (start_at == NULL));
     if (start_block == NULL) {
         start_block = interpreter.source_info->cfg->getStartingBlock();
         start_at = start_block->body[0];
+
+        if (ENABLE_TRACING_FUNC && interpreter.compiled_func->times_called == 25 && !start_block->code) {
+            if (tracers_aborted.count(start_block) == 0)
+                trace = true;
+        }
     }
 
     // Important that this happens after RegisterHelper:
@@ -361,24 +1154,67 @@ Value ASTInterpreter::executeInner(ASTInterpreter& interpreter, CFGBlock* start_
     interpreter.current_inst = NULL;
 
     interpreter.current_block = start_block;
-    bool started = false;
-    for (auto s : start_block->body) {
-        if (!started) {
-            if (s != start_at)
-                continue;
-            started = true;
-        }
 
-        interpreter.current_inst = s;
-        v = interpreter.visit_stmt(s);
+    bool started = false;
+    if (trace && from_start) {
+        interpreter.startTracing(start_block);
     }
 
+    if (!from_start) {
+        for (auto s : start_block->body) {
+            if (!started) {
+                if (s != start_at)
+                    continue;
+                started = true;
+            }
+
+            interpreter.current_inst = s;
+            v = interpreter.visit_stmt(s);
+        }
+    } else {
+        interpreter.next_block = interpreter.current_block;
+    }
+
+    bool was_tracing = false;
     while (interpreter.next_block) {
         interpreter.current_block = interpreter.next_block;
         interpreter.next_block = 0;
 
+        if (ENABLE_TRACING && !interpreter.tracer) {
+            CFGBlock* b = interpreter.current_block;
+            if (b->entry_code) {
+                // printf("calling: %d\n", b->idx);
+                // fflush(stdout);
+                was_tracing = true;
+
+                try {
+                    typedef std::pair<CFGBlock*, Box*>(*EntryFunc)(ASTInterpreter*, CFGBlock*);
+                    std::pair<CFGBlock*, Box*> rtn = ((EntryFunc)(b->entry_code))(&interpreter, b);
+                    interpreter.next_block = rtn.first;
+                    if (!interpreter.next_block) {
+                        return rtn.second;
+                    }
+                } catch (ExcInfo e) {
+                    AST_stmt* stmt = interpreter.getCurrentStatement();
+                    if (stmt->type != AST_TYPE::Invoke)
+                        throw e;
+                    interpreter.next_block = ((AST_Invoke*)stmt)->exc_dest;
+                    interpreter.last_exception = e;
+                }
+                continue;
+            }
+        }
+
+#if ENABLE_TRACING
+        if (was_tracing && !interpreter.tracer && tracers_aborted.count(interpreter.current_block) == 0) {
+            assert(!interpreter.current_block->code);
+            interpreter.startTracing(interpreter.current_block);
+        }
+#endif
         for (AST_stmt* s : interpreter.current_block->body) {
             interpreter.current_inst = s;
+            if (interpreter.tracer)
+                interpreter.tracer->emitSetCurrentInst(s);
             v = interpreter.visit_stmt(s);
         }
     }
@@ -396,10 +1232,16 @@ Value ASTInterpreter::execute(ASTInterpreter& interpreter, CFGBlock* start_block
 Value ASTInterpreter::doBinOp(Box* left, Box* right, int op, BinExpType exp_type) {
     switch (exp_type) {
         case BinExpType::AugBinOp:
+            if (tracer)
+                tracer->emitAugbinop(op);
             return augbinop(left, right, op);
         case BinExpType::BinOp:
+            if (tracer)
+                tracer->emitBinop(op);
             return binop(left, right, op);
         case BinExpType::Compare:
+            if (tracer)
+                tracer->emitCompare(op);
             return compare(left, right, op);
         default:
             RELEASE_ASSERT(0, "not implemented");
@@ -410,12 +1252,20 @@ Value ASTInterpreter::doBinOp(Box* left, Box* right, int op, BinExpType exp_type
 void ASTInterpreter::doStore(InternedString name, Value value) {
     ScopeInfo::VarScopeType vst = scope_info->getScopeTypeOfName(name);
     if (vst == ScopeInfo::VarScopeType::GLOBAL) {
+        if (tracer)
+            tracer->emitSetGlobal(globals, name.getBox());
         setGlobal(globals, name.getBox(), value.o);
     } else if (vst == ScopeInfo::VarScopeType::NAME) {
+        if (tracer)
+            tracer->emitSetItemName(name.getBox());
+
         assert(frame_info.boxedLocals != NULL);
         // TODO should probably pre-box the names when it's a scope that usesNameLookup
         setitem(frame_info.boxedLocals, name.getBox(), value.o);
     } else {
+        if (tracer)
+            tracer->emitSetLocal(name, vst == ScopeInfo::VarScopeType::CLOSURE);
+
         sym_table[name] = value.o;
         if (vst == ScopeInfo::VarScopeType::CLOSURE) {
             created_closure->elts[scope_info->getClosureOffset(name)] = value.o;
@@ -429,14 +1279,22 @@ void ASTInterpreter::doStore(AST_expr* node, Value value) {
         doStore(name->id, value);
     } else if (node->type == AST_TYPE::Attribute) {
         AST_Attribute* attr = (AST_Attribute*)node;
-        pyston::setattr(visit_expr(attr->value).o, attr->attr.getBox(), value.o);
+        Value o = visit_expr(attr->value);
+        if (tracer)
+            tracer->emitSetAttr(attr->attr.getBox());
+        pyston::setattr(o.o, attr->attr.getBox(), value.o);
     } else if (node->type == AST_TYPE::Tuple) {
         AST_Tuple* tuple = (AST_Tuple*)node;
         Box** array = unpackIntoArray(value.o, tuple->elts.size());
+
+        if (tracer)
+            tracer->emitUnpackIntoArray(tuple->elts.size());
+
         unsigned i = 0;
         for (AST_expr* e : tuple->elts)
             doStore(e, array[i++]);
     } else if (node->type == AST_TYPE::List) {
+        abortTracing();
         AST_List* list = (AST_List*)node;
         Box** array = unpackIntoArray(value.o, list->elts.size());
         unsigned i = 0;
@@ -448,6 +1306,9 @@ void ASTInterpreter::doStore(AST_expr* node, Value value) {
         Value target = visit_expr(subscript->value);
         Value slice = visit_expr(subscript->slice);
 
+        if (tracer)
+            tracer->emitSetItem();
+
         setitem(target.o, slice.o, value.o);
     } else {
         RELEASE_ASSERT(0, "not implemented");
@@ -456,10 +1317,17 @@ void ASTInterpreter::doStore(AST_expr* node, Value value) {
 
 Value ASTInterpreter::visit_unaryop(AST_UnaryOp* node) {
     Value operand = visit_expr(node->operand);
-    if (node->op_type == AST_TYPE::Not)
+    if (node->op_type == AST_TYPE::Not) {
+        if (tracer)
+            tracer->emitNotNonzero();
+
         return boxBool(!nonzero(operand.o));
-    else
+    } else {
+        if (tracer)
+            tracer->emitUnaryop(node->op_type);
+
         return unaryop(operand.o, node->op_type);
+    }
 }
 
 Value ASTInterpreter::visit_binop(AST_BinOp* node) {
@@ -470,12 +1338,23 @@ Value ASTInterpreter::visit_binop(AST_BinOp* node) {
 
 Value ASTInterpreter::visit_slice(AST_Slice* node) {
     Value lower = node->lower ? visit_expr(node->lower) : None;
+    if (tracer && !node->lower)
+        tracer->emitPush((uint64_t)None);
     Value upper = node->upper ? visit_expr(node->upper) : None;
+    if (tracer && !node->upper)
+        tracer->emitPush((uint64_t)None);
     Value step = node->step ? visit_expr(node->step) : None;
+    if (tracer && !node->step)
+        tracer->emitPush((uint64_t)None);
+
+    if (tracer)
+        tracer->emitCreateSlice();
+
     return createSlice(lower.o, upper.o, step.o);
 }
 
 Value ASTInterpreter::visit_extslice(AST_ExtSlice* node) {
+    abortTracing();
     int num_slices = node->dims.size();
     BoxedTuple* rtn = BoxedTuple::create(num_slices);
     for (int i = 0; i < num_slices; ++i)
@@ -487,19 +1366,57 @@ Value ASTInterpreter::visit_branch(AST_Branch* node) {
     Value v = visit_expr(node->test);
     ASSERT(v.o == True || v.o == False, "Should have called NONZERO before this branch");
 
+    if (tracer)
+        tracer->addGuard(v.o == True, v.o == True ? node->iffalse : node->iftrue);
     if (v.o == True)
         next_block = node->iftrue;
     else
         next_block = node->iffalse;
+
+
+    if (tracer) {
+        // if (next_block->code)
+        tracer->emitJump(next_block);
+        tracer->compile();
+        tracer.reset();
+        if (!next_block->code) {
+            startTracing(next_block);
+            RELEASE_ASSERT(tracer, "");
+        }
+    }
+
     return Value();
 }
 
 Value ASTInterpreter::visit_jump(AST_Jump* node) {
     bool backedge = node->target->idx < current_block->idx && compiled_func;
-    if (backedge)
+    if (backedge) {
         threading::allowGLReadPreemption();
 
-    if (ENABLE_OSR && backedge && edgecount++ == OSR_THRESHOLD_INTERPRETER) {
+        if (tracer)
+            tracer->emitVoidCall((void*)threading::allowGLReadPreemption);
+    }
+
+    if (tracer) {
+        // if (node->target->code)
+        tracer->emitJump(node->target);
+        tracer->compile();
+        tracer.reset();
+        if (!node->target->code) {
+            startTracing(node->target);
+            RELEASE_ASSERT(tracer, "");
+        }
+    }
+
+    if (backedge)
+        ++edgecount;
+
+    if (ENABLE_TRACING && backedge && edgecount == 5 && !tracer && !node->target->code
+        && tracers_aborted.count(node->target) == 0) {
+        startTracing(node->target);
+    }
+
+    if (!ENABLE_TRACING && ENABLE_OSR && backedge && edgecount == OSR_THRESHOLD_INTERPRETER) {
         bool can_osr = !FORCE_INTERPRETER && source_info->scoping->areGlobalsFromModule();
         if (can_osr) {
             static StatCounter ast_osrs("num_ast_osrs");
@@ -630,6 +1547,7 @@ Value ASTInterpreter::visit_invoke(AST_Invoke* node) {
         v = visit_stmt(node->stmt);
         next_block = node->normal_dest;
     } catch (ExcInfo e) {
+        abortTracing();
 
         auto source = getCF()->clfunc->source.get();
         exceptionCaughtInInterpreter(LineInfo(node->lineno, node->col_offset, source->fn, source->getName()), &e);
@@ -642,6 +1560,7 @@ Value ASTInterpreter::visit_invoke(AST_Invoke* node) {
 }
 
 Value ASTInterpreter::visit_clsAttribute(AST_ClsAttribute* node) {
+    abortTracing();
     return getclsattr(visit_expr(node->value).o, node->attr.getBox());
 }
 
@@ -657,8 +1576,14 @@ Value ASTInterpreter::visit_langPrimitive(AST_LangPrimitive* node) {
     Value v;
     if (node->opcode == AST_LangPrimitive::GET_ITER) {
         assert(node->args.size() == 1);
-        v = getPystonIter(visit_expr(node->args[0]).o);
+
+        Value val = visit_expr(node->args[0]);
+        if (tracer)
+            tracer->emitGetPystonIter();
+
+        v = getPystonIter(val.o);
     } else if (node->opcode == AST_LangPrimitive::IMPORT_FROM) {
+        abortTracing();
         assert(node->args.size() == 2);
         assert(node->args[0]->type == AST_TYPE::Name);
         assert(node->args[1]->type == AST_TYPE::Str);
@@ -671,6 +1596,7 @@ Value ASTInterpreter::visit_langPrimitive(AST_LangPrimitive* node) {
         // TODO: shouldn't have to rebox here
         v = importFrom(module.o, boxString(name));
     } else if (node->opcode == AST_LangPrimitive::IMPORT_NAME) {
+        abortTracing();
         assert(node->args.size() == 3);
         assert(node->args[0]->type == AST_TYPE::Num);
         assert(static_cast<AST_Num*>(node->args[0])->num_type == AST_Num::INT);
@@ -683,6 +1609,7 @@ Value ASTInterpreter::visit_langPrimitive(AST_LangPrimitive* node) {
         const std::string& module_name = ast_str->str_data;
         v = import(level, froms.o, module_name);
     } else if (node->opcode == AST_LangPrimitive::IMPORT_STAR) {
+        abortTracing();
         assert(node->args.size() == 1);
         assert(node->args[0]->type == AST_TYPE::Name);
 
@@ -693,8 +1620,10 @@ Value ASTInterpreter::visit_langPrimitive(AST_LangPrimitive* node) {
 
         v = importStar(module.o, globals);
     } else if (node->opcode == AST_LangPrimitive::NONE) {
+        abortTracing();
         v = None;
     } else if (node->opcode == AST_LangPrimitive::LANDINGPAD) {
+        abortTracing();
         assert(last_exception.type);
         Box* type = last_exception.type;
         Box* value = last_exception.value ? last_exception.value : None;
@@ -702,6 +1631,7 @@ Value ASTInterpreter::visit_langPrimitive(AST_LangPrimitive* node) {
         v = BoxedTuple::create({ type, value, traceback });
         last_exception = ExcInfo(NULL, NULL, NULL);
     } else if (node->opcode == AST_LangPrimitive::CHECK_EXC_MATCH) {
+        abortTracing();
         assert(node->args.size() == 2);
         Value obj = visit_expr(node->args[0]);
         Value cls = visit_expr(node->args[1]);
@@ -709,13 +1639,17 @@ Value ASTInterpreter::visit_langPrimitive(AST_LangPrimitive* node) {
         v = boxBool(exceptionMatches(obj.o, cls.o));
 
     } else if (node->opcode == AST_LangPrimitive::LOCALS) {
+        abortTracing();
         assert(frame_info.boxedLocals != NULL);
         v = frame_info.boxedLocals;
     } else if (node->opcode == AST_LangPrimitive::NONZERO) {
         assert(node->args.size() == 1);
         Value obj = visit_expr(node->args[0]);
+        if (tracer)
+            tracer->emitNonzero();
         v = boxBool(nonzero(obj.o));
     } else if (node->opcode == AST_LangPrimitive::SET_EXC_INFO) {
+        abortTracing();
         assert(node->args.size() == 3);
 
         Value type = visit_expr(node->args[0]);
@@ -729,11 +1663,18 @@ Value ASTInterpreter::visit_langPrimitive(AST_LangPrimitive* node) {
         v = None;
     } else if (node->opcode == AST_LangPrimitive::UNCACHE_EXC_INFO) {
         assert(node->args.empty());
+        if (tracer)
+            tracer->emitUncacheExcInfo();
+
         getFrameInfo()->exc = ExcInfo(NULL, NULL, NULL);
         v = None;
     } else if (node->opcode == AST_LangPrimitive::HASNEXT) {
         assert(node->args.size() == 1);
         Value obj = visit_expr(node->args[0]);
+
+        if (tracer)
+            tracer->emitHasnext();
+
         v = boxBool(hasnext(obj.o));
     } else
         RELEASE_ASSERT(0, "unknown opcode %d", node->opcode);
@@ -743,6 +1684,10 @@ Value ASTInterpreter::visit_langPrimitive(AST_LangPrimitive* node) {
 Value ASTInterpreter::visit_yield(AST_Yield* node) {
     Value value = node->value ? visit_expr(node->value) : None;
     assert(generator && generator->cls == generator_cls);
+
+    if (tracer)
+        tracer->emitYield(node->value != 0);
+
     return yield(generator, value.o);
 }
 
@@ -751,7 +1696,7 @@ Value ASTInterpreter::visit_stmt(AST_stmt* node) {
     threading::allowGLReadPreemption();
 #endif
 
-    if (0) {
+    if (0 && tracer) {
         printf("%20s % 2d ", source_info->getName().c_str(), current_block->idx);
         print_ast(node);
         printf("\n");
@@ -798,11 +1743,22 @@ Value ASTInterpreter::visit_stmt(AST_stmt* node) {
 
 Value ASTInterpreter::visit_return(AST_Return* node) {
     Value s(node->value ? visit_expr(node->value) : None);
+
+    if (tracer && !node->value)
+        tracer->emitPush((uint64_t)None);
+
+    if (tracer) {
+        tracer->emitReturn();
+        tracer->compile();
+        tracer.reset();
+    }
+
     next_block = 0;
     return s;
 }
 
 Box* ASTInterpreter::createFunction(AST* node, AST_arguments* args, const std::vector<AST_stmt*>& body) {
+    abortTracing();
     CLFunction* cl = wrapFunction(node, args, body, source_info);
 
     std::vector<Box*, StlCompatAllocator<Box*>> defaults;
@@ -852,6 +1808,7 @@ Box* ASTInterpreter::createFunction(AST* node, AST_arguments* args, const std::v
 }
 
 Value ASTInterpreter::visit_makeFunction(AST_MakeFunction* mkfn) {
+    abortTracing();
     AST_FunctionDef* node = mkfn->function_def;
     AST_arguments* args = node->args;
 
@@ -868,6 +1825,7 @@ Value ASTInterpreter::visit_makeFunction(AST_MakeFunction* mkfn) {
 }
 
 Value ASTInterpreter::visit_makeClass(AST_MakeClass* mkclass) {
+    abortTracing();
     AST_ClassDef* node = mkclass->class_def;
     ScopeInfo* scope_info = source_info->scoping->getScopeInfoForNode(node);
     assert(scope_info);
@@ -1035,6 +1993,7 @@ Value ASTInterpreter::visit_print(AST_Print* node) {
 }
 
 Value ASTInterpreter::visit_exec(AST_Exec* node) {
+    abortTracing();
     // TODO implement the locals and globals arguments
     Box* code = visit_expr(node->body).o;
     Box* globals = node->globals == NULL ? NULL : visit_expr(node->globals).o;
@@ -1047,7 +2006,9 @@ Value ASTInterpreter::visit_exec(AST_Exec* node) {
 
 Value ASTInterpreter::visit_compare(AST_Compare* node) {
     RELEASE_ASSERT(node->comparators.size() == 1, "not implemented");
-    return doBinOp(visit_expr(node->left).o, visit_expr(node->comparators[0]).o, node->ops[0], BinExpType::Compare);
+    Box* left = visit_expr(node->left).o;
+    Box* right = visit_expr(node->comparators[0]).o;
+    return doBinOp(left, right, node->ops[0], BinExpType::Compare);
 }
 
 Value ASTInterpreter::visit_expr(AST_expr* node) {
@@ -1137,11 +2098,12 @@ Value ASTInterpreter::visit_call(AST_Call* node) {
     for (AST_expr* e : node->args)
         args.push_back(visit_expr(e).o);
 
-    std::vector<BoxedString*> keywords;
-    for (AST_keyword* k : node->keywords) {
-        keywords.push_back(k->arg.getBox());
+    std::vector<BoxedString*>* keyword_names = NULL;
+    if (node->keywords.size())
+        keyword_names = getKeywordNameStorage(node);
+
+    for (AST_keyword* k : node->keywords)
         args.push_back(visit_expr(k->value).o);
-    }
 
     if (node->starargs)
         args.push_back(visit_expr(node->starargs).o);
@@ -1152,30 +2114,49 @@ Value ASTInterpreter::visit_call(AST_Call* node) {
     ArgPassSpec argspec(node->args.size(), node->keywords.size(), node->starargs, node->kwargs);
 
     if (is_callattr) {
+        CallattrFlags flags{.cls_only = callattr_clsonly, .null_on_nonexistent = false };
+
+        if (tracer)
+            tracer->emitCallattr(attr.getBox(), flags, argspec, keyword_names);
+
         return callattr(func.o, attr.getBox(),
                         CallattrFlags({.cls_only = callattr_clsonly, .null_on_nonexistent = false }), argspec,
                         args.size() > 0 ? args[0] : 0, args.size() > 1 ? args[1] : 0, args.size() > 2 ? args[2] : 0,
-                        args.size() > 3 ? &args[3] : 0, &keywords);
+                        args.size() > 3 ? &args[3] : 0, keyword_names);
     } else {
+        if (tracer)
+            tracer->emitRuntimeCall(argspec, keyword_names);
+
         return runtimeCall(func.o, argspec, args.size() > 0 ? args[0] : 0, args.size() > 1 ? args[1] : 0,
-                           args.size() > 2 ? args[2] : 0, args.size() > 3 ? &args[3] : 0, &keywords);
+                           args.size() > 2 ? args[2] : 0, args.size() > 3 ? &args[3] : 0, keyword_names);
     }
 }
 
 
 Value ASTInterpreter::visit_expr(AST_Expr* node) {
-    return visit_expr(node->value);
+    Value rtn = visit_expr(node->value);
+    if (tracer)
+        tracer->emitPop();
+    return rtn;
 }
 
 Value ASTInterpreter::visit_num(AST_Num* node) {
-    if (node->num_type == AST_Num::INT)
+    if (node->num_type == AST_Num::INT) {
+        if (tracer)
+            tracer->emitInt(node->n_int);
         return boxInt(node->n_int);
-    else if (node->num_type == AST_Num::FLOAT)
+    } else if (node->num_type == AST_Num::FLOAT) {
+        if (tracer)
+            tracer->emitFloat(node->n_float);
         return boxFloat(node->n_float);
-    else if (node->num_type == AST_Num::LONG)
+    } else if (node->num_type == AST_Num::LONG) {
+        if (tracer)
+            tracer->emitLong(node->n_long);
         return createLong(node->n_long);
-    else if (node->num_type == AST_Num::COMPLEX)
+    } else if (node->num_type == AST_Num::COMPLEX) {
+        abortTracing();
         return boxComplex(0.0, node->n_float);
+    }
     RELEASE_ASSERT(0, "not implemented");
     return Value();
 }
@@ -1185,10 +2166,12 @@ Value ASTInterpreter::visit_index(AST_Index* node) {
 }
 
 Value ASTInterpreter::visit_repr(AST_Repr* node) {
+    abortTracing();
     return repr(visit_expr(node->value).o);
 }
 
 Value ASTInterpreter::visit_lambda(AST_Lambda* node) {
+    abortTracing();
     AST_Return* expr = new AST_Return();
     expr->value = node->body;
 
@@ -1198,6 +2181,13 @@ Value ASTInterpreter::visit_lambda(AST_Lambda* node) {
 
 Value ASTInterpreter::visit_dict(AST_Dict* node) {
     RELEASE_ASSERT(node->keys.size() == node->values.size(), "not implemented");
+    if (tracer) {
+        if (node->keys.size())
+            abortTracing();
+        else
+            tracer->emitCreateDict();
+    }
+
     BoxedDict* dict = new BoxedDict();
     for (size_t i = 0; i < node->keys.size(); ++i) {
         Box* v = visit_expr(node->values[i]).o;
@@ -1209,6 +2199,7 @@ Value ASTInterpreter::visit_dict(AST_Dict* node) {
 }
 
 Value ASTInterpreter::visit_set(AST_Set* node) {
+    abortTracing();
     BoxedSet::Set set;
     for (AST_expr* e : node->elts)
         set.insert(visit_expr(e).o);
@@ -1218,8 +2209,12 @@ Value ASTInterpreter::visit_set(AST_Set* node) {
 
 Value ASTInterpreter::visit_str(AST_Str* node) {
     if (node->str_type == AST_Str::STR) {
+        if (tracer)
+            tracer->emitPush((uint64_t)source_info->parent_module->getStringConstant(node->str_data));
         return source_info->parent_module->getStringConstant(node->str_data);
     } else if (node->str_type == AST_Str::UNICODE) {
+        if (tracer)
+            tracer->emitUnicodeStr(node->str_data);
         return decodeUTF8StringPtr(node->str_data);
     } else {
         RELEASE_ASSERT(0, "%d", node->str_type);
@@ -1233,8 +2228,15 @@ Value ASTInterpreter::visit_name(AST_Name* node) {
 
     switch (node->lookup_type) {
         case ScopeInfo::VarScopeType::GLOBAL:
+            if (tracer)
+                tracer->emitGetGlobal(globals, node->id.getBox());
+
             return getGlobal(globals, node->id.getBox());
         case ScopeInfo::VarScopeType::DEREF: {
+
+            if (tracer)
+                tracer->emitDeref(node->id);
+
             DerefInfo deref_info = scope_info->getDerefInfo(node->id);
             assert(passed_closure);
             BoxedClosure* closure = passed_closure;
@@ -1250,6 +2252,9 @@ Value ASTInterpreter::visit_name(AST_Name* node) {
         }
         case ScopeInfo::VarScopeType::FAST:
         case ScopeInfo::VarScopeType::CLOSURE: {
+            if (tracer)
+                tracer->emitGetLocal(node->id);
+
             SymMap::iterator it = sym_table.find(node->id);
             if (it != sym_table.end())
                 return sym_table.getMapped(it->second);
@@ -1258,6 +2263,8 @@ Value ASTInterpreter::visit_name(AST_Name* node) {
             return Value();
         }
         case ScopeInfo::VarScopeType::NAME: {
+            if (tracer)
+                tracer->emitBoxedLocalsGet(node->id.getBox());
             return boxedLocalsGet(frame_info.boxedLocals, node->id.getBox(), globals);
         }
         default:
@@ -1269,6 +2276,10 @@ Value ASTInterpreter::visit_name(AST_Name* node) {
 Value ASTInterpreter::visit_subscript(AST_Subscript* node) {
     Value value = visit_expr(node->value);
     Value slice = visit_expr(node->slice);
+
+    if (tracer)
+        tracer->emitGetItem();
+
     return getitem(value.o, slice.o);
 }
 
@@ -1277,6 +2288,10 @@ Value ASTInterpreter::visit_list(AST_List* node) {
     list->ensure(node->elts.size());
     for (AST_expr* e : node->elts)
         listAppendInternal(list, visit_expr(e).o);
+
+    if (tracer)
+        tracer->emitCreateList(node->elts.size());
+
     return list;
 }
 
@@ -1285,11 +2300,18 @@ Value ASTInterpreter::visit_tuple(AST_Tuple* node) {
     int rtn_idx = 0;
     for (AST_expr* e : node->elts)
         rtn->elts[rtn_idx++] = visit_expr(e).o;
+
+    if (tracer)
+        tracer->emitCreateTuple(node->elts.size());
+
     return rtn;
 }
 
 Value ASTInterpreter::visit_attribute(AST_Attribute* node) {
-    return pyston::getattr(visit_expr(node->value).o, node->attr.getBox());
+    Value v = visit_expr(node->value);
+    if (tracer)
+        tracer->emitGetAttr(node->attr.getBox());
+    return pyston::getattr(v.o, node->attr.getBox());
 }
 }
 

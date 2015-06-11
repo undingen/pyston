@@ -34,7 +34,8 @@ InternedString InternedStringPool::get(llvm::StringRef arg) {
         interned[s->s()] = s;
     }
 
-#ifndef NDEBUG
+// #ifndef NDEBUG
+#if 0
     return InternedString(s, this);
 #else
     return InternedString(s);
