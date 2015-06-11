@@ -75,7 +75,6 @@ private:
     static const uint8_t REX_B = 1, REX_X = 2, REX_R = 4, REX_W = 8;
 
 private:
-    void emitByte(uint8_t b);
     void emitInt(int64_t n, int bytes);
     void emitRex(uint8_t rex);
     void emitModRM(uint8_t mod, uint8_t reg, uint8_t rm);
@@ -85,7 +84,10 @@ private:
 public:
     Assembler(uint8_t* start, int size) : start_addr(start), end_addr(start + size), addr(start_addr), failed(false) {}
 
+    void emitByte(uint8_t b);
+
     bool hasFailed() { return failed; }
+    void resetFailed() { failed = false; }
 
     void nop() { emitByte(0x90); }
     void trap() { emitByte(0xcc); }
@@ -151,6 +153,7 @@ public:
     void setz(Register reg) { sete(reg); }
     void setne(Register reg);
     void setnz(Register reg) { setne(reg); }
+    void leave();
 
 
     // Macros:
@@ -162,8 +165,11 @@ public:
     void emitAnnotation(int num);
 
     int bytesWritten() { return addr - start_addr; }
+    int bytesLeft() { return end_addr - addr; }
     uint8_t* curInstPointer() { return addr; }
+    void setCurInstPointer(uint8_t* ptr) { addr = ptr; }
     bool isExactlyFull() { return addr == end_addr; }
+    uint8_t* getStartAddr() { return start_addr; }
 };
 
 uint8_t* initializePatchpoint2(uint8_t* start_addr, uint8_t* slowpath_start, uint8_t* end_addr, StackInfo stack_info,

@@ -135,10 +135,6 @@ void Location::dump() const {
     RELEASE_ASSERT(0, "%d", type);
 }
 
-static bool isLargeConstant(int64_t val) {
-    return (val < (-1L << 31) || val >= (1L << 31) - 1);
-}
-
 Rewriter::ConstLoader::ConstLoader(Rewriter* rewriter) : rewriter(rewriter) {
 }
 
@@ -518,7 +514,7 @@ void RewriterVar::dump() {
 }
 
 assembler::Immediate RewriterVar::tryGetAsImmediate(bool* is_immediate) {
-    if (this->is_constant && !isLargeConstant(this->constant_value)) {
+    if (this->is_constant && !Rewriter::isLargeConstant(this->constant_value)) {
         *is_immediate = true;
         return assembler::Immediate(this->constant_value);
     } else {
@@ -532,7 +528,7 @@ assembler::Register RewriterVar::getInReg(Location dest, bool allow_constant_in_
 
 #ifndef NDEBUG
     if (!allow_constant_in_reg) {
-        assert(!is_constant || isLargeConstant(constant_value));
+        assert(!is_constant || Rewriter::isLargeConstant(constant_value));
     }
 #endif
 
@@ -691,6 +687,17 @@ RewriterVar* Rewriter::call(bool has_side_effects, void* func_addr, RewriterVar*
     args.push_back(arg0);
     args.push_back(arg1);
     args.push_back(arg2);
+    return call(has_side_effects, func_addr, args, args_xmm);
+}
+
+RewriterVar* Rewriter::call(bool has_side_effects, void* func_addr, RewriterVar* arg0, RewriterVar* arg1,
+                            RewriterVar* arg2, RewriterVar* arg3) {
+    RewriterVar::SmallVector args;
+    RewriterVar::SmallVector args_xmm;
+    args.push_back(arg0);
+    args.push_back(arg1);
+    args.push_back(arg2);
+    args.push_back(arg3);
     return call(has_side_effects, func_addr, args, args_xmm);
 }
 
@@ -1255,7 +1262,9 @@ int Rewriter::_allocate(RewriterVar* result, int n) {
             consec = 0;
         }
     }
-    RELEASE_ASSERT(0, "Using all %d bytes of scratch!", scratch_size);
+    failed = true;
+    return 0;
+    // RELEASE_ASSERT(0, "Using all %d bytes of scratch!", scratch_size);
 }
 
 RewriterVar* Rewriter::allocateAndCopy(RewriterVar* array_ptr, int n) {

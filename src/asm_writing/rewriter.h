@@ -198,6 +198,7 @@ public:
 class Rewriter;
 class RewriterVar;
 class RewriterAction;
+class JitFragment;
 
 // This might make more sense as an inner class of Rewriter, but
 // you can't forward-declare that :/
@@ -282,6 +283,7 @@ public:
 #endif
 
     friend class Rewriter;
+    friend class JitFragment;
 };
 
 class RewriterAction {
@@ -297,7 +299,7 @@ enum class ActionType { NORMAL, GUARD, MUTATION };
 #define LOCATION_PLACEHOLDER ((RewriterVar*)1)
 
 class Rewriter : public ICSlotRewrite::CommitHook {
-private:
+protected:
     // Helps generating the best code for loading a const integer value.
     // By keeping track of the last known value of every register and reusing it.
     class ConstLoader {
@@ -477,11 +479,12 @@ public:
         for (RewriterVar* var : vars) {
             delete var;
         }
-
-        // This check isn't thread safe and should be fine to remove if it causes
-        // issues (along with the nvars/start_vars accounting)
-        ASSERT(threading::threadWasStarted() || RewriterVar::nvars == start_vars, "%d %d", RewriterVar::nvars,
-               start_vars);
+        /*
+                // This check isn't thread safe and should be fine to remove if it causes
+                // issues (along with the nvars/start_vars accounting)
+                ASSERT(threading::threadWasStarted() || RewriterVar::nvars == start_vars, "%d %d", RewriterVar::nvars,
+                       start_vars);
+        */
     }
 
     Location getReturnDestination();
@@ -505,6 +508,8 @@ public:
     RewriterVar* call(bool has_side_effects, void* func_addr, RewriterVar* arg0);
     RewriterVar* call(bool has_side_effects, void* func_addr, RewriterVar* arg0, RewriterVar* arg1);
     RewriterVar* call(bool has_side_effects, void* func_addr, RewriterVar* arg0, RewriterVar* arg1, RewriterVar* arg2);
+    RewriterVar* call(bool has_side_effects, void* func_addr, RewriterVar* arg0, RewriterVar* arg1, RewriterVar* arg2,
+                      RewriterVar* arg3);
     RewriterVar* add(RewriterVar* a, int64_t b, Location dest);
     // Allocates n pointer-sized stack slots:
     RewriterVar* allocate(int n);
@@ -518,6 +523,8 @@ public:
     void addDependenceOn(ICInvalidator&);
 
     static Rewriter* createRewriter(void* rtn_addr, int num_args, const char* debug_name);
+
+    static bool isLargeConstant(int64_t val) { return (val < (-1L << 31) || val >= (1L << 31) - 1); }
 
     friend class RewriterVar;
 };
