@@ -790,6 +790,8 @@ void Assembler::cmp(Indirect mem, Register reg) {
 }
 
 void Assembler::lea(Indirect mem, Register reg) {
+    RELEASE_ASSERT(mem.base != RSP, "We have so generate the SIB byte...");
+
     int mem_idx = mem.base.regnum;
     int reg_idx = reg.regnum;
 
@@ -934,6 +936,10 @@ void Assembler::setne(Register reg) {
     set_cond(reg, COND_NOT_EQUAL);
 }
 
+void Assembler::leave() {
+    emitByte(0xC9);
+}
+
 uint8_t* Assembler::emitCall(void* ptr, Register scratch) {
     mov(Immediate(ptr), scratch);
     callq(scratch);
@@ -1001,6 +1007,20 @@ void Assembler::emitAnnotation(int num) {
     nop();
     cmp(RAX, Immediate(num));
     nop();
+}
+
+ForwardJump::ForwardJump(Assembler& assembler, ConditionCode condition)
+    : assembler(assembler), condition(condition), jmp_inst(assembler.curInstPointer()) {
+    assembler.jmp_cond(JumpDestination::fromStart(assembler.bytesWritten() + max_jump_size), condition);
+}
+
+ForwardJump::~ForwardJump() {
+    uint8_t* new_pos = assembler.curInstPointer();
+    int offset = new_pos - jmp_inst;
+    RELEASE_ASSERT(offset < max_jump_size, "");
+    assembler.setCurInstPointer(jmp_inst);
+    assembler.jmp_cond(JumpDestination::fromStart(assembler.bytesWritten() + offset), condition);
+    assembler.setCurInstPointer(new_pos);
 }
 }
 }

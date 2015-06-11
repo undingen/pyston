@@ -75,7 +75,6 @@ private:
     static const uint8_t REX_B = 1, REX_X = 2, REX_R = 4, REX_W = 8;
 
 private:
-    void emitByte(uint8_t b);
     void emitInt(int64_t n, int bytes);
     void emitRex(uint8_t rex);
     void emitModRM(uint8_t mod, uint8_t reg, uint8_t rm);
@@ -84,6 +83,8 @@ private:
 
 public:
     Assembler(uint8_t* start, int size) : start_addr(start), end_addr(start + size), addr(start_addr), failed(false) {}
+
+    void emitByte(uint8_t b);
 
     bool hasFailed() { return failed; }
 
@@ -151,6 +152,7 @@ public:
     void setz(Register reg) { sete(reg); }
     void setne(Register reg);
     void setnz(Register reg) { setne(reg); }
+    void leave();
 
 
     // Macros:
@@ -161,9 +163,27 @@ public:
     void fillWithNopsExcept(int bytes);
     void emitAnnotation(int num);
 
-    int bytesWritten() { return addr - start_addr; }
+    int bytesWritten() const { return addr - start_addr; }
+    int bytesLeft() const { return end_addr - addr; }
     uint8_t* curInstPointer() { return addr; }
-    bool isExactlyFull() { return addr == end_addr; }
+    void setCurInstPointer(uint8_t* ptr) { addr = ptr; }
+    bool isExactlyFull() const { return addr == end_addr; }
+    uint8_t* getStartAddr() { return start_addr; }
+};
+
+// This class helps generating a forward jump with a relative offset.
+// It keeps track of the current assembler offset at construction time and in the destructor patches the
+// generated conditional jump with the correct offset depending on the number of bytes emitted in between.
+class ForwardJump {
+private:
+    const int max_jump_size = 128;
+    Assembler& assembler;
+    ConditionCode condition;
+    uint8_t* jmp_inst;
+
+public:
+    ForwardJump(Assembler& assembler, ConditionCode condition);
+    ~ForwardJump();
 };
 
 uint8_t* initializePatchpoint2(uint8_t* start_addr, uint8_t* slowpath_start, uint8_t* end_addr, StackInfo stack_info,
