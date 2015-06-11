@@ -60,9 +60,8 @@ private:
 
     std::vector<std::pair<ICInvalidator*, int64_t>> dependencies;
 
-    ICSlotRewrite(ICInfo* ic, const char* debug_name);
-
 public:
+    ICSlotRewrite(ICInfo* ic, const char* debug_name);
     ~ICSlotRewrite();
 
     assembler::Assembler* getAssembler() { return assembler; }

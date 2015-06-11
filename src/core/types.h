@@ -65,7 +65,6 @@ using gc::GCVisitor;
 
 enum class EffortLevel {
     INTERPRETED = 0,
-    MINIMAL = 1,
     MODERATE = 2,
     MAXIMAL = 3,
 };
@@ -221,6 +220,7 @@ class BoxedClosure;
 class BoxedGenerator;
 class ICInfo;
 class LocationMap;
+class JitCodeBlock;
 
 struct CompiledFunction {
 private:
@@ -249,6 +249,7 @@ public:
     LocationMap* location_map; // only meaningful if this is a compiled frame
 
     std::vector<ICInfo*> ics;
+    std::vector<JitCodeBlock*> code_blocks;
 
     CompiledFunction(llvm::Function* func, FunctionSpecialization* spec, bool is_interpreted, void* code,
                      EffortLevel effort, const OSREntryDescriptor* entry_descriptor)
@@ -282,6 +283,7 @@ typedef int FutureFlags;
 class BoxedModule;
 class ScopeInfo;
 class InternedStringPool;
+class LivenessAnalysis;
 class SourceInfo {
 public:
     BoxedModule* parent_module;
@@ -291,6 +293,7 @@ public:
     CFG* cfg;
     bool is_generator;
     std::string fn; // equivalent of code.co_filename
+    std::shared_ptr<LivenessAnalysis> liveness_info;
 
     InternedStringPool& getInternedStrings();
 
