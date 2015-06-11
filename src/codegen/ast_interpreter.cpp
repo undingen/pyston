@@ -55,6 +55,7 @@
 
 #define ENABLE_TRACING 1
 #define ENABLE_TRACING_FUNC 1
+#define ENABLE_TRACING_IC 1
 
 namespace pyston {
 
@@ -470,7 +471,9 @@ public:
         setitem(interp->frame_info.boxedLocals, str, val);
     }
 
-    void emitSetItemName(BoxedString* s) { emitVoidCall((void*)setitem, Mem(getInterp()), Imm((void*)s), Pop()); }
+    void emitSetItemName(BoxedString* s) {
+        emitVoidCall((void*)setItemNameHelper, Mem(getInterp()), Imm((void*)s), Pop());
+    }
 
 
     static Box* derefHelper(ASTInterpreter* i, InternedString s) {
@@ -541,11 +544,26 @@ public:
         }
     }
 
-    void emitCompare(int op) { emitCall((void*)compare, PopO<1>(), PopO<0>(), Imm(op)); }
+    static Box* compareICHelper(CompareIC* ic, Box* lhs, Box* rhs, int op) { return ic->call(lhs, rhs, op); }
+
+    void emitCompare(int op) {
+#if ENABLE_TRACING_IC
+        emitCall((void*)compareICHelper, Imm((void*)new CompareIC), PopO<2>(), PopO<1>(), Imm(op));
+#else
+        emitCall((void*)compare, PopO<1>(), PopO<0>(), Imm(op));
+#endif
+    }
 
     void emitAugbinop(int op) { emitCall((void*)augbinop, PopO<1>(), PopO<0>(), Imm(op)); }
 
-    void emitBinop(int op) { emitCall((void*)binop, PopO<1>(), PopO<0>(), Imm(op)); }
+    static Box* binopICHelper(BinopIC* ic, Box* lhs, Box* rhs, int op) { return ic->call(lhs, rhs, op); }
+    void emitBinop(int op) {
+#if ENABLE_TRACING_IC
+        emitCall((void*)binopICHelper, Imm((void*)new BinopIC), PopO<2>(), PopO<1>(), Imm(op));
+#else
+        emitCall((void*)binop, PopO<1>(), PopO<0>(), Imm(op));
+#endif
+    }
 
     static Box* yieldHelper(ASTInterpreter* inter, Box* val) { return yield(inter->generator, val); }
 
@@ -708,7 +726,7 @@ public:
         // generate eh frame... :-(
         EHwriteAndRegister((void*)buf, code_size);
         finished = true;
-        printf("SUCCESS\n");
+        // printf("SUCCESS\n");
     }
 };
 
@@ -721,7 +739,7 @@ void ASTInterpreter::abortTracing() {
 
         tracer = 0;
         edgecount = 0;
-        printf("FAILED\n");
+        // printf("FAILED\n");
     }
 }
 
@@ -1386,7 +1404,7 @@ Value ASTInterpreter::visit_stmt(AST_stmt* node) {
     threading::allowGLReadPreemption();
 #endif
 
-    if (1 && istracing) {
+    if (0 && istracing) {
         printf("%20s % 2d ", source_info->getName().c_str(), current_block->idx);
         print_ast(node);
         printf("\n");
