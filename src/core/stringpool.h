@@ -44,7 +44,8 @@ class InternedString {
 private:
     BoxedString* _str;
 
-#ifndef NDEBUG
+// #ifndef NDEBUG
+#if 0
     // Only for testing purposes:
     InternedStringPool* pool;
     InternedString(BoxedString* str, InternedStringPool* pool) : _str(str), pool(pool) {}
@@ -55,7 +56,8 @@ private:
 #endif
 
 public:
-#ifndef NDEBUG
+// #ifndef NDEBUG
+#if 0
     InternedString() : _str(NULL), pool(NULL) {}
 #else
     InternedString() : _str(NULL) {}
@@ -69,9 +71,9 @@ public:
     const char* c_str() const;
 
     bool operator==(InternedString rhs) const {
-        assert(this->_str || this->pool == invalidPool());
-        assert(rhs._str || rhs.pool == invalidPool());
-        assert(this->pool == rhs.pool || this->pool == invalidPool() || rhs.pool == invalidPool());
+        // assert(this->_str || this->pool == invalidPool());
+        // assert(rhs._str || rhs.pool == invalidPool());
+        // assert(this->pool == rhs.pool || this->pool == invalidPool() || rhs.pool == invalidPool());
         return this->_str == rhs._str;
     }
 
@@ -107,7 +109,7 @@ template <> struct hash<pyston::InternedString> {
 };
 template <> struct less<pyston::InternedString> {
     bool operator()(const pyston::InternedString lhs, const pyston::InternedString rhs) const {
-        assert(lhs.pool && lhs.pool == rhs.pool);
+        // assert(lhs.pool && lhs.pool == rhs.pool);
         // TODO: we should be able to do this comparison on the pointer value, not on the string value,
         // but there are apparently parts of the code that rely on string sorting being actually alphabetical.
         // We could create a faster "consistent ordering but not alphabetical" comparator if it makes a difference.
@@ -119,14 +121,16 @@ template <> struct less<pyston::InternedString> {
 namespace llvm {
 template <> struct DenseMapInfo<pyston::InternedString> {
     static inline pyston::InternedString getEmptyKey() {
-#ifndef NDEBUG
+// #ifndef NDEBUG
+#if 0
         return pyston::InternedString(nullptr, pyston::InternedString::invalidPool());
 #else
         return pyston::InternedString(nullptr);
 #endif
     }
     static inline pyston::InternedString getTombstoneKey() {
-#ifndef NDEBUG
+// #ifndef NDEBUG
+#if 0
         return pyston::InternedString((pyston::BoxedString*)-1, pyston::InternedString::invalidPool());
 #else
         return pyston::InternedString((pyston::BoxedString*)-1);

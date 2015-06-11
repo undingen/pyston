@@ -149,6 +149,7 @@ public:
     void setz(Register reg) { sete(reg); }
     void setne(Register reg);
     void setnz(Register reg) { setne(reg); }
+    void leave();
 
 
     // Macros:

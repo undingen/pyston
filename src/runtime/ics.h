@@ -78,7 +78,14 @@ public:
 
 class BinopIC : public RuntimeIC {
 public:
-    BinopIC() : RuntimeIC((void*)binop, 2, 160) {}
+    BinopIC() : RuntimeIC((void*)binop, 2, 160 * 2) {}
+
+    Box* call(Box* lhs, Box* rhs, int op_type) { return (Box*)call_ptr(lhs, rhs, op_type); }
+};
+
+class CompareIC : public RuntimeIC {
+public:
+    CompareIC() : RuntimeIC((void*)compare, 2, 160 * 2) {}
 
     Box* call(Box* lhs, Box* rhs, int op_type) { return (Box*)call_ptr(lhs, rhs, op_type); }
 };

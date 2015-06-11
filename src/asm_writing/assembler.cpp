@@ -902,6 +902,10 @@ void Assembler::setne(Register reg) {
     set_cond(reg, COND_NOT_EQUAL);
 }
 
+void Assembler::leave() {
+    emitByte(0xC9);
+}
+
 uint8_t* Assembler::emitCall(void* ptr, Register scratch) {
     mov(Immediate(ptr), scratch);
     callq(scratch);
