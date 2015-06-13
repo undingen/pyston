@@ -55,7 +55,7 @@
 
 #define ENABLE_TRACING 1
 #define ENABLE_TRACING_FUNC 1
-#define ENABLE_TRACING_IC 1
+#define ENABLE_TRACING_IC 0
 
 namespace pyston {
 
@@ -235,11 +235,9 @@ public:
     static Box* tracerHelperGetLocal(ASTInterpreter* i, InternedString id) {
         SymMap::iterator it = i->sym_table.find(id);
         if (it != i->sym_table.end()) {
-            // printf("GET: %s --> %s\n", id.c_str(), str(i->sym_table.getMapped(it->second))->data());
             return i->sym_table.getMapped(it->second);
         }
 
-        RELEASE_ASSERT(0, "untested");
         assertNameDefined(0, id.c_str(), UnboundLocalError, true);
         return 0;
     }
@@ -324,10 +322,22 @@ public:
     int stack;
     bool abort_on_backage;
 
+    llvm::DenseMap<CFGBlock*, void*> cfg_code;
+
     const int code_size = 4096 * 2;
     const int epilog_size = 2; // 3+1+1;
 
     // assembler::Assembler* a;
+
+    bool have_block_traced(CFGBlock* block) { return cfg_code.count(block); }
+
+    void setCfgBlockEntry(CFGBlock* block) {
+        assert(!have_block_traced(block));
+        printf("Setting entry: %p %p %d %s\n", block, (a->bytesWritten() + (char*)buf), block->idx,
+               block->code ? "SKIPPING" : "");
+
+        cfg_code[block] = a->bytesWritten() + (char*)buf;
+    }
 
     Tracer(CFGBlock* start, ASTInterpreter* interp)
         : start(start),
@@ -338,6 +348,7 @@ public:
           epilog(0),
           stack(0),
           abort_on_backage(false) {
+        printf("beggining tracing %d\n", start->idx);
         buf = (unsigned char*)malloc(code_size + 16);
         buf = (unsigned char*)((((uint64_t)buf) + 15) & ~(15ul));
         assert(((uint64_t)buf % 16) == 0);
@@ -348,6 +359,7 @@ public:
         a->push(assembler::RDI); // interp
         a->push(assembler::RDI); // interp
         entry = a->bytesWritten();
+        setCfgBlockEntry(start);
 
         epilog = code_size - (epilog_size);
         assembler::Assembler endAsm(buf + epilog, epilog_size);
@@ -666,13 +678,35 @@ public:
     void addGuard(bool t, CFGBlock* cont) {
         a->pop(assembler::RSI);
         stack--;
-        // a->test(assembler::RSI, assembler::RSI);
+
         a->mov(assembler::Immediate((void*)(t ? False : True)), assembler::RDI);
         a->cmp(assembler::RSI, assembler::RDI);
+#if OLD
         a->jne(assembler::JumpDestination::fromStart(a->bytesWritten() + 17));
         assert(stack == 0);
         a->mov(assembler::Immediate(cont), assembler::RAX);
         a->jmp(assembler::JumpDestination::fromStart(epilog));
+#else
+        a->jne(assembler::JumpDestination::fromStart(a->bytesWritten() + 17 + 11 + 1));
+        assert(stack == 0);
+        a->mov(assembler::Immediate(cont), assembler::RAX);
+        a->mov(assembler::Indirect(assembler::RAX, 8), assembler::RSI);
+        a->test(assembler::RSI, assembler::RSI);
+        a->je(assembler::JumpDestination::fromStart(a->bytesWritten() + 4 + 1));
+        // a->emitByte(0xFF); a->emitByte(0x26); // jmp [rsi]
+        a->emitByte(0xFF);
+        a->emitByte(0x60);
+        a->emitByte(0x08); // jmp qword ptr [rax+8]
+        a->jmp(assembler::JumpDestination::fromStart(epilog));
+#endif
+    }
+
+    void emitJump(CFGBlock* b) {
+        assert(stack == 0);
+        a->mov(assembler::Immediate((void*)b), assembler::RAX);
+        a->emitByte(0xFF);
+        a->emitByte(0x60);
+        a->emitByte(0x08); // jmp qword ptr [rax+8]
     }
 
     void emitReturn() {
@@ -725,8 +759,18 @@ public:
 
         // generate eh frame... :-(
         EHwriteAndRegister((void*)buf, code_size);
+
+        for (auto&& i : cfg_code) {
+            if (!i.first->code) {
+                assert(!i.first->code);
+                i.first->code = i.second;
+            }
+        }
+
         finished = true;
-        // printf("SUCCESS\n");
+        static int s = 0;
+        ++s;
+        printf("SUCCESS\n");
     }
 };
 
@@ -739,7 +783,7 @@ void ASTInterpreter::abortTracing() {
 
         tracer = 0;
         edgecount = 0;
-        // printf("FAILED\n");
+        printf("FAILED\n");
     }
 }
 
@@ -874,7 +918,7 @@ Value ASTInterpreter::execute(ASTInterpreter& interpreter, CFGBlock* start_block
         start_block = interpreter.source_info->cfg->getStartingBlock();
         start_at = start_block->body[0];
 
-        if (ENABLE_TRACING && interpreter.compiled_func->times_called == 25) {
+        if (ENABLE_TRACING_FUNC && interpreter.compiled_func->times_called == 25) {
             if (tracers_aborted.count(start_block) == 0)
                 trace = true;
         }
@@ -916,7 +960,7 @@ Value ASTInterpreter::execute(ASTInterpreter& interpreter, CFGBlock* start_block
         }
     }
 
-
+    bool was_tracing = false;
 
     int num_aborts = 0;
     static StatCounter num_trace_aborts("num_trace_aborts");
@@ -928,6 +972,7 @@ Value ASTInterpreter::execute(ASTInterpreter& interpreter, CFGBlock* start_block
         if (ENABLE_TRACING && !interpreter.istracing) {
             auto it = tracers.find(interpreter.current_block);
             if (it != tracers.end()) {
+                was_tracing = true;
                 assert(it->second->finished);
                 assert(it->second->interp == 0);
                 typedef std::pair<CFGBlock*, Box*>(*Foo)(ASTInterpreter*);
@@ -946,7 +991,36 @@ Value ASTInterpreter::execute(ASTInterpreter& interpreter, CFGBlock* start_block
                 continue;
             }
         }
-
+/*
+        if (interpreter.istracing && interpreter.current_block->code) {
+            interpreter.tracer->compile();
+            interpreter.istracing = 0;
+            interpreter.tracer = 0;
+        } else if (interpreter.istracing && interpreter.current_block != interpreter.tracer->start) {
+            if (interpreter.istracing && interpreter.tracer->have_block_traced(interpreter.current_block)) {
+                interpreter.tracer->emitJump(interpreter.current_block);
+                interpreter.tracer->compile();
+                interpreter.istracing = 0;
+                interpreter.tracer = 0;
+            } else
+                interpreter.tracer->setCfgBlockEntry(interpreter.current_block);
+        } else if (was_tracing && !interpreter.istracing) {
+            interpreter.istracing = true;
+            interpreter.tracer = new Tracer(interpreter.current_block, &interpreter);
+        }
+*/
+#if ENABLE_TRACING
+        if (interpreter.istracing
+            && (interpreter.current_block != interpreter.tracer->start || interpreter.current_block->code)) {
+            if (interpreter.istracing && interpreter.tracer->have_block_traced(interpreter.current_block)) {
+                assert(0);
+            } else
+                interpreter.tracer->setCfgBlockEntry(interpreter.current_block);
+        } else if (was_tracing && !interpreter.istracing && tracers_aborted.count(interpreter.current_block) == 0) {
+            interpreter.istracing = true;
+            interpreter.tracer = new Tracer(interpreter.current_block, &interpreter);
+        }
+#endif
         for (AST_stmt* s : interpreter.current_block->body) {
             interpreter.current_inst = s;
             v = interpreter.visit_stmt(s);
@@ -1097,6 +1171,17 @@ Value ASTInterpreter::visit_branch(AST_Branch* node) {
         next_block = node->iftrue;
     else
         next_block = node->iffalse;
+
+
+    if (tracer && istracing && next_block->code) {
+        tracer->emitJump(next_block);
+        tracer->compile();
+        if (istracing)
+            tracers[tracer->start] = tracer;
+        istracing = false;
+        tracer = 0;
+    }
+
     return Value();
 }
 
@@ -1110,6 +1195,15 @@ Value ASTInterpreter::visit_jump(AST_Jump* node) {
         tracer->compile();
         if (istracing)
             tracers[node->target] = tracer;
+        istracing = false;
+        tracer = 0;
+    }
+
+    if (tracer && istracing && node->target->code) {
+        tracer->emitJump(node->target);
+        tracer->compile();
+        if (istracing)
+            tracers[tracer->start] = tracer;
         istracing = false;
         tracer = 0;
     }

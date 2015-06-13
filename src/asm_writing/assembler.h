@@ -75,7 +75,6 @@ private:
     static const uint8_t REX_B = 1, REX_X = 2, REX_R = 4, REX_W = 8;
 
 private:
-    void emitByte(uint8_t b);
     void emitInt(int64_t n, int bytes);
     void emitRex(uint8_t rex);
     void emitModRM(uint8_t mod, uint8_t reg, uint8_t rm);
@@ -84,6 +83,8 @@ private:
 
 public:
     Assembler(uint8_t* start, int size) : start_addr(start), end_addr(start + size), addr(start_addr), failed(false) {}
+
+    void emitByte(uint8_t b);
 
     bool hasFailed() { return failed; }
 
