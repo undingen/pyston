@@ -427,9 +427,38 @@ public:
     void emitSetGlobal(Box* global, BoxedString* s) {
         emitVoidCall((void*)setGlobal, Imm(global), Imm((void*)s), Pop());
     }
-    void emitGetGlobal(Box* global, BoxedString* s) { emitCall((void*)getGlobal, Imm((void*)global), Imm((void*)s)); }
-    void emitSetAttr(BoxedString* s) { emitVoidCall((void*)setattr, Pop(), Imm((void*)s), Pop()); }
-    void emitGetAttr(BoxedString* s) { emitCall((void*)getattr, Pop(), Imm((void*)s)); }
+
+    static Box* getGlobalICHelper(GetGlobalIC* ic, Box* o, BoxedString* s) { return ic->call(o, s); }
+
+    void emitGetGlobal(Box* global, BoxedString* s) {
+#if ENABLE_TRACING_IC
+        emitCall((void*)getGlobalICHelper, Imm((void*)new GetGlobalIC), Imm((void*)global), Imm((void*)s));
+#else
+        emitCall((void*)getGlobal, Imm((void*)global), Imm((void*)s));
+#endif
+    }
+
+    static Box* setAttrICHelper(SetAttrIC* ic, Box* o, BoxedString* attr, Box* value) {
+        return ic->call(o, attr, value);
+    }
+
+    void emitSetAttr(BoxedString* s) {
+#if ENABLE_TRACING_IC
+        emitVoidCall((void*)setAttrICHelper, Imm((void*)new SetAttrIC), Pop(), Imm((void*)s), Pop());
+#else
+        emitVoidCall((void*)setattr, Pop(), Imm((void*)s), Pop());
+#endif
+    }
+
+    static Box* getAttrICHelper(GetAttrIC* ic, Box* o, BoxedString* attr) { return ic->call(o, attr); }
+
+    void emitGetAttr(BoxedString* s) {
+#if ENABLE_TRACING_IC
+        emitCall((void*)getAttrICHelper, Imm((void*)new GetAttrIC), Pop(), Imm((void*)s));
+#else
+        emitCall((void*)getattr, Pop(), Imm((void*)s));
+#endif
+    }
 
     void emitGetLocal(InternedString s) {
         emitCall((void*)ASTInterpreter::tracerHelperGetLocal, Mem(getInterp()), Imm(toArg(s)));
@@ -443,8 +472,26 @@ public:
     }
 
     void emitBoxedLocalsGet(BoxedString* s) { emitCall((void*)boxedLocalsGetHelper, Mem(getInterp()), Imm((void*)s)); }
-    void emitSetItem() { emitVoidCall((void*)setitem, PopO<1>(), PopO<0>(), PopO<2>()); }
-    void emitGetItem() { emitCall((void*)getitem, PopO<1>(), PopO<0>()); }
+
+    static Box* setitemICHelper(SetItemIC* ic, Box* o, Box* attr, Box* value) { return ic->call(o, attr, value); }
+
+    void emitSetItem() {
+#if ENABLE_TRACING_IC
+        emitVoidCall((void*)setitemICHelper, Imm((void*)new SetItemIC), PopO<2>(), PopO<1>(), PopO<3>());
+#else
+        emitVoidCall((void*)setitem, PopO<1>(), PopO<0>(), PopO<2>());
+#endif
+    }
+
+    static Box* getitemICHelper(GetItemIC* ic, Box* o, Box* attr) { return ic->call(o, attr); }
+
+    void emitGetItem() {
+#if ENABLE_TRACING_IC
+        emitCall((void*)getitemICHelper, Imm((void*)new GetItemIC), PopO<2>(), PopO<1>());
+#else
+        emitCall((void*)getitem, PopO<1>(), PopO<0>());
+#endif
+    }
 
     static void setItemNameHelper(ASTInterpreter* interp, Box* str, Box* val) {
         assert(interp->frame_info.boxedLocals != NULL);
@@ -530,7 +577,14 @@ public:
 #endif
     }
 
-    void emitAugbinop(int op) { emitCall((void*)augbinop, PopO<1>(), PopO<0>(), Imm(op)); }
+    static Box* augbinopICHelper(AugBinopIC* ic, Box* lhs, Box* rhs, int op) { return ic->call(lhs, rhs, op); }
+    void emitAugbinop(int op) {
+#if ENABLE_TRACING_IC
+        emitCall((void*)augbinopICHelper, Imm((void*)new AugBinopIC), PopO<2>(), PopO<1>(), Imm(op));
+#else
+        emitCall((void*)augbinop, PopO<1>(), PopO<0>(), Imm(op));
+#endif
+    }
 
     static Box* binopICHelper(BinopIC* ic, Box* lhs, Box* rhs, int op) { return ic->call(lhs, rhs, op); }
     void emitBinop(int op) {
@@ -764,6 +818,7 @@ public:
             a.resetFailed();
             if (abort_callback)
                 abort_callback();
+            tracers_aborted.insert(block);
             abort();
             return;
         }
@@ -782,7 +837,7 @@ public:
 };
 
 class JitedCode {
-    static constexpr int code_size = 4096 * 2;
+    static constexpr int code_size = 4096 * 3;
     static constexpr int epilog_size = 2;
 
     void* code;
@@ -825,7 +880,7 @@ public:
         RELEASE_ASSERT(!iscurrently_tracing, "recursive function not yet implemented");
         if (iscurrently_tracing)
             return std::unique_ptr<JitFragment>();
-        if (a.bytesLeft() < 30)
+        if (a.bytesLeft() < 50)
             return std::unique_ptr<JitFragment>();
 
         iscurrently_tracing = true;
