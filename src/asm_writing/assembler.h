@@ -163,7 +163,9 @@ public:
 
     int bytesWritten() { return addr - start_addr; }
     uint8_t* curInstPointer() { return addr; }
+    void setCurInstPointer(uint8_t* ptr) { addr = ptr; }
     bool isExactlyFull() { return addr == end_addr; }
+    uint8_t* getStartAddr() { return start_addr; }
 };
 
 uint8_t* initializePatchpoint2(uint8_t* start_addr, uint8_t* slowpath_start, uint8_t* end_addr, StackInfo stack_info,

@@ -197,6 +197,7 @@ public:
     LocationMap* location_map; // only meaningful if this is a compiled frame
 
     std::vector<ICInfo*> ics;
+    void* jitted_code;
 
     CompiledFunction(llvm::Function* func, FunctionSpecialization* spec, bool is_interpreted, void* code,
                      EffortLevel effort, const OSREntryDescriptor* entry_descriptor)
@@ -209,7 +210,8 @@ public:
           effort(effort),
           times_called(0),
           times_speculation_failed(0),
-          location_map(nullptr) {
+          location_map(nullptr),
+          jitted_code(nullptr) {
         assert((spec != NULL) + (entry_descriptor != NULL) == 1);
     }
 

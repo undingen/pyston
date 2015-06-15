@@ -44,6 +44,7 @@ private:
 
 public:
     void* code;
+    void* entry_code;
 
     std::vector<AST_stmt*> body;
     std::vector<CFGBlock*> predecessors, successors;
@@ -52,7 +53,7 @@ public:
 
     typedef std::vector<AST_stmt*>::iterator iterator;
 
-    CFGBlock(CFG* cfg, int idx) : cfg(cfg), code(0), idx(idx), info(NULL) {}
+    CFGBlock(CFG* cfg, int idx) : cfg(cfg), code(0), entry_code(0), idx(idx), info(NULL) {}
 
     void connectTo(CFGBlock* successor, bool allow_backedge = false);
     void unconnectFrom(CFGBlock* successor);

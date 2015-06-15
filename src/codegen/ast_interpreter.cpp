@@ -65,7 +65,8 @@ static BoxedClass* astinterpreter_cls;
 
 class ASTInterpreter;
 
-// Map from stack frame pointers for frames corresponding to ASTInterpreter::execute() to the ASTInterpreter handling
+// Map from stack_level frame pointers for frames corresponding to ASTInterpreter::execute() to the ASTInterpreter
+// handling
 // them. Used to look up information about that frame. This is used for getting tracebacks, for CPython introspection
 // (sys._getframe & co), and for GC scanning.
 static std::unordered_map<void*, ASTInterpreter*> s_interpreterMap;
@@ -101,8 +102,6 @@ union Value {
     }
 };
 
-llvm::DenseMap<CFGBlock*, class Tracer*> tracers;
-
 llvm::DenseSet<CFGBlock*> tracers_aborted;
 
 class ASTInterpreter : public Box {
@@ -115,7 +114,8 @@ public:
                        Box** args);
 
     // This must not be inlined, because we rely on being able to detect when we're inside of it (by checking whether
-    // %rip is inside its instruction range) during a stack-trace in order to produce tracebacks inside interpreted
+    // %rip is inside its instruction range) during a stack_level-trace in order to produce tracebacks inside
+    // interpreted
     // code.
     __attribute__((__no_inline__)) static Value
         execute(ASTInterpreter& interpreter, CFGBlock* start_block = NULL, AST_stmt* start_at = NULL);
@@ -225,12 +225,13 @@ public:
     }
 
     friend class RegisterHelper;
-    friend class Tracer;
+    friend class JitFragment;
 
-    class Tracer* tracer = 0;
-    bool istracing = 0;
+    bool istracing = false;
+    std::unique_ptr<class JitFragment> tracer;
 
     void abortTracing();
+    void startTracing(CFGBlock* block);
 
     static Box* tracerHelperGetLocal(ASTInterpreter* i, InternedString id) {
         SymMap::iterator it = i->sym_table.find(id);
@@ -309,65 +310,89 @@ static const char _eh_frame_template[] =
 
 #define EH_FRAME_SIZE (sizeof(_eh_frame_template) - 1) // omit string-terminating null byte
 
-class Tracer {
-public:
-    CFGBlock* start;
-    bool failed, finished;
-    ASTInterpreter* interp;
 
-    unsigned char* buf = 0;
-    unsigned long entry, epilog;
-    std::unique_ptr<assembler::Assembler> a;
+struct JitCallHelper {
+    struct Regs {
+        const assembler::Register regs[6]
+            = { assembler::RDI, assembler::RSI, assembler::RDX, assembler::RCX, assembler::R8, assembler::R9 };
+    };
 
-    int stack;
-    bool abort_on_backage;
+    template <int offset> struct PopO : public Regs {
+        int emit(assembler::Assembler& a, int arg_num) {
+            a.pop(regs[offset == -1 ? arg_num : offset]);
+            return -1;
+        }
+    };
 
-    llvm::DenseMap<CFGBlock*, void*> cfg_code;
+    struct Pop : public PopO<-1> {};
 
-    const int code_size = 4096 * 2;
-    const int epilog_size = 2; // 3+1+1;
+    struct Imm : public Regs {
+        const uint64_t val;
+        Imm(int64_t val) : val(val) {}
+        Imm(void* val) : val((uint64_t)val) {}
+        int emit(assembler::Assembler& a, int arg_num) {
+            a.mov(assembler::Immediate(val), regs[arg_num]);
+            return 0;
+        }
+    };
 
-    // assembler::Assembler* a;
+    struct Mem : public Regs {
+        const assembler::Indirect ind;
+        Mem(assembler::Indirect ind) : ind(ind) {}
+        int emit(assembler::Assembler& a, int arg_num) {
+            a.mov(ind, regs[arg_num]);
+            return 0;
+        }
+    };
 
-    bool have_block_traced(CFGBlock* block) { return cfg_code.count(block); }
-
-    void setCfgBlockEntry(CFGBlock* block) {
-        assert(!have_block_traced(block));
-        printf("Setting entry: %p %p %d %s\n", block, (a->bytesWritten() + (char*)buf), block->idx,
-               block->code ? "SKIPPING" : "");
-
-        cfg_code[block] = a->bytesWritten() + (char*)buf;
+    template <int arg_num, typename Arg1, typename... Args>
+    static int emitCallHelper(assembler::Assembler& a, Arg1&& arg1, Args... args) {
+        int stack_level = arg1.emit(a, arg_num);
+        return stack_level + emitCallHelper<arg_num + 1>(a, args...);
     }
 
-    Tracer(CFGBlock* start, ASTInterpreter* interp)
-        : start(start),
-          failed(false),
-          finished(false),
-          interp(interp),
-          entry(0),
-          epilog(0),
-          stack(0),
-          abort_on_backage(false) {
-        printf("beggining tracing %d\n", start->idx);
-        buf = (unsigned char*)malloc(code_size + 16);
-        buf = (unsigned char*)((((uint64_t)buf) + 15) & ~(15ul));
-        assert(((uint64_t)buf % 16) == 0);
-        a = std::unique_ptr<assembler::Assembler>(new assembler::Assembler(buf, code_size));
-        // a->trap();
-        a->push(assembler::RBP);
-        a->mov(assembler::RSP, assembler::RBP);
-        a->push(assembler::RDI); // interp
-        a->push(assembler::RDI); // interp
-        entry = a->bytesWritten();
-        setCfgBlockEntry(start);
+    template <int arg_num> static int emitCallHelper(assembler::Assembler& a) {
+        static_assert(arg_num < 6, "too many args");
+        return 0;
+    }
+};
 
-        epilog = code_size - (epilog_size);
-        assembler::Assembler endAsm(buf + epilog, epilog_size);
-        // endAsm.mov(assembler::RBP, assembler::RSP);
-        // endAsm.pop(assembler::RBP);
-        endAsm.leave();
-        endAsm.retq();
-        RELEASE_ASSERT(!endAsm.hasFailed(), "");
+class JitFragment : public JitCallHelper {
+private:
+    assembler::Assembler& a;
+    CFGBlock* block;
+    int epilog_offset;
+    int stack_level;
+    void* code, *entry_code;
+    std::function<void(void)> abort_callback;
+    bool finished;
+
+public:
+    JitFragment(CFGBlock* block, assembler::Assembler& a, int epilog_offset, std::function<void(void)> abort_callback,
+                void* entry_code)
+        : a(a),
+          block(block),
+          epilog_offset(epilog_offset),
+          stack_level(0),
+          code(0),
+          entry_code(entry_code),
+          abort_callback(abort_callback),
+          finished(false) {
+        code = (void*)a.curInstPointer();
+    }
+
+    CFGBlock* getBlock() { return block; }
+
+    void abort() {
+        if (finished)
+            return;
+        a.setCurInstPointer((uint8_t*)a.getStartAddr());
+        emitJump(block);
+        // a.fillWithNops();
+        RELEASE_ASSERT(!a.hasFailed(), "");
+        llvm::sys::Memory::InvalidateInstructionCache((void*)a.getStartAddr(), a.bytesWritten());
+        stack_level = 0;
+        finished = true;
     }
 
     uint64_t toArg(InternedString s) {
@@ -381,72 +406,20 @@ public:
         return u.s;
     }
 
-    struct A {
-        const assembler::Register regs[6]
-            = { assembler::RDI, assembler::RSI, assembler::RDX, assembler::RCX, assembler::R8, assembler::R9 };
-    };
-
-    template <int offset> struct PopO : public A {
-        int emit(assembler::Assembler& a, int arg_num) {
-            a.pop(regs[offset == -1 ? arg_num : (offset)]);
-            return -1;
-        }
-    };
-
-    struct Pop : public PopO<-1> {};
-
-    struct Imm : public A {
-        const uint64_t val;
-        Imm(int64_t val) : val(val) {}
-        Imm(void* val) : val((uint64_t)val) {}
-        int emit(assembler::Assembler& a, int arg_num) {
-            a.mov(assembler::Immediate(val), regs[arg_num]);
-            return 0;
-        }
-    };
-
-    struct Mem : public A {
-        const assembler::Indirect ind;
-        Mem(assembler::Indirect ind) : ind(ind) {}
-        int emit(assembler::Assembler& a, int arg_num) {
-            a.mov(ind, regs[arg_num]);
-            return 0;
-        }
-    };
-
-    template <int arg_num, typename Arg1, typename... Args>
-    static int emitCallHelper(assembler::Assembler& a, Arg1&& arg1, Args... args) {
-        int stack = arg1.emit(a, arg_num);
-        return stack + emitCallHelper<arg_num + 1>(a, args...);
-    }
-
-    template <int arg_num> static int emitCallHelper(assembler::Assembler& a) {
-        static_assert(arg_num < 6, "to many args");
-        return 0;
-    }
-
     template <typename... Args> void emitCall(void* func, Args&&... args) {
-        stack += emitCallHelper<0>(*a, args...);
-        a->emitCall(func, assembler::R11);
+        stack_level += emitCallHelper<0>(a, args...);
+        a.emitCall(func, assembler::R11);
         pushResult();
-        if (a->hasFailed()) {
-            interp->abortTracing();
-            interp = 0;
-        }
     }
 
     template <typename... Args> void emitVoidCall(void* func, Args&&... args) {
-        stack += emitCallHelper<0>(*a, args...);
-        a->emitCall(func, assembler::R11);
-        if (a->hasFailed()) {
-            interp->abortTracing();
-            interp = 0;
-        }
+        stack_level += emitCallHelper<0>(a, args...);
+        a.emitCall(func, assembler::R11);
     }
 
     void pushResult() {
-        a->push(assembler::RAX);
-        ++stack;
+        a.push(assembler::RAX);
+        ++stack_level;
     }
 
     assembler::Indirect getInterp() { return assembler::Indirect(assembler::RBP, -8); }
@@ -454,17 +427,13 @@ public:
     void emitSetGlobal(Box* global, BoxedString* s) {
         emitVoidCall((void*)setGlobal, Imm(global), Imm((void*)s), Pop());
     }
-
     void emitGetGlobal(Box* global, BoxedString* s) { emitCall((void*)getGlobal, Imm((void*)global), Imm((void*)s)); }
-
     void emitSetAttr(BoxedString* s) { emitVoidCall((void*)setattr, Pop(), Imm((void*)s), Pop()); }
-
     void emitGetAttr(BoxedString* s) { emitCall((void*)getattr, Pop(), Imm((void*)s)); }
 
     void emitGetLocal(InternedString s) {
         emitCall((void*)ASTInterpreter::tracerHelperGetLocal, Mem(getInterp()), Imm(toArg(s)));
     }
-
     void emitSetLocal(InternedString s) {
         emitVoidCall((void*)ASTInterpreter::tracerHelperSetLocal, Mem(getInterp()), Imm(toArg(s)), Pop());
     }
@@ -474,7 +443,6 @@ public:
     }
 
     void emitBoxedLocalsGet(BoxedString* s) { emitCall((void*)boxedLocalsGetHelper, Mem(getInterp()), Imm((void*)s)); }
-
     void emitSetItem() { emitVoidCall((void*)setitem, PopO<1>(), PopO<0>(), PopO<2>()); }
     void emitGetItem() { emitCall((void*)getitem, PopO<1>(), PopO<0>()); }
 
@@ -522,9 +490,7 @@ public:
     }
 
     void emitCreateList() { emitCall((void*)createList); }
-
     void emitCreateDict() { emitCall((void*)createDict); }
-
     void emitCreateSlice() { emitCall((void*)createSlice, PopO<2>(), PopO<1>(), PopO<0>()); }
 
     static Box* nonzeroHelper(Box* b) {
@@ -544,15 +510,13 @@ public:
     }
 
     void emitNotNonzero() { emitCall((void*)notHelper, Pop()); }
-
     void emitGetPystonIter() { emitCall((void*)getPystonIter, Pop()); }
-
     void emitUnpackIntoArray(uint64_t num) {
         emitVoidCall((void*)unpackIntoArray, Pop(), Imm(num));
         for (int i = 0; i < num; ++i) {
-            a->mov(assembler::Indirect(assembler::RAX, (num - i - 1) * 8), assembler::RDI);
-            a->push(assembler::RDI);
-            ++stack;
+            a.mov(assembler::Indirect(assembler::RAX, (num - i - 1) * 8), assembler::RDI);
+            a.push(assembler::RDI);
+            ++stack_level;
         }
     }
 
@@ -592,11 +556,8 @@ public:
     }
 
     void emitUncacheExcInfo() { emitCall((void*)uncacheExcInfoHelper, Mem(getInterp())); }
-
     void emitInt(long n) { emitPush((uint64_t)boxInt(n)); }
-
     void emitFloat(double n) { emitPush((uint64_t)boxFloat(n)); }
-
     void emitUnicodeStr(llvm::StringRef s) {
         emitCall((void*)decodeUTF8StringPtr, Imm((void*)s.data()), Imm(s.size()));
     }
@@ -608,23 +569,23 @@ public:
     void emitCallattr(BoxedString* attr, CallattrFlags flags, ArgPassSpec args) {
         RELEASE_ASSERT(args.num_args <= 2, "");
         if (args.num_args > 1) {
-            a->pop(assembler::R9);
-            --stack;
+            a.pop(assembler::R9);
+            --stack_level;
         }
         if (args.num_args > 0) {
-            a->pop(assembler::R8);
-            --stack;
+            a.pop(assembler::R8);
+            --stack_level;
         }
 
-        a->pop(assembler::RDI);
-        --stack;
-        a->mov(assembler::Immediate((void*)attr), assembler::RSI);
-        a->mov(assembler::Immediate(flags.asInt()), assembler::RDX);
-        a->mov(assembler::Immediate(args.asInt()), assembler::RCX);
-        a->emitCall((void*)callattrHelper, assembler::Register(11));
+        a.pop(assembler::RDI);
+        --stack_level;
+        a.mov(assembler::Immediate((void*)attr), assembler::RSI);
+        a.mov(assembler::Immediate(flags.asInt()), assembler::RDX);
+        a.mov(assembler::Immediate(args.asInt()), assembler::RCX);
+        a.emitCall((void*)callattrHelper, assembler::Register(11));
         pushResult();
 
-        assert(stack == 1);
+        assert(stack_level == 1);
     }
 
     static Box* runtimeCallHelper(Box* obj, ArgPassSpec argspec, Box* arg1, Box* arg2, Box* arg3, Box** args) {
@@ -633,35 +594,35 @@ public:
 
     void emitRuntimeCall(ArgPassSpec argspec) {
         if (argspec.num_args > 2) {
-            a->pop(assembler::R8);
-            --stack;
+            a.pop(assembler::R8);
+            --stack_level;
         }
 
         if (argspec.num_args > 1) {
-            a->pop(assembler::RCX);
-            --stack;
+            a.pop(assembler::RCX);
+            --stack_level;
         }
         if (argspec.num_args > 0) {
-            a->pop(assembler::RDX);
-            --stack;
+            a.pop(assembler::RDX);
+            --stack_level;
         }
 
-        a->pop(assembler::RDI);
-        --stack;
-        a->mov(assembler::Immediate(argspec.asInt()), assembler::RSI);
-        a->emitCall((void*)runtimeCallHelper, assembler::Register(11));
+        a.pop(assembler::RDI);
+        --stack_level;
+        a.mov(assembler::Immediate(argspec.asInt()), assembler::RSI);
+        a.emitCall((void*)runtimeCallHelper, assembler::Register(11));
         pushResult();
     }
 
     void emitPush(uint64_t val) {
-        a->mov(assembler::Immediate(val), assembler::RSI);
-        a->push(assembler::RSI);
-        ++stack;
+        a.mov(assembler::Immediate(val), assembler::RSI);
+        a.push(assembler::RSI);
+        ++stack_level;
     }
 
     void emitPop() {
-        a->pop(assembler::RAX);
-        --stack;
+        a.pop(assembler::RAX);
+        --stack_level;
     }
 
     static Box* hasnextHelper(Box* b) { return boxBool(pyston::hasnext(b)); }
@@ -671,51 +632,132 @@ public:
     static void setCurrentInstHelper(ASTInterpreter* interp, AST_stmt* node) { interp->current_inst = node; }
 
     void emitSetCurrentInst(AST_stmt* node) {
-        assert(stack == 0);
+        assert(stack_level == 0);
         emitVoidCall((void*)setCurrentInstHelper, Mem(getInterp()), Imm((void*)node));
     }
 
     void addGuard(bool t, CFGBlock* cont) {
-        a->pop(assembler::RSI);
-        stack--;
+        a.pop(assembler::RSI);
+        stack_level--;
 
-        a->mov(assembler::Immediate((void*)(t ? False : True)), assembler::RDI);
-        a->cmp(assembler::RSI, assembler::RDI);
+        a.mov(assembler::Immediate((void*)(t ? False : True)), assembler::RDI);
+        a.cmp(assembler::RSI, assembler::RDI);
 #if OLD
-        a->jne(assembler::JumpDestination::fromStart(a->bytesWritten() + 17));
-        assert(stack == 0);
-        a->mov(assembler::Immediate(cont), assembler::RAX);
-        a->jmp(assembler::JumpDestination::fromStart(epilog));
+        a.jne(assembler::JumpDestination::fromStart(a.bytesWritten() + 17));
+        assert(stack_level == 0);
+        a.mov(assembler::Immediate(cont), assembler::RAX);
+        a.jmp(assembler::JumpDestination::fromStart(epilog));
 #else
-        a->jne(assembler::JumpDestination::fromStart(a->bytesWritten() + 17 + 11 + 1));
-        assert(stack == 0);
-        a->mov(assembler::Immediate(cont), assembler::RAX);
-        a->mov(assembler::Indirect(assembler::RAX, 8), assembler::RSI);
-        a->test(assembler::RSI, assembler::RSI);
-        a->je(assembler::JumpDestination::fromStart(a->bytesWritten() + 4 + 1));
-        // a->emitByte(0xFF); a->emitByte(0x26); // jmp [rsi]
-        a->emitByte(0xFF);
-        a->emitByte(0x60);
-        a->emitByte(0x08); // jmp qword ptr [rax+8]
-        a->jmp(assembler::JumpDestination::fromStart(epilog));
+        a.jne(assembler::JumpDestination::fromStart(a.bytesWritten() + 17 + 11 + 1));
+        assert(stack_level == 0);
+        a.mov(assembler::Immediate(cont), assembler::RAX);
+        a.mov(assembler::Indirect(assembler::RAX, 8), assembler::RSI);
+        a.test(assembler::RSI, assembler::RSI);
+        a.je(assembler::JumpDestination::fromStart(a.bytesWritten() + 4 + 1));
+        // a.emitByte(0xFF); a.emitByte(0x26); // jmp [rsi]
+        a.emitByte(0xFF);
+        a.emitByte(0x60);
+        a.emitByte(0x08); // jmp qword ptr [rax+8]
+        a.jmp(assembler::JumpDestination::fromStart(epilog_offset));
 #endif
     }
 
     void emitJump(CFGBlock* b) {
-        assert(stack == 0);
-        a->mov(assembler::Immediate((void*)b), assembler::RAX);
-        a->emitByte(0xFF);
-        a->emitByte(0x60);
-        a->emitByte(0x08); // jmp qword ptr [rax+8]
+        /*
+        assert(stack_level == 0);
+        a.mov(assembler::Immediate((void*)b), assembler::RAX);
+        a.emitByte(0xFF);
+        a.emitByte(0x60);
+        a.emitByte(0x08); // jmp qword ptr [rax+8]
+        */
+        if (b->code) {
+            a.jmp(assembler::JumpDestination::fromStart(((uint64_t)b->code) - (uint64_t)a.getStartAddr()));
+        } else {
+            // TODO we could patch this later...
+            a.mov(assembler::Immediate(b), assembler::RAX);
+            a.mov(assembler::Indirect(assembler::RAX, 8), assembler::RSI);
+            a.test(assembler::RSI, assembler::RSI);
+            a.je(assembler::JumpDestination::fromStart(a.bytesWritten() + 4 + 1));
+            a.emitByte(0xFF);
+            a.emitByte(0x60);
+            a.emitByte(0x08); // jmp qword ptr [rax+8]
+            a.jmp(assembler::JumpDestination::fromStart(epilog_offset));
+        }
     }
 
     void emitReturn() {
-        assert(stack == 1);
-        a->mov(assembler::Immediate(0ul), assembler::RAX);
-        a->pop(assembler::RDX);
-        a->jmp(assembler::JumpDestination::fromStart(epilog));
-        --stack;
+        assert(stack_level == 1);
+        a.mov(assembler::Immediate(0ul), assembler::RAX);
+        a.pop(assembler::RDX);
+        a.jmp(assembler::JumpDestination::fromStart(epilog_offset));
+        --stack_level;
     }
+
+    void compile() {
+        if (finished)
+            return;
+        if (a.hasFailed()) {
+            if (abort_callback)
+                abort_callback();
+            abort();
+            return;
+        }
+        assert(stack_level == 0);
+        RELEASE_ASSERT(!a.hasFailed(), "asm failed");
+        llvm::sys::Memory::InvalidateInstructionCache((void*)a.getStartAddr(), a.bytesWritten());
+        block->code = code;
+        if (entry_code)
+            block->entry_code = entry_code;
+        finished = true;
+    }
+};
+
+class JitedCode {
+    static constexpr int code_size = 4096;
+    static constexpr int epilog_size = 2;
+
+    void* code;
+    int entry_offset;
+    int epilog_offset;
+    assembler::Assembler a;
+    std::function<void(void)> abort_callback;
+
+
+
+public:
+    JitedCode(std::function<void(void)> abort_callback)
+        : code(malloc(code_size)),
+          entry_offset(0),
+          epilog_offset(0),
+          a((uint8_t*)code, code_size - epilog_size),
+          abort_callback(abort_callback) {
+        // emit prolog
+        a.push(assembler::RBP);
+        a.mov(assembler::RSP, assembler::RBP);
+        a.push(assembler::RDI); // interp
+        a.push(assembler::RDI); // interp
+        entry_offset = a.bytesWritten();
+        // a.fillWithNops();
+
+        // emit epilog
+        epilog_offset = code_size - epilog_size;
+        assembler::Assembler endAsm((uint8_t*)code + epilog_offset, epilog_size);
+        endAsm.leave();
+        endAsm.retq();
+        RELEASE_ASSERT(!endAsm.hasFailed(), "");
+
+        // generate eh frame...
+        EHwriteAndRegister(code, code_size);
+    }
+
+
+    std::unique_ptr<JitFragment> newFragment(CFGBlock* block) {
+        bool has_entry = entry_offset == a.bytesWritten();
+        auto fragment = std::unique_ptr<JitFragment>(
+            new JitFragment(block, a, epilog_offset, abort_callback, has_entry ? a.getStartAddr() : 0));
+        return fragment;
+    }
+
 
     static void writeTrivialEhFrame(void* eh_frame_addr, void* func_addr, uint64_t func_size) {
         memcpy(eh_frame_addr, _eh_frame_template, EH_FRAME_SIZE);
@@ -740,48 +782,88 @@ public:
         registerDynamicEhFrame((uint64_t)func_addr, func_size, (uint64_t)eh_frame_addr, EH_FRAME_SIZE - 4);
         registerEHFrames((uint8_t*)eh_frame_addr, (uint64_t)eh_frame_addr, EH_FRAME_SIZE);
     }
+};
 
 
-    void compile() {
-        assert(stack == 0);
-        if (a->hasFailed()) {
-            interp->abortTracing();
-            interp = 0;
-            return;
-        }
-        interp = 0;
-        RELEASE_ASSERT(!a->hasFailed(), "asm failed");
-        a->jmp(assembler::JumpDestination::fromStart(entry));
-        // printf("wrote %d\n", (int)a->bytesWritten());
-        // printf("start: %p\n", buf);
-        a->fillWithNopsExcept(epilog_size);
-        llvm::sys::Memory::InvalidateInstructionCache(buf, a->bytesWritten());
 
-        // generate eh frame... :-(
-        EHwriteAndRegister((void*)buf, code_size);
+#if 0
+class Tracer {
+public:
+    CFGBlock* start;
+    bool failed, finished;
+    ASTInterpreter* interp;
 
-        for (auto&& i : cfg_code) {
-            if (!i.first->code) {
-                assert(!i.first->code);
-                i.first->code = i.second;
-            }
-        }
+    unsigned char* buf = 0;
+    unsigned long entry, epilog;
+    std::unique_ptr<assembler::Assembler> a;
 
-        finished = true;
-        static int s = 0;
-        ++s;
-        printf("SUCCESS\n");
+    int stack_level;
+    bool abort_on_backage;
+    CFGBlock* on_failure;
+    uint64_t on_failure_offset;
+
+    llvm::DenseMap<CFGBlock*, void*> cfg_code;
+
+
+    const int code_size = 4096;
+    const int epilog_size = 2;
+
+    std::vector<std::pair<CFGBlock*, uint64_t>> started_blocks;
+
+
+
+    bool have_block_traced(CFGBlock* block) { return cfg_code.count(block); }
+
+    void setOnFailure(CFGBlock* b) {
+        on_failure = b;
+        on_failure_offset = a.bytesWritten();
+    }
+
+    void setCfgBlockEntry(CFGBlock* block) {
+        assert(!have_block_traced(block));
+        printf("Setting entry: %p %p %d %s\n", block, (a.bytesWritten() + (char*)buf), block->idx,
+               block->code ? "SKIPPING" : "");
+
+        cfg_code[block] = a.bytesWritten() + (char*)buf;
+        started_blocks.push_back(std::make_pair(block, a.bytesWritten()));
+    }
+
+    Tracer(CFGBlock* start, ASTInterpreter* interp)
+        : start(start),
+          failed(false),
+          finished(false),
+          interp(interp),
+          entry(0),
+          epilog(0),
+          stack_level(0),
+          abort_on_backage(false), on_failure(0), on_failure_offset(0) {
+        printf("beggining tracing %d\n", start->idx);
+        buf = (unsigned char*)malloc(code_size + 16);
+        buf = (unsigned char*)((((uint64_t)buf) + 15) & ~(15ul));
+        assert(((uint64_t)buf % 16) == 0);
+        a = std::unique_ptr<assembler::Assembler>(new assembler::Assembler(buf, code_size-epilog_size));
+        a.push(assembler::RBP);
+        a.mov(assembler::RSP, assembler::RBP);
+        a.push(assembler::RDI); // interp
+        a.push(assembler::RDI); // interp
+        entry = a.bytesWritten();
+        setCfgBlockEntry(start);
+
+        epilog = code_size - (epilog_size);
+        assembler::Assembler endAsm(buf + epilog, epilog_size);
+        endAsm.leave();
+        endAsm.retq();
+        RELEASE_ASSERT(!endAsm.hasFailed(), "");
     }
 };
+#endif
+
 
 void ASTInterpreter::abortTracing() {
     if (istracing) {
         istracing = false;
-        // tracers.erase(tracer->start);
-
-        tracers_aborted.insert(tracer->start);
-
-        tracer = 0;
+        tracers_aborted.insert(tracer->getBlock());
+        tracer.reset();
         edgecount = 0;
         printf("FAILED\n");
     }
@@ -902,6 +984,20 @@ RegisterHelper::~RegisterHelper() {
     deregister(frame_addr);
 }
 
+void jitError() {
+    printf("jit error!\n");
+}
+
+void ASTInterpreter::startTracing(CFGBlock* block) {
+    printf("Starting trace: %d\n", block->idx);
+    if (!compiled_func->jitted_code)
+        compiled_func->jitted_code = (void*)(new JitedCode(jitError));
+    assert(!tracer && !istracing);
+    JitedCode* jitted_code = (JitedCode*)compiled_func->jitted_code;
+    tracer = jitted_code->newFragment(block);
+    istracing = true;
+}
+
 Value ASTInterpreter::execute(ASTInterpreter& interpreter, CFGBlock* start_block, AST_stmt* start_at) {
     STAT_TIMER(t0, "us_timer_astinterpreter_execute");
 
@@ -933,21 +1029,12 @@ Value ASTInterpreter::execute(ASTInterpreter& interpreter, CFGBlock* start_block
 
     bool started = false;
     if (trace && from_start) {
-        interpreter.istracing = true;
-        interpreter.tracer = new Tracer(start_block, &interpreter);
-        interpreter.tracer->abort_on_backage = true;
-    } else if (ENABLE_TRACING_FUNC && ENABLE_TRACING && from_start && tracers.count(start_block)) {
-        started = true;
-        assert(tracers[start_block]->interp == 0);
-        typedef std::pair<CFGBlock*, Box*>(*Foo)(ASTInterpreter*);
-
-        std::pair<CFGBlock*, Box*> rtn = ((Foo)(tracers[start_block]->buf))(&interpreter);
-        interpreter.next_block = rtn.first;
-        if (!interpreter.next_block)
-            return rtn.second;
+        printf("Entry trace!\n");
+        interpreter.startTracing(start_block);
+        // interpreter.tracer->abort_on_backage = true;
     }
 
-    if (!started) {
+    if (!started && !trace) {
         for (auto s : start_block->body) {
             if (!started) {
                 if (s != start_at)
@@ -958,67 +1045,33 @@ Value ASTInterpreter::execute(ASTInterpreter& interpreter, CFGBlock* start_block
             interpreter.current_inst = s;
             v = interpreter.visit_stmt(s);
         }
+    } else if (trace) {
+        interpreter.next_block = interpreter.current_block;
     }
 
     bool was_tracing = false;
-
-    int num_aborts = 0;
-    static StatCounter num_trace_aborts("num_trace_aborts");
-
     while (interpreter.next_block) {
         interpreter.current_block = interpreter.next_block;
         interpreter.next_block = 0;
 
         if (ENABLE_TRACING && !interpreter.istracing) {
-            auto it = tracers.find(interpreter.current_block);
-            if (it != tracers.end()) {
+            CFGBlock* b = interpreter.current_block;
+            if (b->entry_code) {
                 was_tracing = true;
-                assert(it->second->finished);
-                assert(it->second->interp == 0);
-                typedef std::pair<CFGBlock*, Box*>(*Foo)(ASTInterpreter*);
-                std::pair<CFGBlock*, Box*> rtn = ((Foo)(it->second->buf))(&interpreter);
+                typedef std::pair<CFGBlock*, Box*>(*EntryFunc)(ASTInterpreter*);
+                std::pair<CFGBlock*, Box*> rtn = ((EntryFunc)(b->entry_code))(&interpreter);
                 interpreter.next_block = rtn.first;
                 if (!interpreter.next_block) {
                     v = rtn.second;
                     continue;
                 }
-                ++num_aborts;
-                if (num_aborts >= 5) {
-                    interpreter.edgecount = 0;
-                    num_aborts = 0;
-                    num_trace_aborts.log(5);
-                }
                 continue;
             }
         }
-/*
-        if (interpreter.istracing && interpreter.current_block->code) {
-            interpreter.tracer->compile();
-            interpreter.istracing = 0;
-            interpreter.tracer = 0;
-        } else if (interpreter.istracing && interpreter.current_block != interpreter.tracer->start) {
-            if (interpreter.istracing && interpreter.tracer->have_block_traced(interpreter.current_block)) {
-                interpreter.tracer->emitJump(interpreter.current_block);
-                interpreter.tracer->compile();
-                interpreter.istracing = 0;
-                interpreter.tracer = 0;
-            } else
-                interpreter.tracer->setCfgBlockEntry(interpreter.current_block);
-        } else if (was_tracing && !interpreter.istracing) {
-            interpreter.istracing = true;
-            interpreter.tracer = new Tracer(interpreter.current_block, &interpreter);
-        }
-*/
+
 #if ENABLE_TRACING
-        if (interpreter.istracing
-            && (interpreter.current_block != interpreter.tracer->start || interpreter.current_block->code)) {
-            if (interpreter.istracing && interpreter.tracer->have_block_traced(interpreter.current_block)) {
-                assert(0);
-            } else
-                interpreter.tracer->setCfgBlockEntry(interpreter.current_block);
-        } else if (was_tracing && !interpreter.istracing && tracers_aborted.count(interpreter.current_block) == 0) {
-            interpreter.istracing = true;
-            interpreter.tracer = new Tracer(interpreter.current_block, &interpreter);
+        if (was_tracing && !interpreter.istracing && tracers_aborted.count(interpreter.current_block) == 0) {
+            interpreter.startTracing(interpreter.current_block);
         }
 #endif
         for (AST_stmt* s : interpreter.current_block->body) {
@@ -1173,13 +1226,14 @@ Value ASTInterpreter::visit_branch(AST_Branch* node) {
         next_block = node->iffalse;
 
 
-    if (tracer && istracing && next_block->code) {
-        tracer->emitJump(next_block);
+    if (tracer && istracing) {
+        if (next_block->code)
+            tracer->emitJump(next_block);
         tracer->compile();
-        if (istracing)
-            tracers[tracer->start] = tracer;
-        istracing = false;
         tracer = 0;
+        istracing = 0;
+        if (!next_block->code)
+            startTracing(next_block);
     }
 
     return Value();
@@ -1189,37 +1243,29 @@ Value ASTInterpreter::visit_jump(AST_Jump* node) {
     bool backedge = node->target->idx < current_block->idx && compiled_func;
     if (backedge)
         threading::allowGLReadPreemption();
-
-    if (tracer && istracing && node->target == tracer->start) {
-        // assert(tracers.count(std::make_pair(node->target, current_block)) == 0);
-        tracer->compile();
-        if (istracing)
-            tracers[node->target] = tracer;
-        istracing = false;
-        tracer = 0;
-    }
-
-    if (tracer && istracing && node->target->code) {
+    /*
+        if (istracing && node->target == tracer->start) {
+            tracer->compile();
+            istracing = false;
+            tracer = 0;
+        }
+    */
+    if (istracing && node->target->code) {
         tracer->emitJump(node->target);
         tracer->compile();
-        if (istracing)
-            tracers[tracer->start] = tracer;
         istracing = false;
         tracer = 0;
     }
 
     if (backedge)
         ++edgecount;
-
-    if (backedge && tracer && istracing && tracer->abort_on_backage)
-        abortTracing();
+    /*
+        if (backedge && tracer && istracing && tracer->abort_on_backage)
+            abortTracing();
+        */
 
     if (ENABLE_TRACING && backedge && edgecount == 5 && !tracer && tracers_aborted.count(node->target) == 0) {
-        auto t = tracers.find(node->target);
-        if (t == tracers.end()) {
-            tracer = new Tracer(node->target, this);
-            istracing = true;
-        }
+        startTracing(node->target);
     }
 
     if (0 && ENABLE_OSR && backedge && edgecount == OSR_THRESHOLD_INTERPRETER) {
@@ -1498,7 +1544,7 @@ Value ASTInterpreter::visit_stmt(AST_stmt* node) {
     threading::allowGLReadPreemption();
 #endif
 
-    if (0 && istracing) {
+    if (1 && istracing) {
         printf("%20s % 2d ", source_info->getName().c_str(), current_block->idx);
         print_ast(node);
         printf("\n");
@@ -1554,12 +1600,9 @@ Value ASTInterpreter::visit_return(AST_Return* node) {
 
     if (istracing) {
         tracer->emitReturn();
-        if (istracing) {
-            tracer->compile();
-            if (istracing)
-                tracers[tracer->start] = tracer;
-            istracing = false;
-        }
+        tracer->compile();
+        istracing = false;
+        tracer = 0;
     }
 
     next_block = 0;
