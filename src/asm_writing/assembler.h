@@ -87,6 +87,7 @@ public:
     void emitByte(uint8_t b);
 
     bool hasFailed() { return failed; }
+    void resetFailed() { failed = false; }
 
     void nop() { emitByte(0x90); }
     void trap() { emitByte(0xcc); }
@@ -162,6 +163,7 @@ public:
     void emitAnnotation(int num);
 
     int bytesWritten() { return addr - start_addr; }
+    int bytesLeft() { return end_addr - addr; }
     uint8_t* curInstPointer() { return addr; }
     void setCurInstPointer(uint8_t* ptr) { addr = ptr; }
     bool isExactlyFull() { return addr == end_addr; }

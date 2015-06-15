@@ -55,7 +55,7 @@
 
 #define ENABLE_TRACING 1
 #define ENABLE_TRACING_FUNC 1
-#define ENABLE_TRACING_IC 0
+#define ENABLE_TRACING_IC 1
 
 namespace pyston {
 
@@ -227,7 +227,6 @@ public:
     friend class RegisterHelper;
     friend class JitFragment;
 
-    bool istracing = false;
     std::unique_ptr<class JitFragment> tracer;
 
     void abortTracing();
@@ -352,7 +351,7 @@ struct JitCallHelper {
     }
 
     template <int arg_num> static int emitCallHelper(assembler::Assembler& a) {
-        static_assert(arg_num < 6, "too many args");
+        static_assert(arg_num <= 6, "too many args");
         return 0;
     }
 };
@@ -366,10 +365,11 @@ private:
     void* code, *entry_code;
     std::function<void(void)> abort_callback;
     bool finished;
+    bool& iscurrently_tracing;
 
 public:
     JitFragment(CFGBlock* block, assembler::Assembler& a, int epilog_offset, std::function<void(void)> abort_callback,
-                void* entry_code)
+                void* entry_code, bool& iscurrently_tracing)
         : a(a),
           block(block),
           epilog_offset(epilog_offset),
@@ -377,7 +377,8 @@ public:
           code(0),
           entry_code(entry_code),
           abort_callback(abort_callback),
-          finished(false) {
+          finished(false),
+          iscurrently_tracing(iscurrently_tracing) {
         code = (void*)a.curInstPointer();
     }
 
@@ -386,9 +387,8 @@ public:
     void abort() {
         if (finished)
             return;
-        a.setCurInstPointer((uint8_t*)a.getStartAddr());
+        a.setCurInstPointer((uint8_t*)code);
         emitJump(block);
-        // a.fillWithNops();
         RELEASE_ASSERT(!a.hasFailed(), "");
         llvm::sys::Memory::InvalidateInstructionCache((void*)a.getStartAddr(), a.bytesWritten());
         stack_level = 0;
@@ -562,6 +562,47 @@ public:
         emitCall((void*)decodeUTF8StringPtr, Imm((void*)s.data()), Imm(s.size()));
     }
 
+#if ENABLE_TRACING_IC
+    static Box* callattrHelper(Box* b, BoxedString* attr, CallattrFlags flags, ArgPassSpec args, Box* arg1, Box* arg2) {
+        return pyston::callattr(b, attr, flags, args, arg1, arg2, NULL, NULL, NULL);
+    }
+    static Box* callattrHelperWithIC(CallattrIC* ic, Box* b, BoxedString* attr, CallattrFlags flags, ArgPassSpec args,
+                                     Box* arg1) {
+        return ic->call(b, attr, flags, args, arg1, NULL, NULL, NULL, NULL);
+    }
+
+    void emitCallattr(BoxedString* attr, CallattrFlags flags, ArgPassSpec args) {
+        RELEASE_ASSERT(args.num_args <= 2, "");
+        if (args.num_args <= 1) {
+            Imm ic((void*)(new CallattrIC));
+            if (args.num_args == 0)
+                emitCall((void*)callattrHelperWithIC, ic, Pop(), Imm((void*)attr), Imm(flags.asInt()),
+                         Imm(args.asInt()));
+            else if (args.num_args == 1)
+                emitCall((void*)callattrHelperWithIC, ic, PopO<5>(), Imm((void*)attr), Imm(flags.asInt()),
+                         Imm(args.asInt()), PopO<1>());
+        } else {
+            if (args.num_args > 1) {
+                a.pop(assembler::R9);
+                --stack_level;
+            }
+            if (args.num_args > 0) {
+                a.pop(assembler::R8);
+                --stack_level;
+            }
+
+            a.pop(assembler::RDI);
+            --stack_level;
+            a.mov(assembler::Immediate((void*)attr), assembler::RSI);
+            a.mov(assembler::Immediate(flags.asInt()), assembler::RDX);
+            a.mov(assembler::Immediate(args.asInt()), assembler::RCX);
+            a.emitCall((void*)callattrHelper, assembler::Register(11));
+            pushResult();
+
+            assert(stack_level == 1);
+        }
+    }
+#else
     static Box* callattrHelper(Box* b, BoxedString* attr, CallattrFlags flags, ArgPassSpec args, Box* arg1, Box* arg2) {
         return pyston::callattr(b, attr, flags, args, arg1, arg2, NULL, NULL, NULL);
     }
@@ -587,7 +628,28 @@ public:
 
         assert(stack_level == 1);
     }
+#endif
 
+#if ENABLE_TRACING_IC
+    static Box* runtimeCallHelper(RuntimeCallIC* ic, Box* obj, ArgPassSpec argspec, Box* arg1, Box* arg2, Box* arg3,
+                                  Box** args) {
+        return ic->call(obj, argspec, arg1, arg2, arg3, args, NULL);
+    }
+
+    void emitRuntimeCall(ArgPassSpec argspec) {
+        Imm ic((void*)(new RuntimeCallIC));
+        if (argspec.num_args == 0)
+            emitCall((void*)runtimeCallHelper, ic, PopO<1>(), Imm(argspec.asInt()));
+        else if (argspec.num_args == 1)
+            emitCall((void*)runtimeCallHelper, ic, PopO<3>(), Imm(argspec.asInt()), PopO<1>());
+        else if (argspec.num_args == 2)
+            emitCall((void*)runtimeCallHelper, ic, PopO<4>(), Imm(argspec.asInt()), PopO<3>(), PopO<1>());
+        else if (argspec.num_args == 3)
+            emitCall((void*)runtimeCallHelper, ic, PopO<5>(), Imm(argspec.asInt()), PopO<4>(), PopO<3>(), PopO<1>());
+        else
+            assert(0);
+    }
+#else
     static Box* runtimeCallHelper(Box* obj, ArgPassSpec argspec, Box* arg1, Box* arg2, Box* arg3, Box** args) {
         return pyston::runtimeCall(obj, argspec, arg1, arg2, arg3, args, NULL);
     }
@@ -613,6 +675,7 @@ public:
         a.emitCall((void*)runtimeCallHelper, assembler::Register(11));
         pushResult();
     }
+#endif
 
     void emitPush(uint64_t val) {
         a.mov(assembler::Immediate(val), assembler::RSI);
@@ -696,7 +759,9 @@ public:
     void compile() {
         if (finished)
             return;
+        iscurrently_tracing = false;
         if (a.hasFailed()) {
+            a.resetFailed();
             if (abort_callback)
                 abort_callback();
             abort();
@@ -708,21 +773,24 @@ public:
         block->code = code;
         if (entry_code)
             block->entry_code = entry_code;
+
+        FILE* f = fopen((llvm::Twine("block") + llvm::Twine(block->idx)).str().c_str(), "wb");
+        fwrite(code, 1, a.curInstPointer() - ((uint8_t*)code), f);
+        fclose(f);
         finished = true;
     }
 };
 
 class JitedCode {
-    static constexpr int code_size = 4096;
+    static constexpr int code_size = 4096 * 2;
     static constexpr int epilog_size = 2;
 
     void* code;
     int entry_offset;
     int epilog_offset;
     assembler::Assembler a;
+    bool iscurrently_tracing;
     std::function<void(void)> abort_callback;
-
-
 
 public:
     JitedCode(std::function<void(void)> abort_callback)
@@ -730,6 +798,7 @@ public:
           entry_offset(0),
           epilog_offset(0),
           a((uint8_t*)code, code_size - epilog_size),
+          iscurrently_tracing(false),
           abort_callback(abort_callback) {
         // emit prolog
         a.push(assembler::RBP);
@@ -750,11 +819,19 @@ public:
         EHwriteAndRegister(code, code_size);
     }
 
+    void resetIsCurrentlyTracing() { iscurrently_tracing = false; }
 
     std::unique_ptr<JitFragment> newFragment(CFGBlock* block) {
+        RELEASE_ASSERT(!iscurrently_tracing, "recursive function not yet implemented");
+        if (iscurrently_tracing)
+            return std::unique_ptr<JitFragment>();
+        if (a.bytesLeft() < 30)
+            return std::unique_ptr<JitFragment>();
+
+        iscurrently_tracing = true;
         bool has_entry = entry_offset == a.bytesWritten();
-        auto fragment = std::unique_ptr<JitFragment>(
-            new JitFragment(block, a, epilog_offset, abort_callback, has_entry ? a.getStartAddr() : 0));
+        auto fragment = std::unique_ptr<JitFragment>(new JitFragment(
+            block, a, epilog_offset, abort_callback, has_entry ? a.getStartAddr() : 0, iscurrently_tracing));
         return fragment;
     }
 
@@ -860,8 +937,8 @@ public:
 
 
 void ASTInterpreter::abortTracing() {
-    if (istracing) {
-        istracing = false;
+    if (tracer) {
+        tracer->abort();
         tracers_aborted.insert(tracer->getBlock());
         tracer.reset();
         edgecount = 0;
@@ -992,10 +1069,9 @@ void ASTInterpreter::startTracing(CFGBlock* block) {
     printf("Starting trace: %d\n", block->idx);
     if (!compiled_func->jitted_code)
         compiled_func->jitted_code = (void*)(new JitedCode(jitError));
-    assert(!tracer && !istracing);
+    assert(!tracer);
     JitedCode* jitted_code = (JitedCode*)compiled_func->jitted_code;
     tracer = jitted_code->newFragment(block);
-    istracing = true;
 }
 
 Value ASTInterpreter::execute(ASTInterpreter& interpreter, CFGBlock* start_block, AST_stmt* start_at) {
@@ -1034,7 +1110,7 @@ Value ASTInterpreter::execute(ASTInterpreter& interpreter, CFGBlock* start_block
         // interpreter.tracer->abort_on_backage = true;
     }
 
-    if (!started && !trace) {
+    if (!from_start) {
         for (auto s : start_block->body) {
             if (!started) {
                 if (s != start_at)
@@ -1045,7 +1121,7 @@ Value ASTInterpreter::execute(ASTInterpreter& interpreter, CFGBlock* start_block
             interpreter.current_inst = s;
             v = interpreter.visit_stmt(s);
         }
-    } else if (trace) {
+    } else {
         interpreter.next_block = interpreter.current_block;
     }
 
@@ -1054,7 +1130,7 @@ Value ASTInterpreter::execute(ASTInterpreter& interpreter, CFGBlock* start_block
         interpreter.current_block = interpreter.next_block;
         interpreter.next_block = 0;
 
-        if (ENABLE_TRACING && !interpreter.istracing) {
+        if (ENABLE_TRACING && !interpreter.tracer) {
             CFGBlock* b = interpreter.current_block;
             if (b->entry_code) {
                 was_tracing = true;
@@ -1062,15 +1138,15 @@ Value ASTInterpreter::execute(ASTInterpreter& interpreter, CFGBlock* start_block
                 std::pair<CFGBlock*, Box*> rtn = ((EntryFunc)(b->entry_code))(&interpreter);
                 interpreter.next_block = rtn.first;
                 if (!interpreter.next_block) {
-                    v = rtn.second;
-                    continue;
+                    return rtn.second;
                 }
                 continue;
             }
         }
 
 #if ENABLE_TRACING
-        if (was_tracing && !interpreter.istracing && tracers_aborted.count(interpreter.current_block) == 0) {
+        if (was_tracing && !interpreter.tracer && !interpreter.current_block->code
+            && tracers_aborted.count(interpreter.current_block) == 0) {
             interpreter.startTracing(interpreter.current_block);
         }
 #endif
@@ -1085,15 +1161,15 @@ Value ASTInterpreter::execute(ASTInterpreter& interpreter, CFGBlock* start_block
 Value ASTInterpreter::doBinOp(Box* left, Box* right, int op, BinExpType exp_type) {
     switch (exp_type) {
         case BinExpType::AugBinOp:
-            if (istracing)
+            if (tracer)
                 tracer->emitAugbinop(op);
             return augbinop(left, right, op);
         case BinExpType::BinOp:
-            if (istracing)
+            if (tracer)
                 tracer->emitBinop(op);
             return binop(left, right, op);
         case BinExpType::Compare:
-            if (istracing)
+            if (tracer)
                 tracer->emitCompare(op);
             return compare(left, right, op);
         default:
@@ -1105,18 +1181,18 @@ Value ASTInterpreter::doBinOp(Box* left, Box* right, int op, BinExpType exp_type
 void ASTInterpreter::doStore(InternedString name, Value value) {
     ScopeInfo::VarScopeType vst = scope_info->getScopeTypeOfName(name);
     if (vst == ScopeInfo::VarScopeType::GLOBAL) {
-        if (istracing)
+        if (tracer)
             tracer->emitSetGlobal(globals, name.getBox());
         setGlobal(globals, name.getBox(), value.o);
     } else if (vst == ScopeInfo::VarScopeType::NAME) {
-        if (istracing)
+        if (tracer)
             tracer->emitSetItemName(name.getBox());
 
         assert(frame_info.boxedLocals != NULL);
         // TODO should probably pre-box the names when it's a scope that usesNameLookup
         setitem(frame_info.boxedLocals, name.getBox(), value.o);
     } else {
-        if (istracing)
+        if (tracer)
             tracer->emitSetLocal(name);
 
         sym_table[name] = value.o;
@@ -1134,14 +1210,14 @@ void ASTInterpreter::doStore(AST_expr* node, Value value) {
     } else if (node->type == AST_TYPE::Attribute) {
         AST_Attribute* attr = (AST_Attribute*)node;
         Value o = visit_expr(attr->value);
-        if (istracing)
+        if (tracer)
             tracer->emitSetAttr(attr->attr.getBox());
         pyston::setattr(o.o, attr->attr.getBox(), value.o);
     } else if (node->type == AST_TYPE::Tuple) {
         AST_Tuple* tuple = (AST_Tuple*)node;
         Box** array = unpackIntoArray(value.o, tuple->elts.size());
 
-        if (istracing)
+        if (tracer)
             tracer->emitUnpackIntoArray(tuple->elts.size());
 
         unsigned i = 0;
@@ -1160,7 +1236,7 @@ void ASTInterpreter::doStore(AST_expr* node, Value value) {
         Value target = visit_expr(subscript->value);
         Value slice = visit_expr(subscript->slice);
 
-        if (istracing)
+        if (tracer)
             tracer->emitSetItem();
 
         setitem(target.o, slice.o, value.o);
@@ -1172,7 +1248,7 @@ void ASTInterpreter::doStore(AST_expr* node, Value value) {
 Value ASTInterpreter::visit_unaryop(AST_UnaryOp* node) {
     Value operand = visit_expr(node->operand);
     if (node->op_type == AST_TYPE::Not) {
-        if (istracing)
+        if (tracer)
             tracer->emitNotNonzero();
 
         return boxBool(!nonzero(operand.o));
@@ -1190,16 +1266,16 @@ Value ASTInterpreter::visit_binop(AST_BinOp* node) {
 
 Value ASTInterpreter::visit_slice(AST_Slice* node) {
     Value lower = node->lower ? visit_expr(node->lower) : None;
-    if (istracing && !node->lower)
+    if (tracer && !node->lower)
         tracer->emitPush((uint64_t)None);
     Value upper = node->upper ? visit_expr(node->upper) : None;
-    if (istracing && !node->upper)
+    if (tracer && !node->upper)
         tracer->emitPush((uint64_t)None);
     Value step = node->step ? visit_expr(node->step) : None;
-    if (istracing && !node->step)
+    if (tracer && !node->step)
         tracer->emitPush((uint64_t)None);
 
-    if (istracing)
+    if (tracer)
         tracer->emitCreateSlice();
 
     return createSlice(lower.o, upper.o, step.o);
@@ -1218,7 +1294,7 @@ Value ASTInterpreter::visit_branch(AST_Branch* node) {
     Value v = visit_expr(node->test);
     ASSERT(v.o == True || v.o == False, "Should have called NONZERO before this branch");
 
-    if (istracing)
+    if (tracer)
         tracer->addGuard(v.o == True, v.o == True ? node->iffalse : node->iftrue);
     if (v.o == True)
         next_block = node->iftrue;
@@ -1226,12 +1302,11 @@ Value ASTInterpreter::visit_branch(AST_Branch* node) {
         next_block = node->iffalse;
 
 
-    if (tracer && istracing) {
+    if (tracer) {
         if (next_block->code)
             tracer->emitJump(next_block);
         tracer->compile();
-        tracer = 0;
-        istracing = 0;
+        tracer.reset();
         if (!next_block->code)
             startTracing(next_block);
     }
@@ -1250,11 +1325,13 @@ Value ASTInterpreter::visit_jump(AST_Jump* node) {
             tracer = 0;
         }
     */
-    if (istracing && node->target->code) {
-        tracer->emitJump(node->target);
+    if (tracer) {
+        if (node->target->code)
+            tracer->emitJump(node->target);
         tracer->compile();
-        istracing = false;
-        tracer = 0;
+        tracer.reset();
+        if (!node->target->code)
+            startTracing(node->target);
     }
 
     if (backedge)
@@ -1426,7 +1503,7 @@ Value ASTInterpreter::visit_langPrimitive(AST_LangPrimitive* node) {
         assert(node->args.size() == 1);
 
         Value val = visit_expr(node->args[0]);
-        if (istracing)
+        if (tracer)
             tracer->emitGetPystonIter();
 
         v = getPystonIter(val.o);
@@ -1493,7 +1570,7 @@ Value ASTInterpreter::visit_langPrimitive(AST_LangPrimitive* node) {
     } else if (node->opcode == AST_LangPrimitive::NONZERO) {
         assert(node->args.size() == 1);
         Value obj = visit_expr(node->args[0]);
-        if (istracing)
+        if (tracer)
             tracer->emitNonzero();
         v = boxBool(nonzero(obj.o));
     } else if (node->opcode == AST_LangPrimitive::SET_EXC_INFO) {
@@ -1511,7 +1588,7 @@ Value ASTInterpreter::visit_langPrimitive(AST_LangPrimitive* node) {
         v = None;
     } else if (node->opcode == AST_LangPrimitive::UNCACHE_EXC_INFO) {
         assert(node->args.empty());
-        if (istracing)
+        if (tracer)
             tracer->emitUncacheExcInfo();
 
         getFrameInfo()->exc = ExcInfo(NULL, NULL, NULL);
@@ -1520,7 +1597,7 @@ Value ASTInterpreter::visit_langPrimitive(AST_LangPrimitive* node) {
         assert(node->args.size() == 1);
         Value obj = visit_expr(node->args[0]);
 
-        if (istracing)
+        if (tracer)
             tracer->emitHasnext();
 
         v = boxBool(hasnext(obj.o));
@@ -1533,7 +1610,7 @@ Value ASTInterpreter::visit_yield(AST_Yield* node) {
     Value value = node->value ? visit_expr(node->value) : None;
     assert(generator && generator->cls == generator_cls);
 
-    if (istracing)
+    if (tracer)
         tracer->emitYield(node->value != 0);
 
     return yield(generator, value.o);
@@ -1544,13 +1621,13 @@ Value ASTInterpreter::visit_stmt(AST_stmt* node) {
     threading::allowGLReadPreemption();
 #endif
 
-    if (1 && istracing) {
+    if (1 && tracer) {
         printf("%20s % 2d ", source_info->getName().c_str(), current_block->idx);
         print_ast(node);
         printf("\n");
     }
 
-    if (istracing)
+    if (tracer)
         tracer->emitSetCurrentInst(node);
 
     switch (node->type) {
@@ -1595,14 +1672,13 @@ Value ASTInterpreter::visit_stmt(AST_stmt* node) {
 Value ASTInterpreter::visit_return(AST_Return* node) {
     Value s(node->value ? visit_expr(node->value) : None);
 
-    if (istracing && !node->value)
+    if (tracer && !node->value)
         tracer->emitPush((uint64_t)None);
 
-    if (istracing) {
+    if (tracer) {
         tracer->emitReturn();
         tracer->compile();
-        istracing = false;
-        tracer = 0;
+        tracer.reset();
     }
 
     next_block = 0;
@@ -1979,7 +2055,7 @@ Value ASTInterpreter::visit_call(AST_Call* node) {
 
         CallattrFlags flags{.cls_only = callattr_clsonly, .null_on_nonexistent = false };
 
-        if (istracing)
+        if (tracer)
             tracer->emitCallattr(attr.getBox(), flags, argspec);
 
         return callattr(func.o, attr.getBox(),
@@ -1993,7 +2069,7 @@ Value ASTInterpreter::visit_call(AST_Call* node) {
         if (args.size() > 3)
             abortTracing();
 
-        if (istracing)
+        if (tracer)
             tracer->emitRuntimeCall(argspec);
 
         return runtimeCall(func.o, argspec, args.size() > 0 ? args[0] : 0, args.size() > 1 ? args[1] : 0,
@@ -2004,22 +2080,22 @@ Value ASTInterpreter::visit_call(AST_Call* node) {
 
 Value ASTInterpreter::visit_expr(AST_Expr* node) {
     Value rtn = visit_expr(node->value);
-    if (istracing)
+    if (tracer)
         tracer->emitPop();
     return rtn;
 }
 
 Value ASTInterpreter::visit_num(AST_Num* node) {
     if (node->num_type == AST_Num::INT) {
-        if (istracing)
+        if (tracer)
             tracer->emitInt(node->n_int);
         return boxInt(node->n_int);
     } else if (node->num_type == AST_Num::FLOAT) {
-        if (istracing)
+        if (tracer)
             tracer->emitFloat(node->n_float);
         return boxFloat(node->n_float);
     } else if (node->num_type == AST_Num::LONG) {
-        if (istracing)
+        if (tracer)
             tracer->emitPush((uint64_t)createLong(node->n_long));
         return createLong(node->n_long);
     } else if (node->num_type == AST_Num::COMPLEX) {
@@ -2050,7 +2126,7 @@ Value ASTInterpreter::visit_lambda(AST_Lambda* node) {
 
 Value ASTInterpreter::visit_dict(AST_Dict* node) {
     RELEASE_ASSERT(node->keys.size() == node->values.size(), "not implemented");
-    if (istracing) {
+    if (tracer) {
         if (node->keys.size())
             abortTracing();
         else
@@ -2078,11 +2154,11 @@ Value ASTInterpreter::visit_set(AST_Set* node) {
 
 Value ASTInterpreter::visit_str(AST_Str* node) {
     if (node->str_type == AST_Str::STR) {
-        if (istracing)
+        if (tracer)
             tracer->emitPush((uint64_t)source_info->parent_module->getStringConstant(node->str_data));
         return source_info->parent_module->getStringConstant(node->str_data);
     } else if (node->str_type == AST_Str::UNICODE) {
-        if (istracing)
+        if (tracer)
             tracer->emitUnicodeStr(node->str_data);
         return decodeUTF8StringPtr(node->str_data);
     } else {
@@ -2097,13 +2173,13 @@ Value ASTInterpreter::visit_name(AST_Name* node) {
 
     switch (node->lookup_type) {
         case ScopeInfo::VarScopeType::GLOBAL:
-            if (istracing)
+            if (tracer)
                 tracer->emitGetGlobal(globals, node->id.getBox());
 
             return getGlobal(globals, node->id.getBox());
         case ScopeInfo::VarScopeType::DEREF: {
 
-            if (istracing)
+            if (tracer)
                 tracer->emitDeref(node->id);
 
             DerefInfo deref_info = scope_info->getDerefInfo(node->id);
@@ -2121,7 +2197,7 @@ Value ASTInterpreter::visit_name(AST_Name* node) {
         }
         case ScopeInfo::VarScopeType::FAST:
         case ScopeInfo::VarScopeType::CLOSURE: {
-            if (istracing)
+            if (tracer)
                 tracer->emitGetLocal(node->id);
 
             SymMap::iterator it = sym_table.find(node->id);
@@ -2132,7 +2208,7 @@ Value ASTInterpreter::visit_name(AST_Name* node) {
             return Value();
         }
         case ScopeInfo::VarScopeType::NAME: {
-            if (istracing)
+            if (tracer)
                 tracer->emitBoxedLocalsGet(node->id.getBox());
             return boxedLocalsGet(frame_info.boxedLocals, node->id.getBox(), globals);
         }
@@ -2146,14 +2222,14 @@ Value ASTInterpreter::visit_subscript(AST_Subscript* node) {
     Value value = visit_expr(node->value);
     Value slice = visit_expr(node->slice);
 
-    if (istracing)
+    if (tracer)
         tracer->emitGetItem();
 
     return getitem(value.o, slice.o);
 }
 
 Value ASTInterpreter::visit_list(AST_List* node) {
-    if (istracing) {
+    if (tracer) {
         if (node->elts.empty())
             tracer->emitCreateList();
         else
@@ -2176,7 +2252,7 @@ Value ASTInterpreter::visit_tuple(AST_Tuple* node) {
     if (node->elts.size() > 5)
         abortTracing();
 
-    if (istracing)
+    if (tracer)
         tracer->emitCreateTuple(node->elts.size());
 
     return rtn;
@@ -2184,7 +2260,7 @@ Value ASTInterpreter::visit_tuple(AST_Tuple* node) {
 
 Value ASTInterpreter::visit_attribute(AST_Attribute* node) {
     Value v = visit_expr(node->value);
-    if (istracing)
+    if (tracer)
         tracer->emitGetAttr(node->attr.getBox());
     return pyston::getattr(v.o, node->attr.getBox());
 }
