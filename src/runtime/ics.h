@@ -116,28 +116,28 @@ public:
 
 class SetItemIC : public RuntimeIC {
 public:
-    SetItemIC() : RuntimeIC((void*)setitem, 1, 512) {}
+    SetItemIC() : RuntimeIC((void*)setitem, 2, 512) {}
 
     Box* call(Box* obj, Box* attr, Box* v) { return (Box*)call_ptr(obj, attr, v); }
 };
 
 class GetAttrIC : public RuntimeIC {
 public:
-    GetAttrIC() : RuntimeIC((void*)getattr, 1, 512) {}
+    GetAttrIC() : RuntimeIC((void*)getattr, 2, 512) {}
 
     Box* call(Box* obj, BoxedString* attr) { return (Box*)call_ptr(obj, attr); }
 };
 
 class SetAttrIC : public RuntimeIC {
 public:
-    SetAttrIC() : RuntimeIC((void*)setattr, 1, 512) {}
+    SetAttrIC() : RuntimeIC((void*)setattr, 2, 512) {}
 
     Box* call(Box* obj, BoxedString* attr, Box* v) { return (Box*)call_ptr(obj, attr, v); }
 };
 
 class GetGlobalIC : public RuntimeIC {
 public:
-    GetGlobalIC() : RuntimeIC((void*)getGlobal, 1, 512) {}
+    GetGlobalIC() : RuntimeIC((void*)getGlobal, 2, 512) {}
 
     Box* call(Box* obj, BoxedString* s) { return (Box*)call_ptr(obj, s); }
 };

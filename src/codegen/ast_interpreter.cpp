@@ -53,9 +53,9 @@
 #define DEBUG 0
 #endif
 
-#define ENABLE_TRACING 1
-#define ENABLE_TRACING_FUNC 1
-#define ENABLE_TRACING_IC 1
+#define ENABLE_TRACING 0
+#define ENABLE_TRACING_FUNC 0
+#define ENABLE_TRACING_IC 0
 
 namespace pyston {
 
@@ -226,6 +226,7 @@ public:
 
     friend class RegisterHelper;
     friend class JitFragment;
+    friend class JitedCode;
 
     std::unique_ptr<class JitFragment> tracer;
 
@@ -247,6 +248,7 @@ public:
         i->sym_table[id] = v;
     }
 };
+
 #if 1
 static const char _eh_frame_template[] =
     // CIE
@@ -384,17 +386,6 @@ public:
 
     CFGBlock* getBlock() { return block; }
 
-    void abort() {
-        if (finished)
-            return;
-        a.setCurInstPointer((uint8_t*)code);
-        emitJump(block);
-        RELEASE_ASSERT(!a.hasFailed(), "");
-        llvm::sys::Memory::InvalidateInstructionCache((void*)a.getStartAddr(), a.bytesWritten());
-        stack_level = 0;
-        finished = true;
-    }
-
     uint64_t toArg(InternedString s) {
         union U {
             U() {}
@@ -423,6 +414,7 @@ public:
     }
 
     assembler::Indirect getInterp() { return assembler::Indirect(assembler::RBP, -8); }
+    assembler::Indirect getCurInst() { return assembler::Indirect(assembler::RBP, -16); }
 
     void emitSetGlobal(Box* global, BoxedString* s) {
         emitVoidCall((void*)setGlobal, Imm(global), Imm((void*)s), Pop());
@@ -536,7 +528,21 @@ public:
             RELEASE_ASSERT(0, "not implemented");
     }
 
-    void emitCreateList() { emitCall((void*)createList); }
+    static BoxedList* createListHelper1(Box* arg) {
+        BoxedList* list = (BoxedList*)createList();
+        listAppendInternal(list, arg);
+        return list;
+    }
+
+    void emitCreateList(uint64_t num) {
+        if (num == 0)
+            emitCall((void*)createList);
+        else if (num == 1)
+            emitCall((void*)createListHelper1, Pop());
+        else
+            assert(0);
+    }
+
     void emitCreateDict() { emitCall((void*)createDict); }
     void emitCreateSlice() { emitCall((void*)createSlice, PopO<2>(), PopO<1>(), PopO<0>()); }
 
@@ -750,7 +756,12 @@ public:
 
     void emitSetCurrentInst(AST_stmt* node) {
         assert(stack_level == 0);
-        emitVoidCall((void*)setCurrentInstHelper, Mem(getInterp()), Imm((void*)node));
+        assert((uint32_t)(uint64_t)node == (uint64_t)node && "only support 32 offset for now");
+
+        // dont call the helper to save a few bytes...
+        // emitVoidCall((void*)setCurrentInstHelper, Mem(getInterp()), Imm((void*)node));
+        a.mov(getCurInst(), assembler::RDX);
+        a.movq(assembler::Immediate((void*)node), assembler::Indirect(assembler::RDX, 0));
     }
 
     void addGuard(bool t, CFGBlock* cont) {
@@ -759,24 +770,16 @@ public:
 
         a.mov(assembler::Immediate((void*)(t ? False : True)), assembler::RDI);
         a.cmp(assembler::RSI, assembler::RDI);
-#if OLD
-        a.jne(assembler::JumpDestination::fromStart(a.bytesWritten() + 17));
-        assert(stack_level == 0);
-        a.mov(assembler::Immediate(cont), assembler::RAX);
-        a.jmp(assembler::JumpDestination::fromStart(epilog));
-#else
         a.jne(assembler::JumpDestination::fromStart(a.bytesWritten() + 17 + 11 + 1));
         assert(stack_level == 0);
         a.mov(assembler::Immediate(cont), assembler::RAX);
         a.mov(assembler::Indirect(assembler::RAX, 8), assembler::RSI);
         a.test(assembler::RSI, assembler::RSI);
         a.je(assembler::JumpDestination::fromStart(a.bytesWritten() + 4 + 1));
-        // a.emitByte(0xFF); a.emitByte(0x26); // jmp [rsi]
         a.emitByte(0xFF);
         a.emitByte(0x60);
         a.emitByte(0x08); // jmp qword ptr [rax+8]
         a.jmp(assembler::JumpDestination::fromStart(epilog_offset));
-#endif
     }
 
     void emitJump(CFGBlock* b) {
@@ -810,6 +813,20 @@ public:
         --stack_level;
     }
 
+    void abort() {
+        if (finished)
+            return;
+        a.setCurInstPointer((uint8_t*)code);
+        a.mov(assembler::Immediate(block), assembler::RAX);
+        a.jmp(assembler::JumpDestination::fromStart(epilog_offset));
+
+        RELEASE_ASSERT(!a.hasFailed(), "");
+        llvm::sys::Memory::InvalidateInstructionCache(code, (uint64_t)a.curInstPointer() - (uint64_t)code);
+        stack_level = 0;
+        finished = true;
+        iscurrently_tracing = false;
+    }
+
     void compile() {
         if (finished)
             return;
@@ -820,24 +837,31 @@ public:
                 abort_callback();
             tracers_aborted.insert(block);
             abort();
+
+            FILE* f = fopen((llvm::Twine("block") + llvm::Twine(block->idx)).str().c_str(), "wb");
+            fwrite(code, 1, a.curInstPointer() - ((uint8_t*)code), f);
+            fclose(f);
+
             return;
         }
         assert(stack_level == 0);
         RELEASE_ASSERT(!a.hasFailed(), "asm failed");
-        llvm::sys::Memory::InvalidateInstructionCache((void*)a.getStartAddr(), a.bytesWritten());
+        llvm::sys::Memory::InvalidateInstructionCache(code, (uint64_t)a.curInstPointer() - (uint64_t)code);
         block->code = code;
         if (entry_code)
             block->entry_code = entry_code;
 
+
         FILE* f = fopen((llvm::Twine("block") + llvm::Twine(block->idx)).str().c_str(), "wb");
         fwrite(code, 1, a.curInstPointer() - ((uint8_t*)code), f);
         fclose(f);
+
         finished = true;
     }
 };
 
 class JitedCode {
-    static constexpr int code_size = 4096 * 3;
+    static constexpr int code_size = 4096 * 10;
     static constexpr int epilog_size = 2;
 
     void* code;
@@ -856,12 +880,30 @@ public:
           iscurrently_tracing(false),
           abort_callback(abort_callback) {
         // emit prolog
+        /*
         a.push(assembler::RBP);
         a.mov(assembler::RSP, assembler::RBP);
         a.push(assembler::RDI); // interp
         a.push(assembler::RDI); // interp
+        */
+        // a.trap();
+        a.push(assembler::RBP);
+        a.mov(assembler::RSP, assembler::RBP);
+        a.push(assembler::RDI); // interp
+        // a.push(assembler::RDI); // interp
+
+
+        // curinst
+        static_assert(offsetof(ASTInterpreter, current_inst) == 0x80, "");
+        // lea rdi,[rdi+0x80]
+        for (unsigned char c : { 0x48, 0x8d, 0xbf, 0x80, 0x00, 0x00, 0x00 })
+            a.emitByte(c);
+
+        a.push(assembler::RDI);
+        a.emitByte(0xFF);
+        a.emitByte(0x66);
+        a.emitByte(0x08); // jmp    QWORD PTR [rsi+0x8]
         entry_offset = a.bytesWritten();
-        // a.fillWithNops();
 
         // emit epilog
         epilog_offset = code_size - epilog_size;
@@ -874,20 +916,17 @@ public:
         EHwriteAndRegister(code, code_size);
     }
 
-    void resetIsCurrentlyTracing() { iscurrently_tracing = false; }
-
     std::unique_ptr<JitFragment> newFragment(CFGBlock* block) {
-        RELEASE_ASSERT(!iscurrently_tracing, "recursive function not yet implemented");
+        // RELEASE_ASSERT(!iscurrently_tracing, "recursive function not yet implemented");
         if (iscurrently_tracing)
             return std::unique_ptr<JitFragment>();
         if (a.bytesLeft() < 50)
             return std::unique_ptr<JitFragment>();
 
         iscurrently_tracing = true;
-        bool has_entry = entry_offset == a.bytesWritten();
-        auto fragment = std::unique_ptr<JitFragment>(new JitFragment(
-            block, a, epilog_offset, abort_callback, has_entry ? a.getStartAddr() : 0, iscurrently_tracing));
-        return fragment;
+
+        return std::unique_ptr<JitFragment>(
+            new JitFragment(block, a, epilog_offset, abort_callback, a.getStartAddr(), iscurrently_tracing));
     }
 
 
@@ -917,90 +956,14 @@ public:
 };
 
 
-
-#if 0
-class Tracer {
-public:
-    CFGBlock* start;
-    bool failed, finished;
-    ASTInterpreter* interp;
-
-    unsigned char* buf = 0;
-    unsigned long entry, epilog;
-    std::unique_ptr<assembler::Assembler> a;
-
-    int stack_level;
-    bool abort_on_backage;
-    CFGBlock* on_failure;
-    uint64_t on_failure_offset;
-
-    llvm::DenseMap<CFGBlock*, void*> cfg_code;
-
-
-    const int code_size = 4096;
-    const int epilog_size = 2;
-
-    std::vector<std::pair<CFGBlock*, uint64_t>> started_blocks;
-
-
-
-    bool have_block_traced(CFGBlock* block) { return cfg_code.count(block); }
-
-    void setOnFailure(CFGBlock* b) {
-        on_failure = b;
-        on_failure_offset = a.bytesWritten();
-    }
-
-    void setCfgBlockEntry(CFGBlock* block) {
-        assert(!have_block_traced(block));
-        printf("Setting entry: %p %p %d %s\n", block, (a.bytesWritten() + (char*)buf), block->idx,
-               block->code ? "SKIPPING" : "");
-
-        cfg_code[block] = a.bytesWritten() + (char*)buf;
-        started_blocks.push_back(std::make_pair(block, a.bytesWritten()));
-    }
-
-    Tracer(CFGBlock* start, ASTInterpreter* interp)
-        : start(start),
-          failed(false),
-          finished(false),
-          interp(interp),
-          entry(0),
-          epilog(0),
-          stack_level(0),
-          abort_on_backage(false), on_failure(0), on_failure_offset(0) {
-        printf("beggining tracing %d\n", start->idx);
-        buf = (unsigned char*)malloc(code_size + 16);
-        buf = (unsigned char*)((((uint64_t)buf) + 15) & ~(15ul));
-        assert(((uint64_t)buf % 16) == 0);
-        a = std::unique_ptr<assembler::Assembler>(new assembler::Assembler(buf, code_size-epilog_size));
-        a.push(assembler::RBP);
-        a.mov(assembler::RSP, assembler::RBP);
-        a.push(assembler::RDI); // interp
-        a.push(assembler::RDI); // interp
-        entry = a.bytesWritten();
-        setCfgBlockEntry(start);
-
-        epilog = code_size - (epilog_size);
-        assembler::Assembler endAsm(buf + epilog, epilog_size);
-        endAsm.leave();
-        endAsm.retq();
-        RELEASE_ASSERT(!endAsm.hasFailed(), "");
-    }
-};
-#endif
-
-
 void ASTInterpreter::abortTracing() {
     if (tracer) {
         tracer->abort();
         tracers_aborted.insert(tracer->getBlock());
         tracer.reset();
-        edgecount = 0;
         printf("FAILED\n");
     }
 }
-
 
 void ASTInterpreter::addSymbol(InternedString name, Box* value, bool allow_duplicates) {
     if (!allow_duplicates)
@@ -1121,7 +1084,7 @@ void jitError() {
 }
 
 void ASTInterpreter::startTracing(CFGBlock* block) {
-    printf("Starting trace: %d\n", block->idx);
+    // printf("Starting trace: %d\n", block->idx);
     if (!compiled_func->jitted_code)
         compiled_func->jitted_code = (void*)(new JitedCode(jitError));
     assert(!tracer);
@@ -1162,7 +1125,6 @@ Value ASTInterpreter::execute(ASTInterpreter& interpreter, CFGBlock* start_block
     if (trace && from_start) {
         printf("Entry trace!\n");
         interpreter.startTracing(start_block);
-        // interpreter.tracer->abort_on_backage = true;
     }
 
     if (!from_start) {
@@ -1188,9 +1150,11 @@ Value ASTInterpreter::execute(ASTInterpreter& interpreter, CFGBlock* start_block
         if (ENABLE_TRACING && !interpreter.tracer) {
             CFGBlock* b = interpreter.current_block;
             if (b->entry_code) {
+                // printf("calling: %d\n", b->idx);
+                // fflush(stdout);
                 was_tracing = true;
-                typedef std::pair<CFGBlock*, Box*>(*EntryFunc)(ASTInterpreter*);
-                std::pair<CFGBlock*, Box*> rtn = ((EntryFunc)(b->entry_code))(&interpreter);
+                typedef std::pair<CFGBlock*, Box*>(*EntryFunc)(ASTInterpreter*, CFGBlock*);
+                std::pair<CFGBlock*, Box*> rtn = ((EntryFunc)(b->entry_code))(&interpreter, b);
                 interpreter.next_block = rtn.first;
                 if (!interpreter.next_block) {
                     return rtn.second;
@@ -1362,8 +1326,10 @@ Value ASTInterpreter::visit_branch(AST_Branch* node) {
             tracer->emitJump(next_block);
         tracer->compile();
         tracer.reset();
-        if (!next_block->code)
+        if (!next_block->code) {
             startTracing(next_block);
+            RELEASE_ASSERT(tracer, "");
+        }
     }
 
     return Value();
@@ -1371,32 +1337,29 @@ Value ASTInterpreter::visit_branch(AST_Branch* node) {
 
 Value ASTInterpreter::visit_jump(AST_Jump* node) {
     bool backedge = node->target->idx < current_block->idx && compiled_func;
-    if (backedge)
+    if (backedge) {
         threading::allowGLReadPreemption();
-    /*
-        if (istracing && node->target == tracer->start) {
-            tracer->compile();
-            istracing = false;
-            tracer = 0;
-        }
-    */
+
+        if (tracer)
+            tracer->emitVoidCall((void*)threading::allowGLReadPreemption);
+    }
+
     if (tracer) {
         if (node->target->code)
             tracer->emitJump(node->target);
         tracer->compile();
         tracer.reset();
-        if (!node->target->code)
+        if (!node->target->code) {
             startTracing(node->target);
+            RELEASE_ASSERT(tracer, "");
+        }
     }
 
     if (backedge)
         ++edgecount;
-    /*
-        if (backedge && tracer && istracing && tracer->abort_on_backage)
-            abortTracing();
-        */
 
-    if (ENABLE_TRACING && backedge && edgecount == 5 && !tracer && tracers_aborted.count(node->target) == 0) {
+    if (ENABLE_TRACING && backedge && edgecount == 5 && !tracer && !node->target->code
+        && tracers_aborted.count(node->target) == 0) {
         startTracing(node->target);
     }
 
@@ -2285,9 +2248,7 @@ Value ASTInterpreter::visit_subscript(AST_Subscript* node) {
 
 Value ASTInterpreter::visit_list(AST_List* node) {
     if (tracer) {
-        if (node->elts.empty())
-            tracer->emitCreateList();
-        else
+        if (node->elts.size() >= 2)
             abortTracing();
     }
 
@@ -2295,6 +2256,10 @@ Value ASTInterpreter::visit_list(AST_List* node) {
     list->ensure(node->elts.size());
     for (AST_expr* e : node->elts)
         listAppendInternal(list, visit_expr(e).o);
+
+    if (tracer)
+        tracer->emitCreateList(node->elts.size());
+
     return list;
 }
 
