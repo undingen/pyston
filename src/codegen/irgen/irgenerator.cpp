@@ -431,13 +431,22 @@ IREmitter* createIREmitter(IRGenState* irstate, llvm::BasicBlock*& curblock, IRG
 }
 
 static std::unordered_map<AST_expr*, std::vector<BoxedString*>*> made_keyword_storage;
-static std::vector<BoxedString*>* getKeywordNameStorage(AST_Call* node) {
+std::vector<BoxedString*>* getKeywordNameStorage(AST_Call* node) {
     auto it = made_keyword_storage.find(node);
     if (it != made_keyword_storage.end())
         return it->second;
 
     auto rtn = new std::vector<BoxedString*>();
     made_keyword_storage.insert(it, std::make_pair(node, rtn));
+
+    // Only add the keywords to the array the first time, since
+    // the later times we will hit the cache which will have the
+    // keyword names already populated:
+    if (!rtn->size()) {
+        for (auto kw : node->keywords)
+            rtn->push_back(kw->arg.getBox());
+    }
+
     return rtn;
 }
 
@@ -838,21 +847,9 @@ private:
         }
 
         std::vector<CompilerVariable*> args;
-        std::vector<BoxedString*>* keyword_names;
-        if (node->keywords.size()) {
+        std::vector<BoxedString*>* keyword_names = NULL;
+        if (node->keywords.size())
             keyword_names = getKeywordNameStorage(node);
-
-            // Only add the keywords to the array the first time, since
-            // the later times we will hit the cache which will have the
-            // keyword names already populated:
-            if (!keyword_names->size()) {
-                for (auto kw : node->keywords) {
-                    keyword_names->push_back(kw->arg.getBox());
-                }
-            }
-        } else {
-            keyword_names = NULL;
-        }
 
         for (int i = 0; i < node->args.size(); i++) {
             CompilerVariable* a = evalExpr(node->args[i], unw_info);

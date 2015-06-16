@@ -53,9 +53,9 @@
 #define DEBUG 0
 #endif
 
-#define ENABLE_TRACING 0
-#define ENABLE_TRACING_FUNC 0
-#define ENABLE_TRACING_IC 0
+#define ENABLE_TRACING 1
+#define ENABLE_TRACING_FUNC 1
+#define ENABLE_TRACING_IC 1
 
 namespace pyston {
 
@@ -327,6 +327,13 @@ struct JitCallHelper {
 
     struct Pop : public PopO<-1> {};
 
+    struct Rsp : public Regs {
+        int emit(assembler::Assembler& a, int arg_num) {
+            a.mov(assembler::RSP, regs[arg_num]);
+            return 0;
+        }
+    };
+
     struct Imm : public Regs {
         const uint64_t val;
         Imm(int64_t val) : val(val) {}
@@ -418,6 +425,7 @@ public:
 
     void emitSetGlobal(Box* global, BoxedString* s) {
         emitVoidCall((void*)setGlobal, Imm(global), Imm((void*)s), Pop());
+        assert(stack_level == 0);
     }
 
     static Box* getGlobalICHelper(GetGlobalIC* ic, Box* o, BoxedString* s) { return ic->call(o, s); }
@@ -440,6 +448,7 @@ public:
 #else
         emitVoidCall((void*)setattr, Pop(), Imm((void*)s), Pop());
 #endif
+        assert(stack_level == 0);
     }
 
     static Box* getAttrICHelper(GetAttrIC* ic, Box* o, BoxedString* attr) { return ic->call(o, attr); }
@@ -492,6 +501,7 @@ public:
 
     void emitSetItemName(BoxedString* s) {
         emitVoidCall((void*)setItemNameHelper, Mem(getInterp()), Imm((void*)s), Pop());
+        assert(stack_level == 0);
     }
 
 
@@ -511,6 +521,13 @@ public:
 
     void emitDeref(InternedString s) { emitCall((void*)derefHelper, Mem(getInterp()), Imm(toArg(s))); }
 
+    static BoxedTuple* createTupleHelper(uint64_t num, Box** data) {
+        BoxedTuple* tuple = (BoxedTuple*)BoxedTuple::create(num);
+        for (uint64_t i = 0; i < num; ++i)
+            tuple->elts[i] = data[num - i - 1];
+        return tuple;
+    }
+
     void emitCreateTuple(uint64_t num) {
         if (num == 0)
             emitCall((void*)BoxedTuple::create0);
@@ -524,23 +541,35 @@ public:
             emitCall((void*)BoxedTuple::create4, PopO<3>(), PopO<2>(), PopO<1>(), PopO<0>());
         else if (num == 5)
             emitCall((void*)BoxedTuple::create5, PopO<4>(), PopO<3>(), PopO<2>(), PopO<1>(), PopO<0>());
-        else
-            RELEASE_ASSERT(0, "not implemented");
+        else {
+            a.mov(assembler::Immediate(num), assembler::RDI);
+            a.mov(assembler::RSP, assembler::RSI);
+            a.emitCall((void*)createTupleHelper, assembler::R11);
+            a.add(assembler::Immediate(num * 8), assembler::RSP);
+            stack_level -= num;
+            pushResult();
+        }
     }
 
-    static BoxedList* createListHelper1(Box* arg) {
+    static BoxedList* createListHelper(uint64_t num, Box** data) {
         BoxedList* list = (BoxedList*)createList();
-        listAppendInternal(list, arg);
+        list->ensure(num);
+        for (uint64_t i = 0; i < num; ++i)
+            listAppendInternal(list, data[num - i - 1]);
         return list;
     }
 
     void emitCreateList(uint64_t num) {
         if (num == 0)
             emitCall((void*)createList);
-        else if (num == 1)
-            emitCall((void*)createListHelper1, Pop());
-        else
-            assert(0);
+        else {
+            a.mov(assembler::Immediate(num), assembler::RDI);
+            a.mov(assembler::RSP, assembler::RSI);
+            a.emitCall((void*)createListHelper, assembler::R11);
+            a.add(assembler::Immediate(num * 8), assembler::RSP);
+            stack_level -= num;
+            pushResult();
+        }
     }
 
     void emitCreateDict() { emitCall((void*)createDict); }
@@ -623,119 +652,126 @@ public:
     }
 
 #if ENABLE_TRACING_IC
-    static Box* callattrHelper(Box* b, BoxedString* attr, CallattrFlags flags, ArgPassSpec args, Box* arg1, Box* arg2) {
-        return pyston::callattr(b, attr, flags, args, arg1, arg2, NULL, NULL, NULL);
-    }
-    static Box* callattrHelperWithIC(CallattrIC* ic, Box* b, BoxedString* attr, CallattrFlags flags, ArgPassSpec args,
-                                     Box* arg1) {
-        return ic->call(b, attr, flags, args, arg1, NULL, NULL, NULL, NULL);
-    }
+    static Box* callattrHelper(ArgPassSpec argspec, BoxedString* attr, CallattrFlags flags, Box** args,
+                               std::vector<BoxedString*>* keyword_names, CallattrIC* ic) {
+        int num = argspec.totalPassed();
+        int num_stack_args = argspec.totalPassed() + 1;
+        if (num_stack_args % 2) // stack alignment
+            ++num;
 
-    void emitCallattr(BoxedString* attr, CallattrFlags flags, ArgPassSpec args) {
-        RELEASE_ASSERT(args.num_args <= 2, "");
-        if (args.num_args <= 1) {
-            Imm ic((void*)(new CallattrIC));
-            if (args.num_args == 0)
-                emitCall((void*)callattrHelperWithIC, ic, Pop(), Imm((void*)attr), Imm(flags.asInt()),
-                         Imm(args.asInt()));
-            else if (args.num_args == 1)
-                emitCall((void*)callattrHelperWithIC, ic, PopO<5>(), Imm((void*)attr), Imm(flags.asInt()),
-                         Imm(args.asInt()), PopO<1>());
-        } else {
-            if (args.num_args > 1) {
-                a.pop(assembler::R9);
-                --stack_level;
-            }
-            if (args.num_args > 0) {
-                a.pop(assembler::R8);
-                --stack_level;
-            }
-
-            a.pop(assembler::RDI);
-            --stack_level;
-            a.mov(assembler::Immediate((void*)attr), assembler::RSI);
-            a.mov(assembler::Immediate(flags.asInt()), assembler::RDX);
-            a.mov(assembler::Immediate(args.asInt()), assembler::RCX);
-            a.emitCall((void*)callattrHelper, assembler::Register(11));
-            pushResult();
-
-            assert(stack_level == 1);
+        Box* obj = args[num];
+        Box* arg1 = (num > 0) ? (Box*)args[num - 1] : NULL;
+        Box* arg2 = (num > 1) ? (Box*)args[num - 2] : NULL;
+        Box* arg3 = (num > 2) ? (Box*)args[num - 3] : NULL;
+        llvm::SmallVector<Box*, 4> addition_args;
+        for (int i = 3; i < num; ++i) {
+            addition_args.push_back((Box*)args[num - i - 1]);
         }
+        return ic->call(obj, attr, flags, argspec, arg1, arg2, arg3, addition_args.size() ? &addition_args[0] : NULL,
+                        keyword_names);
     }
 #else
-    static Box* callattrHelper(Box* b, BoxedString* attr, CallattrFlags flags, ArgPassSpec args, Box* arg1, Box* arg2) {
-        return pyston::callattr(b, attr, flags, args, arg1, arg2, NULL, NULL, NULL);
-    }
+    static Box* callattrHelper(ArgPassSpec argspec, BoxedString* attr, CallattrFlags flags, Box** args,
+                               std::vector<BoxedString*>* keyword_names) {
+        int num = argspec.totalPassed();
+        int num_stack_args = argspec.totalPassed() + 1;
+        if (num_stack_args % 2) // stack alignment
+            ++num;
 
-    void emitCallattr(BoxedString* attr, CallattrFlags flags, ArgPassSpec args) {
-        RELEASE_ASSERT(args.num_args <= 2, "");
-        if (args.num_args > 1) {
-            a.pop(assembler::R9);
-            --stack_level;
+        Box* obj = args[num];
+        Box* arg1 = (num > 0) ? (Box*)args[num - 1] : NULL;
+        Box* arg2 = (num > 1) ? (Box*)args[num - 2] : NULL;
+        Box* arg3 = (num > 2) ? (Box*)args[num - 3] : NULL;
+        llvm::SmallVector<Box*, 4> addition_args;
+        for (int i = 3; i < num; ++i) {
+            addition_args.push_back((Box*)args[num - i - 1]);
         }
-        if (args.num_args > 0) {
-            a.pop(assembler::R8);
-            --stack_level;
-        }
-
-        a.pop(assembler::RDI);
-        --stack_level;
-        a.mov(assembler::Immediate((void*)attr), assembler::RSI);
-        a.mov(assembler::Immediate(flags.asInt()), assembler::RDX);
-        a.mov(assembler::Immediate(args.asInt()), assembler::RCX);
-        a.emitCall((void*)callattrHelper, assembler::Register(11));
-        pushResult();
-
-        assert(stack_level == 1);
+        return pyston::callattr(obj, attr, flags, argspec, arg1, arg2, arg3,
+                                addition_args.size() ? &addition_args[0] : NULL, keyword_names);
     }
 #endif
+
+    void emitCallattr(BoxedString* attr, CallattrFlags flags, ArgPassSpec argspec,
+                      std::vector<BoxedString*>* keyword_names) {
+        // We could make this faster but for now: keep it simple, stupid...
+        int num_stack_args = argspec.totalPassed() + 1;
+        assert(num_stack_args == stack_level);
+        int stack_adjustment = num_stack_args * 8;
+        if (num_stack_args % 2) { // we have to align the stack :-(
+            stack_adjustment += 8;
+            a.sub(assembler::Immediate(8), assembler::RSP);
+        }
+#if ENABLE_TRACING_IC
+        emitVoidCall((void*)callattrHelper, Imm(argspec.asInt()), Imm((void*)attr), Imm(flags.asInt()), Rsp(),
+                     Imm((void*)keyword_names), Imm((void*)new CallattrIC));
+#else
+        emitVoidCall((void*)callattrHelper, Imm(argspec.asInt()), Imm((void*)attr), Imm(flags.asInt()), Rsp(),
+                     Imm((void*)keyword_names));
+#endif
+        a.add(assembler::Immediate(stack_adjustment), assembler::RSP);
+        stack_level -= num_stack_args;
+
+        pushResult();
+    }
+
 
 #if ENABLE_TRACING_IC
-    static Box* runtimeCallHelper(RuntimeCallIC* ic, Box* obj, ArgPassSpec argspec, Box* arg1, Box* arg2, Box* arg3,
-                                  Box** args) {
-        return ic->call(obj, argspec, arg1, arg2, arg3, args, NULL);
-    }
+    static Box* runtimeCallHelper(ArgPassSpec argspec, Box** args, std::vector<BoxedString*>* keyword_names,
+                                  RuntimeCallIC* ic) {
+        int num = argspec.totalPassed();
+        int num_stack_args = argspec.totalPassed() + 1;
+        if (num_stack_args % 2) // stack alignment
+            ++num;
 
-    void emitRuntimeCall(ArgPassSpec argspec) {
-        Imm ic((void*)(new RuntimeCallIC));
-        if (argspec.num_args == 0)
-            emitCall((void*)runtimeCallHelper, ic, PopO<1>(), Imm(argspec.asInt()));
-        else if (argspec.num_args == 1)
-            emitCall((void*)runtimeCallHelper, ic, PopO<3>(), Imm(argspec.asInt()), PopO<1>());
-        else if (argspec.num_args == 2)
-            emitCall((void*)runtimeCallHelper, ic, PopO<4>(), Imm(argspec.asInt()), PopO<3>(), PopO<1>());
-        else if (argspec.num_args == 3)
-            emitCall((void*)runtimeCallHelper, ic, PopO<5>(), Imm(argspec.asInt()), PopO<4>(), PopO<3>(), PopO<1>());
-        else
-            assert(0);
+        Box* obj = args[num];
+        Box* arg1 = (num > 0) ? (Box*)args[num - 1] : NULL;
+        Box* arg2 = (num > 1) ? (Box*)args[num - 2] : NULL;
+        Box* arg3 = (num > 2) ? (Box*)args[num - 3] : NULL;
+        llvm::SmallVector<Box*, 4> addition_args;
+        for (int i = 3; i < num; ++i) {
+            addition_args.push_back((Box*)args[num - i - 1]);
+        }
+        return ic->call(obj, argspec, arg1, arg2, arg3, addition_args.size() ? &addition_args[0] : NULL, keyword_names);
     }
 #else
-    static Box* runtimeCallHelper(Box* obj, ArgPassSpec argspec, Box* arg1, Box* arg2, Box* arg3, Box** args) {
-        return pyston::runtimeCall(obj, argspec, arg1, arg2, arg3, args, NULL);
-    }
+    static Box* runtimeCallHelper(ArgPassSpec argspec, Box** args, std::vector<BoxedString*>* keyword_names) {
+        int num = argspec.totalPassed();
+        int num_stack_args = argspec.totalPassed() + 1;
+        if (num_stack_args % 2) // stack alignment
+            ++num;
 
-    void emitRuntimeCall(ArgPassSpec argspec) {
-        if (argspec.num_args > 2) {
-            a.pop(assembler::R8);
-            --stack_level;
+        Box* obj = args[num];
+        Box* arg1 = (num > 0) ? (Box*)args[num - 1] : NULL;
+        Box* arg2 = (num > 1) ? (Box*)args[num - 2] : NULL;
+        Box* arg3 = (num > 2) ? (Box*)args[num - 3] : NULL;
+        llvm::SmallVector<Box*, 4> addition_args;
+        for (int i = 3; i < num; ++i) {
+            addition_args.push_back((Box*)args[num - i - 1]);
         }
-
-        if (argspec.num_args > 1) {
-            a.pop(assembler::RCX);
-            --stack_level;
-        }
-        if (argspec.num_args > 0) {
-            a.pop(assembler::RDX);
-            --stack_level;
-        }
-
-        a.pop(assembler::RDI);
-        --stack_level;
-        a.mov(assembler::Immediate(argspec.asInt()), assembler::RSI);
-        a.emitCall((void*)runtimeCallHelper, assembler::Register(11));
-        pushResult();
+        return runtimeCall(obj, argspec, arg1, arg2, arg3, addition_args.size() ? &addition_args[0] : NULL,
+                           keyword_names);
     }
 #endif
+
+    void emitRuntimeCall(ArgPassSpec argspec, std::vector<BoxedString*>* keyword_names) {
+        // We could make this faster but for now: keep it simple, stupid..
+        int num_stack_args = argspec.totalPassed() + 1;
+        assert(num_stack_args == stack_level);
+        int stack_adjustment = num_stack_args * 8;
+        if (num_stack_args % 2) { // we have to align the stack :-(
+            stack_adjustment += 8;
+            a.sub(assembler::Immediate(8), assembler::RSP);
+        }
+#if ENABLE_TRACING_IC
+        emitVoidCall((void*)runtimeCallHelper, Imm(argspec.asInt()), Rsp(), Imm((void*)keyword_names),
+                     Imm((void*)new RuntimeCallIC));
+#else
+        emitVoidCall((void*)runtimeCallHelper, Imm(argspec.asInt()), Rsp(), Imm((void*)keyword_names));
+#endif
+        a.add(assembler::Immediate(stack_adjustment), assembler::RSP);
+        stack_level -= num_stack_args;
+        pushResult();
+    }
 
     void emitPush(uint64_t val) {
         a.mov(assembler::Immediate(val), assembler::RSI);
@@ -783,8 +819,9 @@ public:
     }
 
     void emitJump(CFGBlock* b) {
-        /*
         assert(stack_level == 0);
+        /*
+
         a.mov(assembler::Immediate((void*)b), assembler::RAX);
         a.emitByte(0xFF);
         a.emitByte(0x60);
@@ -837,11 +874,11 @@ public:
                 abort_callback();
             tracers_aborted.insert(block);
             abort();
-
-            FILE* f = fopen((llvm::Twine("block") + llvm::Twine(block->idx)).str().c_str(), "wb");
-            fwrite(code, 1, a.curInstPointer() - ((uint8_t*)code), f);
-            fclose(f);
-
+            /*
+                        FILE* f = fopen((llvm::Twine("block") + llvm::Twine(block->idx)).str().c_str(), "wb");
+                        fwrite(code, 1, a.curInstPointer() - ((uint8_t*)code), f);
+                        fclose(f);
+            */
             return;
         }
         assert(stack_level == 0);
@@ -851,17 +888,17 @@ public:
         if (entry_code)
             block->entry_code = entry_code;
 
-
-        FILE* f = fopen((llvm::Twine("block") + llvm::Twine(block->idx)).str().c_str(), "wb");
-        fwrite(code, 1, a.curInstPointer() - ((uint8_t*)code), f);
-        fclose(f);
-
+        /*
+                FILE* f = fopen((llvm::Twine("block") + llvm::Twine(block->idx)).str().c_str(), "wb");
+                fwrite(code, 1, a.curInstPointer() - ((uint8_t*)code), f);
+                fclose(f);
+        */
         finished = true;
     }
 };
 
 class JitedCode {
-    static constexpr int code_size = 4096 * 10;
+    static constexpr int code_size = 4096 * 20;
     static constexpr int epilog_size = 2;
 
     void* code;
@@ -890,8 +927,6 @@ public:
         a.push(assembler::RBP);
         a.mov(assembler::RSP, assembler::RBP);
         a.push(assembler::RDI); // interp
-        // a.push(assembler::RDI); // interp
-
 
         // curinst
         static_assert(offsetof(ASTInterpreter, current_inst) == 0x80, "");
@@ -900,6 +935,7 @@ public:
             a.emitByte(c);
 
         a.push(assembler::RDI);
+
         a.emitByte(0xFF);
         a.emitByte(0x66);
         a.emitByte(0x08); // jmp    QWORD PTR [rsi+0x8]
@@ -1108,7 +1144,7 @@ Value ASTInterpreter::execute(ASTInterpreter& interpreter, CFGBlock* start_block
         start_block = interpreter.source_info->cfg->getStartingBlock();
         start_at = start_block->body[0];
 
-        if (ENABLE_TRACING_FUNC && interpreter.compiled_func->times_called == 25) {
+        if (ENABLE_TRACING_FUNC && interpreter.compiled_func->times_called == 25 && !start_block->code) {
             if (tracers_aborted.count(start_block) == 0)
                 trace = true;
         }
@@ -1123,7 +1159,6 @@ Value ASTInterpreter::execute(ASTInterpreter& interpreter, CFGBlock* start_block
 
     bool started = false;
     if (trace && from_start) {
-        printf("Entry trace!\n");
         interpreter.startTracing(start_block);
     }
 
@@ -1164,8 +1199,8 @@ Value ASTInterpreter::execute(ASTInterpreter& interpreter, CFGBlock* start_block
         }
 
 #if ENABLE_TRACING
-        if (was_tracing && !interpreter.tracer && !interpreter.current_block->code
-            && tracers_aborted.count(interpreter.current_block) == 0) {
+        if (was_tracing && !interpreter.tracer && tracers_aborted.count(interpreter.current_block) == 0) {
+            assert(!interpreter.current_block->code);
             interpreter.startTracing(interpreter.current_block);
         }
 #endif
@@ -1322,8 +1357,8 @@ Value ASTInterpreter::visit_branch(AST_Branch* node) {
 
 
     if (tracer) {
-        if (next_block->code)
-            tracer->emitJump(next_block);
+        // if (next_block->code)
+        tracer->emitJump(next_block);
         tracer->compile();
         tracer.reset();
         if (!next_block->code) {
@@ -1345,8 +1380,8 @@ Value ASTInterpreter::visit_jump(AST_Jump* node) {
     }
 
     if (tracer) {
-        if (node->target->code)
-            tracer->emitJump(node->target);
+        // if (node->target->code)
+        tracer->emitJump(node->target);
         tracer->compile();
         tracer.reset();
         if (!node->target->code) {
@@ -1639,7 +1674,7 @@ Value ASTInterpreter::visit_stmt(AST_stmt* node) {
     threading::allowGLReadPreemption();
 #endif
 
-    if (1 && tracer) {
+    if (0 && tracer) {
         printf("%20s % 2d ", source_info->getName().c_str(), current_block->idx);
         print_ast(node);
         printf("\n");
@@ -2049,11 +2084,12 @@ Value ASTInterpreter::visit_call(AST_Call* node) {
     for (AST_expr* e : node->args)
         args.push_back(visit_expr(e).o);
 
-    std::vector<BoxedString*> keywords;
-    for (AST_keyword* k : node->keywords) {
-        keywords.push_back(k->arg.getBox());
+    std::vector<BoxedString*>* keyword_names = NULL;
+    if (node->keywords.size())
+        keyword_names = getKeywordNameStorage(node);
+
+    for (AST_keyword* k : node->keywords)
         args.push_back(visit_expr(k->value).o);
-    }
 
     if (node->starargs)
         args.push_back(visit_expr(node->starargs).o);
@@ -2064,34 +2100,21 @@ Value ASTInterpreter::visit_call(AST_Call* node) {
     ArgPassSpec argspec(node->args.size(), node->keywords.size(), node->starargs, node->kwargs);
 
     if (is_callattr) {
-        if (argspec.has_starargs || argspec.num_keywords || argspec.has_kwargs)
-            abortTracing();
-
-        if (args.size() > 2)
-            abortTracing();
-
-
         CallattrFlags flags{.cls_only = callattr_clsonly, .null_on_nonexistent = false };
 
         if (tracer)
-            tracer->emitCallattr(attr.getBox(), flags, argspec);
+            tracer->emitCallattr(attr.getBox(), flags, argspec, keyword_names);
 
         return callattr(func.o, attr.getBox(),
                         CallattrFlags({.cls_only = callattr_clsonly, .null_on_nonexistent = false }), argspec,
                         args.size() > 0 ? args[0] : 0, args.size() > 1 ? args[1] : 0, args.size() > 2 ? args[2] : 0,
-                        args.size() > 3 ? &args[3] : 0, &keywords);
+                        args.size() > 3 ? &args[3] : 0, keyword_names);
     } else {
-        if (argspec.num_keywords || argspec.has_starargs)
-            abortTracing();
-
-        if (args.size() > 3)
-            abortTracing();
-
         if (tracer)
-            tracer->emitRuntimeCall(argspec);
+            tracer->emitRuntimeCall(argspec, keyword_names);
 
         return runtimeCall(func.o, argspec, args.size() > 0 ? args[0] : 0, args.size() > 1 ? args[1] : 0,
-                           args.size() > 2 ? args[2] : 0, args.size() > 3 ? &args[3] : 0, &keywords);
+                           args.size() > 2 ? args[2] : 0, args.size() > 3 ? &args[3] : 0, keyword_names);
     }
 }
 
@@ -2247,11 +2270,6 @@ Value ASTInterpreter::visit_subscript(AST_Subscript* node) {
 }
 
 Value ASTInterpreter::visit_list(AST_List* node) {
-    if (tracer) {
-        if (node->elts.size() >= 2)
-            abortTracing();
-    }
-
     BoxedList* list = new BoxedList;
     list->ensure(node->elts.size());
     for (AST_expr* e : node->elts)
@@ -2268,9 +2286,6 @@ Value ASTInterpreter::visit_tuple(AST_Tuple* node) {
     int rtn_idx = 0;
     for (AST_expr* e : node->elts)
         rtn->elts[rtn_idx++] = visit_expr(e).o;
-
-    if (node->elts.size() > 5)
-        abortTracing();
 
     if (tracer)
         tracer->emitCreateTuple(node->elts.size());
