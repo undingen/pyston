@@ -658,8 +658,10 @@ public:
     }
 
     void emitUncacheExcInfo() { emitCall((void*)uncacheExcInfoHelper, Mem(getInterp())); }
-    void emitInt(long n) { emitPush((uint64_t)boxInt(n)); }
-    void emitFloat(double n) { emitPush((uint64_t)boxFloat(n)); }
+    // TODO remove the gc hack...
+    void emitInt(long n) { emitPush((uint64_t)PyGC_AddRoot(boxInt(n))); }
+    void emitFloat(double n) { emitPush((uint64_t)PyGC_AddRoot(boxFloat(n))); }
+    void emitLong(llvm::StringRef s) { emitPush((uint64_t)PyGC_AddRoot(createLong(s))); }
     void emitUnicodeStr(llvm::StringRef s) {
         emitCall((void*)decodeUTF8StringPtr, Imm((void*)s.data()), Imm(s.size()));
     }
@@ -728,7 +730,6 @@ public:
 #endif
         a.add(assembler::Immediate(stack_adjustment), assembler::RSP);
         stack_level -= num_stack_args;
-
         pushResult();
     }
 
@@ -842,13 +843,6 @@ public:
 
     void emitJump(CFGBlock* b) {
         assert(stack_level == 0);
-        /*
-
-        a.mov(assembler::Immediate((void*)b), assembler::RAX);
-        a.emitByte(0xFF);
-        a.emitByte(0x60);
-        a.emitByte(0x08); // jmp qword ptr [rax+8]
-        */
         if (b->code) {
             a.jmp(assembler::JumpDestination::fromStart(((uint64_t)b->code) - (uint64_t)a.getStartAddr()));
         } else {
@@ -939,23 +933,19 @@ public:
           iscurrently_tracing(false),
           abort_callback(abort_callback) {
         // emit prolog
-        /*
         a.push(assembler::RBP);
         a.mov(assembler::RSP, assembler::RBP);
-        a.push(assembler::RDI); // interp
-        a.push(assembler::RDI); // interp
-        */
-        // a.trap();
-        a.push(assembler::RBP);
-        a.mov(assembler::RSP, assembler::RBP);
-        a.push(assembler::RDI); // interp
 
-        // curinst
+        // create stack layout:
+        // [RBP- 8] -> ASTInterpreter*
+        // [RBP-16] -> &ASTInterpreter->current_inst
+        a.push(assembler::RDI); // push interpreter pointer
+
         static_assert(offsetof(ASTInterpreter, current_inst) == 0x80, "");
         // lea rdi,[rdi+0x80]
         for (unsigned char c : { 0x48, 0x8d, 0xbf, 0x80, 0x00, 0x00, 0x00 })
             a.emitByte(c);
-
+        // push &ASTInterpreter->current_inst
         a.push(assembler::RDI);
 
         a.emitByte(0xFF);
@@ -975,7 +965,6 @@ public:
     }
 
     std::unique_ptr<JitFragment> newFragment(CFGBlock* block) {
-        // RELEASE_ASSERT(!iscurrently_tracing, "recursive function not yet implemented");
         if (iscurrently_tracing)
             return std::unique_ptr<JitFragment>();
         if (a.bytesLeft() < 50)
@@ -1019,7 +1008,7 @@ void ASTInterpreter::abortTracing() {
         tracer->abort();
         tracers_aborted.insert(tracer->getBlock());
         tracer.reset();
-        printf("FAILED\n");
+        // printf("FAILED\n");
     }
 }
 
@@ -2160,7 +2149,7 @@ Value ASTInterpreter::visit_num(AST_Num* node) {
         return boxFloat(node->n_float);
     } else if (node->num_type == AST_Num::LONG) {
         if (tracer)
-            tracer->emitPush((uint64_t)createLong(node->n_long));
+            tracer->emitLong(node->n_long);
         return createLong(node->n_long);
     } else if (node->num_type == AST_Num::COMPLEX) {
         abortTracing();
