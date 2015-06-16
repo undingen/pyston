@@ -80,9 +80,9 @@ class RuntimeCallIC : public RuntimeIC {
 public:
     RuntimeCallIC() : RuntimeIC((void*)runtimeCall, 2, 160 * 5) {}
 
-    Box* call(Box* obj, ArgPassSpec spec, Box* arg0, Box* arg1, Box* arg2, Box** args,
+    Box* call(Box* obj, ArgPassSpec argspec, Box* arg1, Box* arg2, Box* arg3, Box** args,
               const std::vector<BoxedString*>* keyword_names) {
-        return (Box*)call_ptr(obj, spec, arg0, arg1, arg2, args, keyword_names);
+        return (Box*)call_ptr(obj, argspec, arg1, arg2, arg3, args, keyword_names);
     }
 };
 

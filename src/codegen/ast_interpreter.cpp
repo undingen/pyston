@@ -652,12 +652,12 @@ public:
     }
 
 #if ENABLE_TRACING_IC
-    static Box* callattrHelper(ArgPassSpec argspec, BoxedString* attr, CallattrFlags flags, Box** args,
-                               std::vector<BoxedString*>* keyword_names, CallattrIC* ic) {
+    static Box* callattrHelperIC(ArgPassSpec argspec, BoxedString* attr, CallattrFlags flags, Box** args,
+                                 std::vector<BoxedString*>* keyword_names, CallattrIC* ic) {
         int num = argspec.totalPassed();
         int num_stack_args = argspec.totalPassed() + 1;
-        if (num_stack_args % 2) // stack alignment
-            ++num;
+        if (num_stack_args % 2) // TODO this should get removed..: stack alignment
+            ++args;
 
         Box* obj = args[num];
         Box* arg1 = (num > 0) ? (Box*)args[num - 1] : NULL;
@@ -670,13 +670,13 @@ public:
         return ic->call(obj, attr, flags, argspec, arg1, arg2, arg3, addition_args.size() ? &addition_args[0] : NULL,
                         keyword_names);
     }
-#else
+#endif
     static Box* callattrHelper(ArgPassSpec argspec, BoxedString* attr, CallattrFlags flags, Box** args,
                                std::vector<BoxedString*>* keyword_names) {
         int num = argspec.totalPassed();
         int num_stack_args = argspec.totalPassed() + 1;
-        if (num_stack_args % 2) // stack alignment
-            ++num;
+        if (num_stack_args % 2) // TODO this should get removed..: stack alignment
+            ++args;
 
         Box* obj = args[num];
         Box* arg1 = (num > 0) ? (Box*)args[num - 1] : NULL;
@@ -689,7 +689,7 @@ public:
         return pyston::callattr(obj, attr, flags, argspec, arg1, arg2, arg3,
                                 addition_args.size() ? &addition_args[0] : NULL, keyword_names);
     }
-#endif
+
 
     void emitCallattr(BoxedString* attr, CallattrFlags flags, ArgPassSpec argspec,
                       std::vector<BoxedString*>* keyword_names) {
@@ -702,8 +702,13 @@ public:
             a.sub(assembler::Immediate(8), assembler::RSP);
         }
 #if ENABLE_TRACING_IC
-        emitVoidCall((void*)callattrHelper, Imm(argspec.asInt()), Imm((void*)attr), Imm(flags.asInt()), Rsp(),
-                     Imm((void*)keyword_names), Imm((void*)new CallattrIC));
+        if (argspec.totalPassed() >= 3
+            || keyword_names) // looks like runtime ICs with 7 or more args don't work right now..
+            emitVoidCall((void*)callattrHelper, Imm(argspec.asInt()), Imm((void*)attr), Imm(flags.asInt()), Rsp(),
+                         Imm((void*)keyword_names));
+        else
+            emitVoidCall((void*)callattrHelper, Imm(argspec.asInt()), Imm((void*)attr), Imm(flags.asInt()), Rsp(),
+                         Imm((void*)keyword_names), Imm((void*)new CallattrIC));
 #else
         emitVoidCall((void*)callattrHelper, Imm(argspec.asInt()), Imm((void*)attr), Imm(flags.asInt()), Rsp(),
                      Imm((void*)keyword_names));
@@ -716,12 +721,12 @@ public:
 
 
 #if ENABLE_TRACING_IC
-    static Box* runtimeCallHelper(ArgPassSpec argspec, Box** args, std::vector<BoxedString*>* keyword_names,
-                                  RuntimeCallIC* ic) {
+    static Box* runtimeCallHelperIC(ArgPassSpec argspec, Box** args, std::vector<BoxedString*>* keyword_names,
+                                    RuntimeCallIC* ic) {
         int num = argspec.totalPassed();
         int num_stack_args = argspec.totalPassed() + 1;
-        if (num_stack_args % 2) // stack alignment
-            ++num;
+        if (num_stack_args % 2) // TODO this should get removed..: stack alignment
+            ++args;
 
         Box* obj = args[num];
         Box* arg1 = (num > 0) ? (Box*)args[num - 1] : NULL;
@@ -733,12 +738,12 @@ public:
         }
         return ic->call(obj, argspec, arg1, arg2, arg3, addition_args.size() ? &addition_args[0] : NULL, keyword_names);
     }
-#else
+#endif
     static Box* runtimeCallHelper(ArgPassSpec argspec, Box** args, std::vector<BoxedString*>* keyword_names) {
         int num = argspec.totalPassed();
         int num_stack_args = argspec.totalPassed() + 1;
-        if (num_stack_args % 2) // stack alignment
-            ++num;
+        if (num_stack_args % 2) // TODO this should get removed..: stack alignment
+            ++args;
 
         Box* obj = args[num];
         Box* arg1 = (num > 0) ? (Box*)args[num - 1] : NULL;
@@ -751,7 +756,7 @@ public:
         return runtimeCall(obj, argspec, arg1, arg2, arg3, addition_args.size() ? &addition_args[0] : NULL,
                            keyword_names);
     }
-#endif
+
 
     void emitRuntimeCall(ArgPassSpec argspec, std::vector<BoxedString*>* keyword_names) {
         // We could make this faster but for now: keep it simple, stupid..
@@ -763,8 +768,12 @@ public:
             a.sub(assembler::Immediate(8), assembler::RSP);
         }
 #if ENABLE_TRACING_IC
-        emitVoidCall((void*)runtimeCallHelper, Imm(argspec.asInt()), Rsp(), Imm((void*)keyword_names),
-                     Imm((void*)new RuntimeCallIC));
+        if (keyword_names) // looks like runtime ICs with 7 or more args don't work right now..
+            emitVoidCall((void*)runtimeCallHelper, Imm(argspec.asInt()), Rsp(), Imm((void*)keyword_names),
+                         Imm((void*)new RuntimeCallIC));
+        else
+            emitVoidCall((void*)runtimeCallHelperIC, Imm(argspec.asInt()), Rsp(), Imm((void*)keyword_names),
+                         Imm((void*)new RuntimeCallIC));
 #else
         emitVoidCall((void*)runtimeCallHelper, Imm(argspec.asInt()), Rsp(), Imm((void*)keyword_names));
 #endif
