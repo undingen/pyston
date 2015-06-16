@@ -243,9 +243,12 @@ public:
         return 0;
     }
 
-    static void tracerHelperSetLocal(ASTInterpreter* i, InternedString id, Box* v) {
-        // printf("SET: %s = %s\n", id.c_str(), str(v)->data());
+    static void tracerHelperSetLocal(ASTInterpreter* i, InternedString id, Box* v, bool set_closure) {
         i->sym_table[id] = v;
+
+        if (set_closure) {
+            i->created_closure->elts[i->scope_info->getClosureOffset(id)] = v;
+        }
     }
 };
 
@@ -464,8 +467,9 @@ public:
     void emitGetLocal(InternedString s) {
         emitCall((void*)ASTInterpreter::tracerHelperGetLocal, Mem(getInterp()), Imm(toArg(s)));
     }
-    void emitSetLocal(InternedString s) {
-        emitVoidCall((void*)ASTInterpreter::tracerHelperSetLocal, Mem(getInterp()), Imm(toArg(s)), Pop());
+    void emitSetLocal(InternedString s, bool set_closure) {
+        emitVoidCall((void*)ASTInterpreter::tracerHelperSetLocal, Mem(getInterp()), Imm(toArg(s)), Pop(),
+                     Imm((uint64_t)set_closure));
     }
 
     static Box* boxedLocalsGetHelper(ASTInterpreter* interp, BoxedString* s) {
@@ -627,6 +631,15 @@ public:
         emitCall((void*)binopICHelper, Imm((void*)new BinopIC), PopO<2>(), PopO<1>(), Imm(op));
 #else
         emitCall((void*)binop, PopO<1>(), PopO<0>(), Imm(op));
+#endif
+    }
+
+    static Box* unaryopICHelper(UnaryopIC* ic, Box* obj, int op) { return ic->call(obj, op); }
+    void emitUnaryop(int op) {
+#if ENABLE_TRACING_IC
+        emitCall((void*)unaryopICHelper, Imm((void*)new UnaryopIC), Pop(), Imm(op));
+#else
+        emitCall((void*)unaryop, Pop(), Imm(op));
 #endif
     }
 
@@ -1256,11 +1269,10 @@ void ASTInterpreter::doStore(InternedString name, Value value) {
         setitem(frame_info.boxedLocals, name.getBox(), value.o);
     } else {
         if (tracer)
-            tracer->emitSetLocal(name);
+            tracer->emitSetLocal(name, vst == ScopeInfo::VarScopeType::CLOSURE);
 
         sym_table[name] = value.o;
         if (vst == ScopeInfo::VarScopeType::CLOSURE) {
-            abortTracing();
             created_closure->elts[scope_info->getClosureOffset(name)] = value.o;
         }
     }
@@ -1316,7 +1328,9 @@ Value ASTInterpreter::visit_unaryop(AST_UnaryOp* node) {
 
         return boxBool(!nonzero(operand.o));
     } else {
-        abortTracing();
+        if (tracer)
+            tracer->emitUnaryop(node->op_type);
+
         return unaryop(operand.o, node->op_type);
     }
 }

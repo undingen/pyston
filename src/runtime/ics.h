@@ -86,6 +86,13 @@ public:
     }
 };
 
+class UnaryopIC : public RuntimeIC {
+public:
+    UnaryopIC() : RuntimeIC((void*)unaryop, 2, 160 * 2) {}
+
+    Box* call(Box* obj, int op_type) { return (Box*)call_ptr(obj, op_type); }
+};
+
 class BinopIC : public RuntimeIC {
 public:
     BinopIC() : RuntimeIC((void*)binop, 2, 160 * 2) {}
@@ -95,7 +102,7 @@ public:
 
 class AugBinopIC : public RuntimeIC {
 public:
-    AugBinopIC() : RuntimeIC((void*)augbinop, 2, 160 * 2) {}
+    AugBinopIC() : RuntimeIC((void*)augbinop, 2, 512) {}
 
     Box* call(Box* lhs, Box* rhs, int op_type) { return (Box*)call_ptr(lhs, rhs, op_type); }
 };
@@ -123,14 +130,14 @@ public:
 
 class GetAttrIC : public RuntimeIC {
 public:
-    GetAttrIC() : RuntimeIC((void*)getattr, 2, 512) {}
+    GetAttrIC() : RuntimeIC((void*)getattr, 2, 1024) {}
 
     Box* call(Box* obj, BoxedString* attr) { return (Box*)call_ptr(obj, attr); }
 };
 
 class SetAttrIC : public RuntimeIC {
 public:
-    SetAttrIC() : RuntimeIC((void*)setattr, 2, 512) {}
+    SetAttrIC() : RuntimeIC((void*)setattr, 2, 1024) {}
 
     Box* call(Box* obj, BoxedString* attr, Box* v) { return (Box*)call_ptr(obj, attr, v); }
 };
