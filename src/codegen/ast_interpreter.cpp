@@ -55,7 +55,9 @@
 
 #define ENABLE_TRACING 1
 #define ENABLE_TRACING_FUNC 1
-#define ENABLE_TRACING_IC 0
+#define ENABLE_TRACING_IC 1
+
+#include </opt/intel/vtune_amplifier_xe_2013/include/jitprofiling.h>
 
 namespace pyston {
 
@@ -376,7 +378,9 @@ private:
     bool finished;
     bool& iscurrently_tracing;
 
+
 public:
+    iJIT_Method_Load* jmethod;
     JitFragment(CFGBlock* block, assembler::Assembler& a, int epilog_offset, std::function<void(void)> abort_callback,
                 void* entry_code, bool& iscurrently_tracing)
         : a(a),
@@ -387,7 +391,8 @@ public:
           entry_code(entry_code),
           abort_callback(abort_callback),
           finished(false),
-          iscurrently_tracing(iscurrently_tracing) {
+          iscurrently_tracing(iscurrently_tracing),
+          jmethod(0) {
         code = (void*)a.curInstPointer();
     }
 
@@ -848,6 +853,10 @@ public:
 
         RELEASE_ASSERT(!a.hasFailed(), "");
         llvm::sys::Memory::InvalidateInstructionCache(code, (uint64_t)a.curInstPointer() - (uint64_t)code);
+        jmethod->method_load_address = code;
+        jmethod->method_size = (uint64_t)a.curInstPointer() - (uint64_t)code;
+        iJIT_NotifyEvent(iJVM_EVENT_TYPE_METHOD_LOAD_FINISHED, (void*)jmethod);
+
         stack_level = 0;
         finished = true;
         iscurrently_tracing = false;
@@ -873,6 +882,9 @@ public:
         assert(stack_level == 0);
         RELEASE_ASSERT(!a.hasFailed(), "asm failed");
         llvm::sys::Memory::InvalidateInstructionCache(code, (uint64_t)a.curInstPointer() - (uint64_t)code);
+        jmethod->method_load_address = code;
+        jmethod->method_size = (uint64_t)a.curInstPointer() - (uint64_t)code;
+        iJIT_NotifyEvent(iJVM_EVENT_TYPE_METHOD_LOAD_FINISHED, (void*)jmethod);
         block->code = code;
         if (entry_code)
             block->entry_code = entry_code;
@@ -886,6 +898,13 @@ public:
     }
 };
 
+static void* myalloc(uint64_t size) {
+    llvm_error_code ec;
+    llvm::sys::MemoryBlock MB = llvm::sys::Memory::allocateMappedMemory(
+        size, 0, llvm::sys::Memory::MF_READ | llvm::sys::Memory::MF_WRITE, ec);
+    return MB.base();
+}
+
 class JitedCode {
     static constexpr int code_size = 4096 * 20;
     static constexpr int epilog_size = 2;
@@ -896,10 +915,12 @@ class JitedCode {
     assembler::Assembler a;
     bool iscurrently_tracing;
     std::function<void(void)> abort_callback;
+    iJIT_Method_Load jmethod;
 
 public:
-    JitedCode(std::function<void(void)> abort_callback)
-        : code(malloc(code_size)),
+    JitedCode(llvm::StringRef name, std::function<void(void)> abort_callback)
+        : // code(malloc(code_size)),
+          code(myalloc(code_size)),
           entry_offset(0),
           epilog_offset(0),
           a((uint8_t*)code, code_size - epilog_size),
@@ -935,6 +956,31 @@ public:
 
         // generate eh frame...
         EHwriteAndRegister(code, code_size);
+
+
+        g.func_addr_registry.registerFunction(("jit_" + name).str(), code, code_size, NULL);
+
+        iJIT_IsProfilingActiveFlags agent;
+
+        memset(&jmethod, 0, sizeof(jmethod));
+
+        /* Get the current mode of the profiler and check that it is sampling */
+        if (iJIT_IsProfilingActive() != iJIT_SAMPLING_ON) {
+            return; /* The profiler is not loaded */
+        }
+
+        /* Fill method information */
+        jmethod.method_id = iJIT_GetNewMethodID();
+        jmethod.method_name = (char*)name.data();
+        jmethod.class_file_name = (char*)"JITter";
+        jmethod.source_file_name = (char*)"jitter.cpp";
+        jmethod.method_load_address = code;
+        jmethod.method_size = code_size;
+
+        /* Send method load notification */
+        iJIT_NotifyEvent(iJVM_EVENT_TYPE_METHOD_LOAD_FINISHED, (void*)&jmethod);
+
+        /* Destroy the profiler */
     }
 
     std::unique_ptr<JitFragment> newFragment(CFGBlock* block) {
@@ -945,8 +991,10 @@ public:
 
         iscurrently_tracing = true;
 
-        return std::unique_ptr<JitFragment>(
+        auto rtn = std::unique_ptr<JitFragment>(
             new JitFragment(block, a, epilog_offset, abort_callback, a.getStartAddr(), iscurrently_tracing));
+        rtn->jmethod = &jmethod;
+        return rtn;
     }
 
 
@@ -966,7 +1014,7 @@ public:
 
     void EHwriteAndRegister(void* func_addr, uint64_t func_size) {
         void* eh_frame_addr = 0;
-        eh_frame_addr = malloc(EH_FRAME_SIZE);
+        eh_frame_addr = myalloc(EH_FRAME_SIZE); // malloc(EH_FRAME_SIZE);
         writeTrivialEhFrame(eh_frame_addr, func_addr, func_size);
         // (EH_FRAME_SIZE - 4) to omit the 4-byte null terminator, otherwise we trip an assert in parseEhFrame.
         // TODO: can we omit the terminator in general?
@@ -1120,7 +1168,7 @@ void jitError() {
 void ASTInterpreter::startTracing(CFGBlock* block) {
     // printf("Starting trace: %d\n", block->idx);
     if (!compiled_func->jitted_code)
-        compiled_func->jitted_code = (void*)(new JitedCode(jitError));
+        compiled_func->jitted_code = (void*)(new JitedCode(source_info->getName(), jitError));
     assert(!tracer);
     JitedCode* jitted_code = (JitedCode*)compiled_func->jitted_code;
     tracer = jitted_code->newFragment(block);
