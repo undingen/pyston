@@ -1185,10 +1185,8 @@ Value ASTInterpreter::execute(ASTInterpreter& interpreter, CFGBlock* start_block
                     }
                 } catch (ExcInfo e) {
                     AST_stmt* stmt = interpreter.getCurrentStatement();
-                    if (stmt->type != AST_TYPE::Invoke) {
-                        assert(!stmt->landingpad);
+                    if (stmt->type != AST_TYPE::Invoke)
                         throw e;
-                    }
                     interpreter.next_block = ((AST_Invoke*)stmt)->exc_dest;
                     interpreter.last_exception = e;
                 }
