@@ -55,7 +55,7 @@
 
 #define ENABLE_TRACING 1
 #define ENABLE_TRACING_FUNC 1
-#define ENABLE_TRACING_IC 1
+#define ENABLE_TRACING_IC 0
 
 namespace pyston {
 
@@ -408,14 +408,31 @@ public:
     }
 
     template <typename... Args> void emitCall(void* func, Args&&... args) {
-        stack_level += emitCallHelper<0>(a, args...);
-        a.emitCall(func, assembler::R11);
+        emitVoidCall(func, args...);
+        pushResult();
+    }
+
+    template <typename... Args> void emitVarArgCall(void* func, uint64_t stack_adjustment, Args&&... args) {
+        emitVoidVarArgCall(func, stack_adjustment, args...);
         pushResult();
     }
 
     template <typename... Args> void emitVoidCall(void* func, Args&&... args) {
+        return emitVoidVarArgCall(func, 0, args...);
+    }
+
+    template <typename... Args> void emitVoidVarArgCall(void* func, uint64_t stack_adjustment, Args&&... args) {
         stack_level += emitCallHelper<0>(a, args...);
+        if (stack_level % 2) { // we have to align the stack :-(
+            ++stack_adjustment;
+            a.sub(assembler::Immediate(8), assembler::RSP);
+            ++stack_level;
+        }
         a.emitCall(func, assembler::R11);
+        if (stack_adjustment) {
+            a.add(assembler::Immediate(stack_adjustment * 8), assembler::RSP);
+            stack_level -= stack_adjustment;
+        }
     }
 
     void pushResult() {
@@ -545,14 +562,8 @@ public:
             emitCall((void*)BoxedTuple::create4, PopO<3>(), PopO<2>(), PopO<1>(), PopO<0>());
         else if (num == 5)
             emitCall((void*)BoxedTuple::create5, PopO<4>(), PopO<3>(), PopO<2>(), PopO<1>(), PopO<0>());
-        else {
-            a.mov(assembler::Immediate(num), assembler::RDI);
-            a.mov(assembler::RSP, assembler::RSI);
-            a.emitCall((void*)createTupleHelper, assembler::R11);
-            a.add(assembler::Immediate(num * 8), assembler::RSP);
-            stack_level -= num;
-            pushResult();
-        }
+        else
+            emitVarArgCall((void*)createTupleHelper, num, Imm(num), Rsp());
     }
 
     static BoxedList* createListHelper(uint64_t num, Box** data) {
@@ -566,14 +577,8 @@ public:
     void emitCreateList(uint64_t num) {
         if (num == 0)
             emitCall((void*)createList);
-        else {
-            a.mov(assembler::Immediate(num), assembler::RDI);
-            a.mov(assembler::RSP, assembler::RSI);
-            a.emitCall((void*)createListHelper, assembler::R11);
-            a.add(assembler::Immediate(num * 8), assembler::RSP);
-            stack_level -= num;
-            pushResult();
-        }
+        else
+            emitVarArgCall((void*)createListHelper, num, Imm(num), Rsp());
     }
 
     void emitCreateDict() { emitCall((void*)createDict); }
@@ -670,10 +675,6 @@ public:
     static Box* callattrHelperIC(ArgPassSpec argspec, BoxedString* attr, CallattrFlags flags, Box** args,
                                  std::vector<BoxedString*>* keyword_names, CallattrIC* ic) {
         int num = argspec.totalPassed();
-        int num_stack_args = argspec.totalPassed() + 1;
-        if (num_stack_args % 2) // TODO this should get removed..: stack alignment
-            ++args;
-
         Box* obj = args[num];
         Box* arg1 = (num > 0) ? (Box*)args[num - 1] : NULL;
         Box* arg2 = (num > 1) ? (Box*)args[num - 2] : NULL;
@@ -689,10 +690,6 @@ public:
     static Box* callattrHelper(ArgPassSpec argspec, BoxedString* attr, CallattrFlags flags, Box** args,
                                std::vector<BoxedString*>* keyword_names) {
         int num = argspec.totalPassed();
-        int num_stack_args = argspec.totalPassed() + 1;
-        if (num_stack_args % 2) // TODO this should get removed..: stack alignment
-            ++args;
-
         Box* obj = args[num];
         Box* arg1 = (num > 0) ? (Box*)args[num - 1] : NULL;
         Box* arg2 = (num > 1) ? (Box*)args[num - 2] : NULL;
@@ -711,26 +708,18 @@ public:
         // We could make this faster but for now: keep it simple, stupid...
         int num_stack_args = argspec.totalPassed() + 1;
         assert(num_stack_args == stack_level);
-        int stack_adjustment = num_stack_args * 8;
-        if (num_stack_args % 2) { // we have to align the stack :-(
-            stack_adjustment += 8;
-            a.sub(assembler::Immediate(8), assembler::RSP);
-        }
 #if ENABLE_TRACING_IC
         if (argspec.totalPassed() >= 3
             || keyword_names) // looks like runtime ICs with 7 or more args don't work right now..
-            emitVoidCall((void*)callattrHelper, Imm(argspec.asInt()), Imm((void*)attr), Imm(flags.asInt()), Rsp(),
-                         Imm((void*)keyword_names));
+            emitVarArgCall((void*)callattrHelper, num_stack_args, Imm(argspec.asInt()), Imm((void*)attr),
+                           Imm(flags.asInt()), Rsp(), Imm((void*)keyword_names));
         else
-            emitVoidCall((void*)callattrHelper, Imm(argspec.asInt()), Imm((void*)attr), Imm(flags.asInt()), Rsp(),
-                         Imm((void*)keyword_names), Imm((void*)new CallattrIC));
+            emitVarArgCall((void*)callattrHelper, num_stack_args, Imm(argspec.asInt()), Imm((void*)attr),
+                           Imm(flags.asInt()), Rsp(), Imm((void*)keyword_names), Imm((void*)new CallattrIC));
 #else
-        emitVoidCall((void*)callattrHelper, Imm(argspec.asInt()), Imm((void*)attr), Imm(flags.asInt()), Rsp(),
-                     Imm((void*)keyword_names));
+        emitVarArgCall((void*)callattrHelper, num_stack_args, Imm(argspec.asInt()), Imm((void*)attr),
+                       Imm(flags.asInt()), Rsp(), Imm((void*)keyword_names));
 #endif
-        a.add(assembler::Immediate(stack_adjustment), assembler::RSP);
-        stack_level -= num_stack_args;
-        pushResult();
     }
 
 
@@ -738,10 +727,6 @@ public:
     static Box* runtimeCallHelperIC(ArgPassSpec argspec, Box** args, std::vector<BoxedString*>* keyword_names,
                                     RuntimeCallIC* ic) {
         int num = argspec.totalPassed();
-        int num_stack_args = argspec.totalPassed() + 1;
-        if (num_stack_args % 2) // TODO this should get removed..: stack alignment
-            ++args;
-
         Box* obj = args[num];
         Box* arg1 = (num > 0) ? (Box*)args[num - 1] : NULL;
         Box* arg2 = (num > 1) ? (Box*)args[num - 2] : NULL;
@@ -755,10 +740,6 @@ public:
 #endif
     static Box* runtimeCallHelper(ArgPassSpec argspec, Box** args, std::vector<BoxedString*>* keyword_names) {
         int num = argspec.totalPassed();
-        int num_stack_args = argspec.totalPassed() + 1;
-        if (num_stack_args % 2) // TODO this should get removed..: stack alignment
-            ++args;
-
         Box* obj = args[num];
         Box* arg1 = (num > 0) ? (Box*)args[num - 1] : NULL;
         Box* arg2 = (num > 1) ? (Box*)args[num - 2] : NULL;
@@ -776,24 +757,17 @@ public:
         // We could make this faster but for now: keep it simple, stupid..
         int num_stack_args = argspec.totalPassed() + 1;
         assert(num_stack_args == stack_level);
-        int stack_adjustment = num_stack_args * 8;
-        if (num_stack_args % 2) { // we have to align the stack :-(
-            stack_adjustment += 8;
-            a.sub(assembler::Immediate(8), assembler::RSP);
-        }
 #if ENABLE_TRACING_IC
         if (keyword_names) // looks like runtime ICs with 7 or more args don't work right now..
-            emitVoidCall((void*)runtimeCallHelper, Imm(argspec.asInt()), Rsp(), Imm((void*)keyword_names),
-                         Imm((void*)new RuntimeCallIC));
+            emitVarArgCall((void*)runtimeCallHelper, num_stack_args, Imm(argspec.asInt()), Rsp(),
+                           Imm((void*)keyword_names), Imm((void*)new RuntimeCallIC));
         else
-            emitVoidCall((void*)runtimeCallHelperIC, Imm(argspec.asInt()), Rsp(), Imm((void*)keyword_names),
-                         Imm((void*)new RuntimeCallIC));
+            emitVarArgCall((void*)runtimeCallHelperIC, num_stack_args, Imm(argspec.asInt()), Rsp(),
+                           Imm((void*)keyword_names), Imm((void*)new RuntimeCallIC));
 #else
-        emitVoidCall((void*)runtimeCallHelper, Imm(argspec.asInt()), Rsp(), Imm((void*)keyword_names));
+        emitVarArgCall((void*)runtimeCallHelper, num_stack_args, Imm(argspec.asInt()), Rsp(),
+                       Imm((void*)keyword_names));
 #endif
-        a.add(assembler::Immediate(stack_adjustment), assembler::RSP);
-        stack_level -= num_stack_args;
-        pushResult();
     }
 
     void emitPush(uint64_t val) {
@@ -1686,7 +1660,7 @@ Value ASTInterpreter::visit_stmt(AST_stmt* node) {
     threading::allowGLReadPreemption();
 #endif
 
-    if (0 && tracer) {
+    if (1 && tracer) {
         printf("%20s % 2d ", source_info->getName().c_str(), current_block->idx);
         print_ast(node);
         printf("\n");
