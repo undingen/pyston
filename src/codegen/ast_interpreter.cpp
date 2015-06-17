@@ -396,7 +396,7 @@ public:
 
     CFGBlock* getBlock() { return block; }
 
-    uint64_t toArg(InternedString s) {
+    uint64_t asArg(InternedString s) {
         union U {
             U() {}
             InternedString is;
@@ -423,7 +423,7 @@ public:
 
     template <typename... Args> void emitVoidVarArgCall(void* func, uint64_t stack_adjustment, Args&&... args) {
         stack_level += emitCallHelper<0>(a, args...);
-        if (stack_level % 2) { // we have to align the stack :-(
+        if (stack_level & 1) { // we have to align the stack :-(
             ++stack_adjustment;
             a.sub(assembler::Immediate(8), assembler::RSP);
             ++stack_level;
@@ -482,10 +482,10 @@ public:
     }
 
     void emitGetLocal(InternedString s) {
-        emitCall((void*)ASTInterpreter::tracerHelperGetLocal, Mem(getInterp()), Imm(toArg(s)));
+        emitCall((void*)ASTInterpreter::tracerHelperGetLocal, Mem(getInterp()), Imm(asArg(s)));
     }
     void emitSetLocal(InternedString s, bool set_closure) {
-        emitVoidCall((void*)ASTInterpreter::tracerHelperSetLocal, Mem(getInterp()), Imm(toArg(s)), Pop(),
+        emitVoidCall((void*)ASTInterpreter::tracerHelperSetLocal, Mem(getInterp()), Imm(asArg(s)), Pop(),
                      Imm((uint64_t)set_closure));
     }
 
@@ -540,7 +540,7 @@ public:
         return val;
     }
 
-    void emitDeref(InternedString s) { emitCall((void*)derefHelper, Mem(getInterp()), Imm(toArg(s))); }
+    void emitDeref(InternedString s) { emitCall((void*)derefHelper, Mem(getInterp()), Imm(asArg(s))); }
 
     static BoxedTuple* createTupleHelper(uint64_t num, Box** data) {
         BoxedTuple* tuple = (BoxedTuple*)BoxedTuple::create(num);
@@ -789,12 +789,14 @@ public:
 
     void emitSetCurrentInst(AST_stmt* node) {
         assert(stack_level == 0);
-        assert((uint32_t)(uint64_t)node == (uint64_t)node && "only support 32 offset for now");
 
         // dont call the helper to save a few bytes...
-        // emitVoidCall((void*)setCurrentInstHelper, Mem(getInterp()), Imm((void*)node));
+        emitVoidCall((void*)setCurrentInstHelper, Mem(getInterp()), Imm((void*)node));
+        /*
+        assert((uint32_t)(uint64_t)node == (uint64_t)node && "only support 32 offset for now");
         a.mov(getCurInst(), assembler::RDX);
         a.movq(assembler::Immediate((void*)node), assembler::Indirect(assembler::RDX, 0));
+        */
     }
 
     void addGuard(bool t, CFGBlock* cont) {
@@ -1173,11 +1175,22 @@ Value ASTInterpreter::execute(ASTInterpreter& interpreter, CFGBlock* start_block
                 // printf("calling: %d\n", b->idx);
                 // fflush(stdout);
                 was_tracing = true;
-                typedef std::pair<CFGBlock*, Box*>(*EntryFunc)(ASTInterpreter*, CFGBlock*);
-                std::pair<CFGBlock*, Box*> rtn = ((EntryFunc)(b->entry_code))(&interpreter, b);
-                interpreter.next_block = rtn.first;
-                if (!interpreter.next_block) {
-                    return rtn.second;
+
+                try {
+                    typedef std::pair<CFGBlock*, Box*>(*EntryFunc)(ASTInterpreter*, CFGBlock*);
+                    std::pair<CFGBlock*, Box*> rtn = ((EntryFunc)(b->entry_code))(&interpreter, b);
+                    interpreter.next_block = rtn.first;
+                    if (!interpreter.next_block) {
+                        return rtn.second;
+                    }
+                } catch (ExcInfo e) {
+                    AST_stmt* stmt = interpreter.getCurrentStatement();
+                    if (stmt->type != AST_TYPE::Invoke) {
+                        assert(!stmt->landingpad);
+                        throw e;
+                    }
+                    interpreter.next_block = ((AST_Invoke*)stmt)->exc_dest;
+                    interpreter.last_exception = e;
                 }
                 continue;
             }
@@ -1191,6 +1204,8 @@ Value ASTInterpreter::execute(ASTInterpreter& interpreter, CFGBlock* start_block
 #endif
         for (AST_stmt* s : interpreter.current_block->body) {
             interpreter.current_inst = s;
+            if (interpreter.tracer)
+                interpreter.tracer->emitSetCurrentInst(s);
             v = interpreter.visit_stmt(s);
         }
     }
@@ -1384,7 +1399,7 @@ Value ASTInterpreter::visit_jump(AST_Jump* node) {
         startTracing(node->target);
     }
 
-    if (0 && ENABLE_OSR && backedge && edgecount == OSR_THRESHOLD_INTERPRETER) {
+    if (!ENABLE_TRACING && ENABLE_OSR && backedge && edgecount == OSR_THRESHOLD_INTERPRETER) {
         bool can_osr = !FORCE_INTERPRETER && source_info->scoping->areGlobalsFromModule();
         if (can_osr) {
             static StatCounter ast_osrs("num_ast_osrs");
@@ -1510,12 +1525,12 @@ Value ASTInterpreter::visit_jump(AST_Jump* node) {
 }
 
 Value ASTInterpreter::visit_invoke(AST_Invoke* node) {
-    abortTracing();
     Value v;
     try {
         v = visit_stmt(node->stmt);
         next_block = node->normal_dest;
     } catch (ExcInfo e) {
+        abortTracing();
         next_block = node->exc_dest;
         last_exception = e;
     }
@@ -1660,14 +1675,11 @@ Value ASTInterpreter::visit_stmt(AST_stmt* node) {
     threading::allowGLReadPreemption();
 #endif
 
-    if (1 && tracer) {
+    if (0 && tracer) {
         printf("%20s % 2d ", source_info->getName().c_str(), current_block->idx);
         print_ast(node);
         printf("\n");
     }
-
-    if (tracer)
-        tracer->emitSetCurrentInst(node);
 
     switch (node->type) {
         case AST_TYPE::Assert:
