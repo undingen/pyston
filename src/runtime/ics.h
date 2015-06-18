@@ -149,6 +149,13 @@ public:
     Box* call(Box* obj, BoxedString* s) { return (Box*)call_ptr(obj, s); }
 };
 
+class SetGlobalIC : public RuntimeIC {
+public:
+    SetGlobalIC() : RuntimeIC((void*)setGlobal, 2, 512) {}
+
+    Box* call(Box* obj, BoxedString* s, Box* v) { return (Box*)call_ptr(obj, s, v); }
+};
+
 class NonzeroIC : public RuntimeIC {
 public:
     NonzeroIC() : RuntimeIC((void*)nonzero, 1, 40) {}

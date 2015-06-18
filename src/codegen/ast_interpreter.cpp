@@ -465,9 +465,15 @@ public:
             a.nop();
     }
 
+
+    static Box* setGlobalICHelper(SetGlobalIC* ic, Box* o, BoxedString* s, Box* v) { return ic->call(o, s, v); }
+
     void emitSetGlobal(Box* global, BoxedString* s) {
-        emitVoidCall((void*)setGlobal, Imm(global), Imm((void*)s), Pop());
-        assert(stack_level == 0);
+#if ENABLE_TRACING_IC
+        emitVoidCall((void*)setGlobalICHelper, Imm((void*)new SetGlobalIC), Imm((void*)global), Imm((void*)s), Pop());
+#else
+        emitVoidCall((void*)getGlobal, Imm((void*)global), Imm((void*)s), Pop());
+#endif
     }
 
     static Box* getGlobalICHelper(GetGlobalIC* ic, Box* o, BoxedString* s) { return ic->call(o, s); }
@@ -775,7 +781,7 @@ public:
             emitVarArgCall((void*)callattrHelper, num_stack_args, Imm(argspec.asInt()), Imm((void*)attr),
                            Imm(flags.asInt()), Rsp(), Imm((void*)keyword_names));
         else
-            emitVarArgCall((void*)callattrHelper, num_stack_args, Imm(argspec.asInt()), Imm((void*)attr),
+            emitVarArgCall((void*)callattrHelperIC, num_stack_args, Imm(argspec.asInt()), Imm((void*)attr),
                            Imm(flags.asInt()), Rsp(), Imm((void*)keyword_names), Imm((void*)new CallattrIC));
 #else
         emitVarArgCall((void*)callattrHelper, num_stack_args, Imm(argspec.asInt()), Imm((void*)attr),
