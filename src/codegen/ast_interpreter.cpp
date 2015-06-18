@@ -57,7 +57,11 @@
 #define ENABLE_TRACING_FUNC 1
 #define ENABLE_TRACING_IC 1
 
+#if INTEL_PROFILING
 #include </opt/intel/vtune_amplifier_xe_2013/include/jitprofiling.h>
+#else
+typedef void* iJIT_Method_Load;
+#endif
 
 namespace pyston {
 
@@ -232,6 +236,14 @@ public:
     void abortTracing();
     void startTracing(CFGBlock* block);
 
+    LivenessAnalysis* getLivness() {
+        if (!source_info->liveness_info)
+            source_info->liveness_info = computeLivenessInfo(source_info->cfg);
+        return source_info->liveness_info.get();
+    }
+
+
+
     static Box* tracerHelperGetLocal(ASTInterpreter* i, InternedString id) {
         SymMap::iterator it = i->sym_table.find(id);
         if (it != i->sym_table.end()) {
@@ -394,7 +406,10 @@ public:
           iscurrently_tracing(iscurrently_tracing),
           jmethod(0) {
         code = (void*)a.curInstPointer();
+        emitBlockEntry();
     }
+
+    llvm::DenseMap<InternedString, uint64_t> local_syms;
 
     CFGBlock* getBlock() { return block; }
 
@@ -445,6 +460,11 @@ public:
     assembler::Indirect getInterp() { return assembler::Indirect(assembler::RBP, -8); }
     assembler::Indirect getCurInst() { return assembler::Indirect(assembler::RBP, -16); }
 
+    void emitBlockEntry() {
+        for (int i = 0; i < 7; ++i)
+            a.nop();
+    }
+
     void emitSetGlobal(Box* global, BoxedString* s) {
         emitVoidCall((void*)setGlobal, Imm(global), Imm((void*)s), Pop());
         assert(stack_level == 0);
@@ -489,6 +509,45 @@ public:
     void emitSetLocal(InternedString s, bool set_closure) {
         emitVoidCall((void*)ASTInterpreter::tracerHelperSetLocal, Mem(getInterp()), Imm(asArg(s)), Pop(),
                      Imm((uint64_t)set_closure));
+    }
+
+    assembler::Indirect getLocalSym(uint64_t offset) {
+        return assembler::Indirect(assembler::RBP, -16 - ((offset + 1) * 8));
+    }
+
+    void emitSetDeadLocal(InternedString s) {
+        uint64_t offset = 0;
+        auto it = local_syms.find(s);
+        if (it == local_syms.end())
+            local_syms[s] = offset = local_syms.size();
+        else
+            offset = it->second;
+        // we could do much better...
+        a.pop(assembler::RAX);
+        --stack_level;
+        a.mov(assembler::RAX, getLocalSym(offset));
+    }
+
+    void emitGetDeadLocal(InternedString s) {
+        uint64_t offset = 0;
+        bool found = false;
+        auto it = local_syms.find(s);
+        if (it == local_syms.end())
+            local_syms[s] = offset = local_syms.size();
+        else {
+            offset = it->second;
+            found = true;
+        }
+
+        if (!found) {
+            // HACK:
+            emitCall((void*)ASTInterpreter::tracerHelperGetLocal, Mem(getInterp()), Imm(asArg(s)));
+            emitSetDeadLocal(s);
+        }
+        // we could do much better...
+        a.mov(getLocalSym(offset), assembler::RAX);
+        a.push(assembler::RAX);
+        ++stack_level;
     }
 
     static Box* boxedLocalsGetHelper(ASTInterpreter* interp, BoxedString* s) {
@@ -805,9 +864,21 @@ public:
         a.pop(assembler::RSI);
         stack_level--;
 
+        // a.trap();
         a.mov(assembler::Immediate((void*)(t ? False : True)), assembler::RDI);
         a.cmp(assembler::RSI, assembler::RDI);
-        a.jne(assembler::JumpDestination::fromStart(a.bytesWritten() + 17 + 11 + 1));
+
+        uint64_t num_scatch_bytes = local_syms.size() * 8;
+        int code_len_exit = 0;
+        if (num_scatch_bytes >= 120)
+            code_len_exit = 7;
+        else if (num_scatch_bytes > 0)
+            code_len_exit = 4;
+
+        a.jne(assembler::JumpDestination::fromStart(a.bytesWritten() + 17 + 11 + 1 + code_len_exit));
+
+        emitBlockExit();
+
         assert(stack_level == 0);
         a.mov(assembler::Immediate(cont), assembler::RAX);
         a.mov(assembler::Indirect(assembler::RAX, 8), assembler::RSI);
@@ -821,6 +892,9 @@ public:
 
     void emitJump(CFGBlock* b) {
         assert(stack_level == 0);
+
+        emitBlockExit();
+
         if (b->code) {
             a.jmp(assembler::JumpDestination::fromStart(((uint64_t)b->code) - (uint64_t)a.getStartAddr()));
         } else {
@@ -840,6 +914,7 @@ public:
         assert(stack_level == 1);
         a.mov(assembler::Immediate(0ul), assembler::RAX);
         a.pop(assembler::RDX);
+        emitBlockExit();
         a.jmp(assembler::JumpDestination::fromStart(epilog_offset));
         --stack_level;
     }
@@ -853,47 +928,64 @@ public:
 
         RELEASE_ASSERT(!a.hasFailed(), "");
         llvm::sys::Memory::InvalidateInstructionCache(code, (uint64_t)a.curInstPointer() - (uint64_t)code);
+
+#if INTEL_PROFILING
         jmethod->method_load_address = code;
         jmethod->method_size = (uint64_t)a.curInstPointer() - (uint64_t)code;
         iJIT_NotifyEvent(iJVM_EVENT_TYPE_METHOD_LOAD_FINISHED, (void*)jmethod);
+#endif
 
         stack_level = 0;
         finished = true;
         iscurrently_tracing = false;
     }
 
+    void emitBlockExit() {
+        uint64_t num_scatch = local_syms.size();
+        if (num_scatch & 1) // align
+            ++num_scatch;
+        if (num_scatch)
+            a.add(assembler::Immediate(8 * num_scatch), assembler::RSP);
+    }
+
     void compile() {
         if (finished)
             return;
         iscurrently_tracing = false;
+
         if (a.hasFailed()) {
+            RELEASE_ASSERT(!a.hasFailed(), "");
             a.resetFailed();
             if (abort_callback)
                 abort_callback();
             tracers_aborted.insert(block);
             abort();
-            /*
-                        FILE* f = fopen((llvm::Twine("block") + llvm::Twine(block->idx)).str().c_str(), "wb");
-                        fwrite(code, 1, a.curInstPointer() - ((uint8_t*)code), f);
-                        fclose(f);
-            */
             return;
         }
+
+        auto* cur_end = a.curInstPointer();
+        a.setCurInstPointer((uint8_t*)code);
+        uint64_t num_scatch = local_syms.size();
+        if (num_scatch & 1) // align
+            ++num_scatch;
+        if (num_scatch)
+            a.sub(assembler::Immediate(8 * num_scatch), assembler::RSP);
+        a.setCurInstPointer(cur_end);
+
         assert(stack_level == 0);
         RELEASE_ASSERT(!a.hasFailed(), "asm failed");
         llvm::sys::Memory::InvalidateInstructionCache(code, (uint64_t)a.curInstPointer() - (uint64_t)code);
+
+#if INTEL_PROFILING
         jmethod->method_load_address = code;
         jmethod->method_size = (uint64_t)a.curInstPointer() - (uint64_t)code;
         iJIT_NotifyEvent(iJVM_EVENT_TYPE_METHOD_LOAD_FINISHED, (void*)jmethod);
+#endif
+
         block->code = code;
         if (entry_code)
             block->entry_code = entry_code;
 
-        /*
-                FILE* f = fopen((llvm::Twine("block") + llvm::Twine(block->idx)).str().c_str(), "wb");
-                fwrite(code, 1, a.curInstPointer() - ((uint8_t*)code), f);
-                fclose(f);
-        */
         finished = true;
     }
 };
@@ -906,7 +998,7 @@ static void* myalloc(uint64_t size) {
 }
 
 class JitedCode {
-    static constexpr int code_size = 4096 * 20;
+    static constexpr int code_size = 4096 * 15;
     static constexpr int epilog_size = 2;
 
     void* code;
@@ -960,6 +1052,7 @@ public:
 
         g.func_addr_registry.registerFunction(("jit_" + name).str(), code, code_size, NULL);
 
+#if INTEL_PROFILING
         iJIT_IsProfilingActiveFlags agent;
 
         memset(&jmethod, 0, sizeof(jmethod));
@@ -980,7 +1073,8 @@ public:
         /* Send method load notification */
         iJIT_NotifyEvent(iJVM_EVENT_TYPE_METHOD_LOAD_FINISHED, (void*)&jmethod);
 
-        /* Destroy the profiler */
+/* Destroy the profiler */
+#endif
     }
 
     std::unique_ptr<JitFragment> newFragment(CFGBlock* block) {
@@ -1167,8 +1261,9 @@ void jitError() {
 
 void ASTInterpreter::startTracing(CFGBlock* block) {
     // printf("Starting trace: %d\n", block->idx);
-    if (!compiled_func->jitted_code)
+    if (!compiled_func->jitted_code) {
         compiled_func->jitted_code = (void*)(new JitedCode(source_info->getName(), jitError));
+    }
     assert(!tracer);
     JitedCode* jitted_code = (JitedCode*)compiled_func->jitted_code;
     tracer = jitted_code->newFragment(block);
@@ -1311,11 +1406,20 @@ void ASTInterpreter::doStore(InternedString name, Value value) {
         // TODO should probably pre-box the names when it's a scope that usesNameLookup
         setitem(frame_info.boxedLocals, name.getBox(), value.o);
     } else {
-        if (tracer)
-            tracer->emitSetLocal(name, vst == ScopeInfo::VarScopeType::CLOSURE);
+        bool closure = vst == ScopeInfo::VarScopeType::CLOSURE;
+        if (tracer) {
+            if (!closure) {
+                bool is_live = getLivness()->isLiveAtEnd(name, current_block);
+                if (is_live)
+                    tracer->emitSetLocal(name, closure);
+                else
+                    tracer->emitSetDeadLocal(name);
+            } else
+                tracer->emitSetLocal(name, closure);
+        }
 
         sym_table[name] = value.o;
-        if (vst == ScopeInfo::VarScopeType::CLOSURE) {
+        if (closure) {
             created_closure->elts[scope_info->getClosureOffset(name)] = value.o;
         }
     }
@@ -2300,8 +2404,16 @@ Value ASTInterpreter::visit_name(AST_Name* node) {
         }
         case ScopeInfo::VarScopeType::FAST:
         case ScopeInfo::VarScopeType::CLOSURE: {
-            if (tracer)
-                tracer->emitGetLocal(node->id);
+            if (tracer) {
+                bool dead = false;
+                if (node->lookup_type == ScopeInfo::VarScopeType::FAST)
+                    dead = !getLivness()->isLiveAtEnd(node->id, current_block);
+
+                if (dead)
+                    tracer->emitGetDeadLocal(node->id);
+                else
+                    tracer->emitGetLocal(node->id);
+            }
 
             SymMap::iterator it = sym_table.find(node->id);
             if (it != sym_table.end())

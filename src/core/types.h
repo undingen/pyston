@@ -253,6 +253,7 @@ typedef int FutureFlags;
 class BoxedModule;
 class ScopeInfo;
 class InternedStringPool;
+class LivenessAnalysis;
 class SourceInfo {
 public:
     BoxedModule* parent_module;
@@ -262,6 +263,7 @@ public:
     CFG* cfg;
     bool is_generator;
     std::string fn; // equivalent of code.co_filename
+    std::shared_ptr<LivenessAnalysis> liveness_info;
 
     InternedStringPool& getInternedStrings();
 
