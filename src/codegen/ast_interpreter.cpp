@@ -1332,21 +1332,23 @@ Value ASTInterpreter::executeInner(ASTInterpreter& interpreter, CFGBlock* start_
         if (ENABLE_TRACING && !interpreter.tracer) {
             CFGBlock* b = interpreter.current_block;
             if (b->entry_code) {
-                // printf("calling: %d\n", b->idx);
-                // fflush(stdout);
                 was_tracing = true;
 
                 try {
                     typedef std::pair<CFGBlock*, Box*>(*EntryFunc)(ASTInterpreter*, CFGBlock*);
                     std::pair<CFGBlock*, Box*> rtn = ((EntryFunc)(b->entry_code))(&interpreter, b);
                     interpreter.next_block = rtn.first;
-                    if (!interpreter.next_block) {
+                    if (!interpreter.next_block)
                         return rtn.second;
-                    }
                 } catch (ExcInfo e) {
                     AST_stmt* stmt = interpreter.getCurrentStatement();
                     if (stmt->type != AST_TYPE::Invoke)
                         throw e;
+
+                    auto source = interpreter.getCF()->clfunc->source.get();
+                    exceptionCaughtInInterpreter(
+                        LineInfo(stmt->lineno, stmt->col_offset, source->fn, source->getName()), &e);
+
                     interpreter.next_block = ((AST_Invoke*)stmt)->exc_dest;
                     interpreter.last_exception = e;
                 }
@@ -2022,6 +2024,7 @@ Value ASTInterpreter::visit_makeClass(AST_MakeClass* mkclass) {
 }
 
 Value ASTInterpreter::visit_raise(AST_Raise* node) {
+    abortTracing();
     if (node->arg0 == NULL) {
         assert(!node->arg1);
         assert(!node->arg2);
@@ -2034,6 +2037,7 @@ Value ASTInterpreter::visit_raise(AST_Raise* node) {
 }
 
 Value ASTInterpreter::visit_assert(AST_Assert* node) {
+    abortTracing();
 #ifndef NDEBUG
     // Currently we only generate "assert 0" statements
     Value v = visit_expr(node->test);
@@ -2048,12 +2052,14 @@ Value ASTInterpreter::visit_assert(AST_Assert* node) {
 }
 
 Value ASTInterpreter::visit_global(AST_Global* node) {
+    abortTracing();
     for (auto name : node->names)
         sym_table.erase(name);
     return Value();
 }
 
 Value ASTInterpreter::visit_delete(AST_Delete* node) {
+    abortTracing();
     for (AST_expr* target_ : node->targets) {
         switch (target_->type) {
             case AST_TYPE::Subscript: {
@@ -2119,6 +2125,8 @@ Value ASTInterpreter::visit_assign(AST_Assign* node) {
 }
 
 Value ASTInterpreter::visit_print(AST_Print* node) {
+    abortTracing();
+
     static BoxedString* write_str = static_cast<BoxedString*>(PyString_InternFromString("write"));
     static BoxedString* newline_str = static_cast<BoxedString*>(PyString_InternFromString("\n"));
     static BoxedString* space_str = static_cast<BoxedString*>(PyString_InternFromString(" "));
