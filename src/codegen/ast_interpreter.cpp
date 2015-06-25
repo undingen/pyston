@@ -222,7 +222,6 @@ void ASTInterpreter::abortTracing() {
     if (tracer) {
         tracer->abortTrace();
         tracer.reset();
-        // printf("FAILED\n");
     }
 }
 
@@ -357,10 +356,8 @@ void RegisterHelper::deregister(void* frame_addr) {
 
 void ASTInterpreter::startTracing(CFGBlock* block, int jump_offset) {
 #if ENABLE_TRACING
-    // printf("Starting trace: %d\n", block->idx);
-    if (!compiled_func->jitted_code) {
+    if (!compiled_func->jitted_code)
         compiled_func->jitted_code = (void*)(new JitedCode(source_info->getName()));
-    }
     assert(!tracer);
     JitedCode* jitted_code = (JitedCode*)compiled_func->jitted_code;
     tracer = jitted_code->newFragment(block, jump_offset);
@@ -383,7 +380,8 @@ Value ASTInterpreter::executeInner(ASTInterpreter& interpreter, CFGBlock* start_
         start_block = interpreter.source_info->cfg->getStartingBlock();
         start_at = start_block->body[0];
 
-        if (ENABLE_TRACING_FUNC && interpreter.compiled_func->times_called == BASELINEJIT_THR && !start_block->code)
+        if (ENABLE_TRACING_FUNC && interpreter.compiled_func->times_called == REOPT_THRESHOLD_INTERPRETER
+            && !start_block->code)
             trace = true;
     }
 
@@ -395,9 +393,8 @@ Value ASTInterpreter::executeInner(ASTInterpreter& interpreter, CFGBlock* start_
     interpreter.current_block = start_block;
 
     bool started = false;
-    if (trace && from_start) {
+    if (trace && from_start)
         interpreter.startTracing(start_block);
-    }
 
     if (!from_start) {
         for (auto s : start_block->body) {
@@ -410,9 +407,8 @@ Value ASTInterpreter::executeInner(ASTInterpreter& interpreter, CFGBlock* start_
             interpreter.current_inst = s;
             v = interpreter.visit_stmt(s);
         }
-    } else {
+    } else
         interpreter.next_block = interpreter.current_block;
-    }
 
     bool was_tracing = false;
     while (interpreter.next_block) {
@@ -663,10 +659,10 @@ Value ASTInterpreter::visit_jump(AST_Jump* node) {
     if (backedge)
         ++edgecount;
 
-    if (ENABLE_TRACING && backedge && edgecount == BASELINEJIT_THR && !tracer && !node->target->code)
+    if (ENABLE_TRACING && backedge && edgecount == OSR_THRESHOLD_INTERPRETER && !tracer && !node->target->code)
         startTracing(node->target);
 
-    if (backedge && edgecount == OSR_THRESHOLD_INTERPRETER) {
+    if (backedge && edgecount == OSR_THRESHOLD_BASELINE) {
         Box* rtn = doOSR(node);
         if (rtn)
             return Value(rtn, nullptr);
@@ -1591,7 +1587,7 @@ int ASTInterpreterJitInterface::getCurrentBlockOffset() {
 Box* ASTInterpreterJitInterface::doOSRHelper(void* _interpreter, AST_Jump* node) {
     ASTInterpreter* interpreter = (ASTInterpreter*)_interpreter;
     ++interpreter->edgecount;
-    if (interpreter->edgecount == OSR_THRESHOLD_INTERPRETER)
+    if (interpreter->edgecount >= OSR_THRESHOLD_BASELINE)
         return interpreter->doOSR(node);
     return nullptr;
 }
@@ -1684,9 +1680,8 @@ Box* astInterpretFunction(CompiledFunction* cf, int nargs, Box* closure, Box* ge
     assert((!globals) == cf->clfunc->source->scoping->areGlobalsFromModule());
     bool can_reopt = ENABLE_REOPT && !FORCE_INTERPRETER && (globals == NULL);
     int num_blocks = cf->clfunc->source->cfg->blocks.size();
-    if (unlikely(can_reopt
-                 && cf->times_called
-                        > (num_blocks < 15 ? REOPT_THRESHOLD_INTERPRETER / 3 : REOPT_THRESHOLD_INTERPRETER))) {
+    int threshold = num_blocks <= 20 ? (REOPT_THRESHOLD_BASELINE / 3) : REOPT_THRESHOLD_BASELINE;
+    if (unlikely(can_reopt && cf->times_called > threshold)) {
         assert(!globals);
         CompiledFunction* optimized = reoptCompiledFuncInternal(cf);
         if (closure && generator)

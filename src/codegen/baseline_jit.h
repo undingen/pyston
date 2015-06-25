@@ -24,7 +24,7 @@ namespace pyston {
 
 #define ENABLE_TRACING 1
 #define ENABLE_TRACING_FUNC 1
-#define ENABLE_TRACING_IC 0
+#define ENABLE_TRACING_IC 1
 
 class AST_expr;
 class AST_stmt;

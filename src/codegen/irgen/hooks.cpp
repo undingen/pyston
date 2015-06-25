@@ -127,7 +127,7 @@ EffortLevel initialEffort() {
         return EffortLevel::MAXIMAL;
     if (ENABLE_INTERPRETER)
         return EffortLevel::INTERPRETED;
-    return EffortLevel::MINIMAL;
+    return EffortLevel::MODERATE;
 }
 
 static void compileIR(CompiledFunction* cf, EffortLevel effort) {
@@ -267,13 +267,6 @@ CompiledFunction* compileFunction(CLFunction* f, FunctionSpecialization* spec, E
             static StatCounter us_compiling("us_compiling_0_interpreted");
             us_compiling.log(us);
             static StatCounter num_compiles("num_compiles_0_interpreted");
-            num_compiles.log();
-            break;
-        }
-        case EffortLevel::MINIMAL: {
-            static StatCounter us_compiling("us_compiling_1_minimal");
-            us_compiling.log(us);
-            static StatCounter num_compiles("num_compiles_1_minimal");
             num_compiles.log();
             break;
         }
@@ -830,8 +823,6 @@ extern "C" CompiledFunction* reoptCompiledFuncInternal(CompiledFunction* cf) {
 
     EffortLevel new_effort;
     if (cf->effort == EffortLevel::INTERPRETED)
-        new_effort = EffortLevel::MODERATE;
-    else if (cf->effort == EffortLevel::MINIMAL)
         new_effort = EffortLevel::MODERATE;
     else if (cf->effort == EffortLevel::MODERATE)
         new_effort = EffortLevel::MAXIMAL;

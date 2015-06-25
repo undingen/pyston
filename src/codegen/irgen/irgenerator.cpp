@@ -2026,9 +2026,7 @@ private:
 
         auto effort = irstate->getEffortLevel();
         int osr_threshold;
-        if (effort == EffortLevel::MINIMAL)
-            osr_threshold = OSR_THRESHOLD_BASELINE;
-        else if (effort == EffortLevel::MODERATE)
+        if (effort == EffortLevel::MODERATE)
             osr_threshold = OSR_THRESHOLD_T2;
         else
             RELEASE_ASSERT(0, "Unknown effort: %d", (int)effort);

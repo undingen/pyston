@@ -103,7 +103,6 @@ using gc::GCVisitor;
 
 enum class EffortLevel {
     INTERPRETED = 0,
-    MINIMAL = 1,
     MODERATE = 2,
     MAXIMAL = 3,
 };
