@@ -55,7 +55,7 @@
 #define DEBUG 0
 #endif
 
-#define BASELINEJIT_THR 25
+#define BASELINEJIT_THR 20
 
 namespace pyston {
 namespace {
