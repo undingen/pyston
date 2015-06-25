@@ -1683,7 +1683,10 @@ Box* astInterpretFunction(CompiledFunction* cf, int nargs, Box* closure, Box* ge
 
     assert((!globals) == cf->clfunc->source->scoping->areGlobalsFromModule());
     bool can_reopt = ENABLE_REOPT && !FORCE_INTERPRETER && (globals == NULL);
-    if (unlikely(can_reopt && cf->times_called > REOPT_THRESHOLD_INTERPRETER)) {
+    int num_blocks = cf->clfunc->source->cfg->blocks.size();
+    if (unlikely(can_reopt
+                 && cf->times_called
+                        > (num_blocks < 15 ? REOPT_THRESHOLD_INTERPRETER / 3 : REOPT_THRESHOLD_INTERPRETER))) {
         assert(!globals);
         CompiledFunction* optimized = reoptCompiledFuncInternal(cf);
         if (closure && generator)
