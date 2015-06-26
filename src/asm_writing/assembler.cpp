@@ -1006,5 +1006,19 @@ void Assembler::emitAnnotation(int num) {
     cmp(RAX, Immediate(num));
     nop();
 }
+
+ForwardJump::ForwardJump(Assembler& assembler, ConditionCode condition)
+    : assembler(assembler), condition(condition), jmp_inst(assembler.curInstPointer()) {
+    assembler.jmp_cond(JumpDestination::fromStart(assembler.bytesWritten() + max_jump_size), condition);
+}
+
+ForwardJump::~ForwardJump() {
+    uint8_t* new_pos = assembler.curInstPointer();
+    int offset = new_pos - jmp_inst;
+    RELEASE_ASSERT(offset < max_jump_size, "");
+    assembler.setCurInstPointer(jmp_inst);
+    assembler.jmp_cond(JumpDestination::fromStart(assembler.bytesWritten() + offset), condition);
+    assembler.setCurInstPointer(new_pos);
+}
 }
 }

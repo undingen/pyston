@@ -36,6 +36,15 @@
 
 namespace pyston {
 
+static void* myalloc(uint64_t size) {
+    static llvm::sys::MemoryBlock lastBlock;
+    llvm_error_code ec;
+    llvm::sys::MemoryBlock MB = llvm::sys::Memory::allocateMappedMemory(
+        size, &lastBlock, llvm::sys::Memory::MF_READ | llvm::sys::Memory::MF_WRITE, ec);
+    lastBlock = MB;
+    return MB.base();
+}
+
 // I am not sure if we should use the equivalent of -fomit-frame-pointer for these trampolines.
 // If we don't use it, we break gdb backtraces.
 // If we do use it, we have an inconsistency with the rest of the code, which runs with -fno-omit-frame-pointer.
@@ -172,7 +181,7 @@ static void writeTrivialEhFrame(void* eh_frame_addr, void* func_addr, uint64_t f
 void EHFrameManager::writeAndRegister(void* func_addr, uint64_t func_size) {
     assert(eh_frame_addr == NULL);
 #ifdef NVALGRIND
-    eh_frame_addr = malloc(EH_FRAME_SIZE);
+    eh_frame_addr = myalloc(EH_FRAME_SIZE);
 #else
     eh_frame_addr = mmap(NULL, (EH_FRAME_SIZE + (PAGE_SIZE - 1)) & ~(PAGE_SIZE - 1), PROT_READ | PROT_WRITE,
                          MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
@@ -189,7 +198,7 @@ EHFrameManager::~EHFrameManager() {
     if (eh_frame_addr) {
         deregisterEHFrames((uint8_t*)eh_frame_addr, (uint64_t)eh_frame_addr, EH_FRAME_SIZE);
 #ifdef NVALGRIND
-        free(eh_frame_addr);
+// free(eh_frame_addr);
 #else
         munmap(eh_frame_addr, (EH_FRAME_SIZE + (PAGE_SIZE - 1)) & ~(PAGE_SIZE - 1));
 #endif
@@ -248,7 +257,7 @@ RuntimeIC::RuntimeIC(void* func_addr, int num_slots, int slot_size) {
 
 #ifdef NVALGRIND
         int total_size = PROLOGUE_SIZE + patchable_size + CALL_SIZE + EPILOGUE_SIZE;
-        addr = malloc(total_size);
+        addr = myalloc(total_size);
 #else
         total_size = PROLOGUE_SIZE + patchable_size + CALL_SIZE + EPILOGUE_SIZE;
         addr = mmap(NULL, (total_size + (PAGE_SIZE - 1)) & ~(PAGE_SIZE - 1), PROT_READ | PROT_WRITE | PROT_EXEC,
@@ -312,7 +321,7 @@ RuntimeIC::~RuntimeIC() {
     if (ENABLE_RUNTIME_ICS) {
         deregisterCompiledPatchpoint(icinfo.get());
 #ifdef NVALGRIND
-        free(addr);
+// free(addr);
 #else
         munmap(addr, total_size);
 #endif

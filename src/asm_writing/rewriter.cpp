@@ -701,6 +701,18 @@ RewriterVar* Rewriter::call(bool has_side_effects, void* func_addr, RewriterVar*
     return call(has_side_effects, func_addr, args, args_xmm);
 }
 
+RewriterVar* Rewriter::call(bool has_side_effects, void* func_addr, RewriterVar* arg0, RewriterVar* arg1,
+                            RewriterVar* arg2, RewriterVar* arg3, RewriterVar* arg4) {
+    RewriterVar::SmallVector args;
+    RewriterVar::SmallVector args_xmm;
+    args.push_back(arg0);
+    args.push_back(arg1);
+    args.push_back(arg2);
+    args.push_back(arg3);
+    args.push_back(arg4);
+    return call(has_side_effects, func_addr, args, args_xmm);
+}
+
 static const Location caller_save_registers[]{
     assembler::RAX,   assembler::RCX,   assembler::RDX,   assembler::RSI,   assembler::RDI,
     assembler::R8,    assembler::R9,    assembler::R10,   assembler::R11,   assembler::XMM0,
@@ -1573,9 +1585,6 @@ Rewriter::Rewriter(ICSlotRewrite* rewrite, int num_args, const std::vector<int>&
       done_guarding(false) {
     initPhaseCollecting();
 
-#ifndef NDEBUG
-    start_vars = RewriterVar::nvars;
-#endif
     finished = false;
 
     for (int i = 0; i < num_args; i++) {
@@ -1718,10 +1727,6 @@ Rewriter* Rewriter::createRewriter(void* rtn_addr, int num_args, const char* deb
     log_ic_attempts_started(debug_name);
     return new Rewriter(ic->startRewrite(debug_name), num_args, ic->getLiveOuts());
 }
-
-#ifndef NDEBUG
-int RewriterVar::nvars = 0;
-#endif
 
 static const int INITIAL_CALL_SIZE = 13;
 static const int DWARF_RBP_REGNUM = 6;

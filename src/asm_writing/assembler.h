@@ -172,6 +172,21 @@ public:
     uint8_t* getStartAddr() { return start_addr; }
 };
 
+// This class helps generating a forward jump with a relative offset.
+// It keeps track of the current assembler offset at construction time and in the destructor patches the
+// generated conditional jump with the correct offset depending on the number of bytes emitted in between.
+class ForwardJump {
+private:
+    const int max_jump_size = 128;
+    Assembler& assembler;
+    ConditionCode condition;
+    uint8_t* jmp_inst;
+
+public:
+    ForwardJump(Assembler& assembler, ConditionCode condition);
+    ~ForwardJump();
+};
+
 uint8_t* initializePatchpoint2(uint8_t* start_addr, uint8_t* slowpath_start, uint8_t* end_addr, StackInfo stack_info,
                                const std::unordered_set<int>& live_outs);
 }

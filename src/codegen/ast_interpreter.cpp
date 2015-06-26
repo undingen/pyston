@@ -55,8 +55,6 @@
 #define DEBUG 0
 #endif
 
-#define BASELINEJIT_THR 20
-
 namespace pyston {
 namespace {
 static BoxedClass* astinterpreter_cls;
@@ -356,11 +354,11 @@ void RegisterHelper::deregister(void* frame_addr) {
 
 void ASTInterpreter::startTracing(CFGBlock* block, int jump_offset) {
 #if ENABLE_TRACING
-    if (!compiled_func->jitted_code)
-        compiled_func->jitted_code = (void*)(new JitedCode(source_info->getName()));
+    if (!compiled_func->code_block)
+        compiled_func->code_block = new JitCodeBlock(source_info->getName());
     assert(!tracer);
-    JitedCode* jitted_code = (JitedCode*)compiled_func->jitted_code;
-    tracer = jitted_code->newFragment(block, jump_offset);
+    JitCodeBlock* code_block = (JitCodeBlock*)compiled_func->code_block;
+    tracer = code_block->newFragment(block, jump_offset);
 #endif
 }
 
@@ -500,7 +498,7 @@ void ASTInterpreter::doStore(InternedString name, Value value) {
                 if (is_live)
                     tracer->emitSetLocal(name, closure, value);
                 else
-                    tracer->emitSetDeadLocal(name, value);
+                    tracer->emitSetBlockLocal(name, value);
             } else
                 tracer->emitSetLocal(name, closure, value);
         }
@@ -564,7 +562,7 @@ void ASTInterpreter::doStore(AST_expr* node, Value value) {
 }
 
 Value ASTInterpreter::getNone() {
-    return Value(None, tracer ? tracer->Imm((void*)None) : NULL);
+    return Value(None, tracer ? tracer->imm(None) : NULL);
 }
 
 Value ASTInterpreter::visit_unaryop(AST_UnaryOp* node) {
@@ -619,7 +617,8 @@ Value ASTInterpreter::visit_branch(AST_Branch* node) {
     ASSERT(v.o == True || v.o == False, "Should have called NONZERO before this branch");
 
     if (tracer)
-        tracer->addGuard(v, v.o == True ? node->iffalse : node->iftrue);
+        tracer->emitSideExit(v, v.o == True ? node->iffalse : node->iftrue);
+
     if (v.o == True)
         next_block = node->iftrue;
     else
@@ -1388,18 +1387,18 @@ Value ASTInterpreter::visit_expr(AST_Expr* node) {
 }
 
 Value ASTInterpreter::visit_num(AST_Num* node) {
+    Box* o = NULL;
     if (node->num_type == AST_Num::INT) {
-        return Value(boxInt(node->n_int), tracer ? tracer->emitInt(node->n_int) : NULL);
+        o = source_info->parent_module->getIntConstant(node->n_int);
     } else if (node->num_type == AST_Num::FLOAT) {
-        return Value(boxFloat(node->n_float), tracer ? tracer->emitFloat(node->n_float) : NULL);
+        o = source_info->parent_module->getFloatConstant(node->n_float);
     } else if (node->num_type == AST_Num::LONG) {
-        return Value(createLong(node->n_long), tracer ? tracer->emitLong(node->n_long) : NULL);
+        o = source_info->parent_module->getLongConstant(node->n_long);
     } else if (node->num_type == AST_Num::COMPLEX) {
-        abortTracing();
-        return Value(boxComplex(0.0, node->n_float), NULL);
-    }
-    RELEASE_ASSERT(0, "not implemented");
-    return Value();
+        o = source_info->parent_module->getPureImaginaryConstant(node->n_float);
+    } else
+        RELEASE_ASSERT(0, "not implemented");
+    return Value(o, tracer ? tracer->imm(o) : nullptr);
 }
 
 Value ASTInterpreter::visit_index(AST_Index* node) {
@@ -1450,19 +1449,15 @@ Value ASTInterpreter::visit_set(AST_Set* node) {
 }
 
 Value ASTInterpreter::visit_str(AST_Str* node) {
+    Box* o = NULL;
     if (node->str_type == AST_Str::STR) {
-        // if (tracer)
-        //    tracer->emitPush((uint64_t)source_info->parent_module->getStringConstant(node->str_data));
-        Value v;
-        v.o = source_info->parent_module->getStringConstant(node->str_data);
-        if (tracer)
-            v.var = tracer->Imm((void*)v.o);
-        return v;
+        o = source_info->parent_module->getStringConstant(node->str_data);
     } else if (node->str_type == AST_Str::UNICODE) {
-        return Value(decodeUTF8StringPtr(node->str_data), tracer ? tracer->emitUnicodeStr(node->str_data) : NULL);
+        o = source_info->parent_module->getUnicodeConstant(node->str_data);
     } else {
         RELEASE_ASSERT(0, "%d", node->str_type);
     }
+    return Value(o, tracer ? tracer->imm(o) : nullptr);
 }
 
 Value ASTInterpreter::visit_name(AST_Name* node) {
@@ -1502,14 +1497,14 @@ Value ASTInterpreter::visit_name(AST_Name* node) {
         case ScopeInfo::VarScopeType::CLOSURE: {
             Value v;
             if (tracer) {
-                bool dead = false;
+                bool is_live = false;
                 if (node->lookup_type == ScopeInfo::VarScopeType::FAST)
-                    dead = !getLiveness()->isLiveAtEnd(node->id, current_block);
+                    is_live = getLiveness()->isLiveAtEnd(node->id, current_block);
 
-                if (dead)
-                    v.var = tracer->emitGetDeadLocal(node->id);
-                else
+                if (is_live)
                     v.var = tracer->emitGetLocal(node->id);
+                else
+                    v.var = tracer->emitGetBlockLocal(node->id);
             }
 
             SymMap::iterator it = sym_table.find(node->id);
