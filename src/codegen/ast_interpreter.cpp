@@ -75,7 +75,7 @@ public:
     static void deregister(void* frame_addr);
 };
 
-class ASTInterpreter : public Box {
+class ASTInterpreter {
 public:
     typedef ContiguousMap<InternedString, Box*> SymMap;
 
@@ -174,8 +174,6 @@ private:
     std::unique_ptr<JitFragment> jit;
 
 public:
-    DEFAULT_CLASS_SIMPLE(astinterpreter_cls);
-
     AST_stmt* getCurrentStatement() {
         assert(current_inst);
         return current_inst;
@@ -200,17 +198,53 @@ public:
     void setFrameInfo(const FrameInfo* frame_info);
     void setGlobals(Box* globals);
 
-    static void gcHandler(GCVisitor* visitor, Box* box);
-    static void simpleDestructor(Box* box) {
-        ASTInterpreter* inter = (ASTInterpreter*)box;
-        assert(inter->cls == astinterpreter_cls);
-        if (inter->frame_addr)
-            RegisterHelper::deregister(inter->frame_addr);
-        inter->~ASTInterpreter();
+    static void gcHandler(GCVisitor* visitor, ASTInterpreter* inter);
+
+    static void simpleDestructor(ASTInterpreter* inter) {
+        if (inter) {
+            if (inter->frame_addr)
+                RegisterHelper::deregister(inter->frame_addr);
+        }
     }
 
     friend class RegisterHelper;
     friend struct pyston::ASTInterpreterJitInterface;
+};
+
+class ASTInterpreterGCWrapper : public Box {
+private:
+    ASTInterpreter* interpreter;
+
+public:
+    ASTInterpreterGCWrapper(CompiledFunction* compiled_function) {
+        interpreter = new ASTInterpreter(compiled_function);
+    }
+
+    ASTInterpreter* getInterpreter() {
+        assert(interpreter);
+        return interpreter;
+    }
+
+    DEFAULT_CLASS_SIMPLE(astinterpreter_cls);
+
+    static void gcHandler(GCVisitor* visitor, Box* box) {
+        boxGCHandler(visitor, box);
+        ASTInterpreterGCWrapper* self = (ASTInterpreterGCWrapper*)box;
+        assert(self->cls == astinterpreter_cls);
+        ASTInterpreter* inter = self->interpreter;
+        if (inter)
+            ASTInterpreter::gcHandler(visitor, inter);
+    }
+
+    static void simpleDestructor(Box* box) {
+        ASTInterpreterGCWrapper* self = (ASTInterpreterGCWrapper*)box;
+        assert(self->cls == astinterpreter_cls);
+        ASTInterpreter* inter = self->interpreter;
+        if (inter) {
+            inter->simpleDestructor(inter);
+            delete inter;
+        }
+    }
 };
 
 void ASTInterpreter::addSymbol(InternedString name, Box* value, bool allow_duplicates) {
@@ -250,10 +284,7 @@ void ASTInterpreter::setGlobals(Box* globals) {
     this->globals = globals;
 }
 
-void ASTInterpreter::gcHandler(GCVisitor* visitor, Box* box) {
-    boxGCHandler(visitor, box);
-
-    ASTInterpreter* interp = (ASTInterpreter*)box;
+void ASTInterpreter::gcHandler(GCVisitor* visitor, ASTInterpreter* interp) {
     auto&& vec = interp->sym_table.vector();
     visitor->visitRange((void* const*)&vec[0], (void* const*)&vec[interp->sym_table.size()]);
     visitor->visit(interp->passed_closure);
@@ -1698,7 +1729,8 @@ Box* astInterpretFunction(CompiledFunction* cf, int nargs, Box* closure, Box* ge
     }
 
     ++cf->times_called;
-    ASTInterpreter* interpreter = new ASTInterpreter(cf);
+    ASTInterpreterGCWrapper* interpreter_wrapper = new ASTInterpreterGCWrapper(cf);
+    ASTInterpreter* interpreter = interpreter_wrapper->getInterpreter();
 
     ScopeInfo* scope_info = cf->clfunc->source->getScopeInfo();
     SourceInfo* source_info = cf->clfunc->source.get();
@@ -1722,7 +1754,8 @@ Box* astInterpretFunction(CompiledFunction* cf, int nargs, Box* closure, Box* ge
 Box* astInterpretFunctionEval(CompiledFunction* cf, Box* globals, Box* boxedLocals) {
     ++cf->times_called;
 
-    ASTInterpreter* interpreter = new ASTInterpreter(cf);
+    ASTInterpreterGCWrapper* interpreter_wrapper = new ASTInterpreterGCWrapper(cf);
+    ASTInterpreter* interpreter = interpreter_wrapper->getInterpreter();
     interpreter->initArguments(0, NULL, NULL, NULL, NULL, NULL, NULL);
     interpreter->setBoxedLocals(boxedLocals);
 
@@ -1746,7 +1779,8 @@ Box* astInterpretFrom(CompiledFunction* cf, AST_expr* after_expr, AST_stmt* encl
     assert(after_expr);
     assert(expr_val);
 
-    ASTInterpreter* interpreter = new ASTInterpreter(cf);
+    ASTInterpreterGCWrapper* interpreter_wrapper = new ASTInterpreterGCWrapper(cf);
+    ASTInterpreter* interpreter = interpreter_wrapper->getInterpreter();
 
     ScopeInfo* scope_info = cf->clfunc->source->getScopeInfo();
     SourceInfo* source_info = cf->clfunc->source.get();
@@ -1868,9 +1902,9 @@ BoxedClosure* passedClosureForInterpretedFrame(void* frame_ptr) {
 }
 
 void setupInterpreter() {
-    astinterpreter_cls = BoxedHeapClass::create(type_cls, object_cls, ASTInterpreter::gcHandler, 0, 0,
-                                                sizeof(ASTInterpreter), false, "astinterpreter");
-    astinterpreter_cls->simple_destructor = ASTInterpreter::simpleDestructor;
+    astinterpreter_cls = BoxedHeapClass::create(type_cls, object_cls, ASTInterpreterGCWrapper::gcHandler, 0, 0,
+                                                sizeof(ASTInterpreterGCWrapper), false, "astinterpreter");
+    astinterpreter_cls->simple_destructor = ASTInterpreterGCWrapper::simpleDestructor;
     astinterpreter_cls->freeze();
 }
 }
