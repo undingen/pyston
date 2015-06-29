@@ -146,13 +146,16 @@ RewriterVar* JitFragment::emitGetLocal(InternedString s) {
 }
 
 void JitFragment::emitSetLocal(InternedString s, bool set_closure, Value v) {
-    call(false, (void*)ASTInterpreterJitInterface::setLocalHelper, getInterp(),
+    void* func = set_closure ? (void*)ASTInterpreterJitInterface::setLocalClosureHelper
+                             : (void*)ASTInterpreterJitInterface::setLocalHelper;
+
+    call(false, func, getInterp(),
 #ifndef NDEBUG
          imm(asUInt(s).first), imm(asUInt(s).second),
 #else
          imm(asUInt(s)),
 #endif
-         v.var, imm((uint64_t)set_closure));
+         v.var);
 }
 
 void JitFragment::emitSetBlockLocal(InternedString s, Value v) {
@@ -537,7 +540,12 @@ void JitFragment::emitJump(CFGBlock* b) {
 
 void JitFragment::_emitJump(CFGBlock* b, RewriterVar* block_next) {
     if (b->code) {
-        assembler->jmp(assembler::JumpDestination::fromStart((uint64_t)b->code - ((uint64_t)entry_code + code_offset)));
+        int64_t offset = (uint64_t)b->code - ((uint64_t)entry_code + code_offset);
+        if (isLargeConstant(offset)) {
+            assembler->mov(assembler::Immediate(b->code), assembler::R11);
+            assembler->jmpq(assembler::R11);
+        } else
+            assembler->jmp(assembler::JumpDestination::fromStart(offset));
     } else {
         // TODO we could patch this later...
         int num_bytes = assembler->bytesWritten();
@@ -604,6 +612,9 @@ JitCodeBlock::JitCodeBlock(llvm::StringRef name)
       a((uint8_t*)code, code_size - epilog_size),
       iscurrently_tracing(false),
       asm_failed(false) {
+    static StatCounter num_jit_code_blocks("num_baselinejit_code_blocks");
+    num_jit_code_blocks.log();
+
     // emit prolog
     a.push(assembler::RBP);
     a.mov(assembler::RSP, assembler::RBP);

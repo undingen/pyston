@@ -432,6 +432,7 @@ Value ASTInterpreter::executeInner(ASTInterpreter& interpreter, CFGBlock* start_
                 should_jit = true;
 
                 try {
+                    UNAVOIDABLE_STAT_TIMER(t0, "us_timer_in_baseline_jitted_code");
                     std::pair<CFGBlock*, Box*> rtn = b->entry_code(&interpreter, b);
                     interpreter.next_block = rtn.first;
                     if (!interpreter.next_block)
@@ -1603,15 +1604,20 @@ Box* ASTInterpreterJitInterface::getLocalHelper(void* _interpreter, InternedStri
     return 0;
 }
 
-void ASTInterpreterJitInterface::setLocalHelper(void* _interpreter, InternedString id, Box* v, bool set_closure) {
+void ASTInterpreterJitInterface::setLocalHelper(void* _interpreter, InternedString id, Box* v) {
+    ASTInterpreter* interpreter = (ASTInterpreter*)_interpreter;
+
+    assert(gc::isValidGCObject(v));
+    interpreter->sym_table[id] = v;
+}
+
+void ASTInterpreterJitInterface::setLocalClosureHelper(void* _interpreter, InternedString id, Box* v) {
     ASTInterpreter* interpreter = (ASTInterpreter*)_interpreter;
 
     assert(gc::isValidGCObject(v));
     interpreter->sym_table[id] = v;
 
-    if (set_closure) {
-        interpreter->created_closure->elts[interpreter->scope_info->getClosureOffset(id)] = v;
-    }
+    interpreter->created_closure->elts[interpreter->scope_info->getClosureOffset(id)] = v;
 }
 
 Box* ASTInterpreterJitInterface::boxedLocalsGetHelper(void* _interpreter, BoxedString* s) {
