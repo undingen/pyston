@@ -385,7 +385,8 @@ RewriterVar* JitFragment::emitCallattr(Value obj, BoxedString* attr, CallattrFla
     call_args.push_back(flags_var);
     call_args.push_back(argspec_var);
 
-#if ENABLE_BASELINEJIT_ICS
+// #if ENABLE_BASELINEJIT_ICS
+#if 0 && ENABLE_BASELINEJIT_ICS // disable for now: there is a problem with test/extra/protobuf_test.py
     if (!keyword_names_var
         && argspec.totalPassed() < 3) { // looks like runtime ICs with 7 or more args don't work right now..
         use_ic = true;
