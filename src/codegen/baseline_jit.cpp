@@ -14,14 +14,17 @@
 
 #include "codegen/baseline_jit.h"
 
-#include <llvm/ADT/DenseSet.h>
 #include <llvm/ADT/DenseMap.h>
+#include <llvm/ADT/DenseSet.h>
 
-#include "runtime/ics.h"
 #include "codegen/memmgr.h"
 #include "core/cfg.h"
+#include "runtime/ics.h"
 #include "runtime/objmodel.h"
 #include "runtime/types.h"
+
+#define MULTI_EXITS 1
+#define ALIGN_LABELS 1
 
 namespace pyston {
 
@@ -37,6 +40,13 @@ JitFragment::JitFragment(CFGBlock* block, ICSlotRewrite* rewrite, int code_offse
       entry_code(entry_code),
       code_block(code_block),
       interp(0) {
+#if ALIGN_LABELS
+    int offset = code_offset % 16;
+    if (offset) {
+        addAction([=]() { _emitAlignmentNop(16 - offset); }, {}, ActionType::NORMAL);
+    }
+#endif
+
     interp = createNewVar();
     addLocationToVar(interp, Location(Location::Stack, 0));
     interp->setAttr(ASTInterpreterJitInterface::getCurrentBlockOffset(), imm(block));
@@ -490,10 +500,68 @@ void JitFragment::_emitOSRPoint(RewriterVar* result, RewriterVar* node_var) {
         assembler::ForwardJump je(*assembler, assembler::COND_EQUAL);
         assembler->je(assembler::JumpDestination::fromStart(assembler->bytesWritten() + 50));
         assembler->mov(assembler::Immediate(0ul), assembler::RAX);
+
+#if MULTI_EXITS
+        assembler->leave();
+        assembler->retq();
+#else
         assembler->jmp(assembler::JumpDestination::fromStart(epilog_offset));
+#endif
     }
 
     assertConsistent();
+}
+
+void JitFragment::_emitAlignmentNop(int nop_size) {
+    static const unsigned char nop_1[] = { 0x90 };
+
+    /* xchg %ax,%ax */
+    static const unsigned char nop_2[] = { 0x66, 0x90 };
+
+    /* nopl (%[re]ax) */
+    static const unsigned char nop_3[] = { 0x0f, 0x1f, 0x00 };
+
+    /* nopl 0(%[re]ax) */
+    static const unsigned char nop_4[] = { 0x0f, 0x1f, 0x40, 0x00 };
+
+    /* nopl 0(%[re]ax,%[re]ax,1) */
+    static const unsigned char nop_5[] = { 0x0f, 0x1f, 0x44, 0x00, 0x00 };
+
+    /* nopw 0(%[re]ax,%[re]ax,1) */
+    static const unsigned char nop_6[] = { 0x66, 0x0f, 0x1f, 0x44, 0x00, 0x00 };
+
+    /* nopl 0L(%[re]ax) */
+    static const unsigned char nop_7[] = { 0x0f, 0x1f, 0x80, 0x00, 0x00, 0x00, 0x00 };
+
+    /* nopl 0L(%[re]ax,%[re]ax,1) */
+    static const unsigned char nop_8[] = { 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00 };
+
+    /* nopw 0L(%[re]ax,%[re]ax,1) */
+    static const unsigned char nop_9[] = { 0x66, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00 };
+
+    /* nopw %cs:0L(%[re]ax,%[re]ax,1) */
+    static const unsigned char nop_10[] = { 0x66, 0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00 };
+
+#define NOP_(size, array)                                                                                              \
+    if (nop_size >= (size)) {                                                                                          \
+        for (uint8_t b : array)                                                                                        \
+            assembler->emitByte(b);                                                                                    \
+        nop_size -= (size);                                                                                            \
+        continue;                                                                                                      \
+    }
+
+    while (nop_size > 0) {
+        NOP_(10, nop_10);
+        NOP_(9, nop_9);
+        NOP_(8, nop_8);
+        NOP_(7, nop_7);
+        NOP_(6, nop_6);
+        NOP_(5, nop_5);
+        NOP_(4, nop_4);
+        NOP_(3, nop_3);
+        NOP_(2, nop_2);
+        NOP_(1, nop_1);
+    }
 }
 
 void JitFragment::emitSideExit(Value v, CFGBlock* next_block) {
@@ -569,7 +637,14 @@ void JitFragment::emitReturn(Value v) {
 void JitFragment::_emitReturn(RewriterVar* v, RewriterVar* next) {
     next->getInReg(assembler::RAX, true);
     v->getInReg(assembler::RDX, true);
+
+#if MULTI_EXITS
+    assembler->leave();
+    assembler->retq();
+#else
     assembler->jmp(assembler::JumpDestination::fromStart(epilog_offset));
+#endif
+
     next->bumpUse();
     v->bumpUse();
 }
@@ -595,7 +670,15 @@ int JitFragment::finishCompilation() {
         return 0;
     }
 
+#if ALIGN_LABELS
+    int offset = code_offset % 16;
+    if (offset) {
+        offset = 16 - offset;
+    }
+    block->code = (void*)((uint64_t)entry_code + code_offset + offset);
+#else
     block->code = (void*)((uint64_t)entry_code + code_offset);
+#endif
     block->entry_code = (decltype(block->entry_code))entry_code;
     code_block.fragmentFinished(assembler->bytesWritten(), false);
     return continue_jmp_offset;

@@ -230,6 +230,7 @@ private:
     void _emitJump(CFGBlock* b, RewriterVar* block_next);
     void _emitReturn(RewriterVar* v, RewriterVar* next);
     void _emitOSRPoint(RewriterVar* result, RewriterVar* node_var);
+    void _emitAlignmentNop(int nop_size);
 };
 }
 

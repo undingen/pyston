@@ -59,7 +59,7 @@ void ICSlotInfo::clear() {
 ICSlotRewrite::ICSlotRewrite(ICInfo* ic, const char* debug_name) : ic(ic), debug_name(debug_name) {
     buf = (uint8_t*)malloc(ic->getSlotSize());
     assembler = new Assembler(buf, ic->getSlotSize());
-    assembler->nop();
+    // assembler->nop();
 
     if (VERBOSITY() >= 4)
         printf("starting %s icentry\n", debug_name);
@@ -272,7 +272,7 @@ void ICInfo::clear(ICSlotInfo* icentry) {
         printf("clearing patchpoint %p, slot at %p\n", start_addr, start);
 
     std::unique_ptr<Assembler> writer(new Assembler(start, getSlotSize()));
-    writer->nop();
+    // writer->nop();
     writer->jmp(JumpDestination::fromStart(getSlotSize()));
     assert(writer->bytesWritten() <= IC_INVALDITION_HEADER_SIZE);
 
