@@ -1885,6 +1885,7 @@ private:
         static BoxedString* space_str = static_cast<BoxedString*>(PyString_InternFromString(" "));
 
         // TODO: why are we inline-generating all this code instead of just emitting a call to some runtime function?
+        // (=printHelper)
         int nvals = node->values.size();
         for (int i = 0; i < nvals; i++) {
             CompilerVariable* var = evalExpr(node->values[i], unw_info);

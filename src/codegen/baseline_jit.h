@@ -149,19 +149,21 @@ public:
 
     RewriterVar* emitAugbinop(Value lhs, Value rhs, int op_type);
     RewriterVar* emitBinop(Value lhs, Value rhs, int op_type);
-    RewriterVar* emitBoxedLocalsGet(BoxedString* s);
+    RewriterVar* emitGetBoxedLocal(BoxedString* s);
     RewriterVar* emitCallattr(Value obj, BoxedString* attr, CallattrFlags flags, ArgPassSpec argspec,
                               std::vector<Value, StlCompatAllocator<Value>> args,
                               std::vector<BoxedString*>* keyword_names);
     RewriterVar* emitCompare(Value lhs, Value rhs, int op_type);
-    RewriterVar* emitCreateDict();
+    RewriterVar* emitCreateDict(const llvm::SmallVectorImpl<Value>& keys, const llvm::SmallVectorImpl<Value>& values);
     RewriterVar* emitCreateList(const llvm::SmallVectorImpl<Value>& values);
     RewriterVar* emitCreateSlice(Value start, Value stop, Value step);
     RewriterVar* emitCreateTuple(const llvm::SmallVectorImpl<Value>& values);
+    RewriterVar* emitCreateSet(const llvm::SmallVectorImpl<Value>& values);
     RewriterVar* emitDeref(InternedString s);
     RewriterVar* emitExceptionMatches(Value v, Value cls);
     RewriterVar* emitGetAttr(Value obj, BoxedString* s);
     RewriterVar* emitGetBlockLocal(InternedString s);
+    RewriterVar* emitGetBoxedLocals();
     RewriterVar* emitGetClsAttr(Value obj, BoxedString* s);
     RewriterVar* emitGetGlobal(Box* global, BoxedString* s);
     RewriterVar* emitGetItem(Value value, Value slice);
@@ -176,6 +178,13 @@ public:
     RewriterVar* emitUnaryop(Value v, int op_type);
     RewriterVar* emitUnpackIntoArray(Value v, uint64_t num);
     RewriterVar* emitYield(Value v);
+    RewriterVar* emitRepr(Value v);
+
+
+    void emitRaise0();
+    void emitRaise3(Value arg0, Value arg1, Value arg2);
+    void emitPrint(Value dest, Value var, bool nl);
+    void emitExec(Value code, Value globals, Value locals, FutureFlags flags);
 
     void emitSetAttr(Value obj, BoxedString* s, Value attr);
     void emitSetBlockLocal(InternedString s, Value v);
@@ -211,8 +220,10 @@ private:
     static Box* callattrHelper(Box* obj, BoxedString* attr, CallattrFlags flags, ArgPassSpec argspec, Box** args,
                                std::vector<BoxedString*>* keyword_names);
     static Box* compareICHelper(CompareIC* ic, Box* lhs, Box* rhs, int op);
+    static Box* createDictHelper(uint64_t num, Box** keys, Box** values);
     static Box* createListHelper(uint64_t num, Box** data);
     static Box* createTupleHelper(uint64_t num, Box** data);
+    static Box* createSetHelper(uint64_t num, Box** data);
     static Box* exceptionMatchesHelper(Box* obj, Box* cls);
     static Box* getAttrICHelper(GetAttrIC* ic, Box* o, BoxedString* attr);
     static Box* getGlobalICHelper(GetGlobalIC* ic, Box* o, BoxedString* s);

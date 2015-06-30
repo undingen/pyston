@@ -18,9 +18,11 @@
 #include <llvm/ADT/DenseSet.h>
 
 #include "codegen/memmgr.h"
+#include "codegen/irgen/hooks.h"
 #include "core/cfg.h"
 #include "runtime/ics.h"
 #include "runtime/objmodel.h"
+#include "runtime/set.h"
 #include "runtime/types.h"
 
 namespace pyston {
@@ -169,8 +171,12 @@ RewriterVar* JitFragment::emitGetBlockLocal(InternedString s) {
     return it->second;
 }
 
-RewriterVar* JitFragment::emitBoxedLocalsGet(BoxedString* s) {
-    return call(false, (void*)ASTInterpreterJitInterface::boxedLocalsGetHelper, getInterp(), imm(s));
+RewriterVar* JitFragment::emitGetBoxedLocals() {
+    return call(false, (void*)ASTInterpreterJitInterface::getBoxedLocalsHelper, getInterp());
+}
+
+RewriterVar* JitFragment::emitGetBoxedLocal(BoxedString* s) {
+    return call(false, (void*)ASTInterpreterJitInterface::getBoxedLocalHelper, getInterp(), imm(s));
 }
 
 Box* JitFragment::setitemICHelper(SetItemIC* ic, Box* o, Box* attr, Box* value) {
@@ -228,6 +234,17 @@ RewriterVar* JitFragment::emitCreateTuple(const llvm::SmallVectorImpl<Value>& va
         return call(false, (void*)createTupleHelper, imm(num), allocArgs(values));
 }
 
+Box* JitFragment::createSetHelper(uint64_t num, Box** data) {
+    BoxedSet* set = (BoxedSet*)createSet();
+    for (int i = 0; i < num; ++i)
+        set->s.insert(data[i]);
+    return set;
+}
+
+RewriterVar* JitFragment::emitCreateSet(const llvm::SmallVectorImpl<Value>& values) {
+    return call(false, (void*)createSetHelper, imm(values.size()), allocArgs(values));
+}
+
 Box* JitFragment::createListHelper(uint64_t num, Box** data) {
     BoxedList* list = (BoxedList*)createList();
     list->ensure(num);
@@ -246,8 +263,23 @@ RewriterVar* JitFragment::emitCreateList(const llvm::SmallVectorImpl<Value>& val
         return call(false, (void*)createListHelper, imm(num), allocArgs(values));
 }
 
-RewriterVar* JitFragment::emitCreateDict() {
-    return call(false, (void*)createDict);
+Box* JitFragment::createDictHelper(uint64_t num, Box** keys, Box** values) {
+    BoxedDict* dict = (BoxedDict*)createDict();
+    for (uint64_t i = 0; i < num; ++i) {
+        assert(gc::isValidGCObject(keys[i]));
+        assert(gc::isValidGCObject(values[i]));
+        dict->d[keys[i]] = values[i];
+    }
+    return dict;
+}
+
+RewriterVar* JitFragment::emitCreateDict(const llvm::SmallVectorImpl<Value>& keys,
+                                         const llvm::SmallVectorImpl<Value>& values) {
+    assert(keys.size() == values.size());
+    if (keys.empty())
+        return call(false, (void*)createDict);
+    else
+        return call(false, (void*)createDictHelper, imm(keys.size()), allocArgs(keys), allocArgs(values));
 }
 RewriterVar* JitFragment::emitCreateSlice(Value start, Value stop, Value step) {
     return call(false, (void*)createSlice, start.var, stop.var, step.var);
@@ -335,6 +367,34 @@ RewriterVar* JitFragment::emitLandingpad() {
 
 RewriterVar* JitFragment::emitYield(Value v) {
     return call(false, (void*)ASTInterpreterJitInterface::yieldHelper, getInterp(), v.var);
+}
+
+RewriterVar* JitFragment::emitRepr(Value v) {
+    return call(false, (void*)repr, v.var);
+}
+
+void JitFragment::emitRaise0() {
+    call(false, (void*)raise0);
+}
+
+void JitFragment::emitRaise3(Value arg0, Value arg1, Value arg2) {
+    call(false, (void*)raise3, arg0.var, arg1.var, arg2.var);
+}
+
+void JitFragment::emitPrint(Value dest, Value var, bool nl) {
+    if (!dest.var)
+        dest.var = call(false, (void*)getSysStdout);
+    if (!var.var)
+        var.var = imm(0ul);
+    call(false, (void*)printHelper, dest.var, var.var, imm(nl));
+}
+
+void JitFragment::emitExec(Value code, Value globals, Value locals, FutureFlags flags) {
+    if (!globals.var)
+        globals.var = imm(0ul);
+    if (!locals.var)
+        locals.var = imm(0ul);
+    call(false, (void*)exec, code.var, globals.var, locals.var, imm(flags));
 }
 
 void JitFragment::emitUncacheExcInfo() {

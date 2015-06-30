@@ -38,7 +38,9 @@ struct ASTInterpreterJitInterface {
     static int getCurrentInstOffset();
     static int getCurrentBlockOffset();
 
-    static Box* boxedLocalsGetHelper(void* interp, BoxedString* s);
+    static void assertHelper(void* interp, Box* msg);
+    static Box* getBoxedLocalHelper(void* interp, BoxedString* s);
+    static Box* getBoxedLocalsHelper(void* interp);
     static Box* derefHelper(void* interp, InternedString s);
     static Box* doOSRHelper(void* interp, AST_Jump* node);
     static Box* getLocalHelper(void* interp, InternedString id);

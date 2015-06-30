@@ -616,12 +616,17 @@ Value ASTInterpreter::visit_slice(AST_Slice* node) {
 }
 
 Value ASTInterpreter::visit_extslice(AST_ExtSlice* node) {
-    abortJITing();
+    llvm::SmallVector<Value, 8> items;
+
     int num_slices = node->dims.size();
     BoxedTuple* rtn = BoxedTuple::create(num_slices);
-    for (int i = 0; i < num_slices; ++i)
-        rtn->elts[i] = visit_expr(node->dims[i]).o;
-    return Value(rtn, 0);
+    for (int i = 0; i < num_slices; ++i) {
+        Value v = visit_expr(node->dims[i]);
+        rtn->elts[i] = v.o;
+        items.push_back(v);
+    }
+
+    return Value(rtn, jit ? jit->emitCreateTuple(items) : NULL);
 }
 
 Value ASTInterpreter::visit_branch(AST_Branch* node) {
@@ -890,9 +895,8 @@ Value ASTInterpreter::visit_langPrimitive(AST_LangPrimitive* node) {
         Value cls = visit_expr(node->args[1]);
         v = Value(boxBool(exceptionMatches(obj.o, cls.o)), jit ? jit->emitExceptionMatches(obj, cls) : nullptr);
     } else if (node->opcode == AST_LangPrimitive::LOCALS) {
-        abortJITing();
         assert(frame_info.boxedLocals != NULL);
-        v.o = frame_info.boxedLocals;
+        v = Value(frame_info.boxedLocals, jit ? jit->emitGetBoxedLocals() : nullptr);
     } else if (node->opcode == AST_LangPrimitive::NONZERO) {
         assert(node->args.size() == 1);
         Value obj = visit_expr(node->args[0]);
@@ -1104,15 +1108,28 @@ Value ASTInterpreter::visit_makeClass(AST_MakeClass* mkclass) {
 }
 
 Value ASTInterpreter::visit_raise(AST_Raise* node) {
-    abortJITing();
     if (node->arg0 == NULL) {
         assert(!node->arg1);
         assert(!node->arg2);
+
+        if (jit) {
+            jit->emitRaise0();
+            finishJITing();
+        }
+
         raise0();
     }
 
-    raise3(node->arg0 ? visit_expr(node->arg0).o : None, node->arg1 ? visit_expr(node->arg1).o : None,
-           node->arg2 ? visit_expr(node->arg2).o : None);
+    Value arg0 = node->arg0 ? visit_expr(node->arg0) : getNone();
+    Value arg1 = node->arg1 ? visit_expr(node->arg1) : getNone();
+    Value arg2 = node->arg2 ? visit_expr(node->arg2) : getNone();
+
+    if (jit) {
+        jit->emitRaise3(arg0, arg1, arg2);
+        finishJITing();
+    }
+
+    raise3(arg0.o, arg1.o, arg2.o);
     return Value();
 }
 
@@ -1205,45 +1222,31 @@ Value ASTInterpreter::visit_assign(AST_Assign* node) {
 }
 
 Value ASTInterpreter::visit_print(AST_Print* node) {
-    abortJITing();
+    assert(node->values.size() <= 1 && "cfg should have lowered it to 0 or 1 values");
+    Value dest = node->dest ? visit_expr(node->dest) : Value();
+    Value var = node->values.size() ? visit_expr(node->values[0]) : Value();
 
-    static BoxedString* write_str = static_cast<BoxedString*>(PyString_InternFromString("write"));
-    static BoxedString* newline_str = static_cast<BoxedString*>(PyString_InternFromString("\n"));
-    static BoxedString* space_str = static_cast<BoxedString*>(PyString_InternFromString(" "));
+    if (node->dest)
+        printHelper(dest.o, var.o, node->nl);
+    else
+        printHelper(getSysStdout(), var.o, node->nl);
 
-    Box* dest = node->dest ? visit_expr(node->dest).o : getSysStdout();
-    int nvals = node->values.size();
-    assert(nvals <= 1 && "cfg should have lowered it to 0 or 1 values");
-    for (int i = 0; i < nvals; i++) {
-        Box* var = visit_expr(node->values[i]).o;
+    if (jit)
+        jit->emitPrint(dest, var, node->nl);
 
-        // begin code for handling of softspace
-        bool new_softspace = (i < nvals - 1) || (!node->nl);
-        if (softspace(dest, new_softspace)) {
-            callattrInternal(dest, write_str, CLASS_OR_INST, 0, ArgPassSpec(1), space_str, 0, 0, 0, 0);
-        }
-
-        Box* str_or_unicode_var = (var->cls == unicode_cls) ? var : str(var);
-        callattrInternal(dest, write_str, CLASS_OR_INST, 0, ArgPassSpec(1), str_or_unicode_var, 0, 0, 0, 0);
-    }
-
-    if (node->nl) {
-        callattrInternal(dest, write_str, CLASS_OR_INST, 0, ArgPassSpec(1), newline_str, 0, 0, 0, 0);
-        if (nvals == 0) {
-            softspace(dest, false);
-        }
-    }
     return Value();
 }
 
 Value ASTInterpreter::visit_exec(AST_Exec* node) {
-    abortJITing();
     // TODO implement the locals and globals arguments
-    Box* code = visit_expr(node->body).o;
-    Box* globals = node->globals == NULL ? NULL : visit_expr(node->globals).o;
-    Box* locals = node->locals == NULL ? NULL : visit_expr(node->locals).o;
+    Value code = visit_expr(node->body);
+    Value globals = node->globals == NULL ? Value() : visit_expr(node->globals);
+    Value locals = node->locals == NULL ? Value() : visit_expr(node->locals);
 
-    exec(code, globals, locals, this->source_info->future_flags);
+    exec(code.o, globals.o, locals.o, this->source_info->future_flags);
+
+    if (jit)
+        jit->emitExec(code, globals, locals, this->source_info->future_flags);
 
     return Value();
 }
@@ -1410,8 +1413,8 @@ Value ASTInterpreter::visit_index(AST_Index* node) {
 }
 
 Value ASTInterpreter::visit_repr(AST_Repr* node) {
-    abortJITing();
-    return Value(repr(visit_expr(node->value).o), 0);
+    Value v = visit_expr(node->value);
+    return Value(repr(v.o), jit ? jit->emitRepr(v) : NULL);
 }
 
 Value ASTInterpreter::visit_lambda(AST_Lambda* node) {
@@ -1425,31 +1428,34 @@ Value ASTInterpreter::visit_lambda(AST_Lambda* node) {
 
 Value ASTInterpreter::visit_dict(AST_Dict* node) {
     RELEASE_ASSERT(node->keys.size() == node->values.size(), "not implemented");
-    Value v;
-    if (jit) {
-        if (node->keys.size())
-            abortJITing();
-        else
-            v.var = jit->emitCreateDict();
-    }
+
+    llvm::SmallVector<Value, 8> keys;
+    llvm::SmallVector<Value, 8> values;
 
     BoxedDict* dict = new BoxedDict();
     for (size_t i = 0; i < node->keys.size(); ++i) {
-        Box* v = visit_expr(node->values[i]).o;
-        Box* k = visit_expr(node->keys[i]).o;
-        dict->d[k] = v;
+        Value v = visit_expr(node->values[i]);
+        Value k = visit_expr(node->keys[i]);
+        dict->d[k.o] = v.o;
+
+        values.push_back(v);
+        keys.push_back(k);
     }
-    v.o = dict;
-    return v;
+
+    return Value(dict, jit ? jit->emitCreateDict(keys, values) : NULL);
 }
 
 Value ASTInterpreter::visit_set(AST_Set* node) {
-    abortJITing();
-    BoxedSet::Set set;
-    for (AST_expr* e : node->elts)
-        set.insert(visit_expr(e).o);
+    llvm::SmallVector<Value, 8> items;
 
-    return Value(new BoxedSet(std::move(set)), NULL);
+    BoxedSet::Set set;
+    for (AST_expr* e : node->elts) {
+        Value v = visit_expr(e);
+        set.insert(v.o);
+        items.push_back(v);
+    }
+
+    return Value(new BoxedSet(std::move(set)), jit ? jit->emitCreateSet(items) : NULL);
 }
 
 Value ASTInterpreter::visit_str(AST_Str* node) {
@@ -1524,7 +1530,7 @@ Value ASTInterpreter::visit_name(AST_Name* node) {
         case ScopeInfo::VarScopeType::NAME: {
             Value v;
             if (jit)
-                v.var = jit->emitBoxedLocalsGet(node->id.getBox());
+                v.var = jit->emitGetBoxedLocal(node->id.getBox());
             v.o = boxedLocalsGet(frame_info.boxedLocals, node->id.getBox(), globals);
             return v;
         }
@@ -1620,9 +1626,14 @@ void ASTInterpreterJitInterface::setLocalClosureHelper(void* _interpreter, Inter
     interpreter->created_closure->elts[interpreter->scope_info->getClosureOffset(id)] = v;
 }
 
-Box* ASTInterpreterJitInterface::boxedLocalsGetHelper(void* _interpreter, BoxedString* s) {
+Box* ASTInterpreterJitInterface::getBoxedLocalHelper(void* _interpreter, BoxedString* s) {
     ASTInterpreter* interpreter = (ASTInterpreter*)_interpreter;
     return boxedLocalsGet(interpreter->frame_info.boxedLocals, s, interpreter->globals);
+}
+
+Box* ASTInterpreterJitInterface::getBoxedLocalsHelper(void* _interpreter) {
+    ASTInterpreter* interpreter = (ASTInterpreter*)_interpreter;
+    return interpreter->frame_info.boxedLocals;
 }
 
 void ASTInterpreterJitInterface::setItemNameHelper(void* _interpreter, Box* str, Box* val) {
