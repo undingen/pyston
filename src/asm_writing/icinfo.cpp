@@ -103,7 +103,6 @@ void ICSlotRewrite::commit(CommitHook* hook) {
     if (!do_commit)
         return;
 
-    assert(assembler->isExactlyFull());
     assert(!assembler->hasFailed());
 
     for (int i = 0; i < dependencies.size(); i++) {

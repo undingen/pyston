@@ -544,9 +544,7 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
                 emitter->getBuilder()->CreateStore(new_call_count, call_count_ptr);
 
                 int reopt_threshold;
-                if (effort == EffortLevel::MINIMAL)
-                    reopt_threshold = REOPT_THRESHOLD_BASELINE;
-                else if (effort == EffortLevel::MODERATE)
+                if (effort == EffortLevel::MODERATE)
                     reopt_threshold = REOPT_THRESHOLD_T2;
                 else
                     RELEASE_ASSERT(0, "Unknown effort: %d", (int)effort);
