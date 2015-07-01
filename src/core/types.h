@@ -249,7 +249,7 @@ public:
     LocationMap* location_map; // only meaningful if this is a compiled frame
 
     std::vector<ICInfo*> ics;
-    std::vector<JitCodeBlock*> code_blocks;
+    std::vector<std::shared_ptr<JitCodeBlock>> code_blocks;
 
     CompiledFunction(llvm::Function* func, FunctionSpecialization* spec, bool is_interpreted, void* code,
                      EffortLevel effort, const OSREntryDescriptor* entry_descriptor)

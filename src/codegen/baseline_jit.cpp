@@ -20,7 +20,6 @@
 #include "codegen/irgen/hooks.h"
 #include "codegen/memmgr.h"
 #include "core/cfg.h"
-#include "runtime/ics.h"
 #include "runtime/objmodel.h"
 #include "runtime/set.h"
 #include "runtime/types.h"
@@ -30,10 +29,11 @@ namespace pyston {
 static llvm::DenseSet<CFGBlock*> blocks_aborted;
 
 JitCodeBlock::JitCodeBlock(llvm::StringRef name)
-    : code(malloc(code_size)),
+    : frame_manager(false /* don't omit frame pointers */),
+      code(new uint8_t[code_size]),
       entry_offset(0),
       epilog_offset(0),
-      a((uint8_t*)code, code_size - epilog_size),
+      a(code.get(), code_size - epilog_size),
       iscurrently_tracing(false),
       asm_failed(false) {
     static StatCounter num_jit_code_blocks("num_baselinejit_code_blocks");
@@ -53,16 +53,15 @@ JitCodeBlock::JitCodeBlock(llvm::StringRef name)
 
     // emit epilog
     epilog_offset = code_size - epilog_size;
-    assembler::Assembler endAsm((uint8_t*)code + epilog_offset, epilog_size);
+    assembler::Assembler endAsm(code.get() + epilog_offset, epilog_size);
     endAsm.leave();
     endAsm.retq();
     RELEASE_ASSERT(!endAsm.hasFailed(), "");
 
     // generate eh frame...
-    EHFrameManager* eh_manager = new EHFrameManager(false /* don't omit frame pointers */);
-    eh_manager->writeAndRegister(code, code_size);
+    frame_manager.writeAndRegister(code.get(), code_size);
 
-    g.func_addr_registry.registerFunction(("bjit: " + name).str(), code, code_size, NULL);
+    g.func_addr_registry.registerFunction(("bjit: " + name).str(), code.get(), code_size, NULL);
 }
 
 std::unique_ptr<JitFragment> JitCodeBlock::newFragment(CFGBlock* block, int jump_offset) {
@@ -76,12 +75,13 @@ std::unique_ptr<JitFragment> JitCodeBlock::newFragment(CFGBlock* block, int jump
 
     void* start = a.curInstPointer() - jump_offset;
     long bytes_written = a.bytesWritten() - jump_offset;
-    ICInfo* ic_info = new ICInfo((void*)start, nullptr, nullptr, stack_info, 1, a.bytesLeft() + jump_offset,
-                                 llvm::CallingConv::C, live_outs, assembler::RAX, 0);
-    ICSlotRewrite* rewrite = new ICSlotRewrite(ic_info, "");
+    std::unique_ptr<ICInfo> ic_info(new ICInfo(start, nullptr, nullptr, stack_info, 1, a.bytesLeft() + jump_offset,
+                                               llvm::CallingConv::C, live_outs, assembler::RAX, 0));
+    std::unique_ptr<ICSlotRewrite> rewrite(new ICSlotRewrite(ic_info.get(), ""));
 
-    auto rtn = std::unique_ptr<JitFragment>(
-        new JitFragment(block, rewrite, bytes_written, epilog_offset - bytes_written, a.getStartAddr(), *this));
+    auto rtn
+        = std::unique_ptr<JitFragment>(new JitFragment(block, std::move(ic_info), std::move(rewrite), bytes_written,
+                                                       epilog_offset - bytes_written, a.getStartAddr(), *this));
     return rtn;
 }
 
@@ -92,16 +92,17 @@ void JitCodeBlock::fragmentFinished(int size, bool not_enough_space) {
 }
 
 
-JitFragment::JitFragment(CFGBlock* block, ICSlotRewrite* rewrite, int code_offset, int epilog_offset, void* entry_code,
-                         JitCodeBlock& code_block)
-    : Rewriter(rewrite, 0, {}),
+JitFragment::JitFragment(CFGBlock* block, std::unique_ptr<ICInfo> ic_info, std::unique_ptr<ICSlotRewrite> rewrite,
+                         int code_offset, int epilog_offset, void* entry_code, JitCodeBlock& code_block)
+    : Rewriter(std::move(rewrite), 0, {}),
       block(block),
       code_offset(code_offset),
       epilog_offset(epilog_offset),
       continue_jmp_offset(0),
       entry_code(entry_code),
       code_block(code_block),
-      interp(0) {
+      interp(0),
+      ic_info(std::move(ic_info)) {
     interp = createNewVar();
     addLocationToVar(interp, Location(Location::Stack, 0));
     interp->setAttr(ASTInterpreterJitInterface::getCurrentBlockOffset(), imm(block));

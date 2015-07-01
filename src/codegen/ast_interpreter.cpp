@@ -349,11 +349,11 @@ void ASTInterpreter::startJITing(CFGBlock* block, int jump_offset) {
     auto& code_blocks = compiled_func->code_blocks;
     JitCodeBlock* code_block = NULL;
     if (!code_blocks.empty())
-        code_block = code_blocks[code_blocks.size() - 1];
+        code_block = code_blocks[code_blocks.size() - 1].get();
 
     if (!code_block || code_block->shouldCreateNewBlock()) {
-        code_blocks.push_back(new JitCodeBlock(source_info->getName()));
-        code_block = code_blocks[code_blocks.size() - 1];
+        code_blocks.push_back(std::make_shared<JitCodeBlock>(source_info->getName()));
+        code_block = code_blocks[code_blocks.size() - 1].get();
         jump_offset = 0;
     }
 
@@ -1473,23 +1473,8 @@ Value ASTInterpreter::visit_name(AST_Name* node) {
             return v;
         }
         case ScopeInfo::VarScopeType::DEREF: {
-            Value v;
-            if (jit)
-                v.var = jit->emitDeref(node->id);
-
-            DerefInfo deref_info = scope_info->getDerefInfo(node->id);
-            assert(passed_closure);
-            BoxedClosure* closure = passed_closure;
-            for (int i = 0; i < deref_info.num_parents_from_passed_closure; i++) {
-                closure = closure->parent;
-            }
-            Box* val = closure->elts[deref_info.offset];
-            if (val == NULL) {
-                raiseExcHelper(NameError, "free variable '%s' referenced before assignment in enclosing scope",
-                               node->id.c_str());
-            }
-            v.o = val;
-            return v;
+            return Value(ASTInterpreterJitInterface::derefHelper(this, node->id),
+                         jit ? jit->emitDeref(node->id) : NULL);
         }
         case ScopeInfo::VarScopeType::FAST:
         case ScopeInfo::VarScopeType::CLOSURE: {
@@ -1505,15 +1490,8 @@ Value ASTInterpreter::visit_name(AST_Name* node) {
                     v.var = jit->emitGetBlockLocal(node->id);
             }
 
-            SymMap::iterator it = sym_table.find(node->id);
-            if (it != sym_table.end()) {
-                v.o = sym_table.getMapped(it->second);
-                return v;
-            }
-
-            assertNameDefined(0, node->id.c_str(), UnboundLocalError, true);
-            RELEASE_ASSERT(0, "unreachable");
-            return Value();
+            v.o = ASTInterpreterJitInterface::getLocalHelper(this, node->id);
+            return v;
         }
         case ScopeInfo::VarScopeType::NAME: {
             Value v;

@@ -20,6 +20,7 @@
 #include "asm_writing/rewriter.h"
 #include "codegen/ast_interpreter.h"
 #include "gc/heap.h"
+#include "runtime/ics.h"
 
 namespace pyston {
 
@@ -102,7 +103,7 @@ class JitFragment;
 //
 // epilog:                          ; code which jumps to epilog has to make sure that
 //                                  ; rax contains the next block to execute
-//                                  : or 0 if we are finished but then rdx must contain the Box* value to return
+//                                  ; or 0 if we are finished but then rdx must contain the Box* value to return
 //      leave
 //      ret
 //
@@ -112,7 +113,8 @@ private:
     static constexpr int code_size = 4096 * 2;
     static constexpr int epilog_size = 2; // size of [leave, ret] in bytes
 
-    void* code;
+    EHFrameManager frame_manager;
+    std::unique_ptr<uint8_t[]> code;
     int entry_offset;
     int epilog_offset;
     assembler::Assembler a;
@@ -137,10 +139,11 @@ private:
     JitCodeBlock& code_block;
     RewriterVar* interp;
     llvm::DenseMap<InternedString, RewriterVar*> local_syms;
+    std::unique_ptr<ICInfo> ic_info;
 
 public:
-    JitFragment(CFGBlock* block, ICSlotRewrite* rewrite, int code_offset, int epilog_offset, void* entry_code,
-                JitCodeBlock& code_block);
+    JitFragment(CFGBlock* block, std::unique_ptr<ICInfo> ic_info, std::unique_ptr<ICSlotRewrite> rewrite,
+                int code_offset, int epilog_offset, void* entry_code, JitCodeBlock& code_block);
 
     RewriterVar* imm(uint64_t val);
     RewriterVar* imm(void* val);
