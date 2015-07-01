@@ -171,7 +171,7 @@ private:
     // This is either a module or a dict
     Box* globals;
     void* frame_addr; // used to clear entry inside the s_interpreterMap on destruction
-    std::unique_ptr<JitFragment> jit;
+    std::unique_ptr<JitFragmentWriter> jit;
 
 public:
     DEFAULT_CLASS_SIMPLE(astinterpreter_cls);

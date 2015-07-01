@@ -64,9 +64,9 @@ JitCodeBlock::JitCodeBlock(llvm::StringRef name)
     g.func_addr_registry.registerFunction(("bjit: " + name).str(), code.get(), code_size, NULL);
 }
 
-std::unique_ptr<JitFragment> JitCodeBlock::newFragment(CFGBlock* block, int jump_offset) {
+std::unique_ptr<JitFragmentWriter> JitCodeBlock::newFragment(CFGBlock* block, int jump_offset) {
     if (iscurrently_tracing || blocks_aborted.count(block))
-        return std::unique_ptr<JitFragment>();
+        return std::unique_ptr<JitFragmentWriter>();
 
     iscurrently_tracing = true;
 
@@ -79,9 +79,9 @@ std::unique_ptr<JitFragment> JitCodeBlock::newFragment(CFGBlock* block, int jump
                                                llvm::CallingConv::C, live_outs, assembler::RAX, 0));
     std::unique_ptr<ICSlotRewrite> rewrite(new ICSlotRewrite(ic_info.get(), ""));
 
-    auto rtn
-        = std::unique_ptr<JitFragment>(new JitFragment(block, std::move(ic_info), std::move(rewrite), bytes_written,
-                                                       epilog_offset - bytes_written, a.getStartAddr(), *this));
+    auto rtn = std::unique_ptr<JitFragmentWriter>(new JitFragmentWriter(block, std::move(ic_info), std::move(rewrite),
+                                                                        bytes_written, epilog_offset - bytes_written,
+                                                                        a.getStartAddr(), *this));
     return rtn;
 }
 
@@ -92,8 +92,9 @@ void JitCodeBlock::fragmentFinished(int size, bool not_enough_space) {
 }
 
 
-JitFragment::JitFragment(CFGBlock* block, std::unique_ptr<ICInfo> ic_info, std::unique_ptr<ICSlotRewrite> rewrite,
-                         int code_offset, int epilog_offset, void* entry_code, JitCodeBlock& code_block)
+JitFragmentWriter::JitFragmentWriter(CFGBlock* block, std::unique_ptr<ICInfo> ic_info,
+                                     std::unique_ptr<ICSlotRewrite> rewrite, int code_offset, int epilog_offset,
+                                     void* entry_code, JitCodeBlock& code_block)
     : Rewriter(std::move(rewrite), 0, {}),
       block(block),
       code_offset(code_offset),
@@ -108,15 +109,15 @@ JitFragment::JitFragment(CFGBlock* block, std::unique_ptr<ICInfo> ic_info, std::
     interp->setAttr(ASTInterpreterJitInterface::getCurrentBlockOffset(), imm(block));
 }
 
-RewriterVar* JitFragment::imm(uint64_t val) {
+RewriterVar* JitFragmentWriter::imm(uint64_t val) {
     return loadConst(val);
 }
 
-RewriterVar* JitFragment::imm(void* val) {
+RewriterVar* JitFragmentWriter::imm(void* val) {
     return loadConst((uint64_t)val);
 }
 
-RewriterVar* JitFragment::emitAugbinop(RewriterVar* lhs, RewriterVar* rhs, int op_type) {
+RewriterVar* JitFragmentWriter::emitAugbinop(RewriterVar* lhs, RewriterVar* rhs, int op_type) {
 #if ENABLE_BASELINEJIT_ICS
     return call(false, (void*)augbinopICHelper, imm(new AugBinopIC), lhs, rhs, imm(op_type));
 #else
@@ -124,7 +125,7 @@ RewriterVar* JitFragment::emitAugbinop(RewriterVar* lhs, RewriterVar* rhs, int o
 #endif
 }
 
-RewriterVar* JitFragment::emitBinop(RewriterVar* lhs, RewriterVar* rhs, int op_type) {
+RewriterVar* JitFragmentWriter::emitBinop(RewriterVar* lhs, RewriterVar* rhs, int op_type) {
 #if ENABLE_BASELINEJIT_ICS
     return call(false, (void*)binopICHelper, imm(new BinopIC), lhs, rhs, imm(op_type));
 #else
@@ -132,9 +133,9 @@ RewriterVar* JitFragment::emitBinop(RewriterVar* lhs, RewriterVar* rhs, int op_t
 #endif
 }
 
-RewriterVar* JitFragment::emitCallattr(RewriterVar* obj, BoxedString* attr, CallattrFlags flags, ArgPassSpec argspec,
-                                       const llvm::ArrayRef<RewriterVar*> args,
-                                       std::vector<BoxedString*>* keyword_names) {
+RewriterVar* JitFragmentWriter::emitCallattr(RewriterVar* obj, BoxedString* attr, CallattrFlags flags,
+                                             ArgPassSpec argspec, const llvm::ArrayRef<RewriterVar*> args,
+                                             std::vector<BoxedString*>* keyword_names) {
     // We could make this faster but for now: keep it simple, stupid...
     RewriterVar* attr_var = imm(attr);
     RewriterVar* flags_var = imm(flags.asInt());
@@ -176,7 +177,7 @@ RewriterVar* JitFragment::emitCallattr(RewriterVar* obj, BoxedString* attr, Call
     return call(false, (void*)callattrHelper, call_args);
 }
 
-RewriterVar* JitFragment::emitCompare(RewriterVar* lhs, RewriterVar* rhs, int op_type) {
+RewriterVar* JitFragmentWriter::emitCompare(RewriterVar* lhs, RewriterVar* rhs, int op_type) {
 #if ENABLE_BASELINEJIT_ICS
     return call(false, (void*)compareICHelper, imm(new CompareIC), lhs, rhs, imm(op_type));
 #else
@@ -184,8 +185,8 @@ RewriterVar* JitFragment::emitCompare(RewriterVar* lhs, RewriterVar* rhs, int op
 #endif
 }
 
-RewriterVar* JitFragment::emitCreateDict(const llvm::ArrayRef<RewriterVar*> keys,
-                                         const llvm::ArrayRef<RewriterVar*> values) {
+RewriterVar* JitFragmentWriter::emitCreateDict(const llvm::ArrayRef<RewriterVar*> keys,
+                                               const llvm::ArrayRef<RewriterVar*> values) {
     assert(keys.size() == values.size());
     if (keys.empty())
         return call(false, (void*)createDict);
@@ -193,7 +194,7 @@ RewriterVar* JitFragment::emitCreateDict(const llvm::ArrayRef<RewriterVar*> keys
         return call(false, (void*)createDictHelper, imm(keys.size()), allocArgs(keys), allocArgs(values));
 }
 
-RewriterVar* JitFragment::emitCreateList(const llvm::ArrayRef<RewriterVar*> values) {
+RewriterVar* JitFragmentWriter::emitCreateList(const llvm::ArrayRef<RewriterVar*> values) {
     auto num = values.size();
     if (num == 0)
         return call(false, (void*)createList);
@@ -201,15 +202,15 @@ RewriterVar* JitFragment::emitCreateList(const llvm::ArrayRef<RewriterVar*> valu
         return call(false, (void*)createListHelper, imm(num), allocArgs(values));
 }
 
-RewriterVar* JitFragment::emitCreateSet(const llvm::ArrayRef<RewriterVar*> values) {
+RewriterVar* JitFragmentWriter::emitCreateSet(const llvm::ArrayRef<RewriterVar*> values) {
     return call(false, (void*)createSetHelper, imm(values.size()), allocArgs(values));
 }
 
-RewriterVar* JitFragment::emitCreateSlice(RewriterVar* start, RewriterVar* stop, RewriterVar* step) {
+RewriterVar* JitFragmentWriter::emitCreateSlice(RewriterVar* start, RewriterVar* stop, RewriterVar* step) {
     return call(false, (void*)createSlice, start, stop, step);
 }
 
-RewriterVar* JitFragment::emitCreateTuple(const llvm::ArrayRef<RewriterVar*> values) {
+RewriterVar* JitFragmentWriter::emitCreateTuple(const llvm::ArrayRef<RewriterVar*> values) {
     auto num = values.size();
     if (num == 0)
         return imm(EmptyTuple);
@@ -223,7 +224,7 @@ RewriterVar* JitFragment::emitCreateTuple(const llvm::ArrayRef<RewriterVar*> val
         return call(false, (void*)createTupleHelper, imm(num), allocArgs(values));
 }
 
-RewriterVar* JitFragment::emitDeref(InternedString s) {
+RewriterVar* JitFragmentWriter::emitDeref(InternedString s) {
     return call(false, (void*)ASTInterpreterJitInterface::derefHelper, getInterp(),
 #ifndef NDEBUG
                 imm(asUInt(s).first), imm(asUInt(s).second));
@@ -232,11 +233,11 @@ RewriterVar* JitFragment::emitDeref(InternedString s) {
 #endif
 }
 
-RewriterVar* JitFragment::emitExceptionMatches(RewriterVar* v, RewriterVar* cls) {
+RewriterVar* JitFragmentWriter::emitExceptionMatches(RewriterVar* v, RewriterVar* cls) {
     return call(false, (void*)exceptionMatchesHelper, v, cls);
 }
 
-RewriterVar* JitFragment::emitGetAttr(RewriterVar* obj, BoxedString* s) {
+RewriterVar* JitFragmentWriter::emitGetAttr(RewriterVar* obj, BoxedString* s) {
 #if ENABLE_BASELINEJIT_ICS
     return call(false, (void*)getAttrICHelper, imm(new GetAttrIC), obj, imm(s));
 #else
@@ -244,26 +245,26 @@ RewriterVar* JitFragment::emitGetAttr(RewriterVar* obj, BoxedString* s) {
 #endif
 }
 
-RewriterVar* JitFragment::emitGetBlockLocal(InternedString s) {
+RewriterVar* JitFragmentWriter::emitGetBlockLocal(InternedString s) {
     auto it = local_syms.find(s);
     if (it == local_syms.end())
         return emitGetLocal(s);
     return it->second;
 }
 
-RewriterVar* JitFragment::emitGetBoxedLocal(BoxedString* s) {
+RewriterVar* JitFragmentWriter::emitGetBoxedLocal(BoxedString* s) {
     return call(false, (void*)ASTInterpreterJitInterface::getBoxedLocalHelper, getInterp(), imm(s));
 }
 
-RewriterVar* JitFragment::emitGetBoxedLocals() {
+RewriterVar* JitFragmentWriter::emitGetBoxedLocals() {
     return call(false, (void*)ASTInterpreterJitInterface::getBoxedLocalsHelper, getInterp());
 }
 
-RewriterVar* JitFragment::emitGetClsAttr(RewriterVar* obj, BoxedString* s) {
+RewriterVar* JitFragmentWriter::emitGetClsAttr(RewriterVar* obj, BoxedString* s) {
     return call(false, (void*)getclsattr, obj, imm(s));
 }
 
-RewriterVar* JitFragment::emitGetGlobal(Box* global, BoxedString* s) {
+RewriterVar* JitFragmentWriter::emitGetGlobal(Box* global, BoxedString* s) {
 #if ENABLE_BASELINEJIT_ICS
     return call(false, (void*)getGlobalICHelper, imm(new GetGlobalIC), imm(global), imm(s));
 #else
@@ -271,7 +272,7 @@ RewriterVar* JitFragment::emitGetGlobal(Box* global, BoxedString* s) {
 #endif
 }
 
-RewriterVar* JitFragment::emitGetItem(RewriterVar* value, RewriterVar* slice) {
+RewriterVar* JitFragmentWriter::emitGetItem(RewriterVar* value, RewriterVar* slice) {
 #if ENABLE_BASELINEJIT_ICS
     return call(false, (void*)getitemICHelper, imm(new GetItemIC), value, slice);
 #else
@@ -279,7 +280,7 @@ RewriterVar* JitFragment::emitGetItem(RewriterVar* value, RewriterVar* slice) {
 #endif
 }
 
-RewriterVar* JitFragment::emitGetLocal(InternedString s) {
+RewriterVar* JitFragmentWriter::emitGetLocal(InternedString s) {
     return call(false, (void*)ASTInterpreterJitInterface::getLocalHelper, getInterp(),
 #ifndef NDEBUG
                 imm(asUInt(s).first), imm(asUInt(s).second));
@@ -288,33 +289,33 @@ RewriterVar* JitFragment::emitGetLocal(InternedString s) {
 #endif
 }
 
-RewriterVar* JitFragment::emitGetPystonIter(RewriterVar* v) {
+RewriterVar* JitFragmentWriter::emitGetPystonIter(RewriterVar* v) {
     return call(false, (void*)getPystonIter, v);
 }
 
-RewriterVar* JitFragment::emitHasnext(RewriterVar* v) {
+RewriterVar* JitFragmentWriter::emitHasnext(RewriterVar* v) {
     return call(false, (void*)hasnextHelper, v);
 }
 
-RewriterVar* JitFragment::emitLandingpad() {
+RewriterVar* JitFragmentWriter::emitLandingpad() {
     return call(false, (void*)ASTInterpreterJitInterface::landingpadHelper, getInterp());
 }
 
-RewriterVar* JitFragment::emitNonzero(RewriterVar* v) {
+RewriterVar* JitFragmentWriter::emitNonzero(RewriterVar* v) {
     return call(false, (void*)nonzeroHelper, v);
 }
 
-RewriterVar* JitFragment::emitNotNonzero(RewriterVar* v) {
+RewriterVar* JitFragmentWriter::emitNotNonzero(RewriterVar* v) {
     return call(false, (void*)notHelper, v);
 }
 
-RewriterVar* JitFragment::emitRepr(RewriterVar* v) {
+RewriterVar* JitFragmentWriter::emitRepr(RewriterVar* v) {
     return call(false, (void*)repr, v);
 }
 
-RewriterVar* JitFragment::emitRuntimeCall(RewriterVar* obj, ArgPassSpec argspec,
-                                          const llvm::ArrayRef<RewriterVar*> args,
-                                          std::vector<BoxedString*>* keyword_names) {
+RewriterVar* JitFragmentWriter::emitRuntimeCall(RewriterVar* obj, ArgPassSpec argspec,
+                                                const llvm::ArrayRef<RewriterVar*> args,
+                                                std::vector<BoxedString*>* keyword_names) {
     // We could make this faster but for now: keep it simple, stupid..
     RewriterVar* argspec_var = imm(argspec.asInt());
     RewriterVar* keyword_names_var = keyword_names ? imm(keyword_names) : nullptr;
@@ -351,7 +352,7 @@ RewriterVar* JitFragment::emitRuntimeCall(RewriterVar* obj, ArgPassSpec argspec,
     return call(false, (void*)runtimeCallHelper, call_args);
 }
 
-RewriterVar* JitFragment::emitUnaryop(RewriterVar* v, int op_type) {
+RewriterVar* JitFragmentWriter::emitUnaryop(RewriterVar* v, int op_type) {
 #if ENABLE_BASELINEJIT_ICS
     return call(false, (void*)unaryopICHelper, imm(new UnaryopIC), v, imm(op_type));
 #else
@@ -359,17 +360,17 @@ RewriterVar* JitFragment::emitUnaryop(RewriterVar* v, int op_type) {
 #endif
 }
 
-RewriterVar* JitFragment::emitUnpackIntoArray(RewriterVar* v, uint64_t num) {
+RewriterVar* JitFragmentWriter::emitUnpackIntoArray(RewriterVar* v, uint64_t num) {
     RewriterVar* array = call(false, (void*)unpackIntoArray, v, imm(num));
     return array;
 }
 
-RewriterVar* JitFragment::emitYield(RewriterVar* v) {
+RewriterVar* JitFragmentWriter::emitYield(RewriterVar* v) {
     return call(false, (void*)ASTInterpreterJitInterface::yieldHelper, getInterp(), v);
 }
 
 
-void JitFragment::emitExec(RewriterVar* code, RewriterVar* globals, RewriterVar* locals, FutureFlags flags) {
+void JitFragmentWriter::emitExec(RewriterVar* code, RewriterVar* globals, RewriterVar* locals, FutureFlags flags) {
     if (!globals)
         globals = imm(0ul);
     if (!locals)
@@ -377,18 +378,18 @@ void JitFragment::emitExec(RewriterVar* code, RewriterVar* globals, RewriterVar*
     call(false, (void*)exec, code, globals, locals, imm(flags));
 }
 
-void JitFragment::emitJump(CFGBlock* b) {
+void JitFragmentWriter::emitJump(CFGBlock* b) {
     RewriterVar* next = imm(b);
     addAction([=]() { _emitJump(b, next, continue_jmp_offset); }, { next }, ActionType::NORMAL);
 }
 
-void JitFragment::emitOSRPoint(AST_Jump* node) {
+void JitFragmentWriter::emitOSRPoint(AST_Jump* node) {
     RewriterVar* node_var = imm(node);
     RewriterVar* result = createNewVar();
     addAction([=]() { _emitOSRPoint(result, node_var); }, { result, node_var, getInterp() }, ActionType::NORMAL);
 }
 
-void JitFragment::emitPrint(RewriterVar* dest, RewriterVar* var, bool nl) {
+void JitFragmentWriter::emitPrint(RewriterVar* dest, RewriterVar* var, bool nl) {
     if (!dest)
         dest = call(false, (void*)getSysStdout);
     if (!var)
@@ -396,19 +397,19 @@ void JitFragment::emitPrint(RewriterVar* dest, RewriterVar* var, bool nl) {
     call(false, (void*)printHelper, dest, var, imm(nl));
 }
 
-void JitFragment::emitRaise0() {
+void JitFragmentWriter::emitRaise0() {
     call(false, (void*)raise0);
 }
 
-void JitFragment::emitRaise3(RewriterVar* arg0, RewriterVar* arg1, RewriterVar* arg2) {
+void JitFragmentWriter::emitRaise3(RewriterVar* arg0, RewriterVar* arg1, RewriterVar* arg2) {
     call(false, (void*)raise3, arg0, arg1, arg2);
 }
 
-void JitFragment::emitReturn(RewriterVar* v) {
+void JitFragmentWriter::emitReturn(RewriterVar* v) {
     addAction([=]() { _emitReturn(v); }, { v }, ActionType::NORMAL);
 }
 
-void JitFragment::emitSetAttr(RewriterVar* obj, BoxedString* s, RewriterVar* attr) {
+void JitFragmentWriter::emitSetAttr(RewriterVar* obj, BoxedString* s, RewriterVar* attr) {
 #if ENABLE_BASELINEJIT_ICS
     call(false, (void*)setAttrICHelper, imm(new SetAttrIC), obj, imm(s), attr);
 #else
@@ -416,19 +417,19 @@ void JitFragment::emitSetAttr(RewriterVar* obj, BoxedString* s, RewriterVar* att
 #endif
 }
 
-void JitFragment::emitSetBlockLocal(InternedString s, RewriterVar* v) {
+void JitFragmentWriter::emitSetBlockLocal(InternedString s, RewriterVar* v) {
     local_syms[s] = v;
 }
 
-void JitFragment::emitSetCurrentInst(AST_stmt* node) {
+void JitFragmentWriter::emitSetCurrentInst(AST_stmt* node) {
     getInterp()->setAttr(ASTInterpreterJitInterface::getCurrentInstOffset(), imm(node));
 }
 
-void JitFragment::emitSetExcInfo(RewriterVar* type, RewriterVar* value, RewriterVar* traceback) {
+void JitFragmentWriter::emitSetExcInfo(RewriterVar* type, RewriterVar* value, RewriterVar* traceback) {
     call(false, (void*)ASTInterpreterJitInterface::setExcInfoHelper, getInterp(), type, value, traceback);
 }
 
-void JitFragment::emitSetGlobal(Box* global, BoxedString* s, RewriterVar* v) {
+void JitFragmentWriter::emitSetGlobal(Box* global, BoxedString* s, RewriterVar* v) {
 #if ENABLE_BASELINEJIT_ICS
     call(false, (void*)setGlobalICHelper, imm(new SetGlobalIC), imm(global), imm(s), v);
 #else
@@ -436,7 +437,7 @@ void JitFragment::emitSetGlobal(Box* global, BoxedString* s, RewriterVar* v) {
 #endif
 }
 
-void JitFragment::emitSetItem(RewriterVar* target, RewriterVar* slice, RewriterVar* value) {
+void JitFragmentWriter::emitSetItem(RewriterVar* target, RewriterVar* slice, RewriterVar* value) {
 #if ENABLE_BASELINEJIT_ICS
     call(false, (void*)setitemICHelper, imm(new SetItemIC), target, slice, value);
 #else
@@ -444,11 +445,11 @@ void JitFragment::emitSetItem(RewriterVar* target, RewriterVar* slice, RewriterV
 #endif
 }
 
-void JitFragment::emitSetItemName(BoxedString* s, RewriterVar* v) {
+void JitFragmentWriter::emitSetItemName(BoxedString* s, RewriterVar* v) {
     call(false, (void*)ASTInterpreterJitInterface::setItemNameHelper, getInterp(), imm(s), v);
 }
 
-void JitFragment::emitSetLocal(InternedString s, bool set_closure, RewriterVar* v) {
+void JitFragmentWriter::emitSetLocal(InternedString s, bool set_closure, RewriterVar* v) {
     void* func = set_closure ? (void*)ASTInterpreterJitInterface::setLocalClosureHelper
                              : (void*)ASTInterpreterJitInterface::setLocalHelper;
 
@@ -461,25 +462,25 @@ void JitFragment::emitSetLocal(InternedString s, bool set_closure, RewriterVar* 
          v);
 }
 
-void JitFragment::emitSideExit(RewriterVar* v, Box* cmp_value, CFGBlock* next_block) {
+void JitFragmentWriter::emitSideExit(RewriterVar* v, Box* cmp_value, CFGBlock* next_block) {
     RewriterVar* var = imm(cmp_value);
     RewriterVar* next_block_var = imm(next_block);
     addAction([=]() { _emitSideExit(v, var, next_block, next_block_var); }, { v, var, next_block_var },
               ActionType::NORMAL);
 }
 
-void JitFragment::emitUncacheExcInfo() {
+void JitFragmentWriter::emitUncacheExcInfo() {
     call(false, (void*)ASTInterpreterJitInterface::uncacheExcInfoHelper, getInterp());
 }
 
 
-void JitFragment::abortCompilation() {
+void JitFragmentWriter::abortCompilation() {
     blocks_aborted.insert(block);
     code_block.fragmentFinished(0, false);
     abort();
 }
 
-int JitFragment::finishCompilation() {
+int JitFragmentWriter::finishCompilation() {
     RELEASE_ASSERT(!assembler->hasFailed(), "");
 
     commit();
@@ -500,12 +501,12 @@ int JitFragment::finishCompilation() {
     return continue_jmp_offset;
 }
 
-bool JitFragment::finishAssembly(ICSlotInfo* picked_slot, int continue_offset) {
+bool JitFragmentWriter::finishAssembly(ICSlotInfo* picked_slot, int continue_offset) {
     return !assembler->hasFailed();
 }
 
 
-RewriterVar* JitFragment::allocArgs(const llvm::ArrayRef<RewriterVar*> args) {
+RewriterVar* JitFragmentWriter::allocArgs(const llvm::ArrayRef<RewriterVar*> args) {
     auto num = args.size();
     RewriterVar* array = allocate(num);
     for (int i = 0; i < num; ++i)
@@ -514,7 +515,7 @@ RewriterVar* JitFragment::allocArgs(const llvm::ArrayRef<RewriterVar*> args) {
 }
 
 #ifndef NDEBUG
-std::pair<uint64_t, uint64_t> JitFragment::asUInt(InternedString s) {
+std::pair<uint64_t, uint64_t> JitFragmentWriter::asUInt(InternedString s) {
     static_assert(sizeof(InternedString) == sizeof(uint64_t) * 2, "");
     union U {
         U(InternedString is) : is(is) {}
@@ -524,7 +525,7 @@ std::pair<uint64_t, uint64_t> JitFragment::asUInt(InternedString s) {
     return std::make_pair(u.u[0], u.u[1]);
 }
 #else
-uint64_t JitFragment::asUInt(InternedString s) {
+uint64_t JitFragmentWriter::asUInt(InternedString s) {
     static_assert(sizeof(InternedString) == sizeof(uint64_t), "");
     union U {
         U(InternedString is) : is(is) {}
@@ -535,29 +536,29 @@ uint64_t JitFragment::asUInt(InternedString s) {
 }
 #endif
 
-RewriterVar* JitFragment::getInterp() {
+RewriterVar* JitFragmentWriter::getInterp() {
     return interp;
 }
 
 
-Box* JitFragment::augbinopICHelper(AugBinopIC* ic, Box* lhs, Box* rhs, int op) {
+Box* JitFragmentWriter::augbinopICHelper(AugBinopIC* ic, Box* lhs, Box* rhs, int op) {
     return ic->call(lhs, rhs, op);
 }
 
 
-Box* JitFragment::binopICHelper(BinopIC* ic, Box* lhs, Box* rhs, int op) {
+Box* JitFragmentWriter::binopICHelper(BinopIC* ic, Box* lhs, Box* rhs, int op) {
     return ic->call(lhs, rhs, op);
 }
 
 #if ENABLE_BASELINEJIT_ICS
-Box* JitFragment::callattrHelperIC(Box* obj, BoxedString* attr, CallattrFlags flags, ArgPassSpec argspec,
-                                   CallattrIC* ic, Box** args) {
+Box* JitFragmentWriter::callattrHelperIC(Box* obj, BoxedString* attr, CallattrFlags flags, ArgPassSpec argspec,
+                                         CallattrIC* ic, Box** args) {
     auto arg_tuple = getTupleFromArgsArray(&args[0], argspec.totalPassed());
     return ic->call(obj, attr, flags, argspec, std::get<0>(arg_tuple), std::get<1>(arg_tuple));
 }
 #endif
-Box* JitFragment::callattrHelper(Box* obj, BoxedString* attr, CallattrFlags flags, ArgPassSpec argspec, Box** args,
-                                 std::vector<BoxedString*>* keyword_names) {
+Box* JitFragmentWriter::callattrHelper(Box* obj, BoxedString* attr, CallattrFlags flags, ArgPassSpec argspec,
+                                       Box** args, std::vector<BoxedString*>* keyword_names) {
     auto arg_tuple = getTupleFromArgsArray(&args[0], argspec.totalPassed());
     Box* r = callattr(obj, attr, flags, argspec, std::get<0>(arg_tuple), std::get<1>(arg_tuple), std::get<2>(arg_tuple),
                       std::get<3>(arg_tuple), keyword_names);
@@ -565,11 +566,11 @@ Box* JitFragment::callattrHelper(Box* obj, BoxedString* attr, CallattrFlags flag
     return r;
 }
 
-Box* JitFragment::compareICHelper(CompareIC* ic, Box* lhs, Box* rhs, int op) {
+Box* JitFragmentWriter::compareICHelper(CompareIC* ic, Box* lhs, Box* rhs, int op) {
     return ic->call(lhs, rhs, op);
 }
 
-Box* JitFragment::createDictHelper(uint64_t num, Box** keys, Box** values) {
+Box* JitFragmentWriter::createDictHelper(uint64_t num, Box** keys, Box** values) {
     BoxedDict* dict = (BoxedDict*)createDict();
     for (uint64_t i = 0; i < num; ++i) {
         assert(gc::isValidGCObject(keys[i]));
@@ -579,7 +580,7 @@ Box* JitFragment::createDictHelper(uint64_t num, Box** keys, Box** values) {
     return dict;
 }
 
-Box* JitFragment::createListHelper(uint64_t num, Box** data) {
+Box* JitFragmentWriter::createListHelper(uint64_t num, Box** data) {
     BoxedList* list = (BoxedList*)createList();
     list->ensure(num);
     for (uint64_t i = 0; i < num; ++i) {
@@ -589,77 +590,77 @@ Box* JitFragment::createListHelper(uint64_t num, Box** data) {
     return list;
 }
 
-Box* JitFragment::createSetHelper(uint64_t num, Box** data) {
+Box* JitFragmentWriter::createSetHelper(uint64_t num, Box** data) {
     BoxedSet* set = (BoxedSet*)createSet();
     for (int i = 0; i < num; ++i)
         set->s.insert(data[i]);
     return set;
 }
 
-Box* JitFragment::createTupleHelper(uint64_t num, Box** data) {
+Box* JitFragmentWriter::createTupleHelper(uint64_t num, Box** data) {
     return BoxedTuple::create(num, data);
 }
 
-Box* JitFragment::exceptionMatchesHelper(Box* obj, Box* cls) {
+Box* JitFragmentWriter::exceptionMatchesHelper(Box* obj, Box* cls) {
     return boxBool(exceptionMatches(obj, cls));
 }
 
-Box* JitFragment::getAttrICHelper(GetAttrIC* ic, Box* o, BoxedString* attr) {
+Box* JitFragmentWriter::getAttrICHelper(GetAttrIC* ic, Box* o, BoxedString* attr) {
     return ic->call(o, attr);
 }
 
-Box* JitFragment::getGlobalICHelper(GetGlobalIC* ic, Box* o, BoxedString* s) {
+Box* JitFragmentWriter::getGlobalICHelper(GetGlobalIC* ic, Box* o, BoxedString* s) {
     return ic->call(o, s);
 }
 
-Box* JitFragment::getitemICHelper(GetItemIC* ic, Box* o, Box* attr) {
+Box* JitFragmentWriter::getitemICHelper(GetItemIC* ic, Box* o, Box* attr) {
     return ic->call(o, attr);
 }
 
-Box* JitFragment::hasnextHelper(Box* b) {
+Box* JitFragmentWriter::hasnextHelper(Box* b) {
     return boxBool(pyston::hasnext(b));
 }
 
-Box* JitFragment::nonzeroHelper(Box* b) {
+Box* JitFragmentWriter::nonzeroHelper(Box* b) {
     return boxBool(b->nonzeroIC());
 }
 
-Box* JitFragment::notHelper(Box* b) {
+Box* JitFragmentWriter::notHelper(Box* b) {
     return boxBool(!b->nonzeroIC());
 }
 
 #if ENABLE_BASELINEJIT_ICS
-Box* JitFragment::runtimeCallHelperIC(Box* obj, ArgPassSpec argspec, RuntimeCallIC* ic, Box** args) {
+Box* JitFragmentWriter::runtimeCallHelperIC(Box* obj, ArgPassSpec argspec, RuntimeCallIC* ic, Box** args) {
     auto arg_tuple = getTupleFromArgsArray(&args[0], argspec.totalPassed());
     return ic->call(obj, argspec, std::get<0>(arg_tuple), std::get<1>(arg_tuple), std::get<2>(arg_tuple),
                     std::get<3>(arg_tuple));
 }
 #endif
-Box* JitFragment::runtimeCallHelper(Box* obj, ArgPassSpec argspec, Box** args,
-                                    std::vector<BoxedString*>* keyword_names) {
+Box* JitFragmentWriter::runtimeCallHelper(Box* obj, ArgPassSpec argspec, Box** args,
+                                          std::vector<BoxedString*>* keyword_names) {
     auto arg_tuple = getTupleFromArgsArray(&args[0], argspec.totalPassed());
     return runtimeCall(obj, argspec, std::get<0>(arg_tuple), std::get<1>(arg_tuple), std::get<2>(arg_tuple),
                        std::get<3>(arg_tuple), keyword_names);
 }
 
-Box* JitFragment::setAttrICHelper(SetAttrIC* ic, Box* o, BoxedString* attr, Box* value) {
+Box* JitFragmentWriter::setAttrICHelper(SetAttrIC* ic, Box* o, BoxedString* attr, Box* value) {
     return ic->call(o, attr, value);
 }
 
-Box* JitFragment::setGlobalICHelper(SetGlobalIC* ic, Box* o, BoxedString* s, Box* v) {
+Box* JitFragmentWriter::setGlobalICHelper(SetGlobalIC* ic, Box* o, BoxedString* s, Box* v) {
     return ic->call(o, s, v);
 }
 
-Box* JitFragment::setitemICHelper(SetItemIC* ic, Box* o, Box* attr, Box* value) {
+Box* JitFragmentWriter::setitemICHelper(SetItemIC* ic, Box* o, Box* attr, Box* value) {
     return ic->call(o, attr, value);
 }
 
-Box* JitFragment::unaryopICHelper(UnaryopIC* ic, Box* obj, int op) {
+Box* JitFragmentWriter::unaryopICHelper(UnaryopIC* ic, Box* obj, int op) {
     return ic->call(obj, op);
 }
 
 
-void JitFragment::_emitJump(CFGBlock* b, RewriterVar* block_next, int& size_of_indirect_jump) {
+void JitFragmentWriter::_emitJump(CFGBlock* b, RewriterVar* block_next, int& size_of_indirect_jump) {
     size_of_indirect_jump = 0;
     if (b->code) {
         int64_t offset = (uint64_t)b->code - ((uint64_t)entry_code + code_offset);
@@ -680,7 +681,7 @@ void JitFragment::_emitJump(CFGBlock* b, RewriterVar* block_next, int& size_of_i
     block_next->bumpUse();
 }
 
-void JitFragment::_emitOSRPoint(RewriterVar* result, RewriterVar* node_var) {
+void JitFragmentWriter::_emitOSRPoint(RewriterVar* result, RewriterVar* node_var) {
     RewriterVar::SmallVector args;
     args.push_back(getInterp());
     args.push_back(node_var);
@@ -698,15 +699,15 @@ void JitFragment::_emitOSRPoint(RewriterVar* result, RewriterVar* node_var) {
     assertConsistent();
 }
 
-void JitFragment::_emitReturn(RewriterVar* return_val) {
+void JitFragmentWriter::_emitReturn(RewriterVar* return_val) {
     return_val->getInReg(assembler::RDX, true);
     assembler->mov(assembler::Immediate(0ul), assembler::RAX); // TODO: use xor
     assembler->jmp(assembler::JumpDestination::fromStart(epilog_offset));
     return_val->bumpUse();
 }
 
-void JitFragment::_emitSideExit(RewriterVar* var, RewriterVar* val_constant, CFGBlock* next_block,
-                                RewriterVar* next_block_var) {
+void JitFragmentWriter::_emitSideExit(RewriterVar* var, RewriterVar* val_constant, CFGBlock* next_block,
+                                      RewriterVar* next_block_var) {
     assert(val_constant->is_constant);
     assert(next_block_var->is_constant);
     uint64_t val = val_constant->constant_value;
