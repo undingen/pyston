@@ -146,55 +146,54 @@ public:
     RewriterVar* imm(void* val);
 
 
-    RewriterVar* emitAugbinop(Value lhs, Value rhs, int op_type);
-    RewriterVar* emitBinop(Value lhs, Value rhs, int op_type);
-    RewriterVar* emitCallattr(Value obj, BoxedString* attr, CallattrFlags flags, ArgPassSpec argspec,
-                              std::vector<Value, StlCompatAllocator<Value>> args,
-                              std::vector<BoxedString*>* keyword_names);
-    RewriterVar* emitCompare(Value lhs, Value rhs, int op_type);
-    RewriterVar* emitCreateDict(const llvm::SmallVectorImpl<Value>& keys, const llvm::SmallVectorImpl<Value>& values);
-    RewriterVar* emitCreateList(const llvm::SmallVectorImpl<Value>& values);
-    RewriterVar* emitCreateSet(const llvm::SmallVectorImpl<Value>& values);
-    RewriterVar* emitCreateSlice(Value start, Value stop, Value step);
-    RewriterVar* emitCreateTuple(const llvm::SmallVectorImpl<Value>& values);
+    RewriterVar* emitAugbinop(RewriterVar* lhs, RewriterVar* rhs, int op_type);
+    RewriterVar* emitBinop(RewriterVar* lhs, RewriterVar* rhs, int op_type);
+    RewriterVar* emitCallattr(RewriterVar* obj, BoxedString* attr, CallattrFlags flags, ArgPassSpec argspec,
+                              const llvm::ArrayRef<RewriterVar*> args, std::vector<BoxedString*>* keyword_names);
+    RewriterVar* emitCompare(RewriterVar* lhs, RewriterVar* rhs, int op_type);
+    RewriterVar* emitCreateDict(const llvm::ArrayRef<RewriterVar*> keys, const llvm::ArrayRef<RewriterVar*> values);
+    RewriterVar* emitCreateList(const llvm::ArrayRef<RewriterVar*> values);
+    RewriterVar* emitCreateSet(const llvm::ArrayRef<RewriterVar*> values);
+    RewriterVar* emitCreateSlice(RewriterVar* start, RewriterVar* stop, RewriterVar* step);
+    RewriterVar* emitCreateTuple(const llvm::ArrayRef<RewriterVar*> values);
     RewriterVar* emitDeref(InternedString s);
-    RewriterVar* emitExceptionMatches(Value v, Value cls);
-    RewriterVar* emitGetAttr(Value obj, BoxedString* s);
+    RewriterVar* emitExceptionMatches(RewriterVar* v, RewriterVar* cls);
+    RewriterVar* emitGetAttr(RewriterVar* obj, BoxedString* s);
     RewriterVar* emitGetBlockLocal(InternedString s);
     RewriterVar* emitGetBoxedLocal(BoxedString* s);
     RewriterVar* emitGetBoxedLocals();
-    RewriterVar* emitGetClsAttr(Value obj, BoxedString* s);
+    RewriterVar* emitGetClsAttr(RewriterVar* obj, BoxedString* s);
     RewriterVar* emitGetGlobal(Box* global, BoxedString* s);
-    RewriterVar* emitGetItem(Value value, Value slice);
+    RewriterVar* emitGetItem(RewriterVar* value, RewriterVar* slice);
     RewriterVar* emitGetLocal(InternedString s);
-    RewriterVar* emitGetPystonIter(Value v);
-    RewriterVar* emitHasnext(Value v);
+    RewriterVar* emitGetPystonIter(RewriterVar* v);
+    RewriterVar* emitHasnext(RewriterVar* v);
     RewriterVar* emitLandingpad();
-    RewriterVar* emitNonzero(Value v);
-    RewriterVar* emitNotNonzero(Value v);
-    RewriterVar* emitRepr(Value v);
-    RewriterVar* emitRuntimeCall(Value obj, ArgPassSpec argspec, std::vector<Value, StlCompatAllocator<Value>> args,
+    RewriterVar* emitNonzero(RewriterVar* v);
+    RewriterVar* emitNotNonzero(RewriterVar* v);
+    RewriterVar* emitRepr(RewriterVar* v);
+    RewriterVar* emitRuntimeCall(RewriterVar* obj, ArgPassSpec argspec, const llvm::ArrayRef<RewriterVar*> args,
                                  std::vector<BoxedString*>* keyword_names);
-    RewriterVar* emitUnaryop(Value v, int op_type);
-    RewriterVar* emitUnpackIntoArray(Value v, uint64_t num);
-    RewriterVar* emitYield(Value v);
+    RewriterVar* emitUnaryop(RewriterVar* v, int op_type);
+    RewriterVar* emitUnpackIntoArray(RewriterVar* v, uint64_t num);
+    RewriterVar* emitYield(RewriterVar* v);
 
-    void emitExec(Value code, Value globals, Value locals, FutureFlags flags);
+    void emitExec(RewriterVar* code, RewriterVar* globals, RewriterVar* locals, FutureFlags flags);
     void emitJump(CFGBlock* b);
     void emitOSRPoint(AST_Jump* node);
-    void emitPrint(Value dest, Value var, bool nl);
+    void emitPrint(RewriterVar* dest, RewriterVar* var, bool nl);
     void emitRaise0();
-    void emitRaise3(Value arg0, Value arg1, Value arg2);
-    void emitReturn(Value v);
-    void emitSetAttr(Value obj, BoxedString* s, Value attr);
-    void emitSetBlockLocal(InternedString s, Value v);
+    void emitRaise3(RewriterVar* arg0, RewriterVar* arg1, RewriterVar* arg2);
+    void emitReturn(RewriterVar* v);
+    void emitSetAttr(RewriterVar* obj, BoxedString* s, RewriterVar* attr);
+    void emitSetBlockLocal(InternedString s, RewriterVar* v);
     void emitSetCurrentInst(AST_stmt* node);
-    void emitSetExcInfo(Value type, Value value, Value traceback);
-    void emitSetGlobal(Box* global, BoxedString* s, Value v);
-    void emitSetItemName(BoxedString* s, Value v);
-    void emitSetItem(Value target, Value slice, Value value);
-    void emitSetLocal(InternedString s, bool set_closure, Value v);
-    void emitSideExit(Value v, CFGBlock* next_block);
+    void emitSetExcInfo(RewriterVar* type, RewriterVar* value, RewriterVar* traceback);
+    void emitSetGlobal(Box* global, BoxedString* s, RewriterVar* v);
+    void emitSetItemName(BoxedString* s, RewriterVar* v);
+    void emitSetItem(RewriterVar* target, RewriterVar* slice, RewriterVar* value);
+    void emitSetLocal(InternedString s, bool set_closure, RewriterVar* v);
+    void emitSideExit(RewriterVar* v, Box* cmp_value, CFGBlock* next_block);
     void emitUncacheExcInfo();
 
     void abortCompilation();
@@ -203,7 +202,7 @@ public:
     bool finishAssembly(ICSlotInfo* picked_slot, int continue_offset) override;
 
 private:
-    RewriterVar* allocArgs(const llvm::ArrayRef<Value> args);
+    RewriterVar* allocArgs(const llvm::ArrayRef<RewriterVar*> args);
 #ifndef NDEBUG
     std::pair<uint64_t, uint64_t> asUInt(InternedString s);
 #else

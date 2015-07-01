@@ -62,6 +62,8 @@ struct Value {
     };
     RewriterVar* var;
 
+    operator RewriterVar*() { return var; }
+
     Value() : o(0), var(0) {}
     Value(bool b, RewriterVar* var) : b(b), var(var) {}
     Value(int64_t n, RewriterVar* var) : n(n), var(var) {}

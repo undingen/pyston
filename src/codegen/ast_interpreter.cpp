@@ -602,7 +602,7 @@ Value ASTInterpreter::visit_slice(AST_Slice* node) {
 }
 
 Value ASTInterpreter::visit_extslice(AST_ExtSlice* node) {
-    llvm::SmallVector<Value, 8> items;
+    llvm::SmallVector<RewriterVar*, 8> items;
 
     int num_slices = node->dims.size();
     BoxedTuple* rtn = BoxedTuple::create(num_slices);
@@ -620,7 +620,7 @@ Value ASTInterpreter::visit_branch(AST_Branch* node) {
     ASSERT(v.o == True || v.o == False, "Should have called NONZERO before this branch");
 
     if (jit)
-        jit->emitSideExit(v, v.o == True ? node->iffalse : node->iftrue);
+        jit->emitSideExit(v, v.o, v.o == True ? node->iffalse : node->iftrue);
 
     if (v.o == True)
         next_block = node->iftrue;
@@ -1322,27 +1322,35 @@ Value ASTInterpreter::visit_call(AST_Call* node) {
         func = visit_expr(node->func);
     }
 
-
-    std::vector<Value, StlCompatAllocator<Value>> argsValues;
-    for (AST_expr* e : node->args)
-        argsValues.push_back(visit_expr(e));
+    std::vector<Box*, StlCompatAllocator<Box*>> args;
+    llvm::SmallVector<RewriterVar*, 8> args_vars;
+    for (AST_expr* e : node->args) {
+        Value v = visit_expr(e);
+        args.push_back(v.o);
+        args_vars.push_back(v);
+    }
 
     std::vector<BoxedString*>* keyword_names = NULL;
     if (node->keywords.size())
         keyword_names = getKeywordNameStorage(node);
 
-    for (AST_keyword* k : node->keywords)
-        argsValues.push_back(visit_expr(k->value));
-
-    if (node->starargs)
-        argsValues.push_back(visit_expr(node->starargs));
-
-    if (node->kwargs)
-        argsValues.push_back(visit_expr(node->kwargs));
-
-    std::vector<Box*, StlCompatAllocator<Box*>> args;
-    for (Value& v : argsValues)
+    for (AST_keyword* k : node->keywords) {
+        Value v = visit_expr(k->value);
         args.push_back(v.o);
+        args_vars.push_back(v);
+    }
+
+    if (node->starargs) {
+        Value v = visit_expr(node->starargs);
+        args.push_back(v.o);
+        args_vars.push_back(v);
+    }
+
+    if (node->kwargs) {
+        Value v = visit_expr(node->kwargs);
+        args.push_back(v.o);
+        args_vars.push_back(v);
+    }
 
     ArgPassSpec argspec(node->args.size(), node->keywords.size(), node->starargs, node->kwargs);
 
@@ -1350,7 +1358,7 @@ Value ASTInterpreter::visit_call(AST_Call* node) {
         CallattrFlags callattr_flags{.cls_only = callattr_clsonly, .null_on_nonexistent = false, .argspec = argspec };
 
         if (jit)
-            v.var = jit->emitCallattr(func, attr.getBox(), callattr_flags, argsValues, keyword_names);
+            v.var = jit->emitCallattr(func, attr.getBox(), callattr_flags, args_vars, keyword_names);
 
         v.o = callattr(func.o, attr.getBox(), callattr_flags, args.size() > 0 ? args[0] : 0,
                        args.size() > 1 ? args[1] : 0, args.size() > 2 ? args[2] : 0, args.size() > 3 ? &args[3] : 0,
@@ -1360,7 +1368,7 @@ Value ASTInterpreter::visit_call(AST_Call* node) {
         Value v;
 
         if (jit)
-            v.var = jit->emitRuntimeCall(func, argspec, argsValues, keyword_names);
+            v.var = jit->emitRuntimeCall(func, argspec, args_vars, keyword_names);
 
         v.o = runtimeCall(func.o, argspec, args.size() > 0 ? args[0] : 0, args.size() > 1 ? args[1] : 0,
                           args.size() > 2 ? args[2] : 0, args.size() > 3 ? &args[3] : 0, keyword_names);
@@ -1409,8 +1417,8 @@ Value ASTInterpreter::visit_lambda(AST_Lambda* node) {
 Value ASTInterpreter::visit_dict(AST_Dict* node) {
     RELEASE_ASSERT(node->keys.size() == node->values.size(), "not implemented");
 
-    llvm::SmallVector<Value, 8> keys;
-    llvm::SmallVector<Value, 8> values;
+    llvm::SmallVector<RewriterVar*, 8> keys;
+    llvm::SmallVector<RewriterVar*, 8> values;
 
     BoxedDict* dict = new BoxedDict();
     for (size_t i = 0; i < node->keys.size(); ++i) {
@@ -1426,7 +1434,7 @@ Value ASTInterpreter::visit_dict(AST_Dict* node) {
 }
 
 Value ASTInterpreter::visit_set(AST_Set* node) {
-    llvm::SmallVector<Value, 8> items;
+    llvm::SmallVector<RewriterVar*, 8> items;
 
     BoxedSet::Set set;
     for (AST_expr* e : node->elts) {
@@ -1527,7 +1535,7 @@ Value ASTInterpreter::visit_subscript(AST_Subscript* node) {
 }
 
 Value ASTInterpreter::visit_list(AST_List* node) {
-    llvm::SmallVector<Value, 8> items;
+    llvm::SmallVector<RewriterVar*, 8> items;
 
     BoxedList* list = new BoxedList;
     list->ensure(node->elts.size());
@@ -1541,7 +1549,7 @@ Value ASTInterpreter::visit_list(AST_List* node) {
 }
 
 Value ASTInterpreter::visit_tuple(AST_Tuple* node) {
-    llvm::SmallVector<Value, 8> items;
+    llvm::SmallVector<RewriterVar*, 8> items;
 
     BoxedTuple* rtn = BoxedTuple::create(node->elts.size());
     int rtn_idx = 0;

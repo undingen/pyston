@@ -560,10 +560,6 @@ public:
         memmove(&rtn->elts[0], elts, sizeof(Box*) * nelts);
         return rtn;
     }
-    static BoxedTuple* create0() {
-        BoxedTuple* rtn = new (0) BoxedTuple(0);
-        return rtn;
-    }
     static BoxedTuple* create1(Box* elt0) {
         BoxedTuple* rtn = new (1) BoxedTuple(1);
         rtn->elts[0] = elt0;
