@@ -134,12 +134,11 @@ RewriterVar* JitFragmentWriter::emitBinop(RewriterVar* lhs, RewriterVar* rhs, in
 }
 
 RewriterVar* JitFragmentWriter::emitCallattr(RewriterVar* obj, BoxedString* attr, CallattrFlags flags,
-                                             ArgPassSpec argspec, const llvm::ArrayRef<RewriterVar*> args,
+                                             const llvm::ArrayRef<RewriterVar*> args,
                                              std::vector<BoxedString*>* keyword_names) {
     // We could make this faster but for now: keep it simple, stupid...
     RewriterVar* attr_var = imm(attr);
     RewriterVar* flags_var = imm(flags.asInt());
-    RewriterVar* argspec_var = imm(argspec.asInt());
     RewriterVar* keyword_names_var = keyword_names ? imm(keyword_names) : nullptr;
 
     RewriterVar* args_array = nullptr;
@@ -154,12 +153,11 @@ RewriterVar* JitFragmentWriter::emitCallattr(RewriterVar* obj, BoxedString* attr
     call_args.push_back(obj);
     call_args.push_back(attr_var);
     call_args.push_back(flags_var);
-    call_args.push_back(argspec_var);
 
 // #if ENABLE_BASELINEJIT_ICS
 #if 0 && ENABLE_BASELINEJIT_ICS // disable for now: there is a problem with test/extra/protobuf_test.py
     if (!keyword_names_var
-        && argspec.totalPassed() < 3) { // looks like runtime ICs with 7 or more args don't work right now..
+        && argspec.totalPassed() < 4) { // looks like runtime ICs with 7 or more args don't work right now..
         use_ic = true;
         call_args.push_back(imm(new CallattrIC));
     }
@@ -551,16 +549,16 @@ Box* JitFragmentWriter::binopICHelper(BinopIC* ic, Box* lhs, Box* rhs, int op) {
 }
 
 #if ENABLE_BASELINEJIT_ICS
-Box* JitFragmentWriter::callattrHelperIC(Box* obj, BoxedString* attr, CallattrFlags flags, ArgPassSpec argspec,
-                                         CallattrIC* ic, Box** args) {
-    auto arg_tuple = getTupleFromArgsArray(&args[0], argspec.totalPassed());
-    return ic->call(obj, attr, flags, argspec, std::get<0>(arg_tuple), std::get<1>(arg_tuple));
+Box* JitFragmentWriter::callattrHelperIC(Box* obj, BoxedString* attr, CallattrFlags flags, CallattrIC* ic, Box** args) {
+    auto arg_tuple = getTupleFromArgsArray(&args[0], flags.argspec.totalPassed());
+    return ic->call(obj, attr, flags, std::get<0>(arg_tuple), std::get<1>(arg_tuple), std::get<2>(arg_tuple), NULL,
+                    NULL);
 }
 #endif
-Box* JitFragmentWriter::callattrHelper(Box* obj, BoxedString* attr, CallattrFlags flags, ArgPassSpec argspec,
-                                       Box** args, std::vector<BoxedString*>* keyword_names) {
-    auto arg_tuple = getTupleFromArgsArray(&args[0], argspec.totalPassed());
-    Box* r = callattr(obj, attr, flags, argspec, std::get<0>(arg_tuple), std::get<1>(arg_tuple), std::get<2>(arg_tuple),
+Box* JitFragmentWriter::callattrHelper(Box* obj, BoxedString* attr, CallattrFlags flags, Box** args,
+                                       std::vector<BoxedString*>* keyword_names) {
+    auto arg_tuple = getTupleFromArgsArray(&args[0], flags.argspec.totalPassed());
+    Box* r = callattr(obj, attr, flags, std::get<0>(arg_tuple), std::get<1>(arg_tuple), std::get<2>(arg_tuple),
                       std::get<3>(arg_tuple), keyword_names);
     assert(gc::isValidGCObject(r));
     return r;

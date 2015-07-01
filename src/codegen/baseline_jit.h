@@ -151,7 +151,7 @@ public:
 
     RewriterVar* emitAugbinop(RewriterVar* lhs, RewriterVar* rhs, int op_type);
     RewriterVar* emitBinop(RewriterVar* lhs, RewriterVar* rhs, int op_type);
-    RewriterVar* emitCallattr(RewriterVar* obj, BoxedString* attr, CallattrFlags flags, ArgPassSpec argspec,
+    RewriterVar* emitCallattr(RewriterVar* obj, BoxedString* attr, CallattrFlags flags,
                               const llvm::ArrayRef<RewriterVar*> args, std::vector<BoxedString*>* keyword_names);
     RewriterVar* emitCompare(RewriterVar* lhs, RewriterVar* rhs, int op_type);
     RewriterVar* emitCreateDict(const llvm::ArrayRef<RewriterVar*> keys, const llvm::ArrayRef<RewriterVar*> values);
@@ -215,7 +215,7 @@ private:
 
     static Box* augbinopICHelper(AugBinopIC* ic, Box* lhs, Box* rhs, int op);
     static Box* binopICHelper(BinopIC* ic, Box* lhs, Box* rhs, int op);
-    static Box* callattrHelper(Box* obj, BoxedString* attr, CallattrFlags flags, ArgPassSpec argspec, Box** args,
+    static Box* callattrHelper(Box* obj, BoxedString* attr, CallattrFlags flags, Box** args,
                                std::vector<BoxedString*>* keyword_names);
     static Box* compareICHelper(CompareIC* ic, Box* lhs, Box* rhs, int op);
     static Box* createDictHelper(uint64_t num, Box** keys, Box** values);
@@ -236,8 +236,7 @@ private:
     static Box* unaryopICHelper(UnaryopIC* ic, Box* obj, int op);
 
 #if ENABLE_BASELINEJIT_ICS
-    static Box* callattrHelperIC(Box* obj, BoxedString* attr, CallattrFlags flags, ArgPassSpec argspec, CallattrIC* ic,
-                                 Box** args);
+    static Box* callattrHelperIC(Box* obj, BoxedString* attr, CallattrFlags flags, CallattrIC* ic, Box** args);
     static Box* runtimeCallHelperIC(Box* obj, ArgPassSpec argspec, RuntimeCallIC* ic, Box** args);
 #endif
 
