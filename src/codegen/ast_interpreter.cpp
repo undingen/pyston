@@ -467,12 +467,16 @@ Value ASTInterpreter::executeInner(ASTInterpreter& interpreter, CFGBlock* start_
                     interpreter.next_block = ((AST_Invoke*)stmt)->exc_dest;
                     interpreter.last_exception = e;
                 }
-                interpreter.next_block = interpreter.skipDirectJump(interpreter.next_block);
                 continue;
             }
         }
 
         if (ENABLE_BASELINEJIT && should_jit && !interpreter.jit) {
+            auto n = interpreter.skipDirectJump(interpreter.current_block);
+            if (n != interpreter.current_block) {
+                interpreter.next_block = n;
+                continue;
+            }
             assert(!interpreter.current_block->code);
             interpreter.startJITing(interpreter.current_block);
         }
@@ -646,9 +650,8 @@ Value ASTInterpreter::visit_branch(AST_Branch* node) {
     else
         next_block = node->iffalse;
 
-    next_block = skipDirectJump(next_block);
-
     if (jit) {
+        next_block = skipDirectJump(next_block);
         jit->emitJump(next_block);
         finishJITing(next_block);
     }
@@ -674,17 +677,20 @@ Value ASTInterpreter::visit_jump(AST_Jump* node) {
             return Value(rtn, NULL);
     }
 
-    next_block = skipDirectJump(node->target);
+    next_block = node->target;
 
     if (jit) {
+        next_block = skipDirectJump(next_block);
         if (backedge)
             jit->emitOSRPoint(node);
         jit->emitJump(next_block);
         finishJITing(next_block);
     }
 
-    if (ENABLE_BASELINEJIT && backedge && edgecount == OSR_THRESHOLD_INTERPRETER && !jit && !next_block->code)
+    if (ENABLE_BASELINEJIT && backedge && edgecount == OSR_THRESHOLD_INTERPRETER && !jit && !next_block->code) {
+        next_block = skipDirectJump(next_block);
         startJITing(next_block);
+    }
 
     return Value();
 }
@@ -812,9 +818,10 @@ Value ASTInterpreter::visit_invoke(AST_Invoke* node) {
     Value v;
     try {
         v = visit_stmt(node->stmt);
-        next_block = skipDirectJump(node->normal_dest);
+        next_block = node->normal_dest;
 
         if (jit) {
+            next_block = skipDirectJump(next_block);
             jit->emitJump(next_block);
             finishJITing(next_block);
         }
@@ -824,7 +831,7 @@ Value ASTInterpreter::visit_invoke(AST_Invoke* node) {
         auto source = getCF()->clfunc->source.get();
         exceptionCaughtInInterpreter(LineInfo(node->lineno, node->col_offset, source->fn, source->getName()), &e);
 
-        next_block = skipDirectJump(node->exc_dest);
+        next_block = node->exc_dest;
         last_exception = e;
     }
 
