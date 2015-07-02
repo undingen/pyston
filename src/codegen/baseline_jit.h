@@ -135,7 +135,6 @@ class JitCodeBlock {
 private:
     static constexpr int scratch_size = 256;
     static constexpr int code_size = 4096 * 2;
-    static constexpr int epilog_size = 2; // size of [leave, ret] in bytes
 
     EHFrameManager frame_manager;
     std::unique_ptr<uint8_t[]> code;
@@ -156,9 +155,10 @@ public:
 
 class JitFragmentWriter : public Rewriter {
 private:
+    static constexpr int jump_size = 5;
+
     CFGBlock* block;
     int code_offset;            // offset inside the JitCodeBlock to the start of this block
-    int epilog_offset;          // offset inside the JitCodeBlock to the epilog
     int num_bytes_overlapping;  // num of bytes this block overlaps with the prev. used to patch unessary forward jumps
     int num_bytes_forward_jump; // number of bytes emited for the last forward jump to the next block. This is used to
                                 // patch unessary forward jumps when the next fragment is emited (it becomes
@@ -168,11 +168,11 @@ private:
     RewriterVar* interp;
     llvm::DenseMap<InternedString, RewriterVar*> local_syms;
     std::unique_ptr<ICInfo> ic_info;
+    std::pair<CFGBlock*, int> patch_offset;
 
 public:
     JitFragmentWriter(CFGBlock* block, std::unique_ptr<ICInfo> ic_info, std::unique_ptr<ICSlotRewrite> rewrite,
-                      int code_offset, int epilog_offset, int num_bytes_overlapping, void* entry_code,
-                      JitCodeBlock& code_block);
+                      int code_offset, int num_bytes_overlapping, void* entry_code, JitCodeBlock& code_block);
 
     RewriterVar* imm(uint64_t val);
     RewriterVar* imm(void* val);

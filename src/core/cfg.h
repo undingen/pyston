@@ -49,6 +49,7 @@ public:
     void* code;
     // contains the address of the entry function
     std::pair<CFGBlock*, Box*>(*entry_code)(void* interpeter, CFGBlock* block);
+    std::vector<void*> jump_patch;
 
     std::vector<AST_stmt*> body;
     std::vector<CFGBlock*> predecessors, successors;
