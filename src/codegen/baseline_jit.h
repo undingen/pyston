@@ -241,6 +241,7 @@ private:
     uint64_t asUInt(InternedString s);
 #endif
     RewriterVar* getInterp();
+    CFGBlock* skipDirectJump(CFGBlock* block);
 
     static Box* augbinopICHelper(AugBinopIC* ic, Box* lhs, Box* rhs, int op);
     static Box* binopICHelper(BinopIC* ic, Box* lhs, Box* rhs, int op);
