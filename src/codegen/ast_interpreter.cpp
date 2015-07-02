@@ -390,6 +390,9 @@ CFGBlock* ASTInterpreter::skipDirectJump(CFGBlock* block) {
     if (backedge)
         return block;
 
+    static StatCounter num_skiped_blocks("num_baselinejit_skipped_blocks");
+    num_skiped_blocks.log();
+
     // we could end up with an infite loop if there's a cycle...
     return skipDirectJump(target);
 }
@@ -407,7 +410,7 @@ Value ASTInterpreter::executeInner(ASTInterpreter& interpreter, CFGBlock* start_
 
     assert((start_block == NULL) == (start_at == NULL));
     if (start_block == NULL) {
-        start_block = interpreter.skipDirectJump(interpreter.source_info->cfg->getStartingBlock());
+        start_block = interpreter.source_info->cfg->getStartingBlock();
         start_at = start_block->body[0];
 
         if (ENABLE_BASELINEJIT && interpreter.compiled_func->times_called >= REOPT_THRESHOLD_INTERPRETER
@@ -434,9 +437,10 @@ Value ASTInterpreter::executeInner(ASTInterpreter& interpreter, CFGBlock* start_
             v = interpreter.visit_stmt(s);
         }
     } else {
-        start_block = interpreter.skipDirectJump(start_block);
-        if (should_jit)
+        if (should_jit) {
+            start_block = interpreter.skipDirectJump(start_block);
             interpreter.startJITing(start_block);
+        }
         interpreter.next_block = start_block;
     }
 
@@ -472,11 +476,6 @@ Value ASTInterpreter::executeInner(ASTInterpreter& interpreter, CFGBlock* start_
         }
 
         if (ENABLE_BASELINEJIT && should_jit && !interpreter.jit) {
-            auto n = interpreter.skipDirectJump(interpreter.current_block);
-            if (n != interpreter.current_block) {
-                interpreter.next_block = n;
-                continue;
-            }
             assert(!interpreter.current_block->code);
             interpreter.startJITing(interpreter.current_block);
         }
