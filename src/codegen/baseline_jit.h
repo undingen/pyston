@@ -15,6 +15,7 @@
 #ifndef PYSTON_CODEGEN_BASELINEJIT_H
 #define PYSTON_CODEGEN_BASELINEJIT_H
 
+#include <memory>
 #include <llvm/ADT/ArrayRef.h>
 
 #include "asm_writing/rewriter.h"
@@ -131,8 +132,8 @@ class JitFragmentWriter;
 //
 class JitCodeBlock {
 private:
-    static constexpr int scratch_size = 256;
-    static constexpr int code_size = 4096 * 2;
+    static constexpr int scratch_size = 256 * 2;
+    static constexpr int code_size = 4096 * 4;
 
     EHFrameManager frame_manager;
     std::unique_ptr<uint8_t[]> code;
@@ -150,7 +151,406 @@ public:
     void fragmentFinished(int bytes_witten, int num_bytes_overlapping, void* next_fragment_start);
 };
 
-class JitFragmentWriter : public Rewriter {
+struct JitVar;
+typedef std::shared_ptr<JitVar> JitVarPtr;
+
+template <class T> class JitLocMap {
+private:
+    static const int N_REGS = assembler::Register::numRegs();
+    static const int N_XMM = assembler::XMMRegister::numRegs();
+    static const int N_SCRATCH = 32 * 2;
+    static const int N_STACK = 16;
+
+    T map_reg[N_REGS];
+    T map_xmm[N_XMM];
+    T map_scratch[N_SCRATCH];
+    T map_stack[N_STACK];
+
+public:
+    JitLocMap() {
+        memset(map_reg, 0, sizeof(map_reg));
+        memset(map_xmm, 0, sizeof(map_xmm));
+        memset(map_scratch, 0, sizeof(map_scratch));
+        memset(map_stack, 0, sizeof(map_stack));
+    }
+
+    T& operator[](Location l) {
+        switch (l.type) {
+            case Location::Register:
+                assert(0 <= l.regnum);
+                assert(l.regnum < N_REGS);
+                return map_reg[l.regnum];
+            case Location::XMMRegister:
+                assert(0 <= l.regnum);
+                assert(l.regnum < N_XMM);
+                return map_xmm[l.regnum];
+            case Location::Stack:
+                assert(0 <= l.stack_offset / 8);
+                assert(l.stack_offset / 8 < N_STACK);
+                return map_stack[l.stack_offset / 8];
+            case Location::Scratch:
+                assert(0 <= l.scratch_offset / 8);
+                assert(l.scratch_offset / 8 < N_SCRATCH);
+                return map_scratch[l.scratch_offset / 8];
+            default:
+                RELEASE_ASSERT(0, "%d", l.type);
+        }
+    };
+
+    const T& operator[](Location l) const { return const_cast<T&>(*this)[l]; };
+
+    size_t count(Location l) {
+        if ((*this)[l].lock())
+            return 1;
+        return 0;
+    }
+
+    void erase(Location l) { (*this)[l].reset(); }
+};
+
+struct JitVar {
+    assembler::Register reg_value;
+    uint64_t const_value;
+    int stack_offset;
+
+    bool is_constant;
+    bool is_in_reg;
+    bool is_in_mem;
+
+
+    static JitVarPtr createFromConst(uint64_t val) { return std::make_shared<JitVar>(val); }
+
+    static JitVarPtr createFromReg(assembler::Register reg) { return std::make_shared<JitVar>(reg); }
+
+    static JitVarPtr createFromStack(int stack_offset) {
+        JitVarPtr var = std::make_shared<JitVar>(0);
+        var->is_constant = false;
+        var->is_in_reg = false;
+        var->is_in_mem = true;
+        var->stack_offset = stack_offset;
+        return var;
+    }
+
+
+
+    JitVar(uint64_t v) : reg_value(0), const_value(v), is_constant(true), is_in_reg(false), is_in_mem(false) {}
+    JitVar(assembler::Register reg)
+        : reg_value(reg), const_value(0), is_constant(false), is_in_reg(true), is_in_mem(false) {}
+};
+
+
+class JitWriter {
+public:
+    JitWriter(assembler::Assembler* assembler, int scratch_size, int scratch_offset, void* slot_start)
+        : assembler(assembler),
+          scratch_size(scratch_size),
+          scratch_offset(scratch_offset),
+          slot_start(slot_start),
+          failed(false) {}
+
+    assembler::Assembler* assembler;
+    JitLocMap<std::weak_ptr<JitVar>> locations;
+
+    int scratch_size;
+    int scratch_offset;
+    void* slot_start;
+    bool failed;
+
+    assembler::Register getFreeReg() {
+        static const assembler::Register allocatable_regs[] = {
+            assembler::RAX, assembler::RCX, assembler::RDX, assembler::RDI, assembler::RSI,
+            assembler::R8,  assembler::R9,  assembler::R10, assembler::R11,
+        };
+
+        for (auto&& reg : allocatable_regs) {
+            Location l = reg;
+            if (!locations.count(l))
+                return reg;
+        }
+
+        assembler::Register reg = assembler::RSI;
+        spill(locations[reg].lock());
+        return reg;
+    }
+
+    assembler::Register getFreeReg(assembler::Register avoid_reg) {
+        static const assembler::Register allocatable_regs[] = {
+            assembler::RAX, assembler::RCX, assembler::RDX, assembler::RDI, assembler::RSI,
+            assembler::R8,  assembler::R9,  assembler::R10, assembler::R11,
+        };
+
+        for (auto&& reg : allocatable_regs) {
+            if (reg == avoid_reg)
+                continue;
+            Location l = reg;
+            if (!locations.count(l))
+                return reg;
+        }
+
+        assembler::Register reg = avoid_reg == assembler::RSI ? assembler::RDI : assembler::RSI;
+        spill(locations[reg].lock());
+        return reg;
+    }
+
+    assembler::Register getInReg(JitVarPtr var, Location loc = Location::any()) {
+        if (loc == Location::any()) {
+            if (var->is_in_reg)
+                return var->reg_value;
+
+            loc = getFreeReg();
+        } else {
+            if (var->is_in_reg && var->reg_value == loc.asRegister())
+                return var->reg_value;
+
+            if (locations.count(loc))
+                spill(locations[loc].lock());
+        }
+
+        if (var->is_in_reg) {
+            if (var->reg_value != loc.asRegister()) {
+                assembler->mov(var->reg_value, loc.asRegister());
+                locations[var->reg_value].reset();
+                var->reg_value = loc.asRegister();
+            }
+
+            locations[loc] = var;
+            return loc.asRegister();
+        }
+        if (var->is_constant) {
+            assembler->mov(assembler::Immediate(var->const_value), loc.asRegister());
+            var->is_in_reg = true;
+            var->reg_value = loc.asRegister();
+            locations[loc] = var;
+            return loc.asRegister();
+        }
+        if (var->is_in_mem) {
+            assembler->mov(assembler::Indirect(assembler::RSP, var->stack_offset), loc.asRegister());
+            var->is_in_reg = true;
+            var->reg_value = loc.asRegister();
+            locations[loc] = var;
+            return loc.asRegister();
+        }
+        printf("f: %p\n", var.get());
+        fflush(stdout);
+        RELEASE_ASSERT(0, "");
+    }
+
+    assembler::Register getInReg(JitVarPtr var, Location loc, assembler::Register avoid_reg) {
+        assert(loc == Location::any() || loc.asRegister() != avoid_reg);
+        if (loc == Location::any()) {
+            if (var->is_in_reg && avoid_reg != var->reg_value)
+                return var->reg_value;
+
+            loc = getFreeReg(avoid_reg);
+        } else {
+            if (var->is_in_reg && var->reg_value == loc.asRegister())
+                return var->reg_value;
+
+            if (locations.count(loc))
+                spill(locations[loc].lock());
+        }
+        if (var->is_in_reg) {
+            if (var->reg_value != loc.asRegister()) {
+                assembler->mov(var->reg_value, loc.asRegister());
+                locations[var->reg_value].reset();
+                var->reg_value = loc.asRegister();
+            }
+            locations[loc] = var;
+            return loc.asRegister();
+        }
+        if (var->is_constant) {
+            assembler->mov(assembler::Immediate(var->const_value), loc.asRegister());
+            var->is_in_reg = true;
+            var->reg_value = loc.asRegister();
+            locations[loc] = var;
+            return loc.asRegister();
+        }
+        if (var->is_in_mem) {
+            assembler->mov(assembler::Indirect(assembler::RSP, var->stack_offset), loc.asRegister());
+            var->is_in_reg = true;
+            var->reg_value = loc.asRegister();
+            locations[loc] = var;
+            return loc.asRegister();
+        }
+        printf("f: %p\n", var.get());
+        fflush(stdout);
+        RELEASE_ASSERT(0, "");
+    }
+
+    Location allocScratch() {
+        for (int i = 0; i < scratch_size; i += 8) {
+            Location l(Location::Scratch, i);
+            if (locations.count(l) == 0) {
+                return l;
+            }
+        }
+        RELEASE_ASSERT(0, "");
+        failed = true;
+        return Location(Location::None, 0);
+    }
+
+    JitVarPtr allocate(int num) {
+        assert(num >= 1);
+        int consec = 0;
+        for (int i = 0; i < scratch_size; i += 8) {
+            Location l(Location::Scratch, i);
+            if (locations.count(l) == 0) {
+                consec++;
+                if (consec == num) {
+                    int a = i / 8 - num + 1;
+                    int b = i / 8;
+                    // Put placeholders in so the array space doesn't get re-allocated.
+                    // This won't get collected, but that's fine.
+                    // Note: make sure to do this marking before the initializeInReg call
+                    /*
+                    for (int j = a; j <= b; j++) {
+                        Location m(Location::Scratch, j * 8);
+                        assert(locations.count(m) == 0);
+                        //locations[m] = (JitVarPtr)0x1;
+                        //locations[m] = JitVarPtr((JitVar*)0x1);
+                    }*/
+
+                    assembler::Register r = getFreeReg();
+                    // TODO we could do something like we do for constants and only load
+                    // this when necessary, so it won't spill. Is that worth?
+                    assembler->lea(assembler::Indirect(assembler::RSP, 8 * a + scratch_offset), r);
+                    auto val = JitVar::createFromReg(r);
+                    locations[r] = val;
+
+                    for (int j = a; j <= b; j++) {
+                        Location m(Location::Scratch, j * 8);
+                        assert(locations.count(m) == 0);
+                        locations[m] = val;
+                    }
+
+                    return val;
+                }
+            } else {
+                consec = 0;
+            }
+        }
+        failed = true;
+        return NULL;
+    }
+
+    void spill(JitVarPtr var) {
+        if (var->is_in_mem || var->is_constant) {
+            if (var->is_in_reg) {
+                var->is_in_reg = false;
+                locations[var->reg_value].reset();
+            }
+            return;
+        }
+        Location l = allocScratch();
+
+        RELEASE_ASSERT(var->is_in_reg, "");
+        assembler->mov(var->reg_value, assembler::Indirect(assembler::RSP, l.scratch_offset + scratch_offset));
+        locations[l] = var;
+        var->is_in_mem = true;
+        var->stack_offset = l.scratch_offset + scratch_offset;
+        var->is_in_reg = false;
+        locations[var->reg_value].reset();
+    }
+
+
+
+    void voidCall(void* func, llvm::ArrayRef<JitVarPtr> args) {
+        static const assembler::Register allocatable_regs[] = {
+            assembler::RAX, assembler::RCX, assembler::RDX, assembler::RDI, assembler::RSI,
+            assembler::R8,  assembler::R9,  assembler::R10, assembler::R11,
+        };
+
+        std::unordered_set<int> already_inplace_reg;
+        /*
+                for (int arg_num = 0; arg_num < args.size(); ++arg_num) {
+                    JitVarPtr arg = args[arg_num];
+                    if (arg->is_in_reg) {
+                        auto loc = Location::forArg(arg_num);
+                        getInReg(args[arg_num], loc);
+                        already_inplace_reg.insert(loc.asRegister().regnum);
+                    }
+                }
+        */
+        for (auto&& reg : allocatable_regs) {
+            Location l = reg;
+            if (locations.count(l) && !already_inplace_reg.count(reg.regnum)) {
+                spill(locations[l].lock());
+            }
+        }
+
+        for (int arg_num = 0; arg_num < args.size(); ++arg_num) {
+            Location loc = Location::forArg(arg_num);
+            assert(loc.type == Location::Register);
+            getInReg(args[arg_num], loc);
+        }
+        /*
+                for (int arg_num = 0; arg_num < args.size(); ++arg_num) {
+                    Location loc = Location::forArg(arg_num);
+                    assert(loc.type == Location::Register);
+                    getInReg(args[arg_num], loc);
+                }
+        */
+        uint64_t asm_address = (uint64_t)assembler->curInstPointer() + 5;
+        uint64_t real_asm_address = asm_address + (uint64_t)slot_start - (uint64_t)assembler->startAddr();
+        int64_t offset = (int64_t)((uint64_t)func - real_asm_address);
+
+        if (isLargeConstant(offset)) {
+            assembler->mov(assembler::Immediate(func), assembler::R11);
+            assembler->callq(assembler::R11);
+        } else {
+            assembler->call(assembler::Immediate(offset));
+        }
+
+        for (auto&& reg : allocatable_regs) {
+            Location l = reg;
+            if (locations.count(l)) {
+                auto var = locations[l].lock();
+                // assert(var->is_in_reg);
+                var->is_in_reg = false;
+                locations[l].reset();
+            }
+        }
+    }
+
+    JitVarPtr call(void* func, llvm::ArrayRef<JitVarPtr> args) {
+        voidCall(func, args);
+        auto rtn = JitVar::createFromReg(assembler::RAX);
+        locations[assembler::RAX] = rtn;
+        return rtn;
+    }
+
+    void setAttr(JitVarPtr var, int offset, JitVarPtr value) {
+        assembler::Register reg = getInReg(var);
+        if (value->is_in_reg)
+            assembler->mov(value->reg_value, assembler::Indirect(reg, offset));
+        else if (value->is_constant) {
+            if ((uint32_t)value->const_value == value->const_value) {
+                assembler->movq(assembler::Immediate(value->const_value), assembler::Indirect(reg, offset));
+            } else {
+                assembler::Register reg_tmp = getInReg(value, Location::any(), reg);
+                assembler->mov(reg_tmp, assembler::Indirect(reg, offset));
+            }
+        } else if (value->is_in_mem || value->is_constant) {
+            assembler::Register reg_tmp = getInReg(value, Location::any(), reg);
+            assembler->mov(reg_tmp, assembler::Indirect(reg, offset));
+        } else
+            RELEASE_ASSERT(0, "");
+    }
+
+    JitVarPtr getAttr(JitVarPtr var, int offset) {
+        assembler::Register reg = getInReg(var);
+        assembler::Register reg_dst = getFreeReg(reg);
+        assembler->mov(assembler::Indirect(reg, offset), reg_dst);
+        auto rtn = JitVar::createFromReg(reg_dst);
+        locations[reg_dst] = rtn;
+        return rtn;
+    }
+
+    static bool isLargeConstant(int64_t val) { return (val < (-1L << 31) || val >= (1L << 31) - 1); }
+};
+
+
+class JitFragmentWriter : public ICSlotRewrite::CommitHook {
 private:
     static constexpr int min_patch_size = 13;
 
@@ -168,8 +568,8 @@ private:
 
     void* entry_code; // JitCodeBlock start address. Must have an offset of 0 into the code block
     JitCodeBlock& code_block;
-    RewriterVar* interp;
-    llvm::DenseMap<InternedString, RewriterVar*> local_syms;
+    JitVarPtr interp;
+    llvm::DenseMap<InternedString, JitVarPtr> local_syms;
     std::unique_ptr<ICInfo> ic_info;
 
     // Optional points to a CFGBlock and a patch location which should get patched to a direct jump if
@@ -178,62 +578,66 @@ private:
     // it in this field and process it only when we know we successfully generated the code.
     std::pair<CFGBlock*, int /* offset from fragment start*/> side_exit_patch_location;
 
+    JitWriter writer;
+    assembler::Assembler* assembler;
+    std::unique_ptr<ICSlotRewrite> rewrite;
+
 public:
     JitFragmentWriter(CFGBlock* block, std::unique_ptr<ICInfo> ic_info, std::unique_ptr<ICSlotRewrite> rewrite,
                       int code_offset, int num_bytes_overlapping, void* entry_code, JitCodeBlock& code_block);
 
-    RewriterVar* imm(uint64_t val);
-    RewriterVar* imm(void* val);
+    JitVarPtr imm(uint64_t val);
+    JitVarPtr imm(void* val);
 
 
-    RewriterVar* emitAugbinop(RewriterVar* lhs, RewriterVar* rhs, int op_type);
-    RewriterVar* emitBinop(RewriterVar* lhs, RewriterVar* rhs, int op_type);
-    RewriterVar* emitCallattr(RewriterVar* obj, BoxedString* attr, CallattrFlags flags,
-                              const llvm::ArrayRef<RewriterVar*> args, std::vector<BoxedString*>* keyword_names);
-    RewriterVar* emitCompare(RewriterVar* lhs, RewriterVar* rhs, int op_type);
-    RewriterVar* emitCreateDict(const llvm::ArrayRef<RewriterVar*> keys, const llvm::ArrayRef<RewriterVar*> values);
-    RewriterVar* emitCreateList(const llvm::ArrayRef<RewriterVar*> values);
-    RewriterVar* emitCreateSet(const llvm::ArrayRef<RewriterVar*> values);
-    RewriterVar* emitCreateSlice(RewriterVar* start, RewriterVar* stop, RewriterVar* step);
-    RewriterVar* emitCreateTuple(const llvm::ArrayRef<RewriterVar*> values);
-    RewriterVar* emitDeref(InternedString s);
-    RewriterVar* emitExceptionMatches(RewriterVar* v, RewriterVar* cls);
-    RewriterVar* emitGetAttr(RewriterVar* obj, BoxedString* s);
-    RewriterVar* emitGetBlockLocal(InternedString s);
-    RewriterVar* emitGetBoxedLocal(BoxedString* s);
-    RewriterVar* emitGetBoxedLocals();
-    RewriterVar* emitGetClsAttr(RewriterVar* obj, BoxedString* s);
-    RewriterVar* emitGetGlobal(Box* global, BoxedString* s);
-    RewriterVar* emitGetItem(RewriterVar* value, RewriterVar* slice);
-    RewriterVar* emitGetLocal(InternedString s);
-    RewriterVar* emitGetPystonIter(RewriterVar* v);
-    RewriterVar* emitHasnext(RewriterVar* v);
-    RewriterVar* emitLandingpad();
-    RewriterVar* emitNonzero(RewriterVar* v);
-    RewriterVar* emitNotNonzero(RewriterVar* v);
-    RewriterVar* emitRepr(RewriterVar* v);
-    RewriterVar* emitRuntimeCall(RewriterVar* obj, ArgPassSpec argspec, const llvm::ArrayRef<RewriterVar*> args,
-                                 std::vector<BoxedString*>* keyword_names);
-    RewriterVar* emitUnaryop(RewriterVar* v, int op_type);
-    RewriterVar* emitUnpackIntoArray(RewriterVar* v, uint64_t num);
-    RewriterVar* emitYield(RewriterVar* v);
+    JitVarPtr emitAugbinop(JitVarPtr lhs, JitVarPtr rhs, int op_type);
+    JitVarPtr emitBinop(JitVarPtr lhs, JitVarPtr rhs, int op_type);
+    JitVarPtr emitCallattr(JitVarPtr obj, BoxedString* attr, CallattrFlags flags, const llvm::ArrayRef<JitVarPtr> args,
+                           std::vector<BoxedString*>* keyword_names);
+    JitVarPtr emitCompare(JitVarPtr lhs, JitVarPtr rhs, int op_type);
+    JitVarPtr emitCreateDict(const llvm::ArrayRef<JitVarPtr> keys, const llvm::ArrayRef<JitVarPtr> values);
+    JitVarPtr emitCreateList(const llvm::ArrayRef<JitVarPtr> values);
+    JitVarPtr emitCreateSet(const llvm::ArrayRef<JitVarPtr> values);
+    JitVarPtr emitCreateSlice(JitVarPtr start, JitVarPtr stop, JitVarPtr step);
+    JitVarPtr emitCreateTuple(const llvm::ArrayRef<JitVarPtr> values);
+    JitVarPtr emitDeref(InternedString s);
+    JitVarPtr emitExceptionMatches(JitVarPtr v, JitVarPtr cls);
+    JitVarPtr emitGetAttr(JitVarPtr obj, BoxedString* s);
+    JitVarPtr emitGetBlockLocal(InternedString s);
+    JitVarPtr emitGetBoxedLocal(BoxedString* s);
+    JitVarPtr emitGetBoxedLocals();
+    JitVarPtr emitGetClsAttr(JitVarPtr obj, BoxedString* s);
+    JitVarPtr emitGetGlobal(Box* global, BoxedString* s);
+    JitVarPtr emitGetItem(JitVarPtr value, JitVarPtr slice);
+    JitVarPtr emitGetLocal(InternedString s);
+    JitVarPtr emitGetPystonIter(JitVarPtr v);
+    JitVarPtr emitHasnext(JitVarPtr v);
+    JitVarPtr emitLandingpad();
+    JitVarPtr emitNonzero(JitVarPtr v);
+    JitVarPtr emitNotNonzero(JitVarPtr v);
+    JitVarPtr emitRepr(JitVarPtr v);
+    JitVarPtr emitRuntimeCall(JitVarPtr obj, ArgPassSpec argspec, const llvm::ArrayRef<JitVarPtr> args,
+                              std::vector<BoxedString*>* keyword_names);
+    JitVarPtr emitUnaryop(JitVarPtr v, int op_type);
+    JitVarPtr emitUnpackIntoArray(JitVarPtr v, uint64_t num);
+    JitVarPtr emitYield(JitVarPtr v);
 
-    void emitExec(RewriterVar* code, RewriterVar* globals, RewriterVar* locals, FutureFlags flags);
+    void emitExec(JitVarPtr code, JitVarPtr globals, JitVarPtr locals, FutureFlags flags);
     void emitJump(CFGBlock* b);
     void emitOSRPoint(AST_Jump* node);
-    void emitPrint(RewriterVar* dest, RewriterVar* var, bool nl);
+    void emitPrint(JitVarPtr dest, JitVarPtr var, bool nl);
     void emitRaise0();
-    void emitRaise3(RewriterVar* arg0, RewriterVar* arg1, RewriterVar* arg2);
-    void emitReturn(RewriterVar* v);
-    void emitSetAttr(RewriterVar* obj, BoxedString* s, RewriterVar* attr);
-    void emitSetBlockLocal(InternedString s, RewriterVar* v);
+    void emitRaise3(JitVarPtr arg0, JitVarPtr arg1, JitVarPtr arg2);
+    void emitReturn(JitVarPtr v);
+    void emitSetAttr(JitVarPtr obj, BoxedString* s, JitVarPtr attr);
+    void emitSetBlockLocal(InternedString s, JitVarPtr v);
     void emitSetCurrentInst(AST_stmt* node);
-    void emitSetExcInfo(RewriterVar* type, RewriterVar* value, RewriterVar* traceback);
-    void emitSetGlobal(Box* global, BoxedString* s, RewriterVar* v);
-    void emitSetItemName(BoxedString* s, RewriterVar* v);
-    void emitSetItem(RewriterVar* target, RewriterVar* slice, RewriterVar* value);
-    void emitSetLocal(InternedString s, bool set_closure, RewriterVar* v);
-    void emitSideExit(RewriterVar* v, Box* cmp_value, CFGBlock* next_block);
+    void emitSetExcInfo(JitVarPtr type, JitVarPtr value, JitVarPtr traceback);
+    void emitSetGlobal(Box* global, BoxedString* s, JitVarPtr v);
+    void emitSetItemName(BoxedString* s, JitVarPtr v);
+    void emitSetItem(JitVarPtr target, JitVarPtr slice, JitVarPtr value);
+    void emitSetLocal(InternedString s, bool set_closure, JitVarPtr v);
+    void emitSideExit(JitVarPtr v, Box* cmp_value, CFGBlock* next_block);
     void emitUncacheExcInfo();
 
     void abortCompilation();
@@ -241,14 +645,22 @@ public:
 
     bool finishAssembly(int continue_offset) override;
 
+    JitVarPtr getAttr(JitVarPtr var, int offset) { return writer.getAttr(var, offset); }
+    JitVarPtr call(void* func, llvm::ArrayRef<JitVarPtr> args = std::vector<JitVarPtr>()) {
+        return writer.call(func, args);
+    }
+    void voidCall(void* func, llvm::ArrayRef<JitVarPtr> args = std::vector<JitVarPtr>()) {
+        return writer.voidCall(func, args);
+    }
+
 private:
-    RewriterVar* allocArgs(const llvm::ArrayRef<RewriterVar*> args);
+    JitVarPtr allocArgs(const llvm::ArrayRef<JitVarPtr> args);
 #ifndef NDEBUG
     std::pair<uint64_t, uint64_t> asUInt(InternedString s);
 #else
     uint64_t asUInt(InternedString s);
 #endif
-    RewriterVar* getInterp();
+    JitVarPtr getInterp();
 
     static Box* augbinopICHelper(AugBinopIC* ic, Box* lhs, Box* rhs, int op);
     static Box* binopICHelper(BinopIC* ic, Box* lhs, Box* rhs, int op);
@@ -277,10 +689,11 @@ private:
     static Box* runtimeCallHelperIC(Box* obj, ArgPassSpec argspec, RuntimeCallIC* ic, Box** args);
 #endif
 
-    void _emitJump(CFGBlock* b, RewriterVar* block_next, int& size_of_exit_to_interp);
-    void _emitOSRPoint(RewriterVar* result, RewriterVar* node_var);
-    void _emitReturn(RewriterVar* v);
-    void _emitSideExit(RewriterVar* var, RewriterVar* val_constant, CFGBlock* next_block, RewriterVar* false_path);
+    void _emitJump(CFGBlock* b, JitVarPtr block_next, int& size_of_exit_to_interp);
+
+
+
+    static bool isLargeConstant(int64_t val) { return (val < (-1L << 31) || val >= (1L << 31) - 1); }
 };
 }
 

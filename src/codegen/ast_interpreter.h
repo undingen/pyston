@@ -53,6 +53,7 @@ struct ASTInterpreterJitInterface {
 };
 
 class RewriterVar;
+class JitVar;
 struct Value {
     union {
         bool b;
@@ -60,15 +61,15 @@ struct Value {
         double d;
         Box* o;
     };
-    RewriterVar* var;
+    std::shared_ptr<JitVar> var;
 
-    operator RewriterVar*() { return var; }
+    operator std::shared_ptr<JitVar>() { return var; }
 
     Value() : o(0), var(0) {}
-    Value(bool b, RewriterVar* var) : b(b), var(var) {}
-    Value(int64_t n, RewriterVar* var) : n(n), var(var) {}
-    Value(double d, RewriterVar* var) : d(d), var(var) {}
-    Value(Box* o, RewriterVar* var) : o(o), var(var) {}
+    Value(bool b, std::shared_ptr<JitVar> var) : b(b), var(var) {}
+    Value(int64_t n, std::shared_ptr<JitVar> var) : n(n), var(var) {}
+    Value(double d, std::shared_ptr<JitVar> var) : d(d), var(var) {}
+    Value(Box* o, std::shared_ptr<JitVar> var) : o(o), var(var) {}
 };
 
 void setupInterpreter();

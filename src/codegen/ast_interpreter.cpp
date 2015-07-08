@@ -431,6 +431,8 @@ Value ASTInterpreter::executeInner(ASTInterpreter& interpreter, CFGBlock* start_
 
                 try {
                     UNAVOIDABLE_STAT_TIMER(t0, "us_timer_in_baseline_jitted_code");
+                    // printf("r %p %p\n", b->code, b->entry_code);
+                    // fflush(stdout);
                     std::pair<CFGBlock*, Box*> rtn = b->entry_code(&interpreter, b);
                     interpreter.next_block = rtn.first;
                     if (!interpreter.next_block)
@@ -476,11 +478,11 @@ Value ASTInterpreter::execute(ASTInterpreter& interpreter, CFGBlock* start_block
 Value ASTInterpreter::doBinOp(Value left, Value right, int op, BinExpType exp_type) {
     switch (exp_type) {
         case BinExpType::AugBinOp:
-            return Value(augbinop(left.o, right.o, op), jit ? jit->emitAugbinop(left, right, op) : NULL);
+            return Value(augbinop(left.o, right.o, op), jit ? jit->emitAugbinop(left.var, right.var, op) : NULL);
         case BinExpType::BinOp:
-            return Value(binop(left.o, right.o, op), jit ? jit->emitBinop(left, right, op) : NULL);
+            return Value(binop(left.o, right.o, op), jit ? jit->emitBinop(left.var, right.var, op) : NULL);
         case BinExpType::Compare:
-            return Value(compare(left.o, right.o, op), jit ? jit->emitCompare(left, right, op) : NULL);
+            return Value(compare(left.o, right.o, op), jit ? jit->emitCompare(left.var, right.var, op) : NULL);
         default:
             RELEASE_ASSERT(0, "not implemented");
     }
@@ -533,26 +535,26 @@ void ASTInterpreter::doStore(AST_expr* node, Value value) {
         AST_Tuple* tuple = (AST_Tuple*)node;
         Box** array = unpackIntoArray(value.o, tuple->elts.size());
 
-        RewriterVar* array_var = NULL;
+        JitVarPtr array_var = NULL;
         if (jit)
             array_var = jit->emitUnpackIntoArray(value, tuple->elts.size());
 
         unsigned i = 0;
         for (AST_expr* e : tuple->elts) {
-            doStore(e, Value(array[i], jit ? array_var->getAttr(i * sizeof(void*)) : NULL));
+            doStore(e, Value(array[i], jit ? jit->getAttr(array_var, i * sizeof(void*)) : NULL));
             ++i;
         }
     } else if (node->type == AST_TYPE::List) {
         AST_List* list = (AST_List*)node;
         Box** array = unpackIntoArray(value.o, list->elts.size());
 
-        RewriterVar* array_var = NULL;
+        JitVarPtr array_var = NULL;
         if (jit)
             array_var = jit->emitUnpackIntoArray(value, list->elts.size());
 
         unsigned i = 0;
         for (AST_expr* e : list->elts) {
-            doStore(e, Value(array[i], jit ? array_var->getAttr(i * sizeof(void*)) : NULL));
+            doStore(e, Value(array[i], jit ? jit->getAttr(array_var, i * sizeof(void*)) : NULL));
             ++i;
         }
     } else if (node->type == AST_TYPE::Subscript) {
@@ -600,7 +602,7 @@ Value ASTInterpreter::visit_slice(AST_Slice* node) {
 }
 
 Value ASTInterpreter::visit_extslice(AST_ExtSlice* node) {
-    llvm::SmallVector<RewriterVar*, 8> items;
+    llvm::SmallVector<JitVarPtr, 8> items;
 
     int num_slices = node->dims.size();
     BoxedTuple* rtn = BoxedTuple::create(num_slices);
@@ -639,7 +641,7 @@ Value ASTInterpreter::visit_jump(AST_Jump* node) {
         threading::allowGLReadPreemption();
 
         if (jit)
-            jit->call(false, (void*)threading::allowGLReadPreemption);
+            jit->voidCall((void*)threading::allowGLReadPreemption);
     }
 
     if (jit) {
@@ -1323,7 +1325,7 @@ Value ASTInterpreter::visit_call(AST_Call* node) {
     }
 
     std::vector<Box*, StlCompatAllocator<Box*>> args;
-    llvm::SmallVector<RewriterVar*, 8> args_vars;
+    llvm::SmallVector<JitVarPtr, 8> args_vars;
     for (AST_expr* e : node->args) {
         Value v = visit_expr(e);
         args.push_back(v.o);
@@ -1417,8 +1419,8 @@ Value ASTInterpreter::visit_lambda(AST_Lambda* node) {
 Value ASTInterpreter::visit_dict(AST_Dict* node) {
     RELEASE_ASSERT(node->keys.size() == node->values.size(), "not implemented");
 
-    llvm::SmallVector<RewriterVar*, 8> keys;
-    llvm::SmallVector<RewriterVar*, 8> values;
+    llvm::SmallVector<JitVarPtr, 8> keys;
+    llvm::SmallVector<JitVarPtr, 8> values;
 
     BoxedDict* dict = new BoxedDict();
     for (size_t i = 0; i < node->keys.size(); ++i) {
@@ -1434,7 +1436,7 @@ Value ASTInterpreter::visit_dict(AST_Dict* node) {
 }
 
 Value ASTInterpreter::visit_set(AST_Set* node) {
-    llvm::SmallVector<RewriterVar*, 8> items;
+    llvm::SmallVector<JitVarPtr, 8> items;
 
     BoxedSet::Set set;
     for (AST_expr* e : node->elts) {
@@ -1513,7 +1515,7 @@ Value ASTInterpreter::visit_subscript(AST_Subscript* node) {
 }
 
 Value ASTInterpreter::visit_list(AST_List* node) {
-    llvm::SmallVector<RewriterVar*, 8> items;
+    llvm::SmallVector<JitVarPtr, 8> items;
 
     BoxedList* list = new BoxedList;
     list->ensure(node->elts.size());
@@ -1527,7 +1529,7 @@ Value ASTInterpreter::visit_list(AST_List* node) {
 }
 
 Value ASTInterpreter::visit_tuple(AST_Tuple* node) {
-    llvm::SmallVector<RewriterVar*, 8> items;
+    llvm::SmallVector<JitVarPtr, 8> items;
 
     BoxedTuple* rtn = BoxedTuple::create(node->elts.size());
     int rtn_idx = 0;
