@@ -69,7 +69,7 @@ protected:
 
 class CallattrIC : public RuntimeIC {
 public:
-    CallattrIC() : RuntimeIC((void*)callattr, 1, 320) {}
+    CallattrIC() : RuntimeIC((void*)callattr, 2, 1024) {}
 
     Box* call(Box* obj, BoxedString* attr, CallattrFlags flags, Box* arg0, Box* arg1, Box* arg2, Box** args,
               const std::vector<BoxedString*>* keyword_names) {
@@ -95,56 +95,56 @@ public:
 
 class AugBinopIC : public RuntimeIC {
 public:
-    AugBinopIC() : RuntimeIC((void*)augbinop, 2, 240) {}
+    AugBinopIC() : RuntimeIC((void*)augbinop, 4, 320) {}
 
     Box* call(Box* lhs, Box* rhs, int op_type) { return (Box*)call_ptr(lhs, rhs, op_type); }
 };
 
 class BinopIC : public RuntimeIC {
 public:
-    BinopIC() : RuntimeIC((void*)binop, 2, 240) {}
+    BinopIC() : RuntimeIC((void*)binop, 4, 320) {}
 
     Box* call(Box* lhs, Box* rhs, int op_type) { return (Box*)call_ptr(lhs, rhs, op_type); }
 };
 
 class CompareIC : public RuntimeIC {
 public:
-    CompareIC() : RuntimeIC((void*)compare, 2, 240) {}
+    CompareIC() : RuntimeIC((void*)compare, 4, 320) {}
 
     Box* call(Box* lhs, Box* rhs, int op_type) { return (Box*)call_ptr(lhs, rhs, op_type); }
 };
 
 class GetItemIC : public RuntimeIC {
 public:
-    GetItemIC() : RuntimeIC((void*)getitem, 2, 512) {}
+    GetItemIC() : RuntimeIC((void*)getitem, 1, 512) {}
 
     Box* call(Box* obj, Box* attr) { return (Box*)call_ptr(obj, attr); }
 };
 
 class SetItemIC : public RuntimeIC {
 public:
-    SetItemIC() : RuntimeIC((void*)setitem, 2, 512) {}
+    SetItemIC() : RuntimeIC((void*)setitem, 1, 256) {}
 
     Box* call(Box* obj, Box* attr, Box* v) { return (Box*)call_ptr(obj, attr, v); }
 };
 
 class GetAttrIC : public RuntimeIC {
 public:
-    GetAttrIC() : RuntimeIC((void*)getattr, 2, 512) {}
+    GetAttrIC() : RuntimeIC((void*)getattr, 2, 512+256) {}
 
     Box* call(Box* obj, BoxedString* attr) { return (Box*)call_ptr(obj, attr); }
 };
 
 class SetAttrIC : public RuntimeIC {
 public:
-    SetAttrIC() : RuntimeIC((void*)setattr, 2, 512) {}
+    SetAttrIC() : RuntimeIC((void*)setattr, 2, 512+256) {}
 
     Box* call(Box* obj, BoxedString* attr, Box* v) { return (Box*)call_ptr(obj, attr, v); }
 };
 
 class GetGlobalIC : public RuntimeIC {
 public:
-    GetGlobalIC() : RuntimeIC((void*)getGlobal, 2, 512) {}
+    GetGlobalIC() : RuntimeIC((void*)getGlobal, 1, 128) {}
 
     Box* call(Box* obj, BoxedString* s) { return (Box*)call_ptr(obj, s); }
 };
@@ -158,7 +158,7 @@ public:
 
 class NonzeroIC : public RuntimeIC {
 public:
-    NonzeroIC() : RuntimeIC((void*)nonzero, 1, 40) {}
+    NonzeroIC() : RuntimeIC((void*)nonzero, 2, 64) {}
 
     bool call(Box* obj) { return call_bool(obj); }
 };
