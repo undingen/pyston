@@ -132,7 +132,7 @@ class JitFragmentWriter;
 //
 class JitCodeBlock {
 private:
-    static constexpr int scratch_size = 256 * 2;
+    static constexpr int scratch_size = 256 * 3;
     static constexpr int code_size = 4096 * 4;
 
     EHFrameManager frame_manager;
@@ -158,7 +158,7 @@ template <class T> class JitLocMap {
 private:
     static const int N_REGS = assembler::Register::numRegs();
     static const int N_XMM = assembler::XMMRegister::numRegs();
-    static const int N_SCRATCH = 32 * 2;
+    static const int N_SCRATCH = 256 / 8 * 3;
     static const int N_STACK = 16;
 
     T map_reg[N_REGS];
@@ -312,7 +312,6 @@ public:
                 locations[var->reg_value].reset();
                 var->reg_value = loc.asRegister();
             }
-
             locations[loc] = var;
             return loc.asRegister();
         }
@@ -461,16 +460,31 @@ public:
         };
 
         std::unordered_set<int> already_inplace_reg;
-        /*
-                for (int arg_num = 0; arg_num < args.size(); ++arg_num) {
-                    JitVarPtr arg = args[arg_num];
-                    if (arg->is_in_reg) {
-                        auto loc = Location::forArg(arg_num);
-                        getInReg(args[arg_num], loc);
-                        already_inplace_reg.insert(loc.asRegister().regnum);
-                    }
+
+        for (int arg_num = 0; arg_num < args.size(); ++arg_num) {
+            JitVarPtr arg = args[arg_num];
+            if (arg->is_in_reg) {
+                auto loc = Location::forArg(arg_num);
+                assert(loc.type == Location::Register);
+
+                // if (locations.count(loc))
+                //    continue;
+
+                // printf("moving %d -> %d\n", arg->reg_value.regnum, loc.asRegister().regnum);
+
+                getInReg(arg, loc);
+                if (!arg->is_in_mem) {
+                    Location l = allocScratch();
+                    assembler->mov(arg->reg_value,
+                                   assembler::Indirect(assembler::RSP, l.scratch_offset + scratch_offset));
+                    locations[l] = arg;
+                    arg->is_in_mem = true;
+                    arg->stack_offset = l.scratch_offset + scratch_offset;
                 }
-        */
+                already_inplace_reg.insert(loc.asRegister().regnum);
+            }
+        }
+
         for (auto&& reg : allocatable_regs) {
             Location l = reg;
             if (locations.count(l) && !already_inplace_reg.count(reg.regnum)) {

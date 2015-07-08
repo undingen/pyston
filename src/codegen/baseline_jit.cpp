@@ -36,6 +36,8 @@ JitCodeBlock::JitCodeBlock(llvm::StringRef name)
       a(code.get(), code_size),
       is_currently_writing(false),
       asm_failed(false) {
+    STAT_TIMER(t0, "us_timer_bjit", 10);
+
     static StatCounter num_jit_code_blocks("num_baselinejit_code_blocks");
     num_jit_code_blocks.log();
     static StatCounter num_jit_total_bytes("num_baselinejit_total_bytes");
@@ -60,6 +62,8 @@ JitCodeBlock::JitCodeBlock(llvm::StringRef name)
 }
 
 std::unique_ptr<JitFragmentWriter> JitCodeBlock::newFragment(CFGBlock* block, int patch_jump_offset) {
+    STAT_TIMER(t0, "us_timer_bjit", 10);
+
     if (is_currently_writing || blocks_aborted.count(block))
         return std::unique_ptr<JitFragmentWriter>();
 
@@ -127,6 +131,7 @@ JitVarPtr JitFragmentWriter::imm(void* val) {
 }
 
 JitVarPtr JitFragmentWriter::emitAugbinop(JitVarPtr lhs, JitVarPtr rhs, int op_type) {
+    STAT_TIMER(t0, "us_timer_bjit", 10);
 #if ENABLE_BASELINEJIT_ICS
     return call((void*)augbinopICHelper, { imm(new AugBinopIC), lhs, rhs, imm(op_type) });
 #else
@@ -135,6 +140,7 @@ JitVarPtr JitFragmentWriter::emitAugbinop(JitVarPtr lhs, JitVarPtr rhs, int op_t
 }
 
 JitVarPtr JitFragmentWriter::emitBinop(JitVarPtr lhs, JitVarPtr rhs, int op_type) {
+    STAT_TIMER(t0, "us_timer_bjit", 10);
 #if ENABLE_BASELINEJIT_ICS
     return call((void*)binopICHelper, { imm(new BinopIC), lhs, rhs, imm(op_type) });
 #else
@@ -145,6 +151,8 @@ JitVarPtr JitFragmentWriter::emitBinop(JitVarPtr lhs, JitVarPtr rhs, int op_type
 JitVarPtr JitFragmentWriter::emitCallattr(JitVarPtr obj, BoxedString* attr, CallattrFlags flags,
                                           const llvm::ArrayRef<JitVarPtr> args,
                                           std::vector<BoxedString*>* keyword_names) {
+    STAT_TIMER(t0, "us_timer_bjit", 10);
+
     // We could make this faster but for now: keep it simple, stupid...
     JitVarPtr attr_var = imm(attr);
     JitVarPtr flags_var = imm(flags.asInt());
@@ -185,6 +193,8 @@ JitVarPtr JitFragmentWriter::emitCallattr(JitVarPtr obj, BoxedString* attr, Call
 
 JitVarPtr JitFragmentWriter::emitCompare(JitVarPtr lhs, JitVarPtr rhs, int op_type) {
 // TODO: can directly emit the assembly for Is/IsNot
+
+    STAT_TIMER(t0, "us_timer_bjit", 10);
 #if ENABLE_BASELINEJIT_ICS
     return call((void*)compareICHelper, { imm(new CompareIC), lhs, rhs, imm(op_type) });
 #else
@@ -194,6 +204,7 @@ JitVarPtr JitFragmentWriter::emitCompare(JitVarPtr lhs, JitVarPtr rhs, int op_ty
 
 JitVarPtr JitFragmentWriter::emitCreateDict(const llvm::ArrayRef<JitVarPtr> keys,
                                             const llvm::ArrayRef<JitVarPtr> values) {
+    STAT_TIMER(t0, "us_timer_bjit", 10);
     assert(keys.size() == values.size());
     if (keys.empty())
         return call((void*)createDict);
@@ -202,6 +213,7 @@ JitVarPtr JitFragmentWriter::emitCreateDict(const llvm::ArrayRef<JitVarPtr> keys
 }
 
 JitVarPtr JitFragmentWriter::emitCreateList(const llvm::ArrayRef<JitVarPtr> values) {
+    STAT_TIMER(t0, "us_timer_bjit", 10);
     auto num = values.size();
     if (num == 0)
         return call((void*)createList);
@@ -210,14 +222,17 @@ JitVarPtr JitFragmentWriter::emitCreateList(const llvm::ArrayRef<JitVarPtr> valu
 }
 
 JitVarPtr JitFragmentWriter::emitCreateSet(const llvm::ArrayRef<JitVarPtr> values) {
+    STAT_TIMER(t0, "us_timer_bjit", 10);
     return call((void*)createSetHelper, { imm(values.size()), allocArgs(values) });
 }
 
 JitVarPtr JitFragmentWriter::emitCreateSlice(JitVarPtr start, JitVarPtr stop, JitVarPtr step) {
+    STAT_TIMER(t0, "us_timer_bjit", 10);
     return call((void*)createSlice, { start, stop, step });
 }
 
 JitVarPtr JitFragmentWriter::emitCreateTuple(const llvm::ArrayRef<JitVarPtr> values) {
+    STAT_TIMER(t0, "us_timer_bjit", 10);
     auto num = values.size();
     if (num == 0)
         return imm(EmptyTuple);
@@ -232,6 +247,7 @@ JitVarPtr JitFragmentWriter::emitCreateTuple(const llvm::ArrayRef<JitVarPtr> val
 }
 
 JitVarPtr JitFragmentWriter::emitDeref(InternedString s) {
+    STAT_TIMER(t0, "us_timer_bjit", 10);
     return call((void*)ASTInterpreterJitInterface::derefHelper, { getInterp(),
 #ifndef NDEBUG
                                                                   imm(asUInt(s).first), imm(asUInt(s).second) });
@@ -241,10 +257,12 @@ JitVarPtr JitFragmentWriter::emitDeref(InternedString s) {
 }
 
 JitVarPtr JitFragmentWriter::emitExceptionMatches(JitVarPtr v, JitVarPtr cls) {
+    STAT_TIMER(t0, "us_timer_bjit", 10);
     return call((void*)exceptionMatchesHelper, { v, cls });
 }
 
 JitVarPtr JitFragmentWriter::emitGetAttr(JitVarPtr obj, BoxedString* s) {
+    STAT_TIMER(t0, "us_timer_bjit", 10);
 #if ENABLE_BASELINEJIT_ICS
     return call((void*)getAttrICHelper, { imm(new GetAttrIC), obj, imm(s) });
 #else
@@ -253,6 +271,7 @@ JitVarPtr JitFragmentWriter::emitGetAttr(JitVarPtr obj, BoxedString* s) {
 }
 
 JitVarPtr JitFragmentWriter::emitGetBlockLocal(InternedString s) {
+    STAT_TIMER(t0, "us_timer_bjit", 10);
     auto it = local_syms.find(s);
     if (it == local_syms.end())
         return emitGetLocal(s);
@@ -260,18 +279,22 @@ JitVarPtr JitFragmentWriter::emitGetBlockLocal(InternedString s) {
 }
 
 JitVarPtr JitFragmentWriter::emitGetBoxedLocal(BoxedString* s) {
+    STAT_TIMER(t0, "us_timer_bjit", 10);
     return call((void*)ASTInterpreterJitInterface::getBoxedLocalHelper, { getInterp(), imm(s) });
 }
 
 JitVarPtr JitFragmentWriter::emitGetBoxedLocals() {
+    STAT_TIMER(t0, "us_timer_bjit", 10);
     return call((void*)ASTInterpreterJitInterface::getBoxedLocalsHelper, { getInterp() });
 }
 
 JitVarPtr JitFragmentWriter::emitGetClsAttr(JitVarPtr obj, BoxedString* s) {
+    STAT_TIMER(t0, "us_timer_bjit", 10);
     return call((void*)getclsattr, { obj, imm(s) });
 }
 
 JitVarPtr JitFragmentWriter::emitGetGlobal(Box* global, BoxedString* s) {
+    STAT_TIMER(t0, "us_timer_bjit", 10);
 #if ENABLE_BASELINEJIT_ICS
     return call((void*)getGlobalICHelper, { imm(new GetGlobalIC), imm(global), imm(s) });
 #else
@@ -280,6 +303,7 @@ JitVarPtr JitFragmentWriter::emitGetGlobal(Box* global, BoxedString* s) {
 }
 
 JitVarPtr JitFragmentWriter::emitGetItem(JitVarPtr value, JitVarPtr slice) {
+    STAT_TIMER(t0, "us_timer_bjit", 10);
 #if ENABLE_BASELINEJIT_ICS
     return call((void*)getitemICHelper, { imm(new GetItemIC), value, slice });
 #else
@@ -288,6 +312,7 @@ JitVarPtr JitFragmentWriter::emitGetItem(JitVarPtr value, JitVarPtr slice) {
 }
 
 JitVarPtr JitFragmentWriter::emitGetLocal(InternedString s) {
+    STAT_TIMER(t0, "us_timer_bjit", 10);
     return call((void*)ASTInterpreterJitInterface::getLocalHelper, { getInterp(),
 #ifndef NDEBUG
                                                                      imm(asUInt(s).first), imm(asUInt(s).second) });
@@ -297,31 +322,38 @@ JitVarPtr JitFragmentWriter::emitGetLocal(InternedString s) {
 }
 
 JitVarPtr JitFragmentWriter::emitGetPystonIter(JitVarPtr v) {
+    STAT_TIMER(t0, "us_timer_bjit", 10);
     return call((void*)getPystonIter, { v });
 }
 
 JitVarPtr JitFragmentWriter::emitHasnext(JitVarPtr v) {
+    STAT_TIMER(t0, "us_timer_bjit", 10);
     return call((void*)hasnextHelper, { v });
 }
 
 JitVarPtr JitFragmentWriter::emitLandingpad() {
+    STAT_TIMER(t0, "us_timer_bjit", 10);
     return call((void*)ASTInterpreterJitInterface::landingpadHelper, { getInterp() });
 }
 
 JitVarPtr JitFragmentWriter::emitNonzero(JitVarPtr v) {
+    STAT_TIMER(t0, "us_timer_bjit", 10);
     return call((void*)nonzeroHelper, { v });
 }
 
 JitVarPtr JitFragmentWriter::emitNotNonzero(JitVarPtr v) {
+    STAT_TIMER(t0, "us_timer_bjit", 10);
     return call((void*)notHelper, { v });
 }
 
 JitVarPtr JitFragmentWriter::emitRepr(JitVarPtr v) {
+    STAT_TIMER(t0, "us_timer_bjit", 10);
     return call((void*)repr, { v });
 }
 
 JitVarPtr JitFragmentWriter::emitRuntimeCall(JitVarPtr obj, ArgPassSpec argspec, const llvm::ArrayRef<JitVarPtr> args,
                                              std::vector<BoxedString*>* keyword_names) {
+    STAT_TIMER(t0, "us_timer_bjit", 10);
     // We could make this faster but for now: keep it simple, stupid..
     JitVarPtr argspec_var = imm(argspec.asInt());
     JitVarPtr keyword_names_var = keyword_names ? imm(keyword_names) : nullptr;
@@ -359,6 +391,7 @@ JitVarPtr JitFragmentWriter::emitRuntimeCall(JitVarPtr obj, ArgPassSpec argspec,
 }
 
 JitVarPtr JitFragmentWriter::emitUnaryop(JitVarPtr v, int op_type) {
+    STAT_TIMER(t0, "us_timer_bjit", 10);
 #if ENABLE_BASELINEJIT_ICS
     return call((void*)unaryopICHelper, { imm(new UnaryopIC), v, imm(op_type) });
 #else
@@ -367,16 +400,19 @@ JitVarPtr JitFragmentWriter::emitUnaryop(JitVarPtr v, int op_type) {
 }
 
 JitVarPtr JitFragmentWriter::emitUnpackIntoArray(JitVarPtr v, uint64_t num) {
+    STAT_TIMER(t0, "us_timer_bjit", 10);
     JitVarPtr array = call((void*)unpackIntoArray, { v, imm(num) });
     return array;
 }
 
 JitVarPtr JitFragmentWriter::emitYield(JitVarPtr v) {
+    STAT_TIMER(t0, "us_timer_bjit", 10);
     return call((void*)ASTInterpreterJitInterface::yieldHelper, { getInterp(), v });
 }
 
 
 void JitFragmentWriter::emitExec(JitVarPtr code, JitVarPtr globals, JitVarPtr locals, FutureFlags flags) {
+    STAT_TIMER(t0, "us_timer_bjit", 10);
     if (!globals)
         globals = imm(0ul);
     if (!locals)
@@ -385,11 +421,13 @@ void JitFragmentWriter::emitExec(JitVarPtr code, JitVarPtr globals, JitVarPtr lo
 }
 
 void JitFragmentWriter::emitJump(CFGBlock* b) {
+    STAT_TIMER(t0, "us_timer_bjit", 10);
     JitVarPtr next = imm(b);
     _emitJump(b, next, num_bytes_exit);
 }
 
 void JitFragmentWriter::emitOSRPoint(AST_Jump* node) {
+    STAT_TIMER(t0, "us_timer_bjit", 10);
     JitVarPtr result = call((void*)ASTInterpreterJitInterface::doOSRHelper, { getInterp(), imm(node) });
     auto result_reg = writer.getInReg(result, assembler::RDX);
 
@@ -403,6 +441,7 @@ void JitFragmentWriter::emitOSRPoint(AST_Jump* node) {
 }
 
 void JitFragmentWriter::emitPrint(JitVarPtr dest, JitVarPtr var, bool nl) {
+    STAT_TIMER(t0, "us_timer_bjit", 10);
     if (!dest)
         dest = call((void*)getSysStdout);
     if (!var)
@@ -411,14 +450,17 @@ void JitFragmentWriter::emitPrint(JitVarPtr dest, JitVarPtr var, bool nl) {
 }
 
 void JitFragmentWriter::emitRaise0() {
-    call((void*)raise0, std::vector<JitVarPtr>{});
+    STAT_TIMER(t0, "us_timer_bjit", 10);
+    call((void*)raise0);
 }
 
 void JitFragmentWriter::emitRaise3(JitVarPtr arg0, JitVarPtr arg1, JitVarPtr arg2) {
+    STAT_TIMER(t0, "us_timer_bjit", 10);
     call((void*)raise3, { arg0, arg1, arg2 });
 }
 
 void JitFragmentWriter::emitReturn(JitVarPtr v) {
+    STAT_TIMER(t0, "us_timer_bjit", 10);
     writer.getInReg(v, assembler::RDX);
     assembler->mov(assembler::Immediate(0ul), assembler::RAX); // TODO: use xor
     assembler->leave();
@@ -426,6 +468,7 @@ void JitFragmentWriter::emitReturn(JitVarPtr v) {
 }
 
 void JitFragmentWriter::emitSetAttr(JitVarPtr obj, BoxedString* s, JitVarPtr attr) {
+    STAT_TIMER(t0, "us_timer_bjit", 10);
 #if ENABLE_BASELINEJIT_ICS
     call((void*)setAttrICHelper, { imm(new SetAttrIC), obj, imm(s), attr });
 #else
@@ -434,19 +477,23 @@ void JitFragmentWriter::emitSetAttr(JitVarPtr obj, BoxedString* s, JitVarPtr att
 }
 
 void JitFragmentWriter::emitSetBlockLocal(InternedString s, JitVarPtr v) {
+    STAT_TIMER(t0, "us_timer_bjit", 10);
     local_syms[s] = v;
 }
 
 void JitFragmentWriter::emitSetCurrentInst(AST_stmt* node) {
+    STAT_TIMER(t0, "us_timer_bjit", 10);
     writer.setAttr(getInterp(), ASTInterpreterJitInterface::getCurrentInstOffset(), imm(node));
     // getInterp()->setAttr(ASTInterpreterJitInterface::getCurrentInstOffset(), { imm(node) });
 }
 
 void JitFragmentWriter::emitSetExcInfo(JitVarPtr type, JitVarPtr value, JitVarPtr traceback) {
+    STAT_TIMER(t0, "us_timer_bjit", 10);
     call((void*)ASTInterpreterJitInterface::setExcInfoHelper, { getInterp(), type, value, traceback });
 }
 
 void JitFragmentWriter::emitSetGlobal(Box* global, BoxedString* s, JitVarPtr v) {
+    STAT_TIMER(t0, "us_timer_bjit", 10);
 #if ENABLE_BASELINEJIT_ICS
     call((void*)setGlobalICHelper, { imm(new SetGlobalIC), imm(global), imm(s), v });
 #else
@@ -455,6 +502,7 @@ void JitFragmentWriter::emitSetGlobal(Box* global, BoxedString* s, JitVarPtr v) 
 }
 
 void JitFragmentWriter::emitSetItem(JitVarPtr target, JitVarPtr slice, JitVarPtr value) {
+    STAT_TIMER(t0, "us_timer_bjit", 10);
 #if ENABLE_BASELINEJIT_ICS
     call((void*)setitemICHelper, { imm(new SetItemIC), target, slice, value });
 #else
@@ -463,10 +511,12 @@ void JitFragmentWriter::emitSetItem(JitVarPtr target, JitVarPtr slice, JitVarPtr
 }
 
 void JitFragmentWriter::emitSetItemName(BoxedString* s, JitVarPtr v) {
+    STAT_TIMER(t0, "us_timer_bjit", 10);
     call((void*)ASTInterpreterJitInterface::setItemNameHelper, { getInterp(), imm(s), v });
 }
 
 void JitFragmentWriter::emitSetLocal(InternedString s, bool set_closure, JitVarPtr v) {
+    STAT_TIMER(t0, "us_timer_bjit", 10);
     void* func = set_closure ? (void*)ASTInterpreterJitInterface::setLocalClosureHelper
                              : (void*)ASTInterpreterJitInterface::setLocalHelper;
 
@@ -480,6 +530,7 @@ void JitFragmentWriter::emitSetLocal(InternedString s, bool set_closure, JitVarP
 }
 
 void JitFragmentWriter::emitSideExit(JitVarPtr v, Box* cmp_value, CFGBlock* next_block) {
+    STAT_TIMER(t0, "us_timer_bjit", 10);
     assembler::Register v_reg = writer.getInReg(v);
     if (isLargeConstant((uint64_t)cmp_value)) {
         JitVarPtr const_var = imm(cmp_value);
@@ -503,17 +554,20 @@ void JitFragmentWriter::emitSideExit(JitVarPtr v, Box* cmp_value, CFGBlock* next
 }
 
 void JitFragmentWriter::emitUncacheExcInfo() {
+    STAT_TIMER(t0, "us_timer_bjit", 10);
     call((void*)ASTInterpreterJitInterface::uncacheExcInfoHelper, { getInterp() });
 }
 
 
 void JitFragmentWriter::abortCompilation() {
+    STAT_TIMER(t0, "us_timer_bjit", 10);
     blocks_aborted.insert(block);
     code_block.fragmentAbort(false);
     rewrite->abort();
 }
 
 int JitFragmentWriter::finishCompilation() {
+    STAT_TIMER(t0, "us_timer_bjit", 10);
     if (assembler->hasFailed()) {
         code_block.fragmentAbort(true /* not_enough_space */);
         return 0;
@@ -567,6 +621,7 @@ bool JitFragmentWriter::finishAssembly(int continue_offset) {
 
 
 JitVarPtr JitFragmentWriter::allocArgs(const llvm::ArrayRef<JitVarPtr> args) {
+    STAT_TIMER(t0, "us_timer_bjit", 10);
     auto num = args.size();
     JitVarPtr array = writer.allocate(num);
     for (int i = 0; i < num; ++i)
