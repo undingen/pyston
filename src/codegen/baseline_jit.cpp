@@ -113,11 +113,7 @@ JitFragmentWriter::JitFragmentWriter(CFGBlock* block, std::unique_ptr<ICInfo> ic
              rewrite->getSlotStart()),
       assembler(rewrite->getAssembler()),
       rewrite(std::move(rewrite)) {
-    /*
-    interp = createNewVar();
-    addLocationToVar(interp, Location(Location::Stack, 0));
-    interp->setAttr(ASTInterpreterJitInterface::getCurrentBlockOffset(), imm(block));
-*/
+    // assembler->trap();
     interp = JitVar::createFromStack(0);
     writer.setAttr(interp, ASTInterpreterJitInterface::getCurrentBlockOffset(), imm(block));
 }
@@ -478,6 +474,7 @@ void JitFragmentWriter::emitSetAttr(JitVarPtr obj, BoxedString* s, JitVarPtr att
 
 void JitFragmentWriter::emitSetBlockLocal(InternedString s, JitVarPtr v) {
     STAT_TIMER(t0, "us_timer_bjit", 10);
+    v->is_named = true;
     local_syms[s] = v;
 }
 

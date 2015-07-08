@@ -132,7 +132,7 @@ class JitFragmentWriter;
 //
 class JitCodeBlock {
 private:
-    static constexpr int scratch_size = 256 * 3;
+    static constexpr int scratch_size = 256 * 5;
     static constexpr int code_size = 4096 * 4;
 
     EHFrameManager frame_manager;
@@ -158,7 +158,7 @@ template <class T> class JitLocMap {
 private:
     static const int N_REGS = assembler::Register::numRegs();
     static const int N_XMM = assembler::XMMRegister::numRegs();
-    static const int N_SCRATCH = 256 / 8 * 3;
+    static const int N_SCRATCH = 256 / 8 * 5;
     static const int N_STACK = 16;
 
     T map_reg[N_REGS];
@@ -216,6 +216,7 @@ struct JitVar {
     bool is_constant;
     bool is_in_reg;
     bool is_in_mem;
+    bool is_named;
 
 
     static JitVarPtr createFromConst(uint64_t val) { return std::make_shared<JitVar>(val); }
@@ -233,9 +234,10 @@ struct JitVar {
 
 
 
-    JitVar(uint64_t v) : reg_value(0), const_value(v), is_constant(true), is_in_reg(false), is_in_mem(false) {}
+    JitVar(uint64_t v)
+        : reg_value(0), const_value(v), is_constant(true), is_in_reg(false), is_in_mem(false), is_named(false) {}
     JitVar(assembler::Register reg)
-        : reg_value(reg), const_value(0), is_constant(false), is_in_reg(true), is_in_mem(false) {}
+        : reg_value(reg), const_value(0), is_constant(false), is_in_reg(true), is_in_mem(false), is_named(false) {}
 };
 
 
@@ -329,7 +331,7 @@ public:
             locations[loc] = var;
             return loc.asRegister();
         }
-        printf("f: %p\n", var.get());
+        printf("f: %p %p\n", var.get(), assembler->curInstPointer());
         fflush(stdout);
         RELEASE_ASSERT(0, "");
     }
@@ -451,6 +453,12 @@ public:
         locations[var->reg_value].reset();
     }
 
+    static bool contains(llvm::ArrayRef<JitVarPtr> array, JitVarPtr var) {
+        for (auto&& e : array)
+            if (e == var)
+                return true;
+        return false;
+    }
 
 
     void voidCall(void* func, llvm::ArrayRef<JitVarPtr> args) {
@@ -460,6 +468,39 @@ public:
         };
 
         std::unordered_set<int> already_inplace_reg;
+        /*
+                for (int arg_num = 0; arg_num < args.size(); ++arg_num) {
+                    JitVarPtr arg = args[arg_num];
+                    if (arg->is_in_reg) {
+                        auto loc = Location::forArg(arg_num);
+                        assert(loc.type == Location::Register);
+
+                        if (locations.count(loc))
+                            continue;
+
+                        // printf("moving %d -> %d\n", arg->reg_value.regnum, loc.asRegister().regnum);
+
+                        getInReg(arg, loc);
+                        if (!arg->is_in_mem && !arg->is_constant && !contains(args, arg)) {
+                            Location l = allocScratch();
+                            assembler->mov(arg->reg_value,
+                                           assembler::Indirect(assembler::RSP, l.scratch_offset + scratch_offset));
+                            locations[l] = arg;
+                            arg->is_in_mem = true;
+                            arg->stack_offset = l.scratch_offset + scratch_offset;
+                        }
+
+                        already_inplace_reg.insert(loc.asRegister().regnum);
+                    }
+                }
+
+                for (auto&& reg : allocatable_regs) {
+                    Location l = reg;
+                    if (locations.count(l) && !already_inplace_reg.count(reg.regnum)) {
+                        spill(locations[l].lock());
+                    }
+                }
+        */
 
         for (int arg_num = 0; arg_num < args.size(); ++arg_num) {
             JitVarPtr arg = args[arg_num];
@@ -467,13 +508,13 @@ public:
                 auto loc = Location::forArg(arg_num);
                 assert(loc.type == Location::Register);
 
-                // if (locations.count(loc))
-                //    continue;
+                if (locations.count(loc))
+                    continue;
 
                 // printf("moving %d -> %d\n", arg->reg_value.regnum, loc.asRegister().regnum);
 
                 getInReg(arg, loc);
-                if (!arg->is_in_mem) {
+                if (!arg->is_in_mem && !arg->is_constant && (!contains(args, arg) || arg->is_named)) {
                     Location l = allocScratch();
                     assembler->mov(arg->reg_value,
                                    assembler::Indirect(assembler::RSP, l.scratch_offset + scratch_offset));
@@ -481,14 +522,17 @@ public:
                     arg->is_in_mem = true;
                     arg->stack_offset = l.scratch_offset + scratch_offset;
                 }
+
                 already_inplace_reg.insert(loc.asRegister().regnum);
             }
         }
 
         for (auto&& reg : allocatable_regs) {
             Location l = reg;
-            if (locations.count(l) && !already_inplace_reg.count(reg.regnum)) {
-                spill(locations[l].lock());
+            if (locations.count(l)) {
+                auto&& var = locations[l].lock();
+                if ((!contains(args, var) || var->is_named) && !already_inplace_reg.count(reg.regnum))
+                    spill(var);
             }
         }
 
