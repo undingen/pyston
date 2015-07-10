@@ -346,6 +346,8 @@ protected:
     std::vector<RewriterVar*> args;
     std::vector<RewriterVar*> live_outs;
 
+    llvm::SpecificBumpPtrAllocator<RewriterVar> rewritervar_allocator;
+
     Rewriter(std::unique_ptr<ICSlotRewrite> rewrite, int num_args, const std::vector<int>& live_outs);
 
     std::vector<RewriterAction> actions;
@@ -464,9 +466,8 @@ public:
             this->abort();
         assert(finished);
 
-        for (RewriterVar* var : vars) {
-            delete var;
-        }
+        vars.clear();
+        rewritervar_allocator.DestroyAll();
     }
 
     Location getReturnDestination();
