@@ -1619,7 +1619,9 @@ void Rewriter::removeLocationFromVar(RewriterVar* var, Location l) {
 RewriterVar* Rewriter::createNewVar() {
     assertPhaseCollecting();
     RewriterVar* var = new (rewritervar_allocator.Allocate()) RewriterVar(this);
+#ifndef NDEBUG
     vars.push_back(var);
+#endif
     return var;
 }
 

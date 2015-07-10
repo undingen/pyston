@@ -19,6 +19,7 @@
 #include <memory>
 #include <tuple>
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallSet.h"
 
@@ -320,7 +321,10 @@ protected:
     ICSlotInfo* picked_slot;
 
     ConstLoader const_loader;
+
+#ifndef NDEBUG
     std::vector<RewriterVar*> vars;
+#endif
 
     const Location return_location;
 
@@ -351,7 +355,7 @@ protected:
     Rewriter(std::unique_ptr<ICSlotRewrite> rewrite, int num_args, const std::vector<int>& live_outs);
 
     std::vector<RewriterAction> actions;
-    void addAction(std::function<void()> action, std::vector<RewriterVar*> const& vars, ActionType type) {
+    void addAction(std::function<void()> action, const llvm::ArrayRef<RewriterVar*> vars, ActionType type) {
         assertPhaseCollecting();
         for (RewriterVar* var : vars) {
             assert(var != NULL);
@@ -465,8 +469,6 @@ public:
         if (!finished)
             this->abort();
         assert(finished);
-
-        vars.clear();
         rewritervar_allocator.DestroyAll();
     }
 
