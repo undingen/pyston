@@ -147,6 +147,9 @@ struct ParamNames {
     std::vector<llvm::StringRef> args;
     llvm::StringRef vararg, kwarg;
 
+    std::vector<InternedString> args_interned;
+    InternedString vararg_interned, kwarg_interned;
+
     explicit ParamNames(AST* ast, InternedStringPool& pool);
     ParamNames(const std::vector<llvm::StringRef>& args, llvm::StringRef vararg, llvm::StringRef kwarg);
     static ParamNames empty() { return ParamNames(); }

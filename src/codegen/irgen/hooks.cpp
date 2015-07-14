@@ -56,15 +56,19 @@ ParamNames::ParamNames(AST* ast, InternedStringPool& pool) : takes_param_names(t
         for (int i = 0; i < arguments->args.size(); i++) {
             AST_expr* arg = arguments->args[i];
             if (arg->type == AST_TYPE::Name) {
+                args_interned.push_back(ast_cast<AST_Name>(arg)->id);
                 args.push_back(ast_cast<AST_Name>(arg)->id.s());
             } else {
                 InternedString dot_arg_name = pool.get("." + std::to_string(i));
+                args_interned.push_back(dot_arg_name);
                 args.push_back(dot_arg_name.s());
             }
         }
 
         vararg = arguments->vararg.s();
+        vararg_interned = arguments->vararg;
         kwarg = arguments->kwarg.s();
+        kwarg_interned = arguments->kwarg;
     } else {
         RELEASE_ASSERT(0, "%d", ast->type);
     }

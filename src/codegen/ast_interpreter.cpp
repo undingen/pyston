@@ -65,8 +65,7 @@ class ASTInterpreter {
 public:
     ASTInterpreter(CLFunction* clfunc, Box** vregs);
 
-    void initArguments(int nargs, BoxedClosure* closure, BoxedGenerator* generator, Box* arg1, Box* arg2, Box* arg3,
-                       Box** args);
+    void initArguments(BoxedClosure* closure, BoxedGenerator* generator, Box* arg1, Box* arg2, Box* arg3, Box** args);
 
     static Box* execute(ASTInterpreter& interpreter, CFGBlock* start_block = NULL, AST_stmt* start_at = NULL);
 
@@ -272,32 +271,29 @@ ASTInterpreter::ASTInterpreter(CLFunction* clfunc, Box** vregs)
     assert(scope_info);
 }
 
-void ASTInterpreter::initArguments(int nargs, BoxedClosure* _closure, BoxedGenerator* _generator, Box* arg1, Box* arg2,
-                                   Box* arg3, Box** args) {
+void ASTInterpreter::initArguments(BoxedClosure* _closure, BoxedGenerator* _generator, Box* arg1, Box* arg2, Box* arg3,
+                                   Box** args) {
     passed_closure = _closure;
     generator = _generator;
 
     if (scope_info->createsClosure())
         created_closure = createClosure(passed_closure, scope_info->getClosureSize());
 
-    std::vector<Box*, StlCompatAllocator<Box*>> argsArray{ arg1, arg2, arg3 };
-    for (int i = 3; i < nargs; ++i)
-        argsArray.push_back(args[i - 3]);
-
     const ParamNames& param_names = clfunc->param_names;
 
+    // make sure the InternedStrings are set
+    assert(param_names.args.size() == param_names.args_interned.size());
+
     int i = 0;
-    for (auto& name : param_names.args) {
-        doStore(source_info->getInternedStrings().get(name), Value(argsArray[i++], 0));
+    for (auto& name : param_names.args_interned) {
+        doStore(name, Value(getArg(i++, arg1, arg2, arg3, args), 0));
     }
 
-    if (!param_names.vararg.str().empty()) {
-        doStore(source_info->getInternedStrings().get(param_names.vararg), Value(argsArray[i++], 0));
-    }
+    if (!param_names.vararg.str().empty())
+        doStore(param_names.vararg_interned, Value(getArg(i++, arg1, arg2, arg3, args), 0));
 
-    if (!param_names.kwarg.str().empty()) {
-        doStore(source_info->getInternedStrings().get(param_names.kwarg), Value(argsArray[i++], 0));
-    }
+    if (!param_names.kwarg.str().empty())
+        doStore(param_names.kwarg_interned, Value(getArg(i++, arg1, arg2, arg3, args), 0));
 }
 
 void ASTInterpreter::startJITing(CFGBlock* block, int exit_offset) {
@@ -1766,7 +1762,7 @@ Box* astInterpretFunction(CLFunction* clfunc, int nargs, Box* closure, Box* gene
         interpreter.setGlobals(source_info->parent_module);
     }
 
-    interpreter.initArguments(nargs, (BoxedClosure*)closure, (BoxedGenerator*)generator, arg1, arg2, arg3, args);
+    interpreter.initArguments((BoxedClosure*)closure, (BoxedGenerator*)generator, arg1, arg2, arg3, args);
     Box* v = ASTInterpreter::execute(interpreter);
     return v ? v : None;
 }
@@ -1790,9 +1786,8 @@ Box* astInterpretFunctionEval(CLFunction* clfunc, Box* globals, Box* boxedLocals
     ASTInterpreter interpreter(clfunc, vregs);
 
     ++clfunc->times_interpreted;
-    interpreter.initArguments(0, NULL, NULL, NULL, NULL, NULL, NULL);
+    interpreter.initArguments(NULL, NULL, NULL, NULL, NULL, NULL);
     interpreter.setBoxedLocals(boxedLocals);
-
 
 
     assert(!clfunc->source->scoping->areGlobalsFromModule());
