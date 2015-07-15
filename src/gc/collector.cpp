@@ -18,6 +18,8 @@
 #include <cstdio>
 #include <cstdlib>
 
+#include "llvm/ADT/DenseSet.h"
+
 #include "codegen/ast_interpreter.h"
 #include "codegen/codegen.h"
 #include "core/common.h"
@@ -86,7 +88,7 @@ private:
 
 public:
     TraceStack() { get_chunk(); }
-    TraceStack(const std::unordered_set<void*>& rhs) {
+    TraceStack(const llvm::DenseSet<void*>& rhs) {
         get_chunk();
         for (void* p : rhs) {
             assert(!isMarked(GCAllocation::fromUserData(p)));
@@ -130,7 +132,7 @@ public:
 std::vector<void**> TraceStack::free_chunks;
 
 
-static std::unordered_set<void*> roots;
+static llvm::DenseSet<void*> roots;
 void registerPermanentRoot(void* obj, bool allow_duplicates) {
     assert(global_heap.getAllocationFromInteriorPointer(obj));
 
@@ -245,6 +247,12 @@ void GCVisitor::visitRange(void* const* start, void* const* end) {
     assert((uintptr_t)end % sizeof(void*) == 0);
 
     while (start < end) {
+        // memory access inside visit will in most cases produce a memory stall.
+        // prefetch the next+1 element to make sure it's in cache when we access it (profiling showed next+1 is slightly
+        // better than next).
+        if (start + 2 < end)
+            __builtin_prefetch(*(start + 2));
+
         visit(*start);
         start++;
     }
