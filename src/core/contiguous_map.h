@@ -21,9 +21,9 @@
 
 namespace pyston {
 
-template <class TKey, class TVal, class TMap = llvm::DenseMap<TKey, int>> class ContiguousMap {
+template <class TKey, class TVal, class TMap = llvm::DenseMap<TKey, int>, class vec_type = std::vector<TVal>>
+class ContiguousMap {
     typedef TMap map_type;
-    typedef std::vector<TVal> vec_type;
 
     map_type map;
     vec_type vec;
