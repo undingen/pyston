@@ -290,12 +290,19 @@ RewriterVar* JitFragmentWriter::emitGetItem(RewriterVar* value, RewriterVar* sli
 
 RewriterVar* JitFragmentWriter::emitGetLocal(InternedString s, int vreg) {
     assert(vreg >= 0);
+
+    RewriterVar* val_var = vregs_array->getAttr(vreg * 8);
+    addAction([=]() { _emitGetLocal(val_var, s.c_str()); }, { val_var }, ActionType::NORMAL);
+    return val_var;
+
+    /*
     return call(false, (void*)ASTInterpreterJitInterface::getLocalHelper, getInterp(), imm(vreg),
 #ifndef NDEBUG
                 imm(asUInt(s).first), imm(asUInt(s).second));
 #else
                 imm(asUInt(s)));
 #endif
+    */
 }
 
 RewriterVar* JitFragmentWriter::emitGetPystonIter(RewriterVar* v) {
@@ -665,6 +672,22 @@ Box* JitFragmentWriter::runtimeCallHelper(Box* obj, ArgPassSpec argspec, TypeRec
     return recordType(type_recorder, r);
 }
 
+void assertNameDefinedHelper(const char* id) {
+    assertNameDefined(0, id, UnboundLocalError, true);
+}
+
+void JitFragmentWriter::_emitGetLocal(RewriterVar* val_var, const char* name) {
+    assembler::Register var_reg = val_var->getInReg(assembler::RAX);
+    assembler->test(var_reg, var_reg);
+    val_var->bumpUse();
+
+    {
+        assembler::ForwardJump jnz(*assembler, assembler::COND_NOT_ZERO);
+        assembler->mov(assembler::Immediate((void*)name), assembler::RDI);
+        assembler->mov(assembler::Immediate((void*)assertNameDefinedHelper), assembler::R11);
+        assembler->callq(assembler::R11);
+    }
+}
 
 void JitFragmentWriter::_emitJump(CFGBlock* b, RewriterVar* block_next, int& size_of_exit_to_interp) {
     size_of_exit_to_interp = 0;
