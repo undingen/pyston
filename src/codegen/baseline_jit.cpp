@@ -49,7 +49,8 @@ JitCodeBlock::JitCodeBlock(llvm::StringRef name)
 
     static_assert(scratch_size % 16 == 0, "stack aligment code depends on this");
     // subtract scratch size + 8bytes to align stack after the push.
-    a.sub(assembler::Immediate(scratch_size + 8), assembler::RSP);
+    a.sub(assembler::Immediate(scratch_size), assembler::RSP);
+    a.push(assembler::RDX); // push vreg array
     a.push(assembler::RDI); // push interpreter pointer
 
     // subtract space in order to be able to pass additional args on the stack without having to adjusting the SP when
@@ -116,6 +117,10 @@ JitFragmentWriter::JitFragmentWriter(CFGBlock* block, std::unique_ptr<ICInfo> ic
     interp = createNewVar();
     addLocationToVar(interp, Location(Location::Stack, JitCodeBlock::interpreter_ptr_offset));
     interp->setAttr(ASTInterpreterJitInterface::getCurrentBlockOffset(), imm(block));
+
+    vregs_array = createNewVar();
+    addLocationToVar(vregs_array, Location(Location::Stack, JitCodeBlock::vregs_array_offset));
+    addAction([=]() { vregs_array->bumpUse(); }, vregs_array, ActionType::NORMAL);
 }
 
 RewriterVar* JitFragmentWriter::imm(uint64_t val) {
@@ -284,6 +289,7 @@ RewriterVar* JitFragmentWriter::emitGetItem(RewriterVar* value, RewriterVar* sli
 }
 
 RewriterVar* JitFragmentWriter::emitGetLocal(InternedString s, int vreg) {
+    assert(vreg >= 0);
     return call(false, (void*)ASTInterpreterJitInterface::getLocalHelper, getInterp(), imm(vreg),
 #ifndef NDEBUG
                 imm(asUInt(s).first), imm(asUInt(s).second));
@@ -455,7 +461,8 @@ void JitFragmentWriter::emitSetLocal(InternedString s, int vreg, bool set_closur
 #endif
              v);
     } else {
-        call(false, (void*)ASTInterpreterJitInterface::setLocalHelper, getInterp(), imm(vreg), v);
+        vregs_array->setAttr(8 * vreg, v);
+        // call(false, (void*)ASTInterpreterJitInterface::setLocalHelper, getInterp(), imm(vreg), v);
     }
 }
 

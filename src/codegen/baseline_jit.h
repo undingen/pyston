@@ -128,6 +128,7 @@ public:
     static constexpr int code_size = 32768;
     static constexpr int num_stack_args = 2;
     static constexpr int interpreter_ptr_offset = num_stack_args * 8;
+    static constexpr int vregs_array_offset = interpreter_ptr_offset + 8;
 
 
 private:
@@ -166,6 +167,7 @@ private:
     void* entry_code; // JitCodeBlock start address. Must have an offset of 0 into the code block
     JitCodeBlock& code_block;
     RewriterVar* interp;
+    RewriterVar* vregs_array;
     llvm::DenseMap<InternedString, RewriterVar*> local_syms;
     std::unique_ptr<ICInfo> ic_info;
 

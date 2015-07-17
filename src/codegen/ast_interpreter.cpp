@@ -389,7 +389,8 @@ void ASTInterpreter::finishJITing(CFGBlock* continue_block) {
 Box* ASTInterpreter::execJITedBlock(CFGBlock* b) {
     try {
         UNAVOIDABLE_STAT_TIMER(t0, "us_timer_in_baseline_jitted_code");
-        std::pair<CFGBlock*, Box*> rtn = b->entry_code(this, b);
+        Box** vregs_array = vregs.size() ? &vregs[0] : NULL;
+        std::pair<CFGBlock*, Box*> rtn = b->entry_code(this, b, vregs_array);
         next_block = rtn.first;
         if (!next_block)
             return rtn.second;
