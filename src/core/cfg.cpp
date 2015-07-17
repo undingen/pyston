@@ -2471,6 +2471,89 @@ void CFG::print() {
         blocks[i]->print();
 }
 
+class AssignSlotsVisitor : public NoopASTVisitor {
+public:
+    int index = 0;
+    llvm::DenseMap<InternedString, int> sym_map;
+
+    /*
+
+    virtual bool visit_arguments(AST_arguments* node) {
+        if (node->kwarg.s().size())
+            assignSlot(node->kwarg);
+        if (node->vararg.s().size())
+            assignSlot(node->vararg);
+        for (int i = 0; i < node->args.size(); i++) {
+            node->args[i]->accept(this);
+        }
+        return true;
+    }*/
+
+    bool visit_classdef(AST_ClassDef* node) {
+        assignSlot(node->name);
+
+        for (auto e : node->bases)
+            e->accept(this);
+        for (auto e : node->decorator_list)
+            e->accept(this);
+
+        return true;
+    }
+    bool visit_functiondef(AST_FunctionDef* node) {
+        for (auto* d : node->decorator_list)
+            d->accept(this);
+        // node->args->accept(this);
+
+        assignSlot(node->name);
+        return true;
+    }
+    bool visit_lambda(AST_Lambda* node) { return true; }
+
+
+    bool visit_name(AST_Name* node) {
+        if (node->slot == -1) {
+            node->slot = assignSlot(node->id);
+        }
+        return true;
+    }
+
+    int assignSlot(InternedString id) {
+        auto it = sym_map.find(id);
+        if (sym_map.end() == it) {
+            sym_map[id] = index;
+            // printf("adding: %s %d\n", id.c_str(), index);
+            return index++;
+        }
+        return it->second;
+    }
+};
+
+void assignSlots(CFG* cfg, const ParamNames& param_names, InternedStringPool& pool) {
+    // printf("assign slots\n");
+    // cfg->print();
+
+    AssignSlotsVisitor visitor;
+    for (CFGBlock* b : cfg->blocks) {
+        for (AST_stmt* stmt : b->body) {
+            stmt->accept(&visitor);
+        }
+    }
+
+    for (auto& name : param_names.args) {
+        visitor.assignSlot(pool.get(name));
+    }
+
+    if (!param_names.vararg.str().empty())
+        visitor.assignSlot(pool.get(param_names.vararg));
+
+    if (!param_names.kwarg.str().empty())
+        visitor.assignSlot(pool.get(param_names.kwarg));
+
+    cfg->has_slots = true;
+    cfg->num_var_slots = visitor.index;
+    cfg->sym_map = std::move(visitor.sym_map);
+}
+
 CFG* computeCFG(SourceInfo* source, std::vector<AST_stmt*> body) {
     STAT_TIMER(t0, "us_timer_computecfg", 0);
 

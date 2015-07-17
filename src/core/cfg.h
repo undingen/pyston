@@ -73,6 +73,10 @@ private:
 
 public:
     std::vector<CFGBlock*> blocks;
+    llvm::DenseMap<InternedString, int> sym_map;
+
+    int num_var_slots = 0;
+    bool has_slots = false;
 
     CFG() : next_idx(0) {}
 
@@ -106,7 +110,9 @@ public:
 };
 
 class SourceInfo;
+class ParamNames;
 CFG* computeCFG(SourceInfo* source, std::vector<AST_stmt*> body);
+void assignSlots(CFG* cfg, const ParamNames& param_names, InternedStringPool& pool);
 }
 
 #endif
