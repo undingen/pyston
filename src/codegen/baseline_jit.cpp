@@ -256,10 +256,10 @@ RewriterVar* JitFragmentWriter::emitGetAttr(RewriterVar* obj, BoxedString* s, AS
     return emitPPCall((void*)getattr, { obj, imm(s) }, 2, 512, getTypeRecorderForNode(node));
 }
 
-RewriterVar* JitFragmentWriter::emitGetBlockLocal(InternedString s) {
+RewriterVar* JitFragmentWriter::emitGetBlockLocal(InternedString s, int vreg) {
     auto it = local_syms.find(s);
     if (it == local_syms.end())
-        return emitGetLocal(s);
+        return emitGetLocal(s, vreg);
     return it->second;
 }
 
@@ -283,8 +283,8 @@ RewriterVar* JitFragmentWriter::emitGetItem(RewriterVar* value, RewriterVar* sli
     return emitPPCall((void*)getitem, { value, slice }, 2, 512);
 }
 
-RewriterVar* JitFragmentWriter::emitGetLocal(InternedString s) {
-    return call(false, (void*)ASTInterpreterJitInterface::getLocalHelper, getInterp(),
+RewriterVar* JitFragmentWriter::emitGetLocal(InternedString s, int vreg) {
+    return call(false, (void*)ASTInterpreterJitInterface::getLocalHelper, getInterp(), imm(vreg),
 #ifndef NDEBUG
                 imm(asUInt(s).first), imm(asUInt(s).second));
 #else
@@ -445,17 +445,18 @@ void JitFragmentWriter::emitSetItemName(BoxedString* s, RewriterVar* v) {
     call(false, (void*)ASTInterpreterJitInterface::setItemNameHelper, getInterp(), imm(s), v);
 }
 
-void JitFragmentWriter::emitSetLocal(InternedString s, bool set_closure, RewriterVar* v) {
-    void* func = set_closure ? (void*)ASTInterpreterJitInterface::setLocalClosureHelper
-                             : (void*)ASTInterpreterJitInterface::setLocalHelper;
-
-    call(false, func, getInterp(),
+void JitFragmentWriter::emitSetLocal(InternedString s, int vreg, bool set_closure, RewriterVar* v) {
+    if (set_closure) {
+        call(false, (void*)ASTInterpreterJitInterface::setLocalClosureHelper, getInterp(), imm(vreg),
 #ifndef NDEBUG
-         imm(asUInt(s).first), imm(asUInt(s).second),
+             imm(asUInt(s).first), imm(asUInt(s).second),
 #else
-         imm(asUInt(s)),
+             imm(asUInt(s)),
 #endif
-         v);
+             v);
+    } else {
+        call(false, (void*)ASTInterpreterJitInterface::setLocalHelper, getInterp(), imm(vreg), v);
+    }
 }
 
 void JitFragmentWriter::emitSideExit(RewriterVar* v, Box* cmp_value, CFGBlock* next_block) {

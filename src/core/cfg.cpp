@@ -2471,7 +2471,7 @@ void CFG::print() {
         blocks[i]->print();
 }
 
-class AssignSlotsVisitor : public NoopASTVisitor {
+class AssignVRegsVisitor : public NoopASTVisitor {
 public:
     int index = 0;
     llvm::DenseMap<InternedString, int> sym_map;
@@ -2490,7 +2490,7 @@ public:
     }*/
 
     bool visit_classdef(AST_ClassDef* node) {
-        assignSlot(node->name);
+        assignVReg(node->name);
 
         for (auto e : node->bases)
             e->accept(this);
@@ -2502,22 +2502,22 @@ public:
     bool visit_functiondef(AST_FunctionDef* node) {
         for (auto* d : node->decorator_list)
             d->accept(this);
-        // node->args->accept(this);
+        node->args->accept(this);
 
-        assignSlot(node->name);
+        assignVReg(node->name);
         return true;
     }
     bool visit_lambda(AST_Lambda* node) { return true; }
 
 
     bool visit_name(AST_Name* node) {
-        if (node->slot == -1) {
-            node->slot = assignSlot(node->id);
+        if (node->vreg == -1) {
+            node->vreg = assignVReg(node->id);
         }
         return true;
     }
 
-    int assignSlot(InternedString id) {
+    int assignVReg(InternedString id) {
         auto it = sym_map.find(id);
         if (sym_map.end() == it) {
             sym_map[id] = index;
@@ -2528,11 +2528,11 @@ public:
     }
 };
 
-void assignSlots(CFG* cfg, const ParamNames& param_names, InternedStringPool& pool) {
+void assignVRegs(CFG* cfg, const ParamNames& param_names, InternedStringPool& pool) {
     // printf("assign slots\n");
     // cfg->print();
 
-    AssignSlotsVisitor visitor;
+    AssignVRegsVisitor visitor;
     for (CFGBlock* b : cfg->blocks) {
         for (AST_stmt* stmt : b->body) {
             stmt->accept(&visitor);
@@ -2540,17 +2540,16 @@ void assignSlots(CFG* cfg, const ParamNames& param_names, InternedStringPool& po
     }
 
     for (auto& name : param_names.args) {
-        visitor.assignSlot(pool.get(name));
+        visitor.assignVReg(pool.get(name));
     }
 
     if (!param_names.vararg.str().empty())
-        visitor.assignSlot(pool.get(param_names.vararg));
+        visitor.assignVReg(pool.get(param_names.vararg));
 
     if (!param_names.kwarg.str().empty())
-        visitor.assignSlot(pool.get(param_names.kwarg));
+        visitor.assignVReg(pool.get(param_names.kwarg));
 
-    cfg->has_slots = true;
-    cfg->num_var_slots = visitor.index;
+    cfg->has_vregs_assigned = true;
     cfg->sym_map = std::move(visitor.sym_map);
 }
 

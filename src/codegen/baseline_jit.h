@@ -206,13 +206,13 @@ public:
     RewriterVar* emitDeref(InternedString s);
     RewriterVar* emitExceptionMatches(RewriterVar* v, RewriterVar* cls);
     RewriterVar* emitGetAttr(RewriterVar* obj, BoxedString* s, AST_expr* node);
-    RewriterVar* emitGetBlockLocal(InternedString s);
+    RewriterVar* emitGetBlockLocal(InternedString s, int vreg);
     RewriterVar* emitGetBoxedLocal(BoxedString* s);
     RewriterVar* emitGetBoxedLocals();
     RewriterVar* emitGetClsAttr(RewriterVar* obj, BoxedString* s);
     RewriterVar* emitGetGlobal(Box* global, BoxedString* s);
     RewriterVar* emitGetItem(RewriterVar* value, RewriterVar* slice);
-    RewriterVar* emitGetLocal(InternedString s);
+    RewriterVar* emitGetLocal(InternedString s, int vreg);
     RewriterVar* emitGetPystonIter(RewriterVar* v);
     RewriterVar* emitHasnext(RewriterVar* v);
     RewriterVar* emitLandingpad();
@@ -239,7 +239,7 @@ public:
     void emitSetGlobal(Box* global, BoxedString* s, RewriterVar* v);
     void emitSetItemName(BoxedString* s, RewriterVar* v);
     void emitSetItem(RewriterVar* target, RewriterVar* slice, RewriterVar* value);
-    void emitSetLocal(InternedString s, bool set_closure, RewriterVar* v);
+    void emitSetLocal(InternedString s, int vreg, bool set_closure, RewriterVar* v);
     void emitSideExit(RewriterVar* v, Box* cmp_value, CFGBlock* next_block);
     void emitUncacheExcInfo();
 

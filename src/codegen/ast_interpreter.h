@@ -42,14 +42,14 @@ struct ASTInterpreterJitInterface {
     static Box* doOSRHelper(void* interp, AST_Jump* node);
     static Box* getBoxedLocalHelper(void* interp, BoxedString* s);
     static Box* getBoxedLocalsHelper(void* interp);
-    static Box* getLocalHelper(void* interp, InternedString id);
+    static Box* getLocalHelper(void* interp, long vreg, InternedString id);
     static Box* landingpadHelper(void* interp);
     static Box* setExcInfoHelper(void* interp, Box* type, Box* value, Box* traceback);
     static Box* uncacheExcInfoHelper(void* interp);
     static Box* yieldHelper(void* interp, Box* val);
     static void setItemNameHelper(void* interp, Box* str, Box* val);
-    static void setLocalClosureHelper(void* interp, InternedString id, Box* v);
-    static void setLocalHelper(void* interp, InternedString id, Box* v);
+    static void setLocalClosureHelper(void* interp, long vreg, InternedString id, Box* v);
+    static void setLocalHelper(void* interp, long vreg, Box* v);
 };
 
 class RewriterVar;

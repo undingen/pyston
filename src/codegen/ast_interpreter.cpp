@@ -93,6 +93,7 @@ private:
     Box* createFunction(AST* node, AST_arguments* args, const std::vector<AST_stmt*>& body);
     Value doBinOp(Value left, Value right, int op, BinExpType exp_type);
     void doStore(AST_expr* node, Value value);
+    void doStore(AST_Name* node, Value value);
     void doStore(InternedString name, Value value);
     Box* doOSR(AST_Jump* node);
     Value getNone();
@@ -294,8 +295,8 @@ ASTInterpreter::ASTInterpreter(CLFunction* clfunc)
 void ASTInterpreter::initArguments(int nargs, BoxedClosure* _closure, BoxedGenerator* _generator, Box* arg1, Box* arg2,
                                    Box* arg3, Box** args) {
     getSymMap();
-    if (!source_info->cfg->has_slots) {
-        assignSlots(source_info->cfg, clfunc->param_names, source_info->getInternedStrings());
+    if (!source_info->cfg->has_vregs_assigned) {
+        assignVRegs(source_info->cfg, clfunc->param_names, source_info->getInternedStrings());
     }
     vregs.resize(getSymMap().size());
 
@@ -531,18 +532,53 @@ void ASTInterpreter::doStore(InternedString name, Value value) {
             if (!closure) {
                 bool is_live = source_info->getLiveness()->isLiveAtEnd(name, current_block);
                 if (is_live)
-                    jit->emitSetLocal(name, closure, value);
+                    jit->emitSetLocal(name, getSymMap()[name], closure, value);
                 else
                     jit->emitSetBlockLocal(name, value);
             } else
-                jit->emitSetLocal(name, closure, value);
+                jit->emitSetLocal(name, getSymMap()[name], closure, value);
+        }
+
+        assert(getSymMap().count(name));
+        vregs[getSymMap()[name]] = value.o;
+
+        if (closure) {
+            created_closure->elts[scope_info->getClosureOffset(name)] = value.o;
+        }
+    }
+}
+
+void ASTInterpreter::doStore(AST_Name* node, Value value) {
+    InternedString name = node->id;
+    ScopeInfo::VarScopeType vst = scope_info->getScopeTypeOfName(name);
+    if (vst == ScopeInfo::VarScopeType::GLOBAL) {
+        if (jit)
+            jit->emitSetGlobal(globals, name.getBox(), value);
+        setGlobal(globals, name.getBox(), value.o);
+    } else if (vst == ScopeInfo::VarScopeType::NAME) {
+        if (jit)
+            jit->emitSetItemName(name.getBox(), value);
+        assert(frame_info.boxedLocals != NULL);
+        // TODO should probably pre-box the names when it's a scope that usesNameLookup
+        setitem(frame_info.boxedLocals, name.getBox(), value.o);
+    } else {
+        bool closure = vst == ScopeInfo::VarScopeType::CLOSURE;
+        if (jit) {
+            if (!closure) {
+                bool is_live = source_info->getLiveness()->isLiveAtEnd(name, current_block);
+                if (is_live)
+                    jit->emitSetLocal(name, node->vreg, closure, value);
+                else
+                    jit->emitSetBlockLocal(name, value);
+            } else
+                jit->emitSetLocal(name, node->vreg, closure, value);
         }
 
         if (!getSymMap().count(name))
             printf("not found: %s\n", name.c_str());
         assert(getSymMap().count(name));
-        // printf("s: %s\n", name.c_str());
-        vregs[getSymMap()[name]] = value.o;
+        assert(getSymMap()[name] == node->vreg);
+        vregs[node->vreg] = value.o;
 
         if (closure) {
             created_closure->elts[scope_info->getClosureOffset(name)] = value.o;
@@ -553,7 +589,7 @@ void ASTInterpreter::doStore(InternedString name, Value value) {
 void ASTInterpreter::doStore(AST_expr* node, Value value) {
     if (node->type == AST_TYPE::Name) {
         AST_Name* name = (AST_Name*)node;
-        doStore(name->id, value);
+        doStore(name, value);
     } else if (node->type == AST_TYPE::Attribute) {
         AST_Attribute* attr = (AST_Attribute*)node;
         Value o = visit_expr(attr->value);
@@ -1215,13 +1251,13 @@ Value ASTInterpreter::visit_delete(AST_Delete* node) {
                     assert(vst == ScopeInfo::VarScopeType::FAST);
 
                     assert(getSymMap().count(target->id));
-                    assert(getSymMap()[target->id] == target->slot);
-                    if (vregs[target->slot] == 0) {
+                    assert(getSymMap()[target->id] == target->vreg);
+                    if (vregs[target->vreg] == 0) {
                         assertNameDefined(0, target->id.c_str(), NameError, true /* local_var_msg */);
                         return Value();
                     }
 
-                    vregs[target->slot] = 0;
+                    vregs[target->vreg] = 0;
                 }
                 break;
             }
@@ -1524,12 +1560,12 @@ Value ASTInterpreter::visit_name(AST_Name* node) {
                     is_live = source_info->getLiveness()->isLiveAtEnd(node->id, current_block);
 
                 if (is_live)
-                    v.var = jit->emitGetLocal(node->id);
+                    v.var = jit->emitGetLocal(node->id, node->vreg);
                 else
-                    v.var = jit->emitGetBlockLocal(node->id);
+                    v.var = jit->emitGetBlockLocal(node->id, node->vreg);
             }
 
-            v.o = ASTInterpreterJitInterface::getLocalHelper(this, node->id);
+            v.o = ASTInterpreterJitInterface::getLocalHelper(this, node->vreg, node->id);
             return v;
         }
         case ScopeInfo::VarScopeType::NAME: {
@@ -1628,13 +1664,12 @@ Box* ASTInterpreterJitInterface::getBoxedLocalsHelper(void* _interpreter) {
     return interpreter->frame_info.boxedLocals;
 }
 
-Box* ASTInterpreterJitInterface::getLocalHelper(void* _interpreter, InternedString id) {
+Box* ASTInterpreterJitInterface::getLocalHelper(void* _interpreter, long vreg, InternedString id) {
     ASTInterpreter* interpreter = (ASTInterpreter*)_interpreter;
 
-    if (!interpreter->getSymMap().count(id))
-        printf("%s\n", id.c_str());
     assert(interpreter->getSymMap().count(id));
-    Box* val = interpreter->vregs[interpreter->getSymMap()[id]];
+    assert(interpreter->getSymMap()[id] == vreg);
+    Box* val = interpreter->vregs[vreg];
     if (val) {
         assert(gc::isValidGCObject(val));
         return val;
@@ -1678,22 +1713,22 @@ void ASTInterpreterJitInterface::setItemNameHelper(void* _interpreter, Box* str,
     setitem(interpreter->frame_info.boxedLocals, str, val);
 }
 
-void ASTInterpreterJitInterface::setLocalClosureHelper(void* _interpreter, InternedString id, Box* v) {
+void ASTInterpreterJitInterface::setLocalClosureHelper(void* _interpreter, long vreg, InternedString id, Box* v) {
     ASTInterpreter* interpreter = (ASTInterpreter*)_interpreter;
 
     assert(gc::isValidGCObject(v));
     assert(interpreter->getSymMap().count(id));
-    interpreter->vregs[interpreter->getSymMap()[id]] = v;
+    assert(interpreter->getSymMap()[id] == vreg);
+    interpreter->vregs[vreg] = v;
 
     interpreter->created_closure->elts[interpreter->scope_info->getClosureOffset(id)] = v;
 }
 
-void ASTInterpreterJitInterface::setLocalHelper(void* _interpreter, InternedString id, Box* v) {
+void ASTInterpreterJitInterface::setLocalHelper(void* _interpreter, long vreg, Box* v) {
     ASTInterpreter* interpreter = (ASTInterpreter*)_interpreter;
 
     assert(gc::isValidGCObject(v));
-    assert(interpreter->getSymMap().count(id));
-    interpreter->vregs[interpreter->getSymMap()[id]] = v;
+    interpreter->vregs[vreg] = v;
 }
 
 

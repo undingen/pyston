@@ -703,7 +703,7 @@ public:
     // different bytecodes.
     ScopeInfo::VarScopeType lookup_type;
 
-    int slot;
+    int vreg;
 
     virtual void accept(ASTVisitor* v);
     virtual void* accept_expr(ExprVisitor* v);
@@ -713,7 +713,7 @@ public:
           ctx_type(ctx_type),
           id(id),
           lookup_type(ScopeInfo::VarScopeType::UNKNOWN),
-          slot(-1) {}
+          vreg(-1) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Name;
 };
