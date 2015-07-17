@@ -63,7 +63,7 @@ extern "C" Box* executeInner(ASTInterpreter& interpreter, CFGBlock* start_block,
 
 class ASTInterpreter {
 public:
-    ASTInterpreter(CLFunction* clfunc);
+    ASTInterpreter(CLFunction* clfunc, Box** vregs);
 
     void initArguments(int nargs, BoxedClosure* closure, BoxedGenerator* generator, Box* arg1, Box* arg2, Box* arg3,
                        Box** args);
@@ -142,7 +142,7 @@ private:
     ScopeInfo* scope_info;
     PhiAnalysis* phis;
 
-    llvm::SmallVector<Box*, 512> vregs;
+    Box** vregs;
     ExcInfo last_exception;
     BoxedClosure* passed_closure, *created_closure;
     BoxedGenerator* generator;
@@ -175,7 +175,7 @@ public:
     CLFunction* getCL() { return clfunc; }
     FrameInfo* getFrameInfo() { return &frame_info; }
     BoxedClosure* getPassedClosure() { return passed_closure; }
-    const llvm::SmallVector<Box*, 512>& getVRegs() { return vregs; }
+    Box** getVRegs() { return vregs; }
     const ScopeInfo* getScopeInfo() { return scope_info; }
 
     void addSymbol(InternedString name, Box* value, bool allow_duplicates);
@@ -230,27 +230,34 @@ void ASTInterpreter::setGlobals(Box* globals) {
 }
 
 void ASTInterpreter::gcHandler(GCVisitor* visitor, Box* box) {
+#if 0
     boxGCHandler(visitor, box);
 
     ASTInterpreter* interp = (ASTInterpreter*)box;
+    /*
     if (!interp->vregs.empty())
         visitor->visitRange((void* const*)&interp->vregs[0],
                             (void* const*)&interp->vregs[interp->vregs.size() - 1] + 1);
+    */
+
     visitor->visit(interp->passed_closure);
     visitor->visit(interp->created_closure);
     visitor->visit(interp->generator);
     visitor->visit(interp->globals);
     visitor->visit(interp->source_info->parent_module);
     interp->frame_info.gcVisit(visitor);
+#endif
+    RELEASE_ASSERT(0, "");
 }
 
-ASTInterpreter::ASTInterpreter(CLFunction* clfunc)
+ASTInterpreter::ASTInterpreter(CLFunction* clfunc, Box** vregs)
     : current_block(0),
       current_inst(0),
       clfunc(clfunc),
       source_info(clfunc->source.get()),
       scope_info(0),
       phis(NULL),
+      vregs(vregs),
       last_exception(NULL, NULL, NULL),
       passed_closure(0),
       created_closure(0),
@@ -267,12 +274,6 @@ ASTInterpreter::ASTInterpreter(CLFunction* clfunc)
 
 void ASTInterpreter::initArguments(int nargs, BoxedClosure* _closure, BoxedGenerator* _generator, Box* arg1, Box* arg2,
                                    Box* arg3, Box** args) {
-    getSymMap();
-    if (!source_info->cfg->has_vregs_assigned) {
-        assignVRegs(source_info->cfg, clfunc->param_names, source_info->getInternedStrings());
-    }
-    vregs.resize(getSymMap().size());
-
     passed_closure = _closure;
     generator = _generator;
 
@@ -337,8 +338,7 @@ void ASTInterpreter::finishJITing(CFGBlock* continue_block) {
 Box* ASTInterpreter::execJITedBlock(CFGBlock* b) {
     try {
         UNAVOIDABLE_STAT_TIMER(t0, "us_timer_in_baseline_jitted_code");
-        Box** vregs_array = vregs.size() ? &vregs[0] : NULL;
-        std::pair<CFGBlock*, Box*> rtn = b->entry_code(this, b, vregs_array);
+        std::pair<CFGBlock*, Box*> rtn = b->entry_code(this, b, vregs);
         next_block = rtn.first;
         if (!next_block)
             return rtn.second;
@@ -699,7 +699,7 @@ Box* ASTInterpreter::doOSR(AST_Jump* node) {
 
 
     std::vector<InternedString> dead_symbols;
-    for (int i = 0; i < vregs.size(); ++i) {
+    for (int i = 0; i < getSymMap().size(); ++i) {
         if (!liveness->isLiveAtEnd(offset_name_map[i], current_block)) {
             dead_symbols.push_back(offset_name_map[i]);
         } else if (phis->isRequiredAfter(offset_name_map[i], current_block)) {
@@ -1690,10 +1690,24 @@ const void* interpreter_instr_addr = (void*)&executeInner;
 
 Box* astInterpretFunction(CLFunction* clfunc, int nargs, Box* closure, Box* generator, Box* globals, Box* arg1,
                           Box* arg2, Box* arg3, Box** args) {
-    ASTInterpreter interpreter(clfunc);
+
     UNAVOIDABLE_STAT_TIMER(t0, "us_timer_in_interpreter");
 
     SourceInfo* source_info = clfunc->source.get();
+
+    if (!source_info->cfg)
+        source_info->cfg = computeCFG(source_info, source_info->body);
+    if (!source_info->cfg->has_vregs_assigned) {
+        assignVRegs(source_info->cfg, clfunc->param_names, source_info->getInternedStrings());
+    }
+
+    Box** vregs = NULL;
+    int num_syms = source_info->cfg->sym_map.size() + 1;
+    if (num_syms) {
+        vregs = (Box**)__builtin_alloca(sizeof(Box*) * num_syms);
+        memset(vregs, 0, sizeof(Box*) * num_syms);
+    }
+    ASTInterpreter interpreter(clfunc, vregs);
 
     assert((!globals) == source_info->scoping->areGlobalsFromModule());
     bool can_reopt = ENABLE_REOPT && !FORCE_INTERPRETER && (globals == NULL);
@@ -1758,14 +1772,28 @@ Box* astInterpretFunction(CLFunction* clfunc, int nargs, Box* closure, Box* gene
 }
 
 Box* astInterpretFunctionEval(CLFunction* clfunc, Box* globals, Box* boxedLocals) {
-    ASTInterpreter interpreter(clfunc);
+    ScopeInfo* scope_info = clfunc->source->getScopeInfo();
+    SourceInfo* source_info = clfunc->source.get();
+
+    if (!source_info->cfg)
+        source_info->cfg = computeCFG(source_info, source_info->body);
+    if (!source_info->cfg->has_vregs_assigned) {
+        assignVRegs(source_info->cfg, clfunc->param_names, source_info->getInternedStrings());
+    }
+
+    Box** vregs = NULL;
+    int num_syms = source_info->cfg->sym_map.size() + 1;
+    if (num_syms) {
+        vregs = (Box**)__builtin_alloca(sizeof(Box*) * num_syms);
+        memset(vregs, 0, sizeof(Box*) * num_syms);
+    }
+    ASTInterpreter interpreter(clfunc, vregs);
 
     ++clfunc->times_interpreted;
     interpreter.initArguments(0, NULL, NULL, NULL, NULL, NULL, NULL);
     interpreter.setBoxedLocals(boxedLocals);
 
-    ScopeInfo* scope_info = clfunc->source->getScopeInfo();
-    SourceInfo* source_info = clfunc->source.get();
+
 
     assert(!clfunc->source->scoping->areGlobalsFromModule());
     assert(globals);
@@ -1779,17 +1807,29 @@ Box* astInterpretDeopt(CLFunction* clfunc, AST_expr* after_expr, AST_stmt* enclo
                        FrameStackState frame_state) {
     assert(0);
 
-    ASTInterpreter interpreter(clfunc);
+    ScopeInfo* scope_info = clfunc->source->getScopeInfo();
+    SourceInfo* source_info = clfunc->source.get();
+
+    if (!source_info->cfg)
+        source_info->cfg = computeCFG(source_info, source_info->body);
+    if (!source_info->cfg->has_vregs_assigned) {
+        assignVRegs(source_info->cfg, clfunc->param_names, source_info->getInternedStrings());
+    }
+
+    Box** vregs = NULL;
+    int num_syms = source_info->cfg->sym_map.size() + 1;
+    if (num_syms) {
+        vregs = (Box**)__builtin_alloca(sizeof(Box*) * num_syms);
+        memset(vregs, 0, sizeof(Box*) * num_syms);
+    }
+    ASTInterpreter interpreter(clfunc, vregs);
+
     assert(clfunc);
     assert(enclosing_stmt);
     assert(frame_state.locals);
     assert(after_expr);
     assert(expr_val);
 
-
-
-    ScopeInfo* scope_info = clfunc->source->getScopeInfo();
-    SourceInfo* source_info = clfunc->source.get();
     assert(clfunc->source->scoping->areGlobalsFromModule());
     interpreter.setGlobals(source_info->parent_module);
 
