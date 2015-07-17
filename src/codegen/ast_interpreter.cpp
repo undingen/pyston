@@ -1554,6 +1554,11 @@ Value ASTInterpreter::visit_name(AST_Name* node) {
         }
         case ScopeInfo::VarScopeType::FAST:
         case ScopeInfo::VarScopeType::CLOSURE: {
+
+            if (node->vreg == -1) { // TODO: HACK!!
+                assert(getSymMap().count(node->id));
+                node->vreg = getSymMap()[node->id];
+            }
             Value v;
             if (jit) {
                 bool is_live = false;
