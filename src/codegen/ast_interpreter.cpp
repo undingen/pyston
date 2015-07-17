@@ -159,7 +159,7 @@ private:
     ScopeInfo* scope_info;
     PhiAnalysis* phis;
 
-    llvm::SmallVector<Box*, 128> vregs;
+    llvm::SmallVector<Box*, 0> vregs;
     ExcInfo last_exception;
     BoxedClosure* passed_closure, *created_closure;
     BoxedGenerator* generator;
@@ -194,7 +194,7 @@ public:
     CLFunction* getCL() { return clfunc; }
     FrameInfo* getFrameInfo() { return &frame_info; }
     BoxedClosure* getPassedClosure() { return passed_closure; }
-    const llvm::SmallVector<Box*, 128>& getVRegs() { return vregs; }
+    const llvm::SmallVector<Box*, 0>& getVRegs() { return vregs; }
     const ScopeInfo* getScopeInfo() { return scope_info; }
 
     void addSymbol(InternedString name, Box* value, bool allow_duplicates);
