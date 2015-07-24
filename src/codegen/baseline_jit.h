@@ -152,6 +152,7 @@ public:
 class JitFragmentWriter : public Rewriter {
 private:
     static constexpr int min_patch_size = 13;
+    int alignment_bytes = 0;
 
     CFGBlock* block;
     int code_offset; // offset inside the JitCodeBlock to the start of this block

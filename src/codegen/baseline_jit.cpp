@@ -136,6 +136,17 @@ JitFragmentWriter::JitFragmentWriter(CFGBlock* block, std::unique_ptr<ICInfo> ic
       code_block(code_block),
       interp(0),
       ic_info(std::move(ic_info)) {
+
+    addAction([=]() {
+        uint64_t ptr = (uint64_t) this->rewrite->getSlotStart();
+        int missing = 16 - (ptr % 16);
+        if (missing > 0 && missing < 16) {
+            alignment_bytes = missing;
+            for (int i = 0; i < missing; ++i)
+                assembler->nop();
+        }
+    }, {}, ActionType::NORMAL);
+
     interp = createNewVar();
     addLocationToVar(interp, assembler::R12);
     interp->setAttr(ASTInterpreterJitInterface::getCurrentBlockOffset(), imm(block));
@@ -517,7 +528,9 @@ int JitFragmentWriter::finishCompilation() {
         return 0;
     }
 
-    block->code = (void*)((uint64_t)entry_code + code_offset);
+    block->code = (void*)((uint64_t)entry_code + code_offset + alignment_bytes);
+    assert((uint64_t)block->code % 16 == 0);
+
     block->entry_code = (decltype(block->entry_code))entry_code;
 
     // if any side exits point to this block patch them to a direct jump to this block
@@ -538,7 +551,7 @@ int JitFragmentWriter::finishCompilation() {
 
     // if we have a side exit, remember its location for patching
     if (side_exit_patch_location.first) {
-        void* patch_location = (uint8_t*)block->code + side_exit_patch_location.second;
+        void* patch_location = (uint8_t*)block->code + side_exit_patch_location.second - alignment_bytes;
         block_patch_locations[side_exit_patch_location.first].push_back(patch_location);
     }
 
@@ -558,7 +571,7 @@ int JitFragmentWriter::finishCompilation() {
         pp.release();
     }
 
-    void* next_fragment_start = (uint8_t*)block->code + assembler->bytesWritten();
+    void* next_fragment_start = (uint8_t*)block->code + assembler->bytesWritten() - alignment_bytes;
     code_block.fragmentFinished(assembler->bytesWritten(), num_bytes_overlapping, next_fragment_start);
     return num_bytes_exit;
 }
