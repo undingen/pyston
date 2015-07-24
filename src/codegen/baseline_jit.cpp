@@ -140,7 +140,7 @@ JitFragmentWriter::JitFragmentWriter(CFGBlock* block, std::unique_ptr<ICInfo> ic
     addAction([=]() {
         uint64_t ptr = (uint64_t) this->rewrite->getSlotStart();
         int missing = 16 - (ptr % 16);
-        if (missing > 0 && missing < 16) {
+        if (missing > 0 && missing < 8) {
             alignment_bytes = missing;
             for (int i = 0; i < missing; ++i)
                 assembler->nop();
@@ -529,7 +529,7 @@ int JitFragmentWriter::finishCompilation() {
     }
 
     block->code = (void*)((uint64_t)entry_code + code_offset + alignment_bytes);
-    assert((uint64_t)block->code % 16 == 0);
+    //assert((uint64_t)block->code % 16 == 0);
 
     block->entry_code = (decltype(block->entry_code))entry_code;
 
