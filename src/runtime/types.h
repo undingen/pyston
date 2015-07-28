@@ -629,15 +629,21 @@ static_assert(offsetof(BoxedList, size) == offsetof(PyListObject, ob_size), "");
 static_assert(offsetof(BoxedList, elts) == offsetof(PyListObject, ob_item), "");
 static_assert(offsetof(GCdArray, elts) == 0, "");
 static_assert(offsetof(BoxedList, capacity) == offsetof(PyListObject, allocated), "");
-
+extern "C" BoxedTuple* EmptyTuple;
 class BoxedTuple : public BoxVar {
 public:
     static BoxedTuple* create(int64_t size) {
+        if (size == 0 && EmptyTuple)
+            return EmptyTuple;
+
         BoxedTuple* rtn = new (size) BoxedTuple();
         memset(rtn->elts, 0, size * sizeof(Box*)); // TODO not all callers want this (but some do)
         return rtn;
     }
     static BoxedTuple* create(int64_t nelts, Box** elts) {
+        if (nelts == 0 && EmptyTuple)
+            return EmptyTuple;
+
         BoxedTuple* rtn = new (nelts) BoxedTuple();
         for (int i = 0; i < nelts; i++)
             assert(gc::isValidGCObject(elts[i]));
@@ -782,7 +788,7 @@ static_assert(sizeof(BoxedTuple) == sizeof(PyTupleObject), "");
 static_assert(offsetof(BoxedTuple, ob_size) == offsetof(PyTupleObject, ob_size), "");
 static_assert(offsetof(BoxedTuple, elts) == offsetof(PyTupleObject, ob_item), "");
 
-extern "C" BoxedTuple* EmptyTuple;
+
 extern "C" BoxedString* EmptyString;
 extern BoxedString* characters[UCHAR_MAX + 1];
 
