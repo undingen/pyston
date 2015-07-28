@@ -49,12 +49,19 @@ const unsigned char eh_info[]
         0x01, 0x1b, 0x0c, 0x07, 0x08, 0x90, 0x01, 0x00, 0x00, 0x1c, 0x00, 0x00, 0x00, 0x1c, 0x00,
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x00, 0x42, 0x0e, 0x10, 0x42,
         0x0e, 0x18, 0x47, 0x0e, 0xb0, 0x02, 0x8c, 0x03, 0x8e, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00 };
+static_assert(JitCodeBlock::eh_size == sizeof(eh_info), "have to update the eh_size const");
 static_assert(JitCodeBlock::num_stack_args == 2, "have to update EH table!");
 static_assert(JitCodeBlock::scratch_size == 256, "have to update EH table!");
 
+static uint8_t* myalloc(int size) {
+    static void* addr = mmap(0, size*1000, PROT_READ|PROT_WRITE|PROT_EXEC, MAP_32BIT|MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+    void* old_addr = addr;
+    addr = (char*)addr + size;
+    return (uint8_t*)old_addr;
+}
+
 JitCodeBlock::JitCodeBlock(llvm::StringRef name)
-    : code(new uint8_t[code_size]),
-      eh_frame(new uint8_t[sizeof(eh_info)]),
+    : code(myalloc(alloc_size)),
       entry_offset(0),
       a(code.get(), code_size),
       is_currently_writing(false),
@@ -77,7 +84,7 @@ JitCodeBlock::JitCodeBlock(llvm::StringRef name)
 
     // generate the eh frame...
     const int size = sizeof(eh_info);
-    void* eh_frame_addr = eh_frame.get();
+    void* eh_frame_addr = &code[code_size];
     memcpy(eh_frame_addr, eh_info, size);
 
     int32_t* offset_ptr = (int32_t*)((uint8_t*)eh_frame_addr + 0x20);

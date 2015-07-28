@@ -133,7 +133,9 @@ class JitFragmentWriter;
 class JitCodeBlock {
 public:
     static constexpr int scratch_size = 256;
-    static constexpr int code_size = 32768;
+    static constexpr int eh_size = 60;
+    static constexpr int alloc_size = 4096 * 8;
+    static constexpr int code_size = alloc_size - eh_size;
     static constexpr int num_stack_args = 2;
 
     // scratch size + space for passing additional args on the stack without having to adjust the SP when calling
@@ -142,7 +144,6 @@ public:
 
 private:
     std::unique_ptr<uint8_t[]> code;
-    std::unique_ptr<uint8_t[]> eh_frame;
     int entry_offset;
     assembler::Assembler a;
     bool is_currently_writing;
