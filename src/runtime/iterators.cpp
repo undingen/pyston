@@ -108,6 +108,45 @@ public:
         return &_end;
     }
 };
+
+class BoxIteratorDict : public BoxIteratorImpl {
+private:
+    BoxedDict* obj;
+    BoxedDict::DictMap::iterator it;
+
+    static bool hasnext(BoxedDict* o, BoxedDict::DictMap::iterator it) { return it != o->d.end(); }
+    static Box* getValue(BoxedDict* o, BoxedDict::DictMap::iterator it) { return it->first; }
+
+public:
+    BoxIteratorDict(BoxedDict* obj) : obj(obj), it(obj ? obj->d.begin() : BoxedDict::DictMap::iterator()) {
+        if (obj && !hasnext(obj, it))
+            *this = *end();
+    }
+
+    void next() override {
+        if (!end()->isSame(this)) {
+            ++it;
+            if (!hasnext(obj, it))
+                *this = *end();
+        }
+    }
+
+    Box* getValue() override {
+        Box* r = getValue(obj, it);
+        assert(gc::isValidGCObject(r));
+        return r;
+    }
+
+    bool isSame(const BoxIteratorImpl* _rhs) override {
+        const auto rhs = (const BoxIteratorDict*)_rhs;
+        return obj == rhs->obj && it == rhs->it;
+    }
+
+    static BoxIteratorDict* end() {
+        static BoxIteratorDict _end(nullptr);
+        return &_end;
+    }
+};
 }
 
 llvm::iterator_range<BoxIterator> BoxIterator::getRange(Box* container) {
@@ -125,6 +164,10 @@ llvm::iterator_range<BoxIterator> BoxIterator::getRange(Box* container) {
         using BoxIteratorString = BoxIteratorIndex<BoxedString>;
         BoxIterator begin = new BoxIteratorString((BoxedString*)container);
         BoxIterator end = BoxIteratorString::end();
+        return llvm::iterator_range<BoxIterator>(std::move(begin), end);
+    } else if (container->cls == dict_cls) {
+        BoxIterator begin = new BoxIteratorDict((BoxedDict*)container);
+        BoxIterator end = BoxIteratorDict::end();
         return llvm::iterator_range<BoxIterator>(std::move(begin), end);
     }
     BoxIterator begin = new BoxIteratorGeneric(container);

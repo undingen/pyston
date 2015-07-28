@@ -30,7 +30,6 @@ public:
 
     BoxedDict* d;
     BoxedDict::DictMap::iterator it;
-    const BoxedDict::DictMap::iterator itEnd;
     const IteratorType type;
 
     BoxedDictIterator(BoxedDict* d, IteratorType type);

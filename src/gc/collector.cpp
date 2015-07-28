@@ -18,6 +18,8 @@
 #include <cstdio>
 #include <cstdlib>
 
+#include <llvm/ADT/DenseSet.h>
+
 #include "codegen/ast_interpreter.h"
 #include "codegen/codegen.h"
 #include "core/common.h"
@@ -44,7 +46,7 @@ std::deque<PyWeakReference*> weakrefs_needing_callback_list;
 
 std::list<Box*> objects_with_ordered_finalizers;
 
-static std::unordered_set<void*> roots;
+static llvm::DenseSet<void*> roots;
 static std::vector<std::pair<void*, void*>> potential_root_ranges;
 
 // BoxedClasses in the program that are still needed.
@@ -113,7 +115,7 @@ private:
 
 public:
     TraceStack(TraceStackType type) : visit_type(type) { get_chunk(); }
-    TraceStack(TraceStackType type, const std::unordered_set<void*>& root_handles) : visit_type(type) {
+    TraceStack(TraceStackType type, const llvm::DenseSet<void*>& root_handles) : visit_type(type) {
         get_chunk();
         for (void* p : root_handles) {
             assert(!isMarked(GCAllocation::fromUserData(p)));
@@ -341,6 +343,9 @@ void GCVisitor::visitRange(void* const* start, void* const* end) {
     assert((uintptr_t)end % sizeof(void*) == 0);
 
     while (start < end) {
+        if (start + 2 < end)
+            __builtin_prefetch(*(start + 2));
+
         visit(*start);
         start++;
     }
@@ -349,6 +354,7 @@ void GCVisitor::visitRange(void* const* start, void* const* end) {
 void GCVisitor::visitPotential(void* p) {
     GCAllocation* a = global_heap.getAllocationFromInteriorPointer(p);
     if (a) {
+        __builtin_prefetch(a->user_data - 8);
         visit(a->user_data);
     }
 }

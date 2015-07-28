@@ -19,8 +19,7 @@
 
 namespace pyston {
 
-BoxedDictIterator::BoxedDictIterator(BoxedDict* d, IteratorType type)
-    : d(d), it(d->d.begin()), itEnd(d->d.end()), type(type) {
+BoxedDictIterator::BoxedDictIterator(BoxedDict* d, IteratorType type) : d(d), it(d->d.begin()), type(type) {
 }
 
 Box* dictIterKeys(Box* s) {
@@ -49,7 +48,7 @@ i1 dictIterHasnextUnboxed(Box* s) {
     assert(s->cls == dict_iterator_cls);
     BoxedDictIterator* self = static_cast<BoxedDictIterator*>(s);
 
-    return self->it != self->itEnd;
+    return self->it != self->d->d.end();
 }
 
 Box* dictIterHasnext(Box* s) {
@@ -60,7 +59,7 @@ Box* dictIterNext(Box* s) {
     assert(s->cls == dict_iterator_cls);
     BoxedDictIterator* self = static_cast<BoxedDictIterator*>(s);
 
-    if (self->it == self->itEnd)
+    if (self->it == self->d->d.end())
         raiseExcHelper(StopIteration, "");
 
     Box* rtn = nullptr;
