@@ -320,6 +320,7 @@ public:
     FutureFlags future_flags;
     AST* ast;
     CFG* cfg;
+    ScopeInfo* scope_info;
     bool is_generator;
     std::string fn; // equivalent of code.co_filename
 

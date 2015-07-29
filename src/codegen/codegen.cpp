@@ -66,6 +66,7 @@ SourceInfo::SourceInfo(BoxedModule* m, ScopingAnalysis* scoping, FutureFlags fut
       future_flags(future_flags),
       ast(ast),
       cfg(NULL),
+      scope_info(NULL),
       fn(std::move(fn)),
       body(std::move(body)) {
     assert(this->fn.size());
