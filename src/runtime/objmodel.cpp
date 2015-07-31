@@ -4378,12 +4378,17 @@ extern "C" Box* unaryop(Box* operand, int op_type) {
 
     BoxedString* op_name = getOpName(op_type);
 
-    // TODO: this code looks very old and like it should be a callattr instead?
-    Box* attr_func = getclsattrInternal(operand, op_name, NULL);
-    RELEASE_ASSERT(attr_func, "%s.%s", getTypeName(operand), op_name->c_str());
-    Box* rtn = runtimeCallInternal<CXX>(attr_func, NULL, ArgPassSpec(0), NULL, NULL, NULL, NULL, NULL);
+    std::unique_ptr<Rewriter> rewriter(
+        Rewriter::createRewriter(__builtin_extract_return_addr(__builtin_return_address(0)), 1, "unaryop"));
 
-    return rtn;
+    if (rewriter) {
+        CallRewriteArgs srewrite_args(rewriter.get(), rewriter->getArg(0), rewriter->getReturnDestination());
+        Box* rtn = callattrInternal0(operand, op_name, CLASS_ONLY, &srewrite_args, ArgPassSpec(0));
+        if (srewrite_args.out_success && rtn)
+            rewriter->commitReturning(srewrite_args.out_rtn);
+        return rtn;
+    }
+    return callattrInternal0(operand, op_name, CLASS_ONLY, NULL, ArgPassSpec(0));
 }
 
 Box* callItemAttr(Box* target, BoxedString* item_str, Box* item, Box* value, CallRewriteArgs* rewrite_args) {

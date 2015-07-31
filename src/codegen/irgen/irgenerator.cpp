@@ -1373,8 +1373,21 @@ private:
             ConcreteCompilerVariable* converted = operand->makeConverted(emitter, operand->getBoxType());
             operand->decvref(emitter);
 
-            llvm::Value* rtn = emitter.createCall2(unw_info, g.funcs.unaryop, converted->getValue(),
-                                                   getConstantInt(node->op_type, g.i32));
+            llvm::Value* rtn = NULL;
+            bool do_patchpoint = ENABLE_ICGENERICS;
+            if (do_patchpoint) {
+                ICSetupInfo* pp = createGenericIC(getEmptyOpInfo(unw_info).getTypeRecorder(), true, 256);
+
+                std::vector<llvm::Value*> llvm_args;
+                llvm_args.push_back(converted->getValue());
+                llvm_args.push_back(getConstantInt(node->op_type, g.i32));
+
+                rtn = emitter.createIC(pp, (void*)pyston::unaryop, llvm_args, unw_info);
+            } else {
+                rtn = emitter.createCall2(unw_info, g.funcs.unaryop, converted->getValue(),
+                                          getConstantInt(node->op_type, g.i32));
+            }
+
             converted->decvref(emitter);
 
             return new ConcreteCompilerVariable(UNKNOWN, rtn, true);
