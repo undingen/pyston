@@ -2357,9 +2357,50 @@ extern "C" bool nonzero(Box* obj) {
     static BoxedString* nonzero_str = internStringImmortal("__nonzero__");
     static BoxedString* len_str = internStringImmortal("__len__");
     // go through descriptor logic
-    Box* func = getclsattrInternal(obj, nonzero_str, NULL);
-    if (!func)
+
+    Box* func = NULL;
+    if (rewriter && 1) {
+        GetattrRewriteArgs rewrite_args(rewriter.get(), rewriter->getArg(0), rewriter->getReturnDestination());
+        func = getclsattrInternal(obj, nonzero_str, &rewrite_args);
+
+        if (func && rewrite_args.out_success) {
+            CallRewriteArgs crewrite_args(rewriter.get(), rewrite_args.out_rtn, rewriter->getReturnDestination());
+            Box* r = runtimeCallInternal<CXX>(func, &crewrite_args, ArgPassSpec(0), NULL, NULL, NULL, NULL, NULL);
+
+            // I believe this behavior is handled by the slot wrappers in CPython:
+            if (r->cls == bool_cls) {
+                if (crewrite_args.out_success) {
+                    RewriterVar* result = crewrite_args.out_rtn;
+                    result->addAttrGuard(offsetof(Box, cls), (intptr_t)bool_cls);
+                    RewriterVar* b = result->getAttr(offsetof(BoxedBool, n), rewriter->getReturnDestination());
+                    rewriter->commitReturning(b);
+                }
+
+                BoxedBool* b = static_cast<BoxedBool*>(r);
+                bool rtn = b->n;
+                return rtn;
+            } else if (r->cls == int_cls) {
+                if (crewrite_args.out_success) {
+                    RewriterVar* result = crewrite_args.out_rtn;
+                    result->addAttrGuard(offsetof(Box, cls), (intptr_t)int_cls);
+                    RewriterVar* n = result->getAttr(offsetof(BoxedInt, n), rewriter->getReturnDestination());
+                    RewriterVar* b = n->toBool(rewriter->getReturnDestination());
+                    rewriter->commitReturning(b);
+                }
+
+                BoxedInt* b = static_cast<BoxedInt*>(r);
+                bool rtn = b->n != 0;
+                return rtn;
+            } else {
+                raiseExcHelper(TypeError, "__nonzero__ should return bool or int, returned %s", getTypeName(r));
+            }
+        }
+    } else
+        func = getclsattrInternal(obj, nonzero_str, NULL);
+    if (!func) {
         func = getclsattrInternal(obj, len_str, NULL);
+        rewriter.release();
+    }
 
     if (func == NULL) {
         ASSERT(obj->cls->is_user_defined || obj->cls == classobj_cls || obj->cls == type_cls
@@ -2375,6 +2416,7 @@ extern "C" bool nonzero(Box* obj) {
     }
 
     Box* r = runtimeCallInternal<CXX>(func, NULL, ArgPassSpec(0), NULL, NULL, NULL, NULL, NULL);
+
     // I believe this behavior is handled by the slot wrappers in CPython:
     if (r->cls == bool_cls) {
         BoxedBool* b = static_cast<BoxedBool*>(r);
