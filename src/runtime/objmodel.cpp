@@ -2260,6 +2260,8 @@ extern "C" bool nonzero(Box* obj) {
     assert(gc::isValidGCObject(obj));
 
     static StatCounter slowpath_nonzero("slowpath_nonzero");
+    slowpath_nonzero.log();
+
 
     std::unique_ptr<Rewriter> rewriter(
         Rewriter::createRewriter(__builtin_extract_return_addr(__builtin_return_address(0)), 1, "nonzero"));
@@ -2358,8 +2360,11 @@ extern "C" bool nonzero(Box* obj) {
     static BoxedString* len_str = internStringImmortal("__len__");
     // go through descriptor logic
 
+    bool can_patchpoint = !obj->cls->is_user_defined;
+
     Box* func = NULL;
-    if (rewriter && 1) {
+#if 0
+    if (rewriter && can_patchpoint) {
         GetattrRewriteArgs rewrite_args(rewriter.get(), rewriter->getArg(0), rewriter->getReturnDestination());
         func = getclsattrInternal(obj, nonzero_str, &rewrite_args);
 
@@ -2371,7 +2376,7 @@ extern "C" bool nonzero(Box* obj) {
             if (r->cls == bool_cls) {
                 if (crewrite_args.out_success) {
                     RewriterVar* result = crewrite_args.out_rtn;
-                    result->addAttrGuard(offsetof(Box, cls), (intptr_t)bool_cls);
+                    //result->addAttrGuard(offsetof(Box, cls), (intptr_t)bool_cls);
                     RewriterVar* b = result->getAttr(offsetof(BoxedBool, n), rewriter->getReturnDestination());
                     rewriter->commitReturning(b);
                 }
@@ -2382,7 +2387,7 @@ extern "C" bool nonzero(Box* obj) {
             } else if (r->cls == int_cls) {
                 if (crewrite_args.out_success) {
                     RewriterVar* result = crewrite_args.out_rtn;
-                    result->addAttrGuard(offsetof(Box, cls), (intptr_t)int_cls);
+                    //result->addAttrGuard(offsetof(Box, cls), (intptr_t)int_cls);
                     RewriterVar* n = result->getAttr(offsetof(BoxedInt, n), rewriter->getReturnDestination());
                     RewriterVar* b = n->toBool(rewriter->getReturnDestination());
                     rewriter->commitReturning(b);
@@ -2397,10 +2402,71 @@ extern "C" bool nonzero(Box* obj) {
         }
     } else
         func = getclsattrInternal(obj, nonzero_str, NULL);
-    if (!func) {
-        func = getclsattrInternal(obj, len_str, NULL);
-        rewriter.release();
+#else
+
+#endif
+
+    if (can_patchpoint && rewriter) {
+        GetattrRewriteArgs rewrite_args(rewriter.get(), rewriter->getArg(0), rewriter->getReturnDestination());
+        func = getclsattrInternal(obj, nonzero_str, &rewrite_args);
+
+
+        if (!func) {
+            rewrite_args = GetattrRewriteArgs(rewriter.get(), rewriter->getArg(0), rewriter->getReturnDestination());
+            func = getclsattrInternal(obj, len_str, &rewrite_args);
+        }
+
+        if (func == NULL) {
+            ASSERT(obj->cls->is_user_defined || obj->cls == classobj_cls || obj->cls == type_cls
+                       || isSubclass(obj->cls, Exception) || obj->cls == file_cls || obj->cls == traceback_cls
+                       || obj->cls == instancemethod_cls || obj->cls == module_cls || obj->cls == capifunc_cls
+                       || obj->cls == builtin_function_or_method_cls || obj->cls == method_cls || obj->cls == frame_cls
+                       || obj->cls == generator_cls || obj->cls == capi_getset_cls || obj->cls == pyston_getset_cls
+                       || obj->cls == wrapperdescr_cls,
+                   "%s.__nonzero__", getTypeName(obj)); // TODO
+
+            RewriterVar* b = rewriter->loadConst(1, rewriter->getReturnDestination());
+            rewriter->commitReturning(b);
+            return true;
+        }
+
+        if (rewrite_args.out_success) {
+            CallRewriteArgs crewrite_args(rewriter.get(), rewrite_args.out_rtn, rewriter->getReturnDestination());
+            Box* r = runtimeCallInternal<CXX>(func, &crewrite_args, ArgPassSpec(0), NULL, NULL, NULL, NULL, NULL);
+
+            // I believe this behavior is handled by the slot wrappers in CPython:
+            if (r->cls == bool_cls) {
+                if (crewrite_args.out_success) {
+                    RewriterVar* result = crewrite_args.out_rtn;
+                    // result->addAttrGuard(offsetof(Box, cls), (intptr_t)bool_cls);
+                    RewriterVar* b = result->getAttr(offsetof(BoxedBool, n), rewriter->getReturnDestination());
+                    rewriter->commitReturning(b);
+                }
+
+                BoxedBool* b = static_cast<BoxedBool*>(r);
+                bool rtn = b->n;
+                return rtn;
+            } else if (r->cls == int_cls) {
+                if (crewrite_args.out_success) {
+                    RewriterVar* result = crewrite_args.out_rtn;
+                    // result->addAttrGuard(offsetof(Box, cls), (intptr_t)int_cls);
+                    RewriterVar* n = result->getAttr(offsetof(BoxedInt, n), rewriter->getReturnDestination());
+                    RewriterVar* b = n->toBool(rewriter->getReturnDestination());
+                    rewriter->commitReturning(b);
+                }
+
+                BoxedInt* b = static_cast<BoxedInt*>(r);
+                bool rtn = b->n != 0;
+                return rtn;
+            } else {
+                raiseExcHelper(TypeError, "__nonzero__ should return bool or int, returned %s", getTypeName(r));
+            }
+        }
     }
+
+    func = getclsattrInternal(obj, nonzero_str, NULL);
+    if (!func)
+        func = getclsattrInternal(obj, len_str, NULL);
 
     if (func == NULL) {
         ASSERT(obj->cls->is_user_defined || obj->cls == classobj_cls || obj->cls == type_cls
