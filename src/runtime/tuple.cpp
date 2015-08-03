@@ -31,6 +31,8 @@
 namespace pyston {
 
 extern "C" Box* createTuple(int64_t nelts, Box** elts) {
+    for (int i = 0; i < nelts; i++)
+        assert(gc::isValidGCObject(elts[i]));
     return BoxedTuple::create(nelts, elts);
 }
 
@@ -67,12 +69,6 @@ Box* tupleGetitemUnboxed(BoxedTuple* self, i64 n) {
 
 Box* tupleGetitemInt(BoxedTuple* self, BoxedInt* slice) {
     return tupleGetitemUnboxed(self, slice->n);
-}
-
-extern "C" PyObject** PyTuple_Items(PyObject* op) noexcept {
-    RELEASE_ASSERT(PyTuple_Check(op), "");
-
-    return &static_cast<BoxedTuple*>(op)->elts[0];
 }
 
 extern "C" PyObject* PyTuple_GetItem(PyObject* op, Py_ssize_t i) noexcept {
@@ -132,15 +128,23 @@ int BoxedTuple::Resize(BoxedTuple** pv, size_t newsize) noexcept {
         return 0;
     }
 
-    BoxedTuple* resized = new (newsize)
-        BoxedTuple(newsize); // we want an uninitialized tuple, but this will memset it with 0.
+    BoxedTuple* resized = new (newsize) BoxedTuple();
     memmove(resized->elts, t->elts, sizeof(Box*) * t->size());
 
     *pv = resized;
     return 0;
 }
 
-Box* tupleGetitem(BoxedTuple* self, Box* slice) {
+template <ExceptionStyle S> Box* tupleGetitem(BoxedTuple* self, Box* slice) {
+    if (S == CAPI) {
+        try {
+            return tupleGetitem<CXX>(self, slice);
+        } catch (ExcInfo e) {
+            setCAPIException(e);
+            return NULL;
+        }
+    }
+
     assert(self->cls == tuple_cls);
 
     if (PyIndex_Check(slice)) {
@@ -168,17 +172,21 @@ Box* tupleAdd(BoxedTuple* self, Box* rhs) {
 }
 
 Box* tupleMul(BoxedTuple* self, Box* rhs) {
-    if (rhs->cls != int_cls) {
+    Py_ssize_t n;
+    if (PyIndex_Check(rhs)) {
+        n = PyNumber_AsSsize_t(rhs, PyExc_OverflowError);
+        if (n == -1 && PyErr_Occurred())
+            throwCAPIException();
+    } else {
         raiseExcHelper(TypeError, "can't multiply sequence by non-int of type '%s'", getTypeName(rhs));
     }
 
-    int n = static_cast<BoxedInt*>(rhs)->n;
     int s = self->size();
 
     if (n < 0)
         n = 0;
 
-    if (s == 0 || n == 1) {
+    if ((s == 0 || n == 1) && PyTuple_CheckExact(self)) {
         return self;
     } else {
         BoxedTuple* rtn = BoxedTuple::create(n * s);
@@ -204,11 +212,27 @@ extern "C" Py_ssize_t PyTuple_Size(PyObject* op) noexcept {
 Box* tupleRepr(BoxedTuple* t) {
     assert(isSubclass(t->cls, tuple_cls));
 
+    int n;
     std::string O("");
     llvm::raw_string_ostream os(O);
+
+    n = t->size();
+    if (n == 0) {
+        os << "()";
+        return boxString(os.str());
+    }
+
+    int status = Py_ReprEnter((PyObject*)t);
+    if (status != 0) {
+        if (status < 0)
+            return boxString(os.str());
+
+        os << "(...)";
+        return boxString(os.str());
+    }
+
     os << "(";
 
-    int n = t->size();
     for (int i = 0; i < n; i++) {
         if (i)
             os << ", ";
@@ -220,6 +244,7 @@ Box* tupleRepr(BoxedTuple* t) {
         os << ",";
     os << ")";
 
+    Py_ReprLeave((PyObject*)t);
     return boxString(os.str());
 }
 
@@ -230,27 +255,67 @@ Box* tupleNonzero(BoxedTuple* self) {
 
 Box* tupleContains(BoxedTuple* self, Box* elt) {
     int size = self->size();
-    for (int i = 0; i < size; i++) {
-        Box* e = self->elts[i];
-        Box* cmp = compareInternal(e, elt, AST_TYPE::Eq, NULL);
-        bool b = nonzero(cmp);
-        if (b)
+    for (Box* e : *self) {
+        int r = PyObject_RichCompareBool(elt, e, Py_EQ);
+        if (r == -1)
+            throwCAPIException();
+
+        if (r)
             return True;
     }
     return False;
 }
 
-Box* tupleIndex(BoxedTuple* self, Box* elt) {
-    int size = self->size();
-    for (int i = 0; i < size; i++) {
+Box* tupleIndex(BoxedTuple* self, Box* elt, Box* startBox, Box** args) {
+    Box* endBox = args[0];
+
+    Py_ssize_t start, end;
+    _PyEval_SliceIndex(startBox, &start);
+    _PyEval_SliceIndex(endBox, &end);
+
+    Py_ssize_t size = self->size();
+
+    if (start < 0) {
+        start += size;
+        if (start < 0) {
+            start = 0;
+        }
+    }
+    if (end < 0) {
+        end += size;
+        if (end < 0) {
+            end = 0;
+        }
+    } else if (end > size) {
+        end = size;
+    }
+
+    for (Py_ssize_t i = start; i < end; i++) {
         Box* e = self->elts[i];
-        Box* cmp = compareInternal(e, elt, AST_TYPE::Eq, NULL);
-        bool b = nonzero(cmp);
-        if (b)
+
+        int r = PyObject_RichCompareBool(e, elt, Py_EQ);
+        if (r == -1)
+            throwCAPIException();
+
+        if (r)
             return boxInt(i);
     }
 
     raiseExcHelper(ValueError, "tuple.index(x): x not in tuple");
+}
+
+Box* tupleCount(BoxedTuple* self, Box* elt) {
+    int size = self->size();
+    int count = 0;
+    for (int i = 0; i < size; i++) {
+        Box* e = self->elts[i];
+        int r = PyObject_RichCompareBool(e, elt, Py_EQ);
+        if (r == -1)
+            throwCAPIException();
+        if (r)
+            count++;
+    }
+    return boxInt(count);
 }
 
 extern "C" Box* tupleNew(Box* _cls, BoxedTuple* args, BoxedDict* kwargs) {
@@ -263,7 +328,7 @@ extern "C" Box* tupleNew(Box* _cls, BoxedTuple* args, BoxedDict* kwargs) {
                        getNameOfClass(cls));
 
     int args_sz = args->size();
-    int kwargs_sz = kwargs->d.size();
+    int kwargs_sz = kwargs ? kwargs->d.size() : 0;
 
     if (args_sz + kwargs_sz > 1)
         raiseExcHelper(TypeError, "tuple() takes at most 1 argument (%d given)", args_sz + kwargs_sz);
@@ -449,6 +514,47 @@ static PyObject* tuplerichcompare(PyObject* v, PyObject* w, int op) noexcept {
     return PyObject_RichCompare(vt->elts[i], wt->elts[i], op);
 }
 
+static PyObject* tupleslice(PyTupleObject* a, Py_ssize_t ilow, Py_ssize_t ihigh) {
+    PyTupleObject* np;
+    PyObject** src, **dest;
+    Py_ssize_t i;
+    Py_ssize_t len;
+    if (ilow < 0)
+        ilow = 0;
+    if (ihigh > Py_SIZE(a))
+        ihigh = Py_SIZE(a);
+    if (ihigh < ilow)
+        ihigh = ilow;
+    if (ilow == 0 && ihigh == Py_SIZE(a) && PyTuple_CheckExact((PyObject*)a)) {
+        Py_INCREF(a);
+        return (PyObject*)a;
+    }
+    len = ihigh - ilow;
+    np = (PyTupleObject*)PyTuple_New(len);
+    if (np == NULL)
+        return NULL;
+    src = a->ob_item + ilow;
+    dest = np->ob_item;
+    for (i = 0; i < len; i++) {
+        PyObject* v = src[i];
+        Py_INCREF(v);
+        dest[i] = v;
+    }
+    return (PyObject*)np;
+}
+
+static PyObject* tupleitem(register PyTupleObject* a, register Py_ssize_t i) {
+    if (i < 0 || i >= Py_SIZE(a)) {
+        PyErr_SetString(PyExc_IndexError, "tuple index out of range");
+        return NULL;
+    }
+    Py_INCREF(a->ob_item[i]);
+    return a->ob_item[i];
+}
+
+static Py_ssize_t tuplelength(PyTupleObject* a) {
+    return Py_SIZE(a);
+}
 
 void setupTuple() {
     tuple_iterator_cls = BoxedHeapClass::create(type_cls, object_cls, &tupleIteratorGCHandler, 0, 0,
@@ -458,11 +564,16 @@ void setupTuple() {
     CLFunction* getitem = createRTFunction(2, 0, 0, 0);
     addRTFunction(getitem, (void*)tupleGetitemInt, UNKNOWN, std::vector<ConcreteCompilerType*>{ UNKNOWN, BOXED_INT });
     addRTFunction(getitem, (void*)tupleGetitemSlice, UNKNOWN, std::vector<ConcreteCompilerType*>{ UNKNOWN, SLICE });
-    addRTFunction(getitem, (void*)tupleGetitem, UNKNOWN, std::vector<ConcreteCompilerType*>{ UNKNOWN, UNKNOWN });
+    addRTFunction(getitem, (void*)tupleGetitem<CXX>, UNKNOWN, std::vector<ConcreteCompilerType*>{ UNKNOWN, UNKNOWN },
+                  CXX);
+    addRTFunction(getitem, (void*)tupleGetitem<CAPI>, UNKNOWN, std::vector<ConcreteCompilerType*>{ UNKNOWN, UNKNOWN },
+                  CAPI);
     tuple_cls->giveAttr("__getitem__", new BoxedFunction(getitem));
 
     tuple_cls->giveAttr("__contains__", new BoxedFunction(boxRTFunction((void*)tupleContains, BOXED_BOOL, 2)));
-    tuple_cls->giveAttr("index", new BoxedFunction(boxRTFunction((void*)tupleIndex, BOXED_INT, 2)));
+    tuple_cls->giveAttr("index", new BoxedFunction(boxRTFunction((void*)tupleIndex, BOXED_INT, 4, 2, false, false),
+                                                   { boxInt(0), boxInt(std::numeric_limits<Py_ssize_t>::max()) }));
+    tuple_cls->giveAttr("count", new BoxedFunction(boxRTFunction((void*)tupleCount, BOXED_INT, 2)));
 
     tuple_cls->giveAttr("__iter__",
                         new BoxedFunction(boxRTFunction((void*)tupleIter, typeFromClass(tuple_iterator_cls), 1)));
@@ -479,9 +590,13 @@ void setupTuple() {
     tuple_cls->giveAttr("__rmul__", new BoxedFunction(boxRTFunction((void*)tupleMul, BOXED_TUPLE, 2)));
 
     tuple_cls->tp_hash = (hashfunc)tuple_hash;
+    tuple_cls->tp_as_sequence->sq_slice = (ssizessizeargfunc)&tupleslice;
     add_operators(tuple_cls);
 
     tuple_cls->freeze();
+
+    tuple_cls->tp_as_sequence->sq_item = (ssizeargfunc)tupleitem;
+    tuple_cls->tp_as_sequence->sq_length = (lenfunc)tuplelength;
 
     CLFunction* hasnext = boxRTFunction((void*)tupleiterHasnextUnboxed, BOOL, 1);
     addRTFunction(hasnext, (void*)tupleiterHasnext, BOXED_BOOL);

@@ -28,6 +28,8 @@
 #include "runtime/types.h"
 #include "runtime/util.h"
 
+extern "C" PyObject* calliter_next(calliterobject* it);
+
 namespace pyston {
 
 BoxedClass* seqiter_cls;
@@ -43,43 +45,45 @@ bool seqiterHasnextUnboxed(Box* s) {
     RELEASE_ASSERT(s->cls == seqiter_cls || s->cls == seqreviter_cls, "");
     BoxedSeqIter* self = static_cast<BoxedSeqIter*>(s);
 
-    Box* next;
-    try {
-        next = getitem(self->b, boxInt(self->idx));
-    } catch (ExcInfo e) {
+    if (!self->b) {
         return false;
     }
+
+    Box* next = getitemInternal<ExceptionStyle::CAPI>(self->b, boxInt(self->idx), NULL);
+    if (!next) {
+        if (PyErr_ExceptionMatches(IndexError) || PyErr_ExceptionMatches(StopIteration)) {
+            PyErr_Clear();
+            self->b = NULL;
+            return false;
+        } else {
+            throwCAPIException();
+        }
+    }
+
     self->idx++;
     self->next = next;
     return true;
 }
 
 Box* seqiterHasnext(Box* s) {
-    RELEASE_ASSERT(s->cls == seqiter_cls || s->cls == seqreviter_cls, "");
-    BoxedSeqIter* self = static_cast<BoxedSeqIter*>(s);
-
-    Box* next;
-    try {
-        next = getitem(self->b, boxInt(self->idx));
-    } catch (ExcInfo e) {
-        return False;
-    }
-    self->idx++;
-    self->next = next;
-    return True;
+    return boxBool(seqiterHasnextUnboxed(s));
 }
 
 Box* seqreviterHasnext(Box* s) {
     RELEASE_ASSERT(s->cls == seqiter_cls || s->cls == seqreviter_cls, "");
     BoxedSeqIter* self = static_cast<BoxedSeqIter*>(s);
 
-    if (self->idx == -1)
+    if (self->idx == -1 || !self->b)
         return False;
     Box* next;
     try {
         next = getitem(self->b, boxInt(self->idx));
     } catch (ExcInfo e) {
-        return False;
+        if (e.matches(IndexError) || e.matches(StopIteration)) {
+            self->b = NULL;
+            return False;
+        } else
+            throw e;
     }
     self->idx--;
     self->next = next;
@@ -164,6 +168,18 @@ extern "C" PyObject* PySeqIter_New(PyObject* seq) noexcept {
         return NULL;
     }
 }
+
+bool calliter_hasnext(Box* b) {
+    calliterobject* it = (calliterobject*)b;
+    if (!it->it_nextvalue) {
+        it->it_nextvalue = calliter_next(it);
+        if (PyErr_Occurred()) {
+            throwCAPIException();
+        }
+    }
+    return it->it_nextvalue != NULL;
+}
+
 
 void setupIter() {
     seqiter_cls

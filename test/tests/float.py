@@ -74,3 +74,34 @@ try:
     0.0 ** (-1.0)
 except ZeroDivisionError as e:
     print e.message
+
+print float(1l)
+print float(0l)
+print float(-1l)
+print (1l).__float__()
+l = 1024 << 1024
+try:
+    float(l)
+except OverflowError as e:
+    print e.message
+try:
+    float(-l)
+except OverflowError as e:
+    print e.message
+
+print 0.0
+print -0.0
+print -(0.0)
+print -(-0.0)
+
+print repr((1e100).__trunc__())
+
+all_args = [None, 1, 1L, -1, -1L, 2.0, 0.5, 0, "",
+            0.0, -0.0, -0.5, float('nan'), float('inf')]
+for lhs in all_args:
+    for rhs in all_args:
+        for mod in all_args:
+            try:
+                print pow(lhs, rhs, mod)
+            except Exception as e:
+                print type(e), e

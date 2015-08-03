@@ -145,18 +145,29 @@ void Assembler::emitSIB(uint8_t scalebits, uint8_t index, uint8_t base) {
     emitByte((scalebits << 6) | (index << 3) | base);
 }
 
-void Assembler::mov(Immediate val, Register dest) {
-    int rex = REX_W;
+int Assembler::getModeFromOffset(int offset) const {
+    if (offset == 0)
+        return 0b00;
+    else if (-0x80 <= offset && offset < 0x80)
+        return 0b01;
+    else
+        return 0b10;
+}
 
+void Assembler::mov(Immediate val, Register dest, bool force_64bit_load) {
+    force_64bit_load = force_64bit_load || !val.fitsInto32Bit();
+
+    int rex = force_64bit_load ? REX_W : 0;
     int dest_idx = dest.regnum;
     if (dest_idx >= 8) {
         rex |= REX_B;
         dest_idx -= 8;
     }
 
-    emitRex(rex);
+    if (rex)
+        emitRex(rex);
     emitByte(0xb8 + dest_idx);
-    emitInt(val.val, 8);
+    emitInt(val.val, force_64bit_load ? 8 : 4);
 }
 
 void Assembler::movq(Immediate src, Indirect dest) {
@@ -176,15 +187,7 @@ void Assembler::movq(Immediate src, Indirect dest) {
     emitByte(0xc7);
 
     bool needssib = (dest_idx == 0b100);
-
-    int mode;
-    if (dest.offset == 0)
-        mode = 0b00;
-    else if (-0x80 <= dest.offset && dest.offset < 0x80)
-        mode = 0b01;
-    else
-        mode = 0b10;
-
+    int mode = getModeFromOffset(dest.offset);
     emitModRM(mode, 0, dest_idx);
 
     if (needssib)
@@ -244,15 +247,7 @@ void Assembler::mov(Register src, Indirect dest) {
     emitByte(0x89);
 
     bool needssib = (dest_idx == 0b100);
-
-    int mode;
-    if (dest.offset == 0)
-        mode = 0b00;
-    else if (-0x80 <= dest.offset && dest.offset < 0x80)
-        mode = 0b01;
-    else
-        mode = 0b10;
-
+    int mode = getModeFromOffset(dest.offset);
     emitModRM(mode, src_idx, dest_idx);
 
     if (needssib)
@@ -448,15 +443,7 @@ void Assembler::movsd(XMMRegister src, Indirect dest) {
     emitByte(0x11);
 
     bool needssib = (dest_idx == 0b100);
-
-    int mode;
-    if (dest.offset == 0)
-        mode = 0b00;
-    else if (-0x80 <= dest.offset && dest.offset < 0x80)
-        mode = 0b01;
-    else
-        mode = 0b10;
-
+    int mode = getModeFromOffset(dest.offset);
     emitModRM(mode, src_idx, dest_idx);
 
     if (needssib)
@@ -670,7 +657,24 @@ void Assembler::decl(Indirect mem) {
     }
 }
 
+void Assembler::incl(Immediate imm) {
+    emitByte(0xff);
+    emitByte(0x04);
+    emitByte(0x25);
+    emitInt(imm.val, 4);
+}
 
+void Assembler::decl(Immediate imm) {
+    emitByte(0xff);
+    emitByte(0x0c);
+    emitByte(0x25);
+    emitInt(imm.val, 4);
+}
+
+void Assembler::call(Immediate imm) {
+    emitByte(0xe8);
+    emitInt(imm.val, 4);
+}
 
 void Assembler::callq(Register r) {
     assert(r == R11 && "untested");
@@ -809,14 +813,17 @@ void Assembler::lea(Indirect mem, Register reg) {
     emitRex(rex);
     emitByte(0x8D);
 
-    if (mem.offset == 0) {
-        emitModRM(0b00, reg_idx, mem_idx);
-    } else if (-0x80 <= mem.offset && mem.offset < 0x80) {
-        emitModRM(0b01, reg_idx, mem_idx);
+    bool needssib = (mem_idx == 0b100);
+    int mode = getModeFromOffset(mem.offset);
+    emitModRM(mode, reg_idx, mem_idx);
+
+    if (needssib)
+        emitSIB(0b00, 0b100, mem_idx);
+
+    if (mode == 0b01) {
         emitByte(mem.offset);
-    } else {
+    } else if (mode == 0b10) {
         assert((-1L << 31) <= mem.offset && mem.offset < (1L << 31) - 1);
-        emitModRM(0b10, reg_idx, mem_idx);
         emitInt(mem.offset, 4);
     }
 }
@@ -831,7 +838,6 @@ void Assembler::test(Register reg1, Register reg2) {
         reg1_idx -= 8;
     }
     if (reg2_idx >= 8) {
-        trap();
         rex |= REX_B;
         reg2_idx -= 8;
     }
@@ -886,6 +892,23 @@ void Assembler::jmp(JumpDestination dest) {
     }
 }
 
+void Assembler::jmp(Indirect dest) {
+    int reg_idx = dest.base.regnum;
+
+    assert(reg_idx >= 0 && reg_idx < 8 && "not yet implemented");
+    emitByte(0xFF);
+    if (dest.offset == 0) {
+        emitModRM(0b00, 0b100, reg_idx);
+    } else if (-0x80 <= dest.offset && dest.offset < 0x80) {
+        emitModRM(0b01, 0b100, reg_idx);
+        emitByte(dest.offset);
+    } else {
+        assert((-1L << 31) <= dest.offset && dest.offset < (1L << 31) - 1);
+        emitModRM(0b10, 0b100, reg_idx);
+        emitInt(dest.offset, 4);
+    }
+}
+
 void Assembler::jne(JumpDestination dest) {
     jmp_cond(dest, COND_NOT_EQUAL);
 }
@@ -934,8 +957,14 @@ void Assembler::setne(Register reg) {
     set_cond(reg, COND_NOT_EQUAL);
 }
 
+void Assembler::leave() {
+    emitByte(0xC9);
+}
+
 uint8_t* Assembler::emitCall(void* ptr, Register scratch) {
-    mov(Immediate(ptr), scratch);
+    // emit a 64bit movabs because some caller expect a fixed number of bytes.
+    // until they are fixed use the largest encoding.
+    mov(Immediate(ptr), scratch, true /* force_64bit_load */);
     callq(scratch);
     return addr;
 }
@@ -1001,6 +1030,30 @@ void Assembler::emitAnnotation(int num) {
     nop();
     cmp(RAX, Immediate(num));
     nop();
+}
+
+void Assembler::skipBytes(int num) {
+    if (addr + num >= end_addr) {
+        addr = end_addr;
+        failed = true;
+        return;
+    }
+
+    addr += num;
+}
+
+ForwardJump::ForwardJump(Assembler& assembler, ConditionCode condition)
+    : assembler(assembler), condition(condition), jmp_inst(assembler.curInstPointer()) {
+    assembler.jmp_cond(JumpDestination::fromStart(assembler.bytesWritten() + max_jump_size), condition);
+}
+
+ForwardJump::~ForwardJump() {
+    uint8_t* new_pos = assembler.curInstPointer();
+    int offset = new_pos - jmp_inst;
+    RELEASE_ASSERT(offset < max_jump_size, "");
+    assembler.setCurInstPointer(jmp_inst);
+    assembler.jmp_cond(JumpDestination::fromStart(assembler.bytesWritten() + offset), condition);
+    assembler.setCurInstPointer(new_pos);
 }
 }
 }

@@ -23,6 +23,7 @@ add_library(PYSTON_OBJECTS OBJECT ${OPTIONAL_SRCS}
 		analysis/scoping_analysis.cpp
 		analysis/type_analysis.cpp
 		asm_writing/assembler.cpp
+		asm_writing/disassemble.cpp
 		asm_writing/icinfo.cpp
 		asm_writing/mc_writer.cpp
 		asm_writing/rewriter.cpp
@@ -33,6 +34,8 @@ add_library(PYSTON_OBJECTS OBJECT ${OPTIONAL_SRCS}
 		capi/object.cpp
 		capi/typeobject.cpp
 		codegen/ast_interpreter.cpp
+		codegen/ast_interpreter_exec.S
+		codegen/baseline_jit.cpp
 		codegen/codegen.cpp
 		codegen/compvars.cpp
 		codegen/entry.cpp
@@ -92,6 +95,7 @@ add_library(PYSTON_OBJECTS OBJECT ${OPTIONAL_SRCS}
 		runtime/float.cpp
 		runtime/frame.cpp
 		runtime/generator.cpp
+		runtime/hiddenclass.cpp
 		runtime/ics.cpp
 		runtime/import.cpp
 		runtime/int.cpp

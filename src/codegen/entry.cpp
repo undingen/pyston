@@ -55,8 +55,6 @@
 
 namespace pyston {
 
-int sigprof_pending = 0;
-
 GlobalState g;
 
 extern "C" {
@@ -358,12 +356,17 @@ static void handle_sigusr1(int signum) {
     _printStacktrace();
 }
 
+#if ENABLE_SAMPLING_PROFILER
+int sigprof_pending = 0;
+
 static void handle_sigprof(int signum) {
     sigprof_pending++;
 }
+#endif
 
 //#define INVESTIGATE_STAT_TIMER "us_timer_in_jitted_code"
 #ifdef INVESTIGATE_STAT_TIMER
+static_assert(STAT_TIMERS, "Stat timers need to be enabled to investigate them");
 static uint64_t* stat_counter = Stats::getStatCounter(INVESTIGATE_STAT_TIMER);
 static void handle_sigprof_investigate_stattimer(int signum) {
     if (StatTimer::getCurrentCounter() == stat_counter)
@@ -509,6 +512,8 @@ void initCodegen() {
 // llvm_args.push_back("--debug-only=regalloc");
 // llvm_args.push_back("--debug-only=stackmaps");
 #endif
+
+    // llvm_args.push_back("--time-passes");
 
     // llvm_args.push_back("--print-after-all");
     // llvm_args.push_back("--print-machineinstrs");

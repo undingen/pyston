@@ -221,3 +221,14 @@ try:
     print (1, 3, 5, 3).index(2)
 except ValueError as e:
     print e
+
+n = float('nan')
+print n in (n, n)
+
+#recursive printing test
+class C(object):
+    def __init__(self):
+        self.t = (self,)
+    def __repr__(self):
+        return repr(self.t)
+print repr(C())

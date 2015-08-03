@@ -28,6 +28,7 @@ struct GetattrRewriteArgs {
     RewriterVar* out_rtn;
 
     bool obj_hcls_guarded;
+    bool obj_shape_guarded; // "shape" as in whether there are hcls attrs and where they live
 
     GetattrRewriteArgs(Rewriter* rewriter, RewriterVar* obj, Location destination)
         : rewriter(rewriter),
@@ -35,7 +36,8 @@ struct GetattrRewriteArgs {
           destination(destination),
           out_success(false),
           out_rtn(NULL),
-          obj_hcls_guarded(false) {}
+          obj_hcls_guarded(false),
+          obj_shape_guarded(false) {}
 };
 
 struct SetattrRewriteArgs {
@@ -90,6 +92,24 @@ struct CallRewriteArgs {
           args(NULL),
           func_guarded(false),
           args_guarded(false),
+          destination(destination),
+          out_success(false),
+          out_rtn(NULL) {}
+};
+
+struct GetitemRewriteArgs {
+    Rewriter* rewriter;
+    RewriterVar* target;
+    RewriterVar* slice;
+    Location destination;
+
+    bool out_success;
+    RewriterVar* out_rtn;
+
+    GetitemRewriteArgs(Rewriter* rewriter, RewriterVar* target, RewriterVar* slice, Location destination)
+        : rewriter(rewriter),
+          target(target),
+          slice(slice),
           destination(destination),
           out_success(false),
           out_rtn(NULL) {}

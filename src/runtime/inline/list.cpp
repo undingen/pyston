@@ -13,6 +13,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "runtime/inline/list.h"
+
 #include <cstring>
 
 #include "runtime/list.h"
@@ -37,29 +39,60 @@ Box* listiterHasnext(Box* s) {
     assert(s->cls == list_iterator_cls);
     BoxedListIterator* self = static_cast<BoxedListIterator*>(s);
 
-    return boxBool(self->pos < self->l->size);
+    if (!self->l) {
+        return False;
+    }
+
+    bool ans = (self->pos < self->l->size);
+    if (!ans) {
+        self->l = NULL;
+    }
+    return boxBool(ans);
 }
 
 i1 listiterHasnextUnboxed(Box* s) {
     assert(s->cls == list_iterator_cls);
     BoxedListIterator* self = static_cast<BoxedListIterator*>(s);
 
-    return self->pos < self->l->size;
+    if (!self->l) {
+        return false;
+    }
+
+    bool ans = (self->pos < self->l->size);
+    if (!ans) {
+        self->l = NULL;
+    }
+    return ans;
 }
 
-Box* listiterNext(Box* s) {
+template <ExceptionStyle S> Box* listiterNext(Box* s) noexcept(S == CAPI) {
     assert(s->cls == list_iterator_cls);
     BoxedListIterator* self = static_cast<BoxedListIterator*>(s);
 
+    if (!self->l) {
+        if (S == CAPI) {
+            PyErr_SetObject(StopIteration, None);
+            return NULL;
+        } else
+            raiseExcHelper(StopIteration, "");
+    }
+
     if (!(self->pos >= 0 && self->pos < self->l->size)) {
-        raiseExcHelper(StopIteration, "");
+        self->l = NULL;
+        if (S == CAPI) {
+            PyErr_SetObject(StopIteration, None);
+            return NULL;
+        } else
+            raiseExcHelper(StopIteration, "");
     }
 
     Box* rtn = self->l->elts->elts[self->pos];
     self->pos++;
     return rtn;
 }
-
+// force instantiation:
+template Box* listiterNext<CAPI>(Box*);
+template Box* listiterNext<CXX>(Box*);
 
 Box* listReversed(Box* s) {
     assert(isSubclass(s->cls, list_cls));
@@ -111,42 +144,8 @@ void BoxedList::shrink() {
     }
 }
 
-// TODO the inliner doesn't want to inline these; is there any point to having them in the inline section?
-void BoxedList::ensure(int space) {
-    if (size + space > capacity) {
-        if (capacity == 0) {
-            const int INITIAL_CAPACITY = 8;
-            int initial = std::max(INITIAL_CAPACITY, space);
-            elts = new (initial) GCdArray();
-            capacity = initial;
-        } else {
-            int new_capacity = std::max(capacity * 2, size + space);
-            elts = GCdArray::realloc(elts, new_capacity);
-            capacity = new_capacity;
-        }
-    }
-    assert(capacity >= size + space);
-}
-
-// TODO the inliner doesn't want to inline these; is there any point to having them in the inline section?
-extern "C" void listAppendInternal(Box* s, Box* v) {
-    // Lock must be held!
-
-    assert(isSubclass(s->cls, list_cls));
-    BoxedList* self = static_cast<BoxedList*>(s);
-
-    assert(self->size <= self->capacity);
-    self->ensure(1);
-
-    assert(self->size < self->capacity);
-    self->elts->elts[self->size] = v;
-    self->size++;
-}
-
 
 extern "C" void listAppendArrayInternal(Box* s, Box** v, int nelts) {
-    // Lock must be held!
-
     assert(isSubclass(s->cls, list_cls));
     BoxedList* self = static_cast<BoxedList*>(s);
 
@@ -163,8 +162,6 @@ extern "C" void listAppendArrayInternal(Box* s, Box** v, int nelts) {
 extern "C" Box* listAppend(Box* s, Box* v) {
     assert(isSubclass(s->cls, list_cls));
     BoxedList* self = static_cast<BoxedList*>(s);
-
-    LOCK_REGION(self->lock.asWrite());
 
     listAppendInternal(self, v);
 

@@ -97,6 +97,7 @@ public:
 
     static PatchpointInfo* create(CompiledFunction* parent_cf, const ICSetupInfo* icinfo, int num_ic_stackmap_args,
                                   void* func_addr);
+    static void* getSlowpathAddr(unsigned int pp_id);
 };
 
 class ICSetupInfo {
@@ -135,10 +136,14 @@ public:
     bool hasReturnValue() const { return has_return_value; }
 
     llvm::CallingConv::ID getCallingConvention() const {
+// FIXME: we currently have some issues with using PreserveAll (the rewriter currently
+// does not completely preserve live outs), so disable it temporarily.
+#if 0
         // The plan is to switch probably everything over to PreseveAll (and potentially AnyReg),
         // but for only switch Getattr so the testing can be localized:
         if (type == Getattr || type == Setattr)
             return llvm::CallingConv::PreserveAll;
+#endif
 
         return llvm::CallingConv::C;
     }

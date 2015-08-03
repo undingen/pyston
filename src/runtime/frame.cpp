@@ -121,8 +121,8 @@ public:
     static Box* lineno(Box* obj, void*) {
         auto f = static_cast<BoxedFrame*>(obj);
         f->update();
-        std::unique_ptr<ExecutionPoint> fr = f->it.getExecutionPoint();
-        return boxInt(fr->current_stmt->lineno);
+        AST_stmt* stmt = f->it.getCurrentStatement();
+        return boxInt(stmt->lineno);
     }
 
     DEFAULT_CLASS(frame_cls);
@@ -130,11 +130,11 @@ public:
     static Box* boxFrame(PythonFrameIterator it) {
         FrameInfo* fi = it.getFrameInfo();
         if (fi->frame_obj == NULL) {
-            auto cf = it.getCF();
+            auto cl = it.getCL();
             Box* globals = it.getGlobalsDict();
             BoxedFrame* f = fi->frame_obj = new BoxedFrame(std::move(it));
             f->_globals = globals;
-            f->_code = codeForCLFunction(cf->clfunc);
+            f->_code = codeForCLFunction(cl);
         }
 
         return fi->frame_obj;
@@ -152,7 +152,8 @@ Box* getFrame(int depth) {
 void setupFrame() {
     frame_cls = BoxedHeapClass::create(type_cls, object_cls, &BoxedFrame::gchandler, 0, 0, sizeof(BoxedFrame), false,
                                        "frame");
-    frame_cls->simple_destructor = BoxedFrame::simpleDestructor;
+    frame_cls->tp_dealloc = BoxedFrame::simpleDestructor;
+    frame_cls->has_safe_tp_dealloc = true;
 
     frame_cls->giveAttr("f_code", new (pyston_getset_cls) BoxedGetsetDescriptor(BoxedFrame::code, NULL, NULL));
     frame_cls->giveAttr("f_locals", new (pyston_getset_cls) BoxedGetsetDescriptor(BoxedFrame::locals, NULL, NULL));

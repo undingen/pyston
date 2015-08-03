@@ -204,18 +204,36 @@ done:
 }
 
 
-extern "C" PyObject* PyObject_GetAttr(PyObject* o, PyObject* attr_name) noexcept {
-    try {
-        return getattrMaybeNonstring(o, attr_name);
-    } catch (ExcInfo e) {
-        setCAPIException(e);
-        return NULL;
+extern "C" PyObject* PyObject_GetAttr(PyObject* o, PyObject* attr) noexcept {
+    if (!PyString_Check(attr)) {
+        if (PyUnicode_Check(attr)) {
+            attr = _PyUnicode_AsDefaultEncodedString(attr, NULL);
+            if (attr == NULL)
+                return NULL;
+        } else {
+            PyErr_Format(TypeError, "attribute name must be string, not '%.200s'", Py_TYPE(attr)->tp_name);
+            return NULL;
+        }
     }
+
+    BoxedString* s = static_cast<BoxedString*>(attr);
+    internStringMortalInplace(s);
+
+    Box* r = getattrInternal<ExceptionStyle::CAPI>(o, s, NULL);
+
+    if (!r && !PyErr_Occurred()) {
+        PyErr_Format(PyExc_AttributeError, "'%.50s' object has no attribute '%.400s'", o->cls->tp_name,
+                     PyString_AS_STRING(attr));
+    }
+
+    return r;
 }
 
 extern "C" PyObject* PyObject_GenericGetAttr(PyObject* o, PyObject* name) noexcept {
     try {
-        Box* r = getattrInternalGeneric(o, static_cast<BoxedString*>(name)->data(), NULL, false, false, NULL, NULL);
+        BoxedString* s = static_cast<BoxedString*>(name);
+        internStringMortalInplace(s);
+        Box* r = getattrInternalGeneric(o, s, NULL, false, false, NULL, NULL);
         if (!r)
             PyErr_Format(PyExc_AttributeError, "'%.50s' object has no attribute '%.400s'", o->cls->tp_name,
                          PyString_AS_STRING(name));
@@ -439,12 +457,7 @@ done:
 
 
 extern "C" PyObject* PyObject_GetItem(PyObject* o, PyObject* key) noexcept {
-    try {
-        return getitem(o, key);
-    } catch (ExcInfo e) {
-        setCAPIException(e);
-        return NULL;
-    }
+    return getitemInternal<ExceptionStyle::CAPI>(o, key, NULL);
 }
 
 extern "C" int PyObject_SetItem(PyObject* o, PyObject* key, PyObject* v) noexcept {
@@ -565,15 +578,12 @@ extern "C" int PyObject_Not(PyObject* o) noexcept {
 }
 
 extern "C" PyObject* PyObject_Call(PyObject* callable_object, PyObject* args, PyObject* kw) noexcept {
-    try {
-        if (kw)
-            return runtimeCall(callable_object, ArgPassSpec(0, 0, true, true), args, kw, NULL, NULL, NULL);
-        else
-            return runtimeCall(callable_object, ArgPassSpec(0, 0, true, false), args, NULL, NULL, NULL, NULL);
-    } catch (ExcInfo e) {
-        setCAPIException(e);
-        return NULL;
-    }
+    if (kw)
+        return runtimeCallInternal<ExceptionStyle::CAPI>(callable_object, NULL, ArgPassSpec(0, 0, true, true), args, kw,
+                                                         NULL, NULL, NULL);
+    else
+        return runtimeCallInternal<ExceptionStyle::CAPI>(callable_object, NULL, ArgPassSpec(0, 0, true, false), args,
+                                                         NULL, NULL, NULL, NULL);
 }
 
 extern "C" int PyObject_GetBuffer(PyObject* obj, Py_buffer* view, int flags) noexcept {
@@ -636,9 +646,19 @@ extern "C" int PyObject_Print(PyObject* obj, FILE* fp, int flags) noexcept {
 extern "C" int PyCallable_Check(PyObject* x) noexcept {
     if (x == NULL)
         return 0;
-
-    static const std::string call_attr("__call__");
-    return typeLookup(x->cls, call_attr, NULL) != NULL;
+    if (PyInstance_Check(x)) {
+        PyObject* call = PyObject_GetAttrString(x, "__call__");
+        if (call == NULL) {
+            PyErr_Clear();
+            return 0;
+        }
+        /* Could test recursively but don't, for fear of endless
+           recursion if some joker sets self.__call__ = self */
+        Py_DECREF(call);
+        return 1;
+    } else {
+        return x->cls->tp_call != NULL;
+    }
 }
 
 extern "C" int Py_FlushLine(void) noexcept {
@@ -764,6 +784,11 @@ void setCAPIException(const ExcInfo& e) {
     cur_thread_state.curexc_type = e.type;
     cur_thread_state.curexc_value = e.value;
     cur_thread_state.curexc_traceback = e.traceback;
+}
+
+void ensureCAPIExceptionSet() {
+    if (!cur_thread_state.curexc_type)
+        PyErr_SetString(SystemError, "error return without exception set");
 }
 
 void throwCAPIException() {
@@ -1029,7 +1054,8 @@ extern "C" void* PyObject_Realloc(void* ptr, size_t sz) noexcept {
 }
 
 extern "C" void PyObject_Free(void* ptr) noexcept {
-    gc_compat_free(ptr);
+    // In Pyston, everything is GC'ed and we shouldn't explicitely free memory.
+    // Only the GC knows for sure that an object is no longer referenced.
 }
 
 extern "C" void* PyMem_Malloc(size_t sz) noexcept {
@@ -1041,7 +1067,8 @@ extern "C" void* PyMem_Realloc(void* ptr, size_t sz) noexcept {
 }
 
 extern "C" void PyMem_Free(void* ptr) noexcept {
-    gc_compat_free(ptr);
+    // In Pyston, everything is GC'ed and we shouldn't explicitely free memory.
+    // Only the GC knows for sure that an object is no longer referenced.
 }
 
 extern "C" int PyOS_snprintf(char* str, size_t size, const char* format, ...) noexcept {
@@ -1417,7 +1444,8 @@ extern "C" char* PyModule_GetName(PyObject* m) noexcept {
         PyErr_BadArgument();
         return NULL;
     }
-    if ((nameobj = m->getattr("__name__")) == NULL || !PyString_Check(nameobj)) {
+    static BoxedString* name_str = internStringImmortal("__name__");
+    if ((nameobj = m->getattr(name_str)) == NULL || !PyString_Check(nameobj)) {
         PyErr_SetString(PyExc_SystemError, "nameless module");
         return NULL;
     }
@@ -1431,7 +1459,8 @@ extern "C" char* PyModule_GetFilename(PyObject* m) noexcept {
         PyErr_BadArgument();
         return NULL;
     }
-    if ((fileobj = m->getattr("__file__")) == NULL || !PyString_Check(fileobj)) {
+    static BoxedString* file_str = internStringImmortal("__file__");
+    if ((fileobj = m->getattr(file_str)) == NULL || !PyString_Check(fileobj)) {
         PyErr_SetString(PyExc_SystemError, "module filename missing");
         return NULL;
     }
@@ -1442,7 +1471,7 @@ Box* BoxedCApiFunction::__call__(BoxedCApiFunction* self, BoxedTuple* varargs, B
     STAT_TIMER(t0, "us_timer_boxedcapifunction__call__", (self->cls->is_user_defined ? 10 : 20));
     assert(self->cls == capifunc_cls);
     assert(varargs->cls == tuple_cls);
-    assert(kwargs->cls == dict_cls);
+    assert(!kwargs || kwargs->cls == dict_cls);
 
     // Kind of silly to have asked callFunc to rearrange the arguments for us, just to pass things
     // off to tppCall, but this case should be very uncommon (people explicitly asking for __call__)
@@ -1486,12 +1515,12 @@ Box* BoxedCApiFunction::tppCall(Box* _self, CallRewriteArgs* rewrite_args, ArgPa
 
     bool rewrite_success = false;
     rearrangeArguments(paramspec, NULL, self->method_def->ml_name, NULL, rewrite_args, rewrite_success, argspec, arg1,
-                       arg2, arg3, args, keyword_names, oarg1, oarg2, oarg3, args);
+                       arg2, arg3, args, keyword_names, oarg1, oarg2, oarg3, oargs);
 
     if (!rewrite_success)
         rewrite_args = NULL;
 
-    RewriterVar* r_passthrough;
+    RewriterVar* r_passthrough = NULL;
     if (rewrite_args)
         r_passthrough = rewrite_args->rewriter->loadConst((intptr_t)self->passthrough, Location::forArg(0));
 

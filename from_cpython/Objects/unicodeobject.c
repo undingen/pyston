@@ -101,7 +101,7 @@ static PyUnicodeObject *free_list = NULL;
 static int numfree = 0;
 
 /* The empty Unicode object is shared to improve performance. */
-static PyUnicodeObject *unicode_empty = NULL;
+PyUnicodeObject *unicode_empty = NULL;
 
 #define _Py_RETURN_UNICODE_EMPTY()                      \
     do {                                                \
@@ -317,76 +317,7 @@ int unicode_resize(register PyUnicodeObject *unicode,
 
 */
 
-static
-PyUnicodeObject *_PyUnicode_New(Py_ssize_t length)
-{
-    register PyUnicodeObject *unicode;
-
-    /* Optimization for empty strings */
-    if (length == 0 && unicode_empty != NULL) {
-        Py_INCREF(unicode_empty);
-        return unicode_empty;
-    }
-
-    /* Ensure we won't overflow the size. */
-    if (length > ((PY_SSIZE_T_MAX / sizeof(Py_UNICODE)) - 1)) {
-        return (PyUnicodeObject *)PyErr_NoMemory();
-    }
-
-    /* Unicode freelist & memory allocation */
-    if (free_list) {
-        unicode = free_list;
-        free_list = *(PyUnicodeObject **)unicode;
-        numfree--;
-        if (unicode->str) {
-            /* Keep-Alive optimization: we only upsize the buffer,
-               never downsize it. */
-            if ((unicode->length < length) &&
-                unicode_resize(unicode, length) < 0) {
-                PyObject_DEL(unicode->str);
-                unicode->str = NULL;
-            }
-        }
-        else {
-            size_t new_size = sizeof(Py_UNICODE) * ((size_t)length + 1);
-            unicode->str = (Py_UNICODE*) PyObject_MALLOC(new_size);
-        }
-        PyObject_INIT(unicode, &PyUnicode_Type);
-    }
-    else {
-        size_t new_size;
-        unicode = PyObject_New(PyUnicodeObject, &PyUnicode_Type);
-        if (unicode == NULL)
-            return NULL;
-        new_size = sizeof(Py_UNICODE) * ((size_t)length + 1);
-        unicode->str = (Py_UNICODE*) PyObject_MALLOC(new_size);
-    }
-
-    if (!unicode->str) {
-        PyErr_NoMemory();
-        goto onError;
-    }
-    /* Initialize the first element to guard against cases where
-     * the caller fails before initializing str -- unicode_resize()
-     * reads str[0], and the Keep-Alive optimization can keep memory
-     * allocated for str alive across a call to unicode_dealloc(unicode).
-     * We don't want unicode_resize to read uninitialized memory in
-     * that case.
-     */
-    unicode->str[0] = 0;
-    unicode->str[length] = 0;
-    unicode->length = length;
-    unicode->hash = -1;
-    unicode->defenc = NULL;
-    return unicode;
-
-  onError:
-    /* XXX UNREF/NEWREF interface should be more symmetrical */
-    _Py_DEC_REFTOTAL;
-    _Py_ForgetReference((PyObject *)unicode);
-    PyObject_Del(unicode);
-    return NULL;
-}
+extern PyUnicodeObject *_PyUnicode_New(Py_ssize_t length);
 
 static
 void unicode_dealloc(register PyUnicodeObject *unicode)
@@ -6369,16 +6300,31 @@ Unicode string S[start:end].  Optional arguments start and end are\n\
 interpreted as in slice notation.");
 
 static PyObject *
-unicode_count(PyUnicodeObject *self, PyObject *args)
+unicode_count(PyUnicodeObject *self,
+              PyObject *subobj, PyObject* obj_start, PyObject** args)
 {
     PyUnicodeObject *substring;
     Py_ssize_t start = 0;
     Py_ssize_t end = PY_SSIZE_T_MAX;
     PyObject *result;
+    PyObject* obj_end = args[0];
 
+    /*
     if (!stringlib_parse_args_finds_unicode("count", args, &substring,
                                             &start, &end))
         return NULL;
+    */
+
+    if (obj_start && obj_start != Py_None)
+        if (!_PyEval_SliceIndex(obj_start, &start))
+            return 0;
+    if (obj_end && obj_end != Py_None)
+        if (!_PyEval_SliceIndex(obj_end, &end))
+            return 0;
+
+    substring = (PyUnicodeObject*)PyUnicode_FromObject(subobj);
+    if (!substring)
+        return 0;
 
     ADJUST_INDICES(start, end, self->length);
     result = PyInt_FromSsize_t(
@@ -7725,16 +7671,26 @@ prefix can also be a tuple of strings to try.");
 
 static PyObject *
 unicode_startswith(PyUnicodeObject *self,
-                   PyObject *args)
+                   PyObject *subobj, PyObject* obj_start, PyObject** args)
 {
-    PyObject *subobj;
     PyUnicodeObject *substring;
     Py_ssize_t start = 0;
     Py_ssize_t end = PY_SSIZE_T_MAX;
     int result;
+    PyObject* obj_end = args[0];
 
+    /*
     if (!stringlib_parse_args_finds("startswith", args, &subobj, &start, &end))
         return NULL;
+    */
+
+    if (obj_start && obj_start != Py_None)
+        if (!_PyEval_SliceIndex(obj_start, &start))
+            return 0;
+    if (obj_end && obj_end != Py_None)
+        if (!_PyEval_SliceIndex(obj_end, &end))
+            return 0;
+
     if (PyTuple_Check(subobj)) {
         Py_ssize_t i;
         for (i = 0; i < PyTuple_GET_SIZE(subobj); i++) {
@@ -7883,7 +7839,7 @@ static PyMethodDef unicode_methods[] = {
     {"capitalize", (PyCFunction) unicode_capitalize, METH_NOARGS, capitalize__doc__},
     {"title", (PyCFunction) unicode_title, METH_NOARGS, title__doc__},
     {"center", (PyCFunction) unicode_center, METH_VARARGS, center__doc__},
-    {"count", (PyCFunction) unicode_count, METH_VARARGS, count__doc__},
+    {"count", (PyCFunction) unicode_count, METH_O3 | METH_D2, count__doc__},
     {"expandtabs", (PyCFunction) unicode_expandtabs, METH_VARARGS, expandtabs__doc__},
     {"find", (PyCFunction) unicode_find, METH_VARARGS, find__doc__},
     {"partition", (PyCFunction) unicode_partition, METH_O, partition__doc__},
@@ -7903,7 +7859,7 @@ static PyMethodDef unicode_methods[] = {
     {"swapcase", (PyCFunction) unicode_swapcase, METH_NOARGS, swapcase__doc__},
     {"translate", (PyCFunction) unicode_translate, METH_O, translate__doc__},
     {"upper", (PyCFunction) unicode_upper, METH_NOARGS, upper__doc__},
-    {"startswith", (PyCFunction) unicode_startswith, METH_VARARGS, startswith__doc__},
+    {"startswith", (PyCFunction) unicode_startswith, METH_O3 | METH_D2, startswith__doc__},
     {"endswith", (PyCFunction) unicode_endswith, METH_VARARGS, endswith__doc__},
     {"islower", (PyCFunction) unicode_islower, METH_NOARGS, islower__doc__},
     {"isupper", (PyCFunction) unicode_isupper, METH_NOARGS, isupper__doc__},
@@ -8789,6 +8745,15 @@ static PyBufferProcs unicode_as_buffer = {
 static PyObject *
 unicode_subtype_new(PyTypeObject *type, PyObject *args, PyObject *kwds);
 
+PyObject* unicode_new_inner(PyObject* x, char* encoding, char* errors) {
+    if (x == NULL)
+        return (PyObject *)_PyUnicode_New(0);
+    if (encoding == NULL && errors == NULL)
+        return PyObject_Unicode(x);
+    else
+        return PyUnicode_FromEncodedObject(x, encoding, errors);
+}
+
 static PyObject *
 unicode_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 {
@@ -8802,12 +8767,7 @@ unicode_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
     if (!PyArg_ParseTupleAndKeywords(args, kwds, "|Oss:unicode",
                                      kwlist, &x, &encoding, &errors))
         return NULL;
-    if (x == NULL)
-        return (PyObject *)_PyUnicode_New(0);
-    if (encoding == NULL && errors == NULL)
-        return PyObject_Unicode(x);
-    else
-        return PyUnicode_FromEncodedObject(x, encoding, errors);
+    return unicode_new_inner(x, encoding, errors);
 }
 
 static PyObject *

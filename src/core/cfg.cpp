@@ -1058,7 +1058,7 @@ private:
         AST_List* rtn = new AST_List();
         rtn->lineno = node->lineno;
         rtn->col_offset = node->col_offset;
-        rtn->ctx_type == node->ctx_type;
+        rtn->ctx_type = node->ctx_type;
 
         for (auto elt : node->elts) {
             rtn->elts.push_back(remapExpr(elt));
@@ -1104,7 +1104,7 @@ private:
         AST_Tuple* rtn = new AST_Tuple();
         rtn->lineno = node->lineno;
         rtn->col_offset = node->col_offset;
-        rtn->ctx_type == node->ctx_type;
+        rtn->ctx_type = node->ctx_type;
 
         for (auto elt : node->elts) {
             rtn->elts.push_back(remapExpr(elt));
@@ -2471,7 +2471,90 @@ void CFG::print() {
         blocks[i]->print();
 }
 
+class AssignVRegsVisitor : public NoopASTVisitor {
+public:
+    int index = 0;
+    llvm::DenseMap<InternedString, int> sym_vreg_map;
+    ScopeInfo* scope_info;
+
+    AssignVRegsVisitor(ScopeInfo* scope_info) : scope_info(scope_info) {}
+
+    bool visit_arguments(AST_arguments* node) override {
+        for (AST_expr* d : node->defaults)
+            d->accept(this);
+        return true;
+    }
+
+    bool visit_classdef(AST_ClassDef* node) override {
+        for (auto e : node->bases)
+            e->accept(this);
+        for (auto e : node->decorator_list)
+            e->accept(this);
+        return true;
+    }
+
+    bool visit_functiondef(AST_FunctionDef* node) override {
+        for (auto* d : node->decorator_list)
+            d->accept(this);
+        node->args->accept(this);
+        return true;
+    }
+
+    bool visit_lambda(AST_Lambda* node) override {
+        node->args->accept(this);
+        return true;
+    }
+
+    bool visit_name(AST_Name* node) override {
+        if (node->vreg != -1)
+            return true;
+
+        if (node->lookup_type == ScopeInfo::VarScopeType::UNKNOWN)
+            node->lookup_type = scope_info->getScopeTypeOfName(node->id);
+
+        if (node->lookup_type == ScopeInfo::VarScopeType::FAST || node->lookup_type == ScopeInfo::VarScopeType::CLOSURE)
+            node->vreg = assignVReg(node->id);
+        return true;
+    }
+
+    int assignVReg(InternedString id) {
+        auto it = sym_vreg_map.find(id);
+        if (sym_vreg_map.end() == it) {
+            sym_vreg_map[id] = index;
+            return index++;
+        }
+        return it->second;
+    }
+};
+
+void CFG::assignVRegs(const ParamNames& param_names, ScopeInfo* scope_info) {
+    if (has_vregs_assigned)
+        return;
+
+    AssignVRegsVisitor visitor(scope_info);
+    for (CFGBlock* b : blocks) {
+        for (AST_stmt* stmt : b->body) {
+            stmt->accept(&visitor);
+        }
+    }
+
+    for (auto* name : param_names.arg_names) {
+        name->accept(&visitor);
+    }
+
+    if (param_names.vararg_name)
+        param_names.vararg_name->accept(&visitor);
+
+    if (param_names.kwarg_name)
+        param_names.kwarg_name->accept(&visitor);
+
+    sym_vreg_map = std::move(visitor.sym_vreg_map);
+    has_vregs_assigned = true;
+}
+
 CFG* computeCFG(SourceInfo* source, std::vector<AST_stmt*> body) {
+    STAT_TIMER(t0, "us_timer_computecfg", 0);
+
     CFG* rtn = new CFG();
 
     ScopingAnalysis* scoping_analysis = source->scoping;
@@ -2487,7 +2570,8 @@ CFG* computeCFG(SourceInfo* source, std::vector<AST_stmt*> body) {
             new AST_Name(source->getInternedStrings().get("__module__"), AST_TYPE::Store, source->ast->lineno));
 
         if (source->scoping->areGlobalsFromModule()) {
-            Box* module_name = source->parent_module->getattr("__name__", NULL);
+            static BoxedString* name_str = internStringImmortal("__name__");
+            Box* module_name = source->parent_module->getattr(name_str, NULL);
             assert(module_name->cls == str_cls);
             module_assign->value = new AST_Str(static_cast<BoxedString*>(module_name)->s());
         } else {

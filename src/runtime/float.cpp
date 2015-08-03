@@ -14,6 +14,7 @@
 
 #include <cfloat>
 #include <cmath>
+#include <cstddef>
 #include <cstring>
 #include <gmp.h>
 
@@ -651,9 +652,9 @@ BoxedFloat* _floatNew(Box* a) {
             raiseExcHelper(ValueError, "could not convert string to float: %s", s.data());
         return new BoxedFloat(r);
     } else {
-        static BoxedString* float_str = static_cast<BoxedString*>(PyString_InternFromString("__float__"));
-        Box* r = callattr(a, float_str, CallattrFlags({.cls_only = true, .null_on_nonexistent = true }), ArgPassSpec(0),
-                          NULL, NULL, NULL, NULL, NULL);
+        static BoxedString* float_str = internStringImmortal("__float__");
+        CallattrFlags callattr_flags{.cls_only = true, .null_on_nonexistent = true, .argspec = ArgPassSpec(0) };
+        Box* r = callattr(a, float_str, callattr_flags, NULL, NULL, NULL, NULL, NULL);
 
         if (!r) {
             fprintf(stderr, "TypeError: float() argument must be a string or a number, not '%s'\n", getTypeName(a));
@@ -1447,7 +1448,7 @@ static PyMethodDef float_methods[] = { { "hex", (PyCFunction)float_hex, METH_NOA
 
 void setupFloat() {
     _addFunc("__add__", BOXED_FLOAT, (void*)floatAddFloat, (void*)floatAddInt, (void*)floatAdd);
-    float_cls->giveAttr("__radd__", float_cls->getattr("__add__"));
+    float_cls->giveAttr("__radd__", float_cls->getattr(internStringMortal("__add__")));
 
     _addFunc("__div__", BOXED_FLOAT, (void*)floatDivFloat, (void*)floatDivInt, (void*)floatDiv);
     _addFunc("__rdiv__", BOXED_FLOAT, (void*)floatRDivFloat, (void*)floatRDivInt, (void*)floatRDiv);
@@ -1464,7 +1465,7 @@ void setupFloat() {
     _addFunc("__mod__", BOXED_FLOAT, (void*)floatModFloat, (void*)floatModInt, (void*)floatMod);
     _addFunc("__rmod__", BOXED_FLOAT, (void*)floatRModFloat, (void*)floatRModInt, (void*)floatRMod);
     _addFunc("__mul__", BOXED_FLOAT, (void*)floatMulFloat, (void*)floatMulInt, (void*)floatMul);
-    float_cls->giveAttr("__rmul__", float_cls->getattr("__mul__"));
+    float_cls->giveAttr("__rmul__", float_cls->getattr(internStringMortal("__mul__")));
 
     _addFuncPow("__pow__", BOXED_FLOAT, (void*)floatPowFloat, (void*)floatPowInt, (void*)floatPow);
     _addFunc("__sub__", BOXED_FLOAT, (void*)floatSubFloat, (void*)floatSubInt, (void*)floatSub);
@@ -1483,7 +1484,7 @@ void setupFloat() {
     float_cls->giveAttr("__str__", new BoxedFunction(boxRTFunction((void*)floatStr, STR, 1)));
     float_cls->giveAttr("__repr__", new BoxedFunction(boxRTFunction((void*)floatRepr, STR, 1)));
 
-    float_cls->giveAttr("__trunc__", new BoxedFunction(boxRTFunction((void*)floatTrunc, BOXED_INT, 1)));
+    float_cls->giveAttr("__trunc__", new BoxedFunction(boxRTFunction((void*)floatTrunc, UNKNOWN, 1)));
     float_cls->giveAttr("__hash__", new BoxedFunction(boxRTFunction((void*)floatHash, BOXED_INT, 1)));
 
     float_cls->giveAttr("real", new (pyston_getset_cls) BoxedGetsetDescriptor(floatFloat, NULL, NULL));
@@ -1501,6 +1502,8 @@ void setupFloat() {
     float_cls->freeze();
 
     floatFormatInit();
+
+    float_cls->tp_as_number->nb_power = float_pow;
 }
 
 void teardownFloat() {

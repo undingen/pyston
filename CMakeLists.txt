@@ -29,8 +29,11 @@ option(ENABLE_OPROFILE "enable oprofile support" OFF)
 option(ENABLE_SELF_HOST "use pyston to test pyston" OFF)
 option(ENABLE_VALGRIND "pyston valgrind support" OFF)
 
+option(ENABLE_PGO "enable -fprofile-generate/-fprofile-use" OFF)
+option(ENABLE_LTO "enable -flto" OFF)
+
 # automatically use ccache if found
-if(ENABLE_CCACHE)
+if(ENABLE_CCACHE AND NOT ENABLE_PGO)
   find_program(CCACHE ccache)
   if(CCACHE)
     message(STATUS "found ccache ${CCACHE}")
@@ -46,7 +49,10 @@ if(ENABLE_GOLD)
     message(STATUS "found the gold linker ${GOLD_LINKER}")
     set(CMAKE_LINKER "${GOLD_LINKER}")
     set(CMAKE_CXX_LINK_FLAGS "${CMAKE_CXX_LINK_FLAGS} -B${CMAKE_SOURCE_DIR}/tools/build_system")
-    set(CMAKE_CXX_LINK_FLAGS "${CMAKE_CXX_LINK_FLAGS} -Wl,--section-ordering-file,${CMAKE_CURRENT_SOURCE_DIR}/section_ordering.txt")
+    if(NOT ENABLE_PGO)
+      # let pgo determine the ordering
+      set(CMAKE_CXX_LINK_FLAGS "${CMAKE_CXX_LINK_FLAGS} -Wl,--section-ordering-file,${CMAKE_CURRENT_SOURCE_DIR}/section_ordering.txt")
+    endif()
   endif()
 endif()
 
@@ -67,10 +73,55 @@ if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CLANG_FLAGS}")
 endif()
 
+if(ENABLE_LTO)
+  set(LTO_FLAGS "-flto")
+endif()
+
+if(ENABLE_PGO)
+  if(NOT "${PROFILE_DIR}" STREQUAL "")
+    set(PROFILE_STATE "${PROFILE_STATE}=${PROFILE_DIR}")
+  endif()
+  set(PGO_FLAGS "-fprofile-${PROFILE_STATE} -fprofile-correction")
+endif()
+
+macro(ADD_PROFILE_FLAGS)
+  set(PROFILE_FLAGS "${PGO_FLAGS} ${LTO_FLAGS}")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${PROFILE_FLAGS}")
+endmacro()
+
+# used in src/runtime/inline/CMakeLists.txt to remove the flags we added above
+macro(REMOVE_PROFILE_FLAGS)
+  string(REPLACE "${PROFILE_FLAGS}" " " CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
+  string(REPLACE "${PROFILE_FLAGS}" " " CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+  string(REPLACE "${PROFILE_FLAGS}" " " CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE}")
+  string(REPLACE "${PROFILE_FLAGS}" " " CMAKE_CXX_LINK_FLAGS "${CMAKE_CXX_LINK_FLAGS}")
+  string(REPLACE "${PROFILE_FLAGS}" " " CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS}")
+endmacro()
+
 # llvm disable debug info unless ENABLE_LLVM_DEBUG is ON
 if(${CMAKE_BUILD_TYPE} STREQUAL "Debug" AND NOT ENABLE_LLVM_DEBUG)
   set(CMAKE_CXX_FLAGS_DEBUG "-O3" CACHE STRING "" FORCE)
 endif()
+
+add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/gitmodules
+                   COMMAND git submodule update --init
+                   COMMAND cmake -E touch ${CMAKE_BINARY_DIR}/gitmodules
+                   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+                   DEPENDS ${CMAKE_SOURCE_DIR}/.gitmodules)
+add_custom_target(gitsubmodules DEPENDS ${CMAKE_BINARY_DIR}/gitmodules)
+
+# jemalloc
+ExternalProject_Add(libjemalloc
+                    PREFIX jemalloc-build
+                    SOURCE_DIR ${CMAKE_SOURCE_DIR}/jemalloc
+                    DEPENDS gitsubmodules
+                    UPDATE_COMMAND autoconf
+                    CONFIGURE_COMMAND ${CMAKE_SOURCE_DIR}/jemalloc/configure --prefix=${CMAKE_BINARY_DIR}/jemalloc --enable-autogen --enable-prof-libunwind
+                    INSTALL_COMMAND make install_bin install_lib
+                    LOG_UPDATE ON
+                    LOG_CONFIGURE ON
+                    LOG_BUILD ON
+                    LOG_INSTALL ON)
 
 execute_process(COMMAND cat llvm_revision.txt WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} OUTPUT_VARIABLE LLVMREV OUTPUT_STRIP_TRAILING_WHITESPACE)
 
@@ -85,13 +136,6 @@ set(LIBUNWIND_PATCHES
   ${CMAKE_SOURCE_DIR}/libunwind_patches/0003-use-a-sorted-array-for-registered-objects-and-do-a-b.patch
   ${CMAKE_SOURCE_DIR}/libunwind_patches/9999-is-patched-marker.patch
 )
-
-add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/gitmodules
-                   COMMAND git submodule update --init
-                   COMMAND cmake -E touch ${CMAKE_BINARY_DIR}/gitmodules
-                   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-                   DEPENDS ${CMAKE_SOURCE_DIR}/.gitmodules)
-add_custom_target(gitsubmodules DEPENDS ${CMAKE_BINARY_DIR}/gitmodules)
 
 add_custom_command(OUTPUT ${CMAKE_SOURCE_DIR}/libunwind/pyston_patched
                    COMMAND git submodule update libunwind
@@ -177,7 +221,7 @@ if(ENABLE_OPROFILE)
   set(OPTIONAL_LIBRARIES ${OPTIONAL_LIBRARIES} opagent)
 endif()
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Werror -Wreturn-type -Wno-sign-compare -Wno-unused -Wno-unused-parameter -fno-omit-frame-pointer")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Werror -Wreturn-type -Wno-sign-compare -Wno-unused -Wno-unused-parameter -fno-omit-frame-pointer -g")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CMAKE_C_FLAGS} -std=c++11 -fno-rtti -fexceptions -fvisibility-inlines-hidden -ffunction-sections -fdata-sections -Woverloaded-virtual -Wno-invalid-offsetof -Wcast-qual -Wno-sign-conversion -Wnon-virtual-dtor -Winit-self -Wmissing-include-dirs -Wstrict-overflow=5 -Wpointer-arith -Wtype-limits -Wwrite-strings -Wempty-body -Waggregate-return -Wmissing-field-initializers -Wredundant-decls -Winline -Wint-to-pointer-cast -Wlong-long -Wvla -Wno-attributes -g")
 
 set(CLANG_FLAGS "${CLANG_FLAGS} -Wimplicit-int -Wstrict-prototypes -Wold-style-definition -Wnested-externs -Wpointer-to-int-cast -Wno-mismatched-tags -Wno-extern-c-compat")
@@ -187,6 +231,7 @@ endif()
 
 if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-long-long -Wno-aggregate-return -Wno-inline -Wno-redundant-decls -Wno-strict-overflow")
+  set(CMAKE_CXX_LINK_FLAGS "${CMAKE_CXX_LINK_FLAGS} -Wl,--no-as-needed") # without this, we don't seem to get jemalloc on gcc builds
 endif()
 
 add_definitions(${LLVM_DEFINITIONS})
@@ -199,6 +244,8 @@ include_directories(${LLVM_INCLUDE_DIRS})
 find_package(LibLZMA REQUIRED)
 link_directories(${CMAKE_BINARY_DIR}/libunwind/lib)
 link_directories(${LLVM_LIBRARY_DIRS})
+
+ADD_PROFILE_FLAGS()
 
 add_subdirectory(lib_pyston)
 add_subdirectory(from_cpython)
@@ -213,7 +260,8 @@ add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/linkdeps_dummy.c COMMAND ${CMAKE_C
 
 add_executable(pyston $<TARGET_OBJECTS:PYSTON_MAIN_OBJECT> $<TARGET_OBJECTS:PYSTON_OBJECTS> $<TARGET_OBJECTS:FROM_CPYTHON> linkdeps_dummy.c)
 # Wrap the stdlib in --whole-archive to force all the symbols to be included and eventually exported
-target_link_libraries(pyston -Wl,--whole-archive stdlib -Wl,--no-whole-archive pthread m z readline sqlite3 gmp ssl crypto unwind pypa liblz4 double-conversion ${LLVM_LIBS} ${LIBLZMA_LIBRARIES} ${OPTIONAL_LIBRARIES})
+target_link_libraries(pyston -Wl,--whole-archive stdlib -Wl,--no-whole-archive pthread m z readline sqlite3 gmp ssl crypto unwind pypa liblz4 double-conversion ${LLVM_LIBS} ${LIBLZMA_LIBRARIES} ${OPTIONAL_LIBRARIES} -L${CMAKE_BINARY_DIR}/jemalloc/lib -Wl,-rpath,${CMAKE_BINARY_DIR}/jemalloc/lib jemalloc)
+add_dependencies(pyston libjemalloc)
 
 # copy src/codegen/parse_ast.py to the build directory
 add_custom_command(TARGET pyston POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/src/codegen/parse_ast.py ${CMAKE_BINARY_DIR}/src/codegen/parse_ast.py)
@@ -238,11 +286,11 @@ endmacro()
 
 # tests         testname directory arguments
 add_pyston_test(defaults tests --order-by-mtime)
-add_pyston_test(old_parser tests -a=-n -a=-x)
+add_pyston_test(old_parser tests -a=-n -a=-x -t50)
 if(${CMAKE_BUILD_TYPE} STREQUAL "Release")
-  add_pyston_test(max_compilation_tier tests -a=-O -a=-x)
+  add_pyston_test(max_compilation_tier tests -a=-O -a=-x -t50)
 endif()
-add_pyston_test(defaults cpython --exit-code-only --skip-failing -t30)
+add_pyston_test(defaults cpython --exit-code-only --skip-failing -t50)
 add_pyston_test(defaults integration --exit-code-only --skip-failing -t600)
 if(ENABLE_EXTRA_TESTS)
   add_pyston_test(defaults extra -t600 --exit-code-only)
@@ -285,3 +333,6 @@ if(DOXYGEN_FOUND)
 else()
   add_custom_target(docs COMMAND ${CMAKE_COMMAND} -E echo "Can't create docs, doxygen not installed \(try sudo apt-get install doxygen grpahviz on Ubuntu and then rerun cmake\)" VERBATIM)
 endif()
+
+# last file added (need to change this if we add a file that is added via a glob):
+# from_cpython/Lib/test/test_re.py

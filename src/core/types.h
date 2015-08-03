@@ -64,10 +64,45 @@ public:
 using gc::GCVisitor;
 
 enum class EffortLevel {
-    INTERPRETED = 0,
-    MINIMAL = 1,
     MODERATE = 2,
     MAXIMAL = 3,
+};
+
+enum ExceptionStyle {
+    CAPI,
+    CXX,
+};
+
+template <typename T> struct ExceptionSwitchable {
+public:
+    T capi_val;
+    T cxx_val;
+
+    ExceptionSwitchable() : capi_val(), cxx_val() {}
+    ExceptionSwitchable(T capi_val, T cxx_val) : capi_val(std::move(capi_val)), cxx_val(std::move(cxx_val)) {}
+
+    template <ExceptionStyle S> T get() {
+        if (S == CAPI)
+            return capi_val;
+        else
+            return cxx_val;
+    }
+
+    T get(ExceptionStyle S) {
+        if (S == CAPI)
+            return capi_val;
+        else
+            return cxx_val;
+    }
+};
+
+template <typename R, typename... Args>
+struct ExceptionSwitchableFunction : public ExceptionSwitchable<R (*)(Args...)> {
+public:
+    typedef R (*FTy)(Args...);
+    ExceptionSwitchableFunction(FTy capi_ptr, FTy cxx_ptr) : ExceptionSwitchable<FTy>(capi_ptr, cxx_ptr) {}
+
+    template <ExceptionStyle S> R call(Args... args) noexcept(S == CAPI) { return this->template get<S>()(args...); }
 };
 
 class CompilerType;
@@ -75,8 +110,8 @@ template <class V> class ValuedCompilerType;
 typedef ValuedCompilerType<llvm::Value*> ConcreteCompilerType;
 ConcreteCompilerType* typeFromClass(BoxedClass*);
 
-extern ConcreteCompilerType* INT, *BOXED_INT, *LONG, *FLOAT, *BOXED_FLOAT, *VOID, *UNKNOWN, *BOOL, *STR, *NONE, *LIST,
-    *SLICE, *MODULE, *DICT, *BOOL, *BOXED_BOOL, *BOXED_TUPLE, *SET, *FROZENSET, *CLOSURE, *GENERATOR, *BOXED_COMPLEX,
+extern ConcreteCompilerType* INT, *BOXED_INT, *LONG, *FLOAT, *BOXED_FLOAT, *UNKNOWN, *BOOL, *STR, *NONE, *LIST, *SLICE,
+    *MODULE, *DICT, *BOOL, *BOXED_BOOL, *BOXED_TUPLE, *SET, *FROZENSET, *CLOSURE, *GENERATOR, *BOXED_COMPLEX,
     *FRAME_INFO;
 extern CompilerType* UNDEF;
 
@@ -97,6 +132,7 @@ class AST;
 class AST_FunctionDef;
 class AST_arguments;
 class AST_expr;
+class AST_Name;
 class AST_stmt;
 
 class PhiAnalysis;
@@ -134,6 +170,11 @@ struct ArgPassSpec {
 
     int totalPassed() { return num_args + num_keywords + (has_starargs ? 1 : 0) + (has_kwargs ? 1 : 0); }
 
+    int kwargsIndex() const {
+        assert(has_kwargs);
+        return num_args + num_keywords + (has_starargs ? 1 : 0);
+    }
+
     uint32_t asInt() const { return *reinterpret_cast<const uint32_t*>(this); }
 
     void dump() {
@@ -149,6 +190,12 @@ struct ParamNames {
     std::vector<llvm::StringRef> args;
     llvm::StringRef vararg, kwarg;
 
+    // This members are only set if the InternedStringPool& constructor is used (aka. source is available)!
+    // They are used as an optimization while interpreting because the AST_Names nodes cache important stuff
+    // (InternedString, lookup_type) which would otherwise have to get recomputed all the time.
+    std::vector<AST_Name*> arg_names;
+    AST_Name* vararg_name, *kwarg_name;
+
     explicit ParamNames(AST* ast, InternedStringPool& pool);
     ParamNames(const std::vector<llvm::StringRef>& args, llvm::StringRef vararg, llvm::StringRef kwarg);
     static ParamNames empty() { return ParamNames(); }
@@ -157,8 +204,13 @@ struct ParamNames {
         return args.size() + (vararg.str().size() == 0 ? 0 : 1) + (kwarg.str().size() == 0 ? 0 : 1);
     }
 
+    int kwargsIndex() const {
+        assert(kwarg.str().size());
+        return args.size() + (vararg.str().size() == 0 ? 0 : 1);
+    }
+
 private:
-    ParamNames() : takes_param_names(false) {}
+    ParamNames() : takes_param_names(false), vararg_name(NULL), kwarg_name(NULL) {}
 };
 
 // Probably overkill to copy this from ArgPassSpec
@@ -190,6 +242,7 @@ struct ParamReceiveSpec {
     bool operator!=(ParamReceiveSpec rhs) { return !(*this == rhs); }
 
     int totalReceived() { return num_args + (takes_varargs ? 1 : 0) + (takes_kwargs ? 1 : 0); }
+    int kwargsIndex() { return num_args + (takes_varargs ? 1 : 0); }
 };
 
 class ICInvalidator {
@@ -221,6 +274,7 @@ class BoxedClosure;
 class BoxedGenerator;
 class ICInfo;
 class LocationMap;
+class JitCodeBlock;
 
 struct CompiledFunction {
 private:
@@ -229,7 +283,6 @@ public:
     llvm::Function* func; // the llvm IR object
     FunctionSpecialization* spec;
     const OSREntryDescriptor* entry_descriptor;
-    bool is_interpreted;
 
     union {
         Box* (*call)(Box*, Box*, Box*, Box**);
@@ -242,28 +295,17 @@ public:
     int code_size;
 
     EffortLevel effort;
+    ExceptionStyle exception_style;
 
     int64_t times_called, times_speculation_failed;
     ICInvalidator dependent_callsites;
 
-    LocationMap* location_map; // only meaningful if this is a compiled frame
+    LocationMap* location_map;
 
     std::vector<ICInfo*> ics;
 
-    CompiledFunction(llvm::Function* func, FunctionSpecialization* spec, bool is_interpreted, void* code,
-                     EffortLevel effort, const OSREntryDescriptor* entry_descriptor)
-        : clfunc(NULL),
-          func(func),
-          spec(spec),
-          entry_descriptor(entry_descriptor),
-          is_interpreted(is_interpreted),
-          code(code),
-          effort(effort),
-          times_called(0),
-          times_speculation_failed(0),
-          location_map(nullptr) {
-        assert((spec != NULL) + (entry_descriptor != NULL) == 1);
-    }
+    CompiledFunction(llvm::Function* func, FunctionSpecialization* spec, void* code, EffortLevel effort,
+                     ExceptionStyle exception_style, const OSREntryDescriptor* entry_descriptor);
 
     ConcreteCompilerType* getReturnType();
 
@@ -282,10 +324,12 @@ typedef int FutureFlags;
 class BoxedModule;
 class ScopeInfo;
 class InternedStringPool;
+class LivenessAnalysis;
 class SourceInfo {
 public:
     BoxedModule* parent_module;
     ScopingAnalysis* scoping;
+    ScopeInfo* scope_info;
     FutureFlags future_flags;
     AST* ast;
     CFG* cfg;
@@ -295,6 +339,7 @@ public:
     InternedStringPool& getInternedStrings();
 
     ScopeInfo* getScopeInfo();
+    LivenessAnalysis* getLiveness();
 
     // TODO we're currently copying the body of the AST into here, since lambdas don't really have a statement-based
     // body and we have to create one.  Ideally, we'd be able to avoid the space duplication for non-lambdas.
@@ -307,6 +352,10 @@ public:
 
     SourceInfo(BoxedModule* m, ScopingAnalysis* scoping, FutureFlags future_flags, AST* ast,
                std::vector<AST_stmt*> body, std::string fn);
+    ~SourceInfo();
+
+private:
+    std::unique_ptr<LivenessAnalysis> liveness_info;
 };
 
 typedef std::vector<CompiledFunction*> FunctionList;
@@ -327,31 +376,23 @@ public:
     // Please use codeForFunction() to access this:
     BoxedCode* code_obj;
 
+    // For use by the interpreter/baseline jit:
+    int times_interpreted;
+    std::vector<std::unique_ptr<JitCodeBlock>> code_blocks;
+    ICInvalidator dependent_interp_callsites;
+
     // Functions can provide an "internal" version, which will get called instead
     // of the normal dispatch through the functionlist.
     // This can be used to implement functions which know how to rewrite themselves,
     // such as typeCall.
-    typedef Box* (*InternalCallable)(BoxedFunctionBase*, CallRewriteArgs*, ArgPassSpec, Box*, Box*, Box*, Box**,
-                                     const std::vector<BoxedString*>*);
-    InternalCallable internal_callable = NULL;
+    typedef ExceptionSwitchableFunction<Box*, BoxedFunctionBase*, CallRewriteArgs*, ArgPassSpec, Box*, Box*, Box*,
+                                        Box**, const std::vector<BoxedString*>*> InternalCallable;
+    InternalCallable internal_callable;
 
     CLFunction(int num_args, int num_defaults, bool takes_varargs, bool takes_kwargs,
-               std::unique_ptr<SourceInfo> source)
-        : paramspec(num_args, num_defaults, takes_varargs, takes_kwargs),
-          source(std::move(source)),
-          param_names(this->source->ast, this->source->getInternedStrings()),
-          always_use_version(NULL),
-          code_obj(NULL) {
-        assert(num_args >= num_defaults);
-    }
-    CLFunction(int num_args, int num_defaults, bool takes_varargs, bool takes_kwargs, const ParamNames& param_names)
-        : paramspec(num_args, num_defaults, takes_varargs, takes_kwargs),
-          source(nullptr),
-          param_names(param_names),
-          always_use_version(NULL),
-          code_obj(NULL) {
-        assert(num_args >= num_defaults);
-    }
+               std::unique_ptr<SourceInfo> source);
+    CLFunction(int num_args, int num_defaults, bool takes_varargs, bool takes_kwargs, const ParamNames& param_names);
+    ~CLFunction();
 
     int numReceivedArgs() { return paramspec.totalReceived(); }
 
@@ -359,12 +400,13 @@ public:
         assert(compiled);
         assert((compiled->spec != NULL) + (compiled->entry_descriptor != NULL) == 1);
         assert(compiled->clfunc == NULL);
-        assert(compiled->is_interpreted == (compiled->code == NULL));
+        assert(compiled->code);
         compiled->clfunc = this;
 
         if (compiled->entry_descriptor == NULL) {
-            if (versions.size() == 0 && compiled->effort == EffortLevel::MAXIMAL && compiled->spec->accepts_all_inputs
-                && compiled->spec->boxed_return_value)
+            bool could_have_speculations = (source.get() != NULL);
+            if (!could_have_speculations && versions.size() == 0 && compiled->effort == EffortLevel::MAXIMAL
+                && compiled->spec->accepts_all_inputs && compiled->spec->boxed_return_value)
                 always_use_version = compiled;
 
             assert(compiled->spec->arg_types.size() == paramspec.totalReceived());
@@ -384,12 +426,13 @@ public:
 CLFunction* createRTFunction(int num_args, int num_defaults, bool takes_varargs, bool takes_kwargs,
                              const ParamNames& param_names = ParamNames::empty());
 CLFunction* boxRTFunction(void* f, ConcreteCompilerType* rtn_type, int nargs, int num_defaults, bool takes_varargs,
-                          bool takes_kwargs, const ParamNames& param_names = ParamNames::empty());
+                          bool takes_kwargs, const ParamNames& param_names = ParamNames::empty(),
+                          ExceptionStyle exception_style = CXX);
 CLFunction* boxRTFunction(void* f, ConcreteCompilerType* rtn_type, int nargs,
-                          const ParamNames& param_names = ParamNames::empty());
-void addRTFunction(CLFunction* cf, void* f, ConcreteCompilerType* rtn_type);
+                          const ParamNames& param_names = ParamNames::empty(), ExceptionStyle exception_style = CXX);
+void addRTFunction(CLFunction* cf, void* f, ConcreteCompilerType* rtn_type, ExceptionStyle exception_style = CXX);
 void addRTFunction(CLFunction* cf, void* f, ConcreteCompilerType* rtn_type,
-                   const std::vector<ConcreteCompilerType*>& arg_types);
+                   const std::vector<ConcreteCompilerType*>& arg_types, ExceptionStyle exception_style = CXX);
 CLFunction* unboxRTFunction(Box*);
 
 // Compiles a new version of the function with the given signature and adds it to the list;
@@ -471,6 +514,26 @@ struct SetattrRewriteArgs;
 struct GetattrRewriteArgs;
 struct DelattrRewriteArgs;
 
+// Helper function around PyString_InternFromString:
+BoxedString* internStringImmortal(llvm::StringRef s);
+
+// Callers should use this function if they can accept mortal string objects.
+// FIXME For now it just returns immortal strings, but at least we can use it
+// to start documenting the places that can take mortal strings.
+inline BoxedString* internStringMortal(const char* s) {
+    return internStringImmortal(s);
+}
+
+inline BoxedString* internStringMortal(llvm::StringRef s) {
+    assert(s.data()[s.size()] == '\0');
+    return internStringMortal(s.data());
+}
+
+// TODO this is an immortal intern for now
+inline void internStringMortalInplace(BoxedString*& s) {
+    PyString_InternInPlace((PyObject**)&s);
+}
+
 struct HCAttrs {
 public:
     struct AttrList {
@@ -486,6 +549,12 @@ public:
 class BoxedDict;
 class BoxedString;
 
+// In Pyston, this is the same type as CPython's PyObject (they are interchangeable, but we
+// use Box in Pyston wherever possible as a convention).
+//
+// Other types on Pyston inherit from Box (e.g. BoxedString is a Box). Why is this class not
+// polymorphic? Because of C extension support -- having virtual methods would change the layout
+// of the object.
 class Box {
 private:
     BoxedDict** getDictPtr();
@@ -511,18 +580,19 @@ public:
     BoxedDict* getDict();
 
 
-    void setattr(llvm::StringRef attr, Box* val, SetattrRewriteArgs* rewrite_args);
-    void giveAttr(llvm::StringRef attr, Box* val) {
+    void setattr(BoxedString* attr, Box* val, SetattrRewriteArgs* rewrite_args);
+    void giveAttr(const char* attr, Box* val) { giveAttr(internStringMortal(attr), val); }
+    void giveAttr(BoxedString* attr, Box* val) {
         assert(!this->hasattr(attr));
         this->setattr(attr, val, NULL);
     }
 
     // getattr() does the equivalent of PyDict_GetItem(obj->dict, attr): it looks up the attribute's value on the
     // object's attribute storage. it doesn't look at other objects or do any descriptor logic.
-    Box* getattr(llvm::StringRef attr, GetattrRewriteArgs* rewrite_args);
-    Box* getattr(llvm::StringRef attr) { return getattr(attr, NULL); }
-    bool hasattr(llvm::StringRef attr) { return getattr(attr) != NULL; }
-    void delattr(llvm::StringRef attr, DelattrRewriteArgs* rewrite_args);
+    Box* getattr(BoxedString* attr, GetattrRewriteArgs* rewrite_args);
+    Box* getattr(BoxedString* attr) { return getattr(attr, NULL); }
+    bool hasattr(BoxedString* attr) { return getattr(attr) != NULL; }
+    void delattr(BoxedString* attr, DelattrRewriteArgs* rewrite_args);
 
     // Only valid for hc-backed instances:
     Box* getAttrWrapper();
@@ -600,6 +670,10 @@ extern "C" PyObject* PystonType_GenericAlloc(BoxedClass* cls, Py_ssize_t nitems)
         assert(default_cls->tp_basicsize == size);                                                                     \
         assert(default_cls->is_pyston_class);                                                                          \
         assert(default_cls->attrs_offset == 0);                                                                        \
+                                                                                                                       \
+        /* Don't allocate classes through this -- we need to keep track of all class objects. */                       \
+        assert(default_cls != type_cls);                                                                               \
+        assert(!gc::hasOrderedFinalizer(default_cls));                                                                 \
                                                                                                                        \
         /* note: we want to use size instead of tp_basicsize, since size is a compile-time constant */                 \
         void* mem = gc_alloc(size, gc::GCKind::PYTHON);                                                                \
@@ -744,9 +818,34 @@ struct FrameInfo {
 struct CallattrFlags {
     bool cls_only : 1;
     bool null_on_nonexistent : 1;
+    ArgPassSpec argspec;
 
-    char asInt() { return (cls_only << 0) + (null_on_nonexistent << 1); }
+    uint64_t asInt() { return (uint64_t(argspec.asInt()) << 32) | (cls_only << 0) | (null_on_nonexistent << 1); }
 };
+static_assert(sizeof(CallattrFlags) == sizeof(uint64_t), "");
+
+// similar to Java's Array.binarySearch:
+// return values are either:
+//   >= 0 : the index where a given item was found
+//   < 0  : a negative number that can be transformed (using "-num-1") into the insertion point
+//
+template <typename T, typename RandomAccessIterator, typename Cmp>
+int binarySearch(T needle, RandomAccessIterator start, RandomAccessIterator end, Cmp cmp) {
+    int l = 0;
+    int r = end - start - 1;
+    while (l <= r) {
+        int mid = l + (r - l) / 2;
+        auto mid_item = *(start + mid);
+        int c = cmp(needle, mid_item);
+        if (c < 0)
+            r = mid - 1;
+        else if (c > 0)
+            l = mid + 1;
+        else
+            return mid;
+    }
+    return -(l + 1);
+}
 }
 
 namespace std {

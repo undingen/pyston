@@ -29,6 +29,7 @@ int PYTHON_VERSION_HEX = version_hex(PYTHON_VERSION_MAJOR, PYTHON_VERSION_MINOR,
 
 int MAX_OPT_ITERATIONS = 1;
 
+bool ASSEMBLY_LOGGING = false;
 bool CONTINUE_AFTER_FATAL = false;
 bool FORCE_INTERPRETER = false;
 bool FORCE_OPTIMIZE = false;
@@ -38,15 +39,19 @@ bool DUMPJIT = false;
 bool TRAP = false;
 bool USE_STRIPPED_STDLIB = true; // always true
 bool ENABLE_INTERPRETER = true;
+bool ENABLE_BASELINEJIT = true;
 bool ENABLE_PYPA_PARSER = true;
 bool USE_REGALLOC_BASIC = true;
 bool PAUSE_AT_ABORT = false;
 bool ENABLE_TRACEBACKS = true;
+// Forces the llvm jit to use capi exceptions whenever it can, as opposed to whenever it thinks
+// it is faster:
+bool FORCE_LLVM_CAPI = false;
 
-int OSR_THRESHOLD_INTERPRETER = 500;
-int REOPT_THRESHOLD_INTERPRETER = 200;
-int OSR_THRESHOLD_BASELINE = 10000;
-int REOPT_THRESHOLD_BASELINE = 250;
+int OSR_THRESHOLD_INTERPRETER = 25;
+int REOPT_THRESHOLD_INTERPRETER = 25;
+int OSR_THRESHOLD_BASELINE = 2500;
+int REOPT_THRESHOLD_BASELINE = 1000;
 int OSR_THRESHOLD_T2 = 10000;
 int REOPT_THRESHOLD_T2 = 10000;
 int SPECULATION_THRESHOLD = 100;

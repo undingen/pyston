@@ -35,6 +35,7 @@ class IREmitter;
 class BoxedInt;
 class BoxedFloat;
 class BoxedLong;
+class BoxedString;
 
 typedef llvm::SmallVector<uint64_t, 1> FrameVals;
 
@@ -47,9 +48,9 @@ public:
     virtual ConcreteCompilerType* getConcreteType() = 0;
     virtual ConcreteCompilerType* getBoxType() = 0;
     virtual bool canConvertTo(ConcreteCompilerType* other_type) = 0;
-    virtual CompilerType* getattrType(llvm::StringRef attr, bool cls_only) = 0;
+    virtual CompilerType* getattrType(BoxedString* attr, bool cls_only) = 0;
     virtual CompilerType* getPystonIterType();
-    virtual Result hasattr(llvm::StringRef attr);
+    virtual Result hasattr(BoxedString* attr);
     virtual CompilerType* callType(ArgPassSpec argspec, const std::vector<CompilerType*>& arg_types,
                                    const std::vector<llvm::StringRef>* keyword_names) = 0;
 
@@ -124,8 +125,7 @@ public:
     }
 
     virtual CompilerVariable* callattr(IREmitter& emitter, const OpInfo& info, VAR* var, BoxedString* attr,
-                                       CallattrFlags flags, struct ArgPassSpec argspec,
-                                       const std::vector<CompilerVariable*>& args,
+                                       CallattrFlags flags, const std::vector<CompilerVariable*>& args,
                                        const std::vector<BoxedString*>* keyword_names) {
         printf("callattr not defined for %s\n", debugName().c_str());
         abort();
@@ -153,11 +153,12 @@ public:
         printf("binexp not defined for %s\n", debugName().c_str());
         abort();
     }
+    virtual CompilerVariable* contains(IREmitter& emitter, const OpInfo& info, VAR* var, CompilerVariable* lhs);
     virtual llvm::Value* makeClassCheck(IREmitter& emitter, VAR* var, BoxedClass* c) {
         printf("makeClassCheck not defined for %s\n", debugName().c_str());
         abort();
     }
-    CompilerType* getattrType(llvm::StringRef attr, bool cls_only) override {
+    CompilerType* getattrType(BoxedString* attr, bool cls_only) override {
         printf("getattrType not defined for %s\n", debugName().c_str());
         abort();
     }
@@ -268,7 +269,7 @@ public:
     virtual void setattr(IREmitter& emitter, const OpInfo& info, BoxedString* attr, CompilerVariable* v) = 0;
     virtual void delattr(IREmitter& emitter, const OpInfo& info, BoxedString* attr) = 0;
     virtual CompilerVariable* callattr(IREmitter& emitter, const OpInfo& info, BoxedString* attr, CallattrFlags flags,
-                                       struct ArgPassSpec argspec, const std::vector<CompilerVariable*>& args,
+                                       const std::vector<CompilerVariable*>& args,
                                        const std::vector<BoxedString*>* keyword_names) = 0;
     virtual CompilerVariable* call(IREmitter& emitter, const OpInfo& info, struct ArgPassSpec argspec,
                                    const std::vector<CompilerVariable*>& args,
@@ -278,6 +279,7 @@ public:
     virtual CompilerVariable* getPystonIter(IREmitter& emitter, const OpInfo& info) = 0;
     virtual CompilerVariable* binexp(IREmitter& emitter, const OpInfo& info, CompilerVariable* rhs,
                                      AST_TYPE::AST_TYPE op_type, BinExpType exp_type) = 0;
+    virtual CompilerVariable* contains(IREmitter& emitter, const OpInfo& info, CompilerVariable* lhs) = 0;
 
     virtual void serializeToFrame(std::vector<llvm::Value*>& stackmap_args) = 0;
 
@@ -348,9 +350,9 @@ public:
     }
 
     CompilerVariable* callattr(IREmitter& emitter, const OpInfo& info, BoxedString* attr, CallattrFlags flags,
-                               struct ArgPassSpec argspec, const std::vector<CompilerVariable*>& args,
+                               const std::vector<CompilerVariable*>& args,
                                const std::vector<BoxedString*>* keyword_names) override {
-        return type->callattr(emitter, info, this, attr, flags, argspec, args, keyword_names);
+        return type->callattr(emitter, info, this, attr, flags, args, keyword_names);
     }
     CompilerVariable* call(IREmitter& emitter, const OpInfo& info, struct ArgPassSpec argspec,
                            const std::vector<CompilerVariable*>& args,
@@ -369,6 +371,9 @@ public:
     CompilerVariable* binexp(IREmitter& emitter, const OpInfo& info, CompilerVariable* rhs, AST_TYPE::AST_TYPE op_type,
                              BinExpType exp_type) override {
         return type->binexp(emitter, info, this, rhs, op_type, exp_type);
+    }
+    CompilerVariable* contains(IREmitter& emitter, const OpInfo& info, CompilerVariable* lhs) override {
+        return type->contains(emitter, info, this, lhs);
     }
 
     llvm::Value* makeClassCheck(IREmitter& emitter, BoxedClass* cls) override {
@@ -391,6 +396,9 @@ public:
 // : CompilerVariable(grabbed), type(type), value(value) {
 // assert(value->getType() == type->llvmType());
 //}
+
+// Emit the test for whether one variable 'is' another one.
+ConcreteCompilerVariable* doIs(IREmitter& emitter, CompilerVariable* lhs, CompilerVariable* rhs, bool negate);
 
 ConcreteCompilerVariable* makeBool(bool);
 ConcreteCompilerVariable* makeInt(int64_t);
@@ -418,6 +426,15 @@ template <typename V>
 CompilerVariable* _ValuedCompilerType<V>::getPystonIter(IREmitter& emitter, const OpInfo& info, VAR* var) {
     ConcreteCompilerVariable* converted = makeConverted(emitter, var, getBoxType());
     auto r = UNKNOWN->getPystonIter(emitter, info, converted);
+    converted->decvref(emitter);
+    return r;
+}
+
+template <typename V>
+CompilerVariable* _ValuedCompilerType<V>::contains(IREmitter& emitter, const OpInfo& info, VAR* var,
+                                                   CompilerVariable* rhs) {
+    ConcreteCompilerVariable* converted = makeConverted(emitter, var, getBoxType());
+    auto r = UNKNOWN->contains(emitter, info, converted, rhs);
     converted->decvref(emitter);
     return r;
 }

@@ -379,19 +379,80 @@ extern "C" PyObject* PyObject_Unicode(PyObject* v) noexcept {
     return res;
 }
 
-extern "C" PyObject* _PyObject_Str(PyObject* v) noexcept {
-    if (v == NULL)
-        return boxString("<NULL>");
-
-    if (v->cls == str_cls)
-        return v;
-
-    try {
-        return str(v);
-    } catch (ExcInfo e) {
-        setCAPIException(e);
+extern "C" PyObject* PyObject_Repr(PyObject* v) noexcept {
+    if (PyErr_CheckSignals())
+        return NULL;
+#ifdef USE_STACKCHECK
+    if (PyOS_CheckStack()) {
+        PyErr_SetString(PyExc_MemoryError, "stack overflow");
         return NULL;
     }
+#endif
+    if (v == NULL)
+        return PyString_FromString("<NULL>");
+    else if (Py_TYPE(v)->tp_repr == NULL)
+        return PyString_FromFormat("<%s object at %p>", Py_TYPE(v)->tp_name, v);
+    else {
+        PyObject* res;
+        res = (*Py_TYPE(v)->tp_repr)(v);
+        if (res == NULL)
+            return NULL;
+#ifdef Py_USING_UNICODE
+        if (PyUnicode_Check(res)) {
+            PyObject* str;
+            str = PyUnicode_AsEncodedString(res, NULL, NULL);
+            Py_DECREF(res);
+            if (str)
+                res = str;
+            else
+                return NULL;
+        }
+#endif
+        if (!PyString_Check(res)) {
+            PyErr_Format(PyExc_TypeError, "__repr__ returned non-string (type %.200s)", Py_TYPE(res)->tp_name);
+            Py_DECREF(res);
+            return NULL;
+        }
+        return res;
+    }
+}
+
+extern "C" PyObject* _PyObject_Str(PyObject* v) noexcept {
+    PyObject* res;
+    int type_ok;
+    if (v == NULL)
+        return PyString_FromString("<NULL>");
+    if (PyString_CheckExact(v)) {
+        Py_INCREF(v);
+        return v;
+    }
+#ifdef Py_USING_UNICODE
+    if (PyUnicode_CheckExact(v)) {
+        Py_INCREF(v);
+        return v;
+    }
+#endif
+    if (Py_TYPE(v)->tp_str == NULL)
+        return PyObject_Repr(v);
+
+    /* It is possible for a type to have a tp_str representation that loops
+       infinitely. */
+    if (Py_EnterRecursiveCall(" while getting the str of an object"))
+        return NULL;
+    res = (*Py_TYPE(v)->tp_str)(v);
+    Py_LeaveRecursiveCall();
+    if (res == NULL)
+        return NULL;
+    type_ok = PyString_Check(res);
+#ifdef Py_USING_UNICODE
+    type_ok = type_ok || PyUnicode_Check(res);
+#endif
+    if (!type_ok) {
+        PyErr_Format(PyExc_TypeError, "__str__ returned non-string (type %.200s)", Py_TYPE(res)->tp_name);
+        Py_DECREF(res);
+        return NULL;
+    }
+    return res;
 }
 
 extern "C" PyObject* PyObject_Str(PyObject* v) noexcept {
@@ -419,11 +480,13 @@ extern "C" PyObject* PyObject_SelfIter(PyObject* obj) noexcept {
 
 extern "C" int PyObject_GenericSetAttr(PyObject* obj, PyObject* name, PyObject* value) noexcept {
     RELEASE_ASSERT(PyString_Check(name), "");
+    BoxedString* str = static_cast<BoxedString*>(name);
+    internStringMortalInplace(str);
     try {
         if (value == NULL)
-            delattrGeneric(obj, static_cast<BoxedString*>(name), NULL);
+            delattrGeneric(obj, str, NULL);
         else
-            setattrGeneric(obj, static_cast<BoxedString*>(name), value, NULL);
+            setattrGeneric(obj, str, value, NULL);
     } catch (ExcInfo e) {
         setCAPIException(e);
         return -1;
@@ -443,12 +506,15 @@ extern "C" int PyObject_SetAttr(PyObject* obj, PyObject* name, PyObject* value) 
         }
     }
 
+    BoxedString* name_str = static_cast<BoxedString*>(name);
+    internStringMortalInplace(name_str);
+
     assert(PyString_Check(name));
     try {
         if (value == NULL)
-            delattr(obj, static_cast<BoxedString*>(name));
+            delattr(obj, name_str);
         else
-            setattr(obj, static_cast<BoxedString*>(name), value);
+            setattr(obj, name_str, value);
     } catch (ExcInfo e) {
         setCAPIException(e);
         return -1;
@@ -458,7 +524,7 @@ extern "C" int PyObject_SetAttr(PyObject* obj, PyObject* name, PyObject* value) 
 
 extern "C" int PyObject_SetAttrString(PyObject* v, const char* name, PyObject* w) noexcept {
     try {
-        setattr(v, boxString(name), w);
+        setattr(v, internStringMortal(name), w);
     } catch (ExcInfo e) {
         setCAPIException(e);
         return -1;
@@ -468,7 +534,10 @@ extern "C" int PyObject_SetAttrString(PyObject* v, const char* name, PyObject* w
 
 extern "C" PyObject* PyObject_GetAttrString(PyObject* o, const char* attr) noexcept {
     try {
-        return getattr(o, boxString(attr));
+        Box* r = getattrInternal<ExceptionStyle::CXX>(o, internStringMortal(attr), NULL);
+        if (!r)
+            PyErr_Format(PyExc_AttributeError, "'%.50s' object has no attribute '%.400s'", o->cls->tp_name, attr);
+        return r;
     } catch (ExcInfo e) {
         setCAPIException(e);
         return NULL;

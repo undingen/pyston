@@ -31,6 +31,7 @@
 #include "runtime/file.h"
 #include "runtime/ics.h"
 #include "runtime/import.h"
+#include "runtime/inline/list.h"
 #include "runtime/inline/xrange.h"
 #include "runtime/iterobject.h"
 #include "runtime/list.h"
@@ -94,16 +95,16 @@ extern "C" Box* abs_(Box* x) {
     } else if (x->cls == long_cls) {
         return longAbs(static_cast<BoxedLong*>(x));
     } else {
-        static BoxedString* abs_str = static_cast<BoxedString*>(PyString_InternFromString("__abs__"));
-        return callattr(x, abs_str, CallattrFlags({.cls_only = true, .null_on_nonexistent = false }), ArgPassSpec(0),
-                        NULL, NULL, NULL, NULL, NULL);
+        static BoxedString* abs_str = internStringImmortal("__abs__");
+        CallattrFlags callattr_flags{.cls_only = true, .null_on_nonexistent = false, .argspec = ArgPassSpec(0) };
+        return callattr(x, abs_str, callattr_flags, NULL, NULL, NULL, NULL, NULL);
     }
 }
 
 extern "C" Box* hexFunc(Box* x) {
-    static BoxedString* hex_str = static_cast<BoxedString*>(PyString_InternFromString("__hex__"));
-    Box* r = callattr(x, hex_str, CallattrFlags({.cls_only = true, .null_on_nonexistent = true }), ArgPassSpec(0), NULL,
-                      NULL, NULL, NULL, NULL);
+    static BoxedString* hex_str = internStringImmortal("__hex__");
+    CallattrFlags callattr_flags{.cls_only = true, .null_on_nonexistent = true, .argspec = ArgPassSpec(0) };
+    Box* r = callattr(x, hex_str, callattr_flags, NULL, NULL, NULL, NULL, NULL);
     if (!r)
         raiseExcHelper(TypeError, "hex() argument can't be converted to hex");
 
@@ -114,9 +115,9 @@ extern "C" Box* hexFunc(Box* x) {
 }
 
 extern "C" Box* octFunc(Box* x) {
-    static BoxedString* oct_str = static_cast<BoxedString*>(PyString_InternFromString("__oct__"));
-    Box* r = callattr(x, oct_str, CallattrFlags({.cls_only = true, .null_on_nonexistent = true }), ArgPassSpec(0), NULL,
-                      NULL, NULL, NULL, NULL);
+    static BoxedString* oct_str = internStringImmortal("__oct__");
+    CallattrFlags callattr_flags{.cls_only = true, .null_on_nonexistent = true, .argspec = ArgPassSpec(0) };
+    Box* r = callattr(x, oct_str, callattr_flags, NULL, NULL, NULL, NULL, NULL);
     if (!r)
         raiseExcHelper(TypeError, "oct() argument can't be converted to oct");
 
@@ -144,30 +145,77 @@ extern "C" Box* any(Box* container) {
     return boxBool(false);
 }
 
-extern "C" Box* min(Box* arg0, BoxedTuple* args) {
+Box* min_max(Box* arg0, BoxedTuple* args, BoxedDict* kwargs, int opid) {
     assert(args->cls == tuple_cls);
+    if (kwargs)
+        assert(kwargs->cls == dict_cls);
 
-    Box* minElement;
+    Box* key_func = nullptr;
+    Box* extremElement;
     Box* container;
+    Box* extremVal;
+
+    if (kwargs && kwargs->d.size()) {
+        static BoxedString* key_str = static_cast<BoxedString*>(PyString_InternFromString("key"));
+        auto it = kwargs->d.find(key_str);
+        if (it != kwargs->d.end() && kwargs->d.size() == 1) {
+            key_func = it->second;
+        } else {
+            if (opid == Py_LT)
+                raiseExcHelper(TypeError, "min() got an unexpected keyword argument");
+            else
+                raiseExcHelper(TypeError, "max() got an unexpected keyword argument");
+        }
+    }
+
     if (args->size() == 0) {
-        minElement = nullptr;
+        extremElement = nullptr;
+        extremVal = nullptr;
         container = arg0;
     } else {
-        minElement = arg0;
+        extremElement = arg0;
+        if (key_func != NULL) {
+            extremVal = runtimeCall(key_func, ArgPassSpec(1), extremElement, NULL, NULL, NULL, NULL);
+        } else {
+            extremVal = extremElement;
+        }
         container = args;
     }
 
+    Box* curVal = nullptr;
     for (Box* e : container->pyElements()) {
-        if (!minElement) {
-            minElement = e;
+        if (key_func != NULL) {
+            if (!extremElement) {
+                extremVal = runtimeCall(key_func, ArgPassSpec(1), e, NULL, NULL, NULL, NULL);
+                extremElement = e;
+                continue;
+            }
+            curVal = runtimeCall(key_func, ArgPassSpec(1), e, NULL, NULL, NULL, NULL);
         } else {
-            int r = PyObject_RichCompareBool(minElement, e, Py_GT);
-            if (r == -1)
-                throwCAPIException();
-            if (r)
-                minElement = e;
+            if (!extremElement) {
+                extremVal = e;
+                extremElement = e;
+                continue;
+            }
+            curVal = e;
+        }
+        int r = PyObject_RichCompareBool(curVal, extremVal, opid);
+        if (r == -1)
+            throwCAPIException();
+        if (r) {
+            extremElement = e;
+            extremVal = curVal;
         }
     }
+    return extremElement;
+}
+
+extern "C" Box* min(Box* arg0, BoxedTuple* args, BoxedDict* kwargs) {
+    if (arg0 == None && args->size() == 0) {
+        raiseExcHelper(TypeError, "min expected 1 arguments, got 0");
+    }
+
+    Box* minElement = min_max(arg0, args, kwargs, Py_LT);
 
     if (!minElement) {
         raiseExcHelper(ValueError, "min() arg is an empty sequence");
@@ -175,30 +223,12 @@ extern "C" Box* min(Box* arg0, BoxedTuple* args) {
     return minElement;
 }
 
-extern "C" Box* max(Box* arg0, BoxedTuple* args) {
-    assert(args->cls == tuple_cls);
-
-    Box* maxElement;
-    Box* container;
-    if (args->size() == 0) {
-        maxElement = nullptr;
-        container = arg0;
-    } else {
-        maxElement = arg0;
-        container = args;
+extern "C" Box* max(Box* arg0, BoxedTuple* args, BoxedDict* kwargs) {
+    if (arg0 == None && args->size() == 0) {
+        raiseExcHelper(TypeError, "max expected 1 arguments, got 0");
     }
 
-    for (Box* e : container->pyElements()) {
-        if (!maxElement) {
-            maxElement = e;
-        } else {
-            int r = PyObject_RichCompareBool(maxElement, e, Py_LT);
-            if (r == -1)
-                throwCAPIException();
-            if (r)
-                maxElement = e;
-        }
-    }
+    Box* maxElement = min_max(arg0, args, kwargs, Py_GT);
 
     if (!maxElement) {
         raiseExcHelper(ValueError, "max() arg is an empty sequence");
@@ -208,9 +238,9 @@ extern "C" Box* max(Box* arg0, BoxedTuple* args) {
 
 extern "C" Box* next(Box* iterator, Box* _default) {
     try {
-        static BoxedString* next_str = static_cast<BoxedString*>(PyString_InternFromString("next"));
-        return callattr(iterator, next_str, CallattrFlags({.cls_only = true, .null_on_nonexistent = false }),
-                        ArgPassSpec(0), NULL, NULL, NULL, NULL, NULL);
+        static BoxedString* next_str = internStringImmortal("next");
+        CallattrFlags callattr_flags{.cls_only = true, .null_on_nonexistent = false, .argspec = ArgPassSpec(0) };
+        return callattr(iterator, next_str, callattr_flags, NULL, NULL, NULL, NULL, NULL);
     } catch (ExcInfo e) {
         if (_default && e.matches(StopIteration))
             return _default;
@@ -266,6 +296,18 @@ extern "C" Box* unichr(Box* arg) {
     Box* rtn = PyUnicode_FromOrdinal(n);
     checkAndThrowCAPIException();
     return rtn;
+}
+
+Box* coerceFunc(Box* vv, Box* ww) {
+    Box* res;
+
+    if (PyErr_WarnPy3k("coerce() not supported in 3.x", 1) < 0)
+        throwCAPIException();
+
+    if (PyNumber_Coerce(&vv, &ww) < 0)
+        throwCAPIException();
+    res = PyTuple_Pack(2, vv, ww);
+    return res;
 }
 
 extern "C" Box* ord(Box* obj) {
@@ -362,7 +404,7 @@ Box* sorted(Box* obj, Box* cmp, Box* key, Box** args) {
 Box* isinstance_func(Box* obj, Box* cls) {
     int rtn = PyObject_IsInstance(obj, cls);
     if (rtn < 0)
-        checkAndThrowCAPIException();
+        throwCAPIException();
     return boxBool(rtn);
 }
 
@@ -409,6 +451,8 @@ Box* delattrFunc(Box* obj, Box* _str) {
     if (_str->cls != str_cls)
         raiseExcHelper(TypeError, "attribute name must be string, not '%s'", getTypeName(_str));
     BoxedString* str = static_cast<BoxedString*>(_str);
+    internStringMortalInplace(str);
+
     delattr(obj, str);
     return None;
 }
@@ -420,23 +464,14 @@ Box* getattrFunc(Box* obj, Box* _str, Box* default_value) {
         raiseExcHelper(TypeError, "getattr(): attribute name must be string");
     }
 
-    BoxedString* str = static_cast<BoxedString*>(_str);
-
-    Box* rtn = NULL;
-    try {
-        rtn = getattrInternal(obj, str, NULL);
-    } catch (ExcInfo e) {
-        if (!e.matches(AttributeError))
-            throw e;
+    Box* rtn = PyObject_GetAttr(obj, _str);
+    if (rtn == NULL && default_value != NULL && PyErr_ExceptionMatches(AttributeError)) {
+        PyErr_Clear();
+        return default_value;
     }
 
-    if (!rtn) {
-        if (default_value)
-            return default_value;
-        else
-            raiseExcHelper(AttributeError, "'%s' object has no attribute '%s'", getTypeName(obj), str->data());
-    }
-
+    if (!rtn)
+        throwCAPIException();
     return rtn;
 }
 
@@ -448,6 +483,8 @@ Box* setattrFunc(Box* obj, Box* _str, Box* value) {
     }
 
     BoxedString* str = static_cast<BoxedString*>(_str);
+    internStringMortalInplace(str);
+
     setattr(obj, str, value);
     return None;
 }
@@ -460,9 +497,11 @@ Box* hasattr(Box* obj, Box* _str) {
     }
 
     BoxedString* str = static_cast<BoxedString*>(_str);
+    internStringMortalInplace(str);
+
     Box* attr;
     try {
-        attr = getattrInternal(obj, str, NULL);
+        attr = getattrInternal<ExceptionStyle::CXX>(obj, str, NULL);
     } catch (ExcInfo e) {
         if (e.matches(Exception))
             return False;
@@ -561,6 +600,192 @@ Box* reduce(Box* f, Box* container, Box* initial) {
     return current;
 }
 
+// from cpython, bltinmodule.c
+PyObject* filterstring(PyObject* func, BoxedString* strobj) {
+    PyObject* result;
+    Py_ssize_t i, j;
+    Py_ssize_t len = PyString_Size(strobj);
+    Py_ssize_t outlen = len;
+
+    if (func == Py_None) {
+        /* If it's a real string we can return the original,
+         * as no character is ever false and __getitem__
+         * does return this character. If it's a subclass
+         * we must go through the __getitem__ loop */
+        if (PyString_CheckExact(strobj)) {
+            Py_INCREF(strobj);
+            return strobj;
+        }
+    }
+    if ((result = PyString_FromStringAndSize(NULL, len)) == NULL)
+        return NULL;
+
+    for (i = j = 0; i < len; ++i) {
+        PyObject* item;
+        int ok;
+
+        item = (*strobj->cls->tp_as_sequence->sq_item)(strobj, i);
+        if (item == NULL)
+            goto Fail_1;
+        if (func == Py_None) {
+            ok = 1;
+        } else {
+            PyObject* arg, *good;
+            arg = PyTuple_Pack(1, item);
+            if (arg == NULL) {
+                Py_DECREF(item);
+                goto Fail_1;
+            }
+            good = PyEval_CallObject(func, arg);
+            Py_DECREF(arg);
+            if (good == NULL) {
+                Py_DECREF(item);
+                goto Fail_1;
+            }
+            ok = PyObject_IsTrue(good);
+            Py_DECREF(good);
+        }
+        if (ok > 0) {
+            Py_ssize_t reslen;
+            if (!PyString_Check(item)) {
+                PyErr_SetString(PyExc_TypeError, "can't filter str to str:"
+                                                 " __getitem__ returned different type");
+                Py_DECREF(item);
+                goto Fail_1;
+            }
+            reslen = PyString_GET_SIZE(item);
+            if (reslen == 1) {
+                PyString_AS_STRING(result)[j++] = PyString_AS_STRING(item)[0];
+            } else {
+                /* do we need more space? */
+                Py_ssize_t need = j;
+
+                /* calculate space requirements while checking for overflow */
+                if (need > PY_SSIZE_T_MAX - reslen) {
+                    Py_DECREF(item);
+                    goto Fail_1;
+                }
+
+                need += reslen;
+
+                if (need > PY_SSIZE_T_MAX - len) {
+                    Py_DECREF(item);
+                    goto Fail_1;
+                }
+
+                need += len;
+
+                if (need <= i) {
+                    Py_DECREF(item);
+                    goto Fail_1;
+                }
+
+                need = need - i - 1;
+
+                assert(need >= 0);
+                assert(outlen >= 0);
+
+                if (need > outlen) {
+                    /* overallocate, to avoid reallocations */
+                    if (outlen > PY_SSIZE_T_MAX / 2) {
+                        Py_DECREF(item);
+                        return NULL;
+                    }
+
+                    if (need < 2 * outlen) {
+                        need = 2 * outlen;
+                    }
+                    if (_PyString_Resize(&result, need)) {
+                        Py_DECREF(item);
+                        return NULL;
+                    }
+                    outlen = need;
+                }
+                memcpy(PyString_AS_STRING(result) + j, PyString_AS_STRING(item), reslen);
+                j += reslen;
+            }
+        }
+        Py_DECREF(item);
+        if (ok < 0)
+            goto Fail_1;
+    }
+
+    if (j < outlen)
+        _PyString_Resize(&result, j);
+
+    return result;
+
+Fail_1:
+    Py_DECREF(result);
+    return NULL;
+}
+
+static PyObject* filtertuple(PyObject* func, PyObject* tuple) {
+    PyObject* result;
+    Py_ssize_t i, j;
+    Py_ssize_t len = PyTuple_Size(tuple);
+
+    if (len == 0) {
+        if (PyTuple_CheckExact(tuple))
+            Py_INCREF(tuple);
+        else
+            tuple = PyTuple_New(0);
+        return tuple;
+    }
+
+    if ((result = PyTuple_New(len)) == NULL)
+        return NULL;
+
+    for (i = j = 0; i < len; ++i) {
+        PyObject* item, *good;
+        int ok;
+
+        if (tuple->cls->tp_as_sequence && tuple->cls->tp_as_sequence->sq_item) {
+            item = tuple->cls->tp_as_sequence->sq_item(tuple, i);
+            if (item == NULL)
+                goto Fail_1;
+        } else {
+            PyErr_SetString(PyExc_TypeError, "filter(): unsubscriptable tuple");
+            goto Fail_1;
+        }
+        if (func == Py_None) {
+            Py_INCREF(item);
+            good = item;
+        } else {
+            PyObject* arg = PyTuple_Pack(1, item);
+            if (arg == NULL) {
+                Py_DECREF(item);
+                goto Fail_1;
+            }
+            good = PyEval_CallObject(func, arg);
+            Py_DECREF(arg);
+            if (good == NULL) {
+                Py_DECREF(item);
+                goto Fail_1;
+            }
+        }
+        ok = PyObject_IsTrue(good);
+        Py_DECREF(good);
+        if (ok > 0) {
+            if (PyTuple_SetItem(result, j++, item) < 0)
+                goto Fail_1;
+        } else {
+            Py_DECREF(item);
+            if (ok < 0)
+                goto Fail_1;
+        }
+    }
+
+    if (_PyTuple_Resize(&result, j) < 0)
+        return NULL;
+
+    return result;
+
+Fail_1:
+    Py_DECREF(result);
+    return NULL;
+}
+
 Box* filter2(Box* f, Box* container) {
     // If the filter-function argument is None, filter() works by only returning
     // the elements that are truthy.  This is equivalent to using the bool() constructor.
@@ -569,6 +794,24 @@ Box* filter2(Box* f, Box* container) {
     // If this is a common case we could speed it up with special handling.
     if (f == None)
         f = bool_cls;
+
+    // Special cases depending on the type of container influences the return type
+    // TODO There are other special cases like this
+    if (PyTuple_Check(container)) {
+        Box* rtn = filtertuple(f, static_cast<BoxedTuple*>(container));
+        if (!rtn) {
+            throwCAPIException();
+        }
+        return rtn;
+    }
+
+    if (PyString_Check(container)) {
+        Box* rtn = filterstring(f, static_cast<BoxedString*>(container));
+        if (!rtn) {
+            throwCAPIException();
+        }
+        return rtn;
+    }
 
     Box* rtn = new BoxedList();
     for (Box* e : container->pyElements()) {
@@ -613,9 +856,7 @@ Box* zip(BoxedTuple* containers) {
 }
 
 static Box* callable(Box* obj) {
-    Box* r = PyBool_FromLong((long)PyCallable_Check(obj));
-    checkAndThrowCAPIException();
-    return r;
+    return PyBool_FromLong((long)PyCallable_Check(obj));
 }
 
 BoxedClass* notimplemented_cls;
@@ -653,7 +894,8 @@ Box* exceptionNew(BoxedClass* cls, BoxedTuple* args) {
 
 Box* exceptionStr(Box* b) {
     // TODO In CPython __str__ and __repr__ pull from an internalized message field, but for now do this:
-    Box* message = b->getattr("message");
+    static BoxedString* message_str = internStringImmortal("message");
+    Box* message = b->getattr(message_str);
     assert(message);
     message = str(message);
     assert(message->cls == str_cls);
@@ -663,7 +905,8 @@ Box* exceptionStr(Box* b) {
 
 Box* exceptionRepr(Box* b) {
     // TODO In CPython __str__ and __repr__ pull from an internalized message field, but for now do this:
-    Box* message = b->getattr("message");
+    static BoxedString* message_str = internStringImmortal("message");
+    Box* message = b->getattr(message_str);
     assert(message);
     message = repr(message);
     assert(message->cls == str_cls);
@@ -847,7 +1090,7 @@ Box* execfile(Box* _fn) {
     // Run directly inside the current module:
     AST_Module* ast = caching_parse_file(fn->data());
 
-    ASSERT(getExecutionPoint().cf->clfunc->source->scoping->areGlobalsFromModule(), "need to pass custom globals in");
+    ASSERT(getTopPythonFunction()->source->scoping->areGlobalsFromModule(), "need to pass custom globals in");
     compileAndRunModule(ast, getCurrentModule());
 
     return None;
@@ -855,69 +1098,65 @@ Box* execfile(Box* _fn) {
 
 Box* print(BoxedTuple* args, BoxedDict* kwargs) {
     assert(args->cls == tuple_cls);
-    assert(kwargs->cls == dict_cls);
+    assert(!kwargs || kwargs->cls == dict_cls);
 
     Box* dest, *end;
 
-    static BoxedString* file_str = static_cast<BoxedString*>(PyString_InternFromString("file"));
-    static BoxedString* end_str = static_cast<BoxedString*>(PyString_InternFromString("end"));
-    static BoxedString* space_str = static_cast<BoxedString*>(PyString_InternFromString(" "));
+    static BoxedString* file_str = internStringImmortal("file");
+    static BoxedString* end_str = internStringImmortal("end");
+    static BoxedString* space_str = internStringImmortal(" ");
 
-    auto it = kwargs->d.find(file_str);
-    if (it != kwargs->d.end()) {
+    BoxedDict::DictMap::iterator it;
+    if (kwargs && ((it = kwargs->d.find(file_str)) != kwargs->d.end())) {
         dest = it->second;
         kwargs->d.erase(it);
     } else {
         dest = getSysStdout();
     }
 
-    it = kwargs->d.find(end_str);
-    if (it != kwargs->d.end()) {
+    if (kwargs && ((it = kwargs->d.find(end_str)) != kwargs->d.end())) {
         end = it->second;
         kwargs->d.erase(it);
     } else {
         end = boxString("\n");
     }
 
-    RELEASE_ASSERT(kwargs->d.size() == 0, "print() got unexpected keyword arguments");
+    RELEASE_ASSERT(!kwargs || kwargs->d.size() == 0, "print() got unexpected keyword arguments");
 
-    static BoxedString* write_str = static_cast<BoxedString*>(PyString_InternFromString("write"));
+    static BoxedString* write_str = internStringImmortal("write");
+    CallattrFlags callattr_flags{.cls_only = false, .null_on_nonexistent = false, .argspec = ArgPassSpec(1) };
 
     // TODO softspace handling?
     // TODO: duplicates code with ASTInterpreter::visit_print()
+
     bool first = true;
     for (auto e : *args) {
         BoxedString* s = str(e);
-
         if (!first) {
-            Box* r = callattr(dest, write_str, CallattrFlags({.cls_only = false, .null_on_nonexistent = false }),
-                              ArgPassSpec(1), space_str, NULL, NULL, NULL, NULL);
+            Box* r = callattr(dest, write_str, callattr_flags, space_str, NULL, NULL, NULL, NULL);
             RELEASE_ASSERT(r, "");
         }
         first = false;
-
-        Box* r = callattr(dest, write_str, CallattrFlags({.cls_only = false, .null_on_nonexistent = false }),
-                          ArgPassSpec(1), s, NULL, NULL, NULL, NULL);
+        Box* r = callattr(dest, write_str, callattr_flags, s, NULL, NULL, NULL, NULL);
         RELEASE_ASSERT(r, "");
     }
-
-    Box* r = callattr(dest, write_str, CallattrFlags({.cls_only = false, .null_on_nonexistent = false }),
-                      ArgPassSpec(1), end, NULL, NULL, NULL, NULL);
+    Box* r = callattr(dest, write_str, callattr_flags, end, NULL, NULL, NULL, NULL);
     RELEASE_ASSERT(r, "");
 
     return None;
 }
 
 Box* getreversed(Box* o) {
-    static BoxedString* reversed_str = static_cast<BoxedString*>(PyString_InternFromString("__reversed__"));
+    static BoxedString* reversed_str = internStringImmortal("__reversed__");
 
     // TODO add rewriting to this?  probably want to try to avoid this path though
-    Box* r = callattr(o, reversed_str, CallattrFlags({.cls_only = true, .null_on_nonexistent = true }), ArgPassSpec(0),
-                      NULL, NULL, NULL, NULL, NULL);
+    CallattrFlags callattr_flags{.cls_only = true, .null_on_nonexistent = true, .argspec = ArgPassSpec(0) };
+    Box* r = callattr(o, reversed_str, callattr_flags, NULL, NULL, NULL, NULL, NULL);
     if (r)
         return r;
 
-    if (!typeLookup(o->cls, "__getitem__", NULL)) {
+    static BoxedString* getitem_str = internStringImmortal("__getitem__");
+    if (!typeLookup(o->cls, getitem_str, NULL)) {
         raiseExcHelper(TypeError, "'%s' object is not iterable", getTypeName(o));
     }
     int64_t len = unboxedLen(o); // this will throw an exception if __len__ isn't there
@@ -941,6 +1180,10 @@ Box* pydumpAddr(Box* p) {
 Box* builtinIter(Box* obj, Box* sentinel) {
     if (sentinel == NULL)
         return getiter(obj);
+
+    if (!PyCallable_Check(obj)) {
+        raiseExcHelper(TypeError, "iter(v, w): v must be callable");
+    }
 
     Box* r = PyCallIter_New(obj, sentinel);
     if (!r)
@@ -1151,7 +1394,7 @@ void setupBuiltins() {
     builtins_module->giveAttr("repr", repr_obj);
 
     auto len_func = boxRTFunction((void*)len, UNKNOWN, 1);
-    len_func->internal_callable = lenCallInternal;
+    len_func->internal_callable.cxx_val = lenCallInternal;
     len_obj = new BoxedBuiltinFunctionOrMethod(len_func, "len");
     builtins_module->giveAttr("len", len_obj);
 
@@ -1164,10 +1407,10 @@ void setupBuiltins() {
     builtins_module->giveAttr("oct",
                               new BoxedBuiltinFunctionOrMethod(boxRTFunction((void*)octFunc, UNKNOWN, 1), "oct"));
 
-    min_obj = new BoxedBuiltinFunctionOrMethod(boxRTFunction((void*)min, UNKNOWN, 1, 0, true, false), "min");
+    min_obj = new BoxedBuiltinFunctionOrMethod(boxRTFunction((void*)min, UNKNOWN, 1, 1, true, true), "min", { None });
     builtins_module->giveAttr("min", min_obj);
 
-    max_obj = new BoxedBuiltinFunctionOrMethod(boxRTFunction((void*)max, UNKNOWN, 1, 0, true, false), "max");
+    max_obj = new BoxedBuiltinFunctionOrMethod(boxRTFunction((void*)max, UNKNOWN, 1, 1, true, true), "max", { None });
     builtins_module->giveAttr("max", max_obj);
 
     builtins_module->giveAttr("next", new BoxedBuiltinFunctionOrMethod(
@@ -1272,10 +1515,10 @@ void setupBuiltins() {
     builtins_module->giveAttr(
         "reversed",
         new BoxedBuiltinFunctionOrMethod(boxRTFunction((void*)getreversed, UNKNOWN, 1, 0, false, false), "reversed"));
-
+    builtins_module->giveAttr("coerce", new BoxedBuiltinFunctionOrMethod(
+                                            boxRTFunction((void*)coerceFunc, UNKNOWN, 2, 0, false, false), "coerce"));
     builtins_module->giveAttr("divmod",
                               new BoxedBuiltinFunctionOrMethod(boxRTFunction((void*)divmod, UNKNOWN, 2), "divmod"));
-
     builtins_module->giveAttr("execfile",
                               new BoxedBuiltinFunctionOrMethod(boxRTFunction((void*)execfile, UNKNOWN, 1), "execfile"));
 
@@ -1291,7 +1534,7 @@ void setupBuiltins() {
         "reduce", new BoxedBuiltinFunctionOrMethod(boxRTFunction((void*)reduce, UNKNOWN, 3, 1, false, false), "reduce",
                                                    { NULL }));
     builtins_module->giveAttr("filter",
-                              new BoxedBuiltinFunctionOrMethod(boxRTFunction((void*)filter2, LIST, 2), "filter"));
+                              new BoxedBuiltinFunctionOrMethod(boxRTFunction((void*)filter2, UNKNOWN, 2), "filter"));
     builtins_module->giveAttr(
         "zip", new BoxedBuiltinFunctionOrMethod(boxRTFunction((void*)zip, LIST, 0, 0, true, false), "zip"));
     builtins_module->giveAttr(

@@ -17,9 +17,11 @@
 
 #include <unordered_set>
 
+#include "asm_writing/disassemble.h"
 #include "asm_writing/types.h"
 #include "codegen/stackmaps.h"
 #include "core/ast.h"
+#include "core/options.h"
 
 namespace pyston {
 namespace assembler {
@@ -74,6 +76,10 @@ private:
     static const uint8_t OPCODE_ADD = 0b000, OPCODE_SUB = 0b101;
     static const uint8_t REX_B = 1, REX_X = 2, REX_R = 4, REX_W = 8;
 
+#ifndef NDEBUG
+    AssemblyLogger logger;
+#endif
+
 private:
     void emitByte(uint8_t b);
     void emitInt(int64_t n, int bytes);
@@ -82,16 +88,36 @@ private:
     void emitSIB(uint8_t scalebits, uint8_t index, uint8_t base);
     void emitArith(Immediate imm, Register reg, int opcode);
 
+    int getModeFromOffset(int offset) const;
+
 public:
     Assembler(uint8_t* start, int size) : start_addr(start), end_addr(start + size), addr(start_addr), failed(false) {}
+
+#ifndef NDEBUG
+    inline void comment(const llvm::Twine& msg) {
+        if (ASSEMBLY_LOGGING) {
+            logger.log_comment(msg, addr - start_addr);
+        }
+    }
+    inline std::string dump() {
+        if (ASSEMBLY_LOGGING) {
+            return logger.finalize_log(start_addr, addr);
+        } else {
+            return "";
+        }
+    }
+#else
+    inline void comment(const llvm::Twine& msg) {}
+    inline std::string dump() { return ""; }
+#endif
 
     bool hasFailed() { return failed; }
 
     void nop() { emitByte(0x90); }
     void trap() { emitByte(0xcc); }
 
-    // some things (such as objdump) call this "movabs" if the immediate is 64-bit
-    void mov(Immediate imm, Register dest);
+    // emits a movabs if the immediate is a 64bit value or force_64bit_load = true otherwise it emits a 32bit mov
+    void mov(Immediate imm, Register dest, bool force_64bit_load = false);
     // not sure if we should use the 'q' suffix here, but this is the most ambiguous one;
     // this does a 64-bit store of a 32-bit value.
     void movq(Immediate imm, Indirect dest);
@@ -125,11 +151,17 @@ public:
 
     void add(Immediate imm, Register reg);
     void sub(Immediate imm, Register reg);
+
     void incl(Indirect mem);
     void decl(Indirect mem);
 
+    void incl(Immediate mem);
+    void decl(Immediate mem);
+
+    void call(Immediate imm); // the value is the offset
     void callq(Register reg);
     void retq();
+    void leave();
 
     void cmp(Register reg1, Register reg2);
     void cmp(Register reg, Immediate imm);
@@ -142,6 +174,7 @@ public:
 
     void jmp_cond(JumpDestination dest, ConditionCode condition);
     void jmp(JumpDestination dest);
+    void jmp(Indirect dest);
     void jmpq(Register dest);
     void je(JumpDestination dest);
     void jne(JumpDestination dest);
@@ -160,10 +193,30 @@ public:
     void fillWithNops();
     void fillWithNopsExcept(int bytes);
     void emitAnnotation(int num);
+    void skipBytes(int num);
 
-    int bytesWritten() { return addr - start_addr; }
+    uint8_t* startAddr() const { return start_addr; }
+    int bytesLeft() const { return end_addr - addr; }
+    int bytesWritten() const { return addr - start_addr; }
     uint8_t* curInstPointer() { return addr; }
-    bool isExactlyFull() { return addr == end_addr; }
+    void setCurInstPointer(uint8_t* ptr) { addr = ptr; }
+    bool isExactlyFull() const { return addr == end_addr; }
+    uint8_t* getStartAddr() { return start_addr; }
+};
+
+// This class helps generating a forward jump with a relative offset.
+// It keeps track of the current assembler offset at construction time and in the destructor patches the
+// generated conditional jump with the correct offset depending on the number of bytes emitted in between.
+class ForwardJump {
+private:
+    const int max_jump_size = 128;
+    Assembler& assembler;
+    ConditionCode condition;
+    uint8_t* jmp_inst;
+
+public:
+    ForwardJump(Assembler& assembler, ConditionCode condition);
+    ~ForwardJump();
 };
 
 uint8_t* initializePatchpoint2(uint8_t* start_addr, uint8_t* slowpath_start, uint8_t* end_addr, StackInfo stack_info,

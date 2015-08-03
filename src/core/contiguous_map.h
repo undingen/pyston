@@ -21,9 +21,10 @@
 
 namespace pyston {
 
-template <class TKey, class TVal, class TMap = llvm::DenseMap<TKey, int>> class ContiguousMap {
+template <class TKey, class TVal, class TMap = llvm::DenseMap<TKey, int>, class TVec = std::vector<TVal>>
+class ContiguousMap {
     typedef TMap map_type;
-    typedef std::vector<TVal> vec_type;
+    typedef TVec vec_type;
 
     map_type map;
     vec_type vec;
@@ -43,12 +44,11 @@ public:
     const_iterator begin() const noexcept { return map.begin(); }
     const_iterator end() const noexcept { return map.end(); }
 
-    iterator erase(const_iterator position) {
+    void erase(const_iterator position) {
         int idx = map[position->first];
         free_list.push_back(idx);
         vec[idx] = TVal();
         map.erase(position->first);
-        return begin(); // this is broken...
     }
 
     size_type erase(const TKey& key) {
@@ -73,9 +73,9 @@ public:
                 free_list.pop_back();
             } else {
                 idx = vec.size();
+                vec.push_back(TVal());
             }
             map[key] = idx;
-            vec.push_back(TVal());
             return vec[idx];
         } else {
             return vec[it->second];
@@ -91,9 +91,9 @@ public:
                 free_list.pop_back();
             } else {
                 idx = vec.size();
+                vec.push_back(TVal());
             }
             map[key] = idx;
-            vec.push_back(TVal());
             return vec[idx];
         } else {
             return vec[it->second];
@@ -102,7 +102,8 @@ public:
 
     TVal getMapped(int idx) const { return vec[idx]; }
 
-    size_type size() const { return vec.size(); }
+    size_type size() const { return map.size(); }
+    bool empty() const { return map.empty(); }
     const vec_type& vector() { return vec; }
 };
 }

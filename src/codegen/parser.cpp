@@ -18,6 +18,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <sstream>
 #include <stdint.h>
 #include <sys/stat.h>
 
@@ -36,6 +37,8 @@
 //#define VERBOSITY(x) 2
 
 namespace pyston {
+
+bool DEBUG_PARSING = false;
 
 class BufferedReader {
 private:
@@ -995,7 +998,6 @@ AST_Module* parse_string(const char* code) {
 }
 
 AST_Module* parse_file(const char* fn) {
-    UNAVOIDABLE_STAT_TIMER(t0, "us_timer_cpyton_parsing");
     Timer _t("parsing");
 
     if (ENABLE_PYPA_PARSER) {
@@ -1035,32 +1037,43 @@ const char* getMagic() {
 #define LENGTH_LENGTH sizeof(int)
 #define CHECKSUM_LENGTH 1
 
-enum class ParseResult {
-    SUCCESS,
-    PYC_UNWRITABLE,
-};
-static ParseResult _reparse(const char* fn, const std::string& cache_fn, AST_Module*& module) {
+// Does at least one of: returns a valid file_data vector, or fills in 'module'
+static std::vector<char> _reparse(const char* fn, const std::string& cache_fn, AST_Module*& module) {
     FILE* cache_fp = fopen(cache_fn.c_str(), "w");
-    if (!cache_fp)
-        return ParseResult::PYC_UNWRITABLE;
 
-    fwrite(getMagic(), 1, MAGIC_STRING_LENGTH, cache_fp);
+    if (DEBUG_PARSING) {
+        fprintf(stderr, "_reparse('%s', '%s'), pypa=%d\n", fn, cache_fn.c_str(), ENABLE_PYPA_PARSER);
+        fprintf(stderr, "writing magic string: %d %d %d %d\n", getMagic()[0], getMagic()[1], getMagic()[2],
+                getMagic()[3]);
+    }
 
-    int checksum_start = ftell(cache_fp);
+    std::vector<char> file_data;
+    if (cache_fp)
+        fwrite(getMagic(), 1, MAGIC_STRING_LENGTH, cache_fp);
+    file_data.insert(file_data.end(), getMagic(), getMagic() + MAGIC_STRING_LENGTH);
+
+    int checksum_start = file_data.size();
 
     int bytes_written = -1;
     static_assert(sizeof(bytes_written) == LENGTH_LENGTH, "");
-    fwrite(&bytes_written, 1, LENGTH_LENGTH, cache_fp);
+    if (cache_fp)
+        fwrite(&bytes_written, 1, LENGTH_LENGTH, cache_fp);
+    file_data.insert(file_data.end(), (char*)&bytes_written, (char*)&bytes_written + LENGTH_LENGTH);
     bytes_written = 0;
 
     uint8_t checksum = -1;
     static_assert(sizeof(checksum) == CHECKSUM_LENGTH, "");
-    fwrite(&checksum, 1, CHECKSUM_LENGTH, cache_fp);
+    if (cache_fp)
+        fwrite(&checksum, 1, CHECKSUM_LENGTH, cache_fp);
+    file_data.insert(file_data.end(), (char*)&checksum, (char*)&checksum + CHECKSUM_LENGTH);
     checksum = 0;
 
     if (ENABLE_PYPA_PARSER) {
         module = pypa_parse(fn);
         RELEASE_ASSERT(module, "unknown parse error");
+
+        if (!cache_fp)
+            return std::vector<char>();
 
         auto p = serializeAST(module, cache_fp);
         checksum = p.second;
@@ -1073,7 +1086,10 @@ static ParseResult _reparse(const char* fn, const std::string& cache_fn, AST_Mod
             if (nread == 0)
                 break;
             bytes_written += nread;
-            fwrite(buf, 1, nread, cache_fp);
+
+            if (cache_fp)
+                fwrite(buf, 1, nread, cache_fp);
+            file_data.insert(file_data.end(), buf, buf + nread);
 
             for (int i = 0; i < nread; i++) {
                 checksum ^= buf[i];
@@ -1084,17 +1100,28 @@ static ParseResult _reparse(const char* fn, const std::string& cache_fn, AST_Mod
     }
 
     fseek(cache_fp, checksum_start, SEEK_SET);
-    fwrite(&bytes_written, 1, LENGTH_LENGTH, cache_fp);
-    fwrite(&checksum, 1, CHECKSUM_LENGTH, cache_fp);
+    if (cache_fp)
+        fwrite(&bytes_written, 1, LENGTH_LENGTH, cache_fp);
+    memcpy(&file_data[checksum_start], &bytes_written, LENGTH_LENGTH);
+    if (cache_fp)
+        fwrite(&checksum, 1, CHECKSUM_LENGTH, cache_fp);
+    memcpy(&file_data[checksum_start + LENGTH_LENGTH], &checksum, CHECKSUM_LENGTH);
 
-    fclose(cache_fp);
-    return ParseResult::SUCCESS;
+    if (cache_fp)
+        fclose(cache_fp);
+    return std::move(file_data);
 }
 
 // Parsing the file is somewhat expensive since we have to shell out to cpython;
 // it's not a huge deal right now, but this caching version can significantly cut down
 // on the startup time (40ms -> 10ms).
 AST_Module* caching_parse_file(const char* fn) {
+    std::ostringstream oss;
+    if (DEBUG_PARSING) {
+        oss << "caching_parse_file() on " << fn << '\n';
+        fprintf(stderr, "caching_parse_file('%s'), pypa=%d\n", fn, ENABLE_PYPA_PARSER);
+    }
+
     UNAVOIDABLE_STAT_TIMER(t0, "us_timer_caching_parse_file");
     static StatCounter us_parsing("us_parsing");
     Timer _t("parsing");
@@ -1107,59 +1134,54 @@ AST_Module* caching_parse_file(const char* fn) {
     code = stat(fn, &source_stat);
     assert(code == 0);
     code = stat(cache_fn.c_str(), &cache_stat);
-    if (code != 0 || cache_stat.st_mtime < source_stat.st_mtime
-        || (cache_stat.st_mtime == source_stat.st_mtime && cache_stat.st_mtim.tv_nsec < source_stat.st_mtim.tv_nsec)) {
-        AST_Module* mod = 0;
-        auto result = _reparse(fn, cache_fn, mod);
-        if (mod)
-            return mod;
-
-        if (result == ParseResult::PYC_UNWRITABLE)
-            return parse_file(fn);
-
-        code = stat(cache_fn.c_str(), &cache_stat);
-        if (code != 0)
-            return parse_file(fn);
-    }
-
-    static const int MAX_TRIES = 5;
-
     std::vector<char> file_data;
-    int tries = 0;
-    while (true) {
-        FILE* fp = fopen(cache_fn.c_str(), "r");
-
-        bool good = (bool)fp;
-
-        if (good) {
-            char buf[1024];
+    if (code == 0 && (cache_stat.st_mtime > source_stat.st_mtime
+                      || (cache_stat.st_mtime == source_stat.st_mtime
+                          && cache_stat.st_mtim.tv_nsec > source_stat.st_mtim.tv_nsec))) {
+        oss << "reading pyc file\n";
+        char buf[1024];
+        FILE* cache_fp = fopen(cache_fn.c_str(), "r");
+        if (cache_fp) {
             while (true) {
-                int read = fread(buf, 1, 1024, fp);
-                for (int i = 0; i < read; i++)
-                    file_data.push_back(buf[i]);
+                int read = fread(buf, 1, 1024, cache_fp);
+                file_data.insert(file_data.end(), buf, buf + read);
 
                 if (read == 0) {
-                    if (ferror(fp)) {
-                        if (tries == MAX_TRIES)
-                            fprintf(stderr, "Error reading %s: %s\n", cache_fn.c_str(), strerror(errno));
-                        good = false;
+                    if (ferror(cache_fp)) {
+                        oss << "encountered io error reading from the file\n";
+                        AST_Module* mod = 0;
+                        file_data = _reparse(fn, cache_fn, mod);
+                        if (mod)
+                            return mod;
+                        assert(file_data.size());
                     }
                     break;
                 }
             }
-
-            fclose(fp);
-            fp = NULL;
+            fclose(cache_fp);
         }
+    }
 
-        if (file_data.size() < MAGIC_STRING_LENGTH + LENGTH_LENGTH + CHECKSUM_LENGTH)
+    static const int MAX_TRIES = 5;
+
+    int tries = 0;
+    while (true) {
+        oss << "try number " << tries << '\n';
+
+        bool good = true;
+
+        if (file_data.size() < MAGIC_STRING_LENGTH + LENGTH_LENGTH + CHECKSUM_LENGTH) {
+            oss << "file not long enough to include header\n";
             good = false;
+        }
 
         if (good) {
             if (strncmp(&file_data[0], getMagic(), MAGIC_STRING_LENGTH) != 0) {
+                oss << "magic string did not match\n";
                 if (VERBOSITY() || tries == MAX_TRIES) {
                     fprintf(stderr, "Warning: corrupt or non-Pyston .pyc file found; ignoring\n");
                     fprintf(stderr, "%d %d %d %d\n", file_data[0], file_data[1], file_data[2], file_data[3]);
+                    fprintf(stderr, "%d %d %d %d\n", getMagic()[0], getMagic()[1], getMagic()[2], getMagic()[3]);
                 }
                 good = false;
             }
@@ -1173,6 +1195,7 @@ AST_Module* caching_parse_file(const char* fn) {
             int expected_total_length = MAGIC_STRING_LENGTH + LENGTH_LENGTH + CHECKSUM_LENGTH + length;
 
             if (expected_total_length != file_data.size()) {
+                oss << "length did not match\n";
                 if (VERBOSITY() || tries == MAX_TRIES) {
                     fprintf(stderr, "Warning: truncated .pyc file found; ignoring\n");
                 }
@@ -1193,6 +1216,7 @@ AST_Module* caching_parse_file(const char* fn) {
             }
 
             if (checksum != 0) {
+                oss << "checksum did not match\n";
                 if (VERBOSITY() || tries == MAX_TRIES)
                     fprintf(stderr, "pyc checksum failed!\n");
                 good = false;
@@ -1210,6 +1234,7 @@ AST_Module* caching_parse_file(const char* fn) {
                 return ast_cast<AST_Module>(rtn);
             }
 
+            oss << "returned NULL module\n";
             if (tries == MAX_TRIES)
                 fprintf(stderr, "Returned NULL module?\n");
             good = false;
@@ -1217,22 +1242,21 @@ AST_Module* caching_parse_file(const char* fn) {
 
         assert(!good);
         tries++;
+        if (tries > MAX_TRIES) {
+            fprintf(stderr, "\n%s\n", oss.str().c_str());
+        }
         RELEASE_ASSERT(tries <= MAX_TRIES, "repeatedly failing to parse file");
+        if (tries == MAX_TRIES)
+            DEBUG_PARSING = true;
+
         if (!good) {
-            assert(!fp);
             file_data.clear();
 
             AST_Module* mod = 0;
-            auto result = _reparse(fn, cache_fn, mod);
+            file_data = _reparse(fn, cache_fn, mod);
             if (mod)
                 return mod;
-
-            if (result == ParseResult::PYC_UNWRITABLE)
-                return parse_file(fn);
-
-            code = stat(cache_fn.c_str(), &cache_stat);
-            if (code != 0)
-                return parse_file(fn);
+            assert(file_data.size());
         }
     }
 }

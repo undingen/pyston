@@ -24,14 +24,15 @@
 #include "codegen/parser.h"
 #include "codegen/unwinding.h"
 #include "core/ast.h"
+#include "runtime/inline/list.h"
 #include "runtime/objmodel.h"
+#include "runtime/util.h"
 
 namespace pyston {
 
 static const std::string all_str("__all__");
 static const std::string name_str("__name__");
 static const std::string package_str("__package__");
-static const std::string path_str("__path__");
 static BoxedClass* null_importer_cls;
 
 static void removeModule(const std::string& name) {
@@ -66,6 +67,7 @@ static Box* createAndRunModule(const std::string& name, const std::string& fn, c
     BoxedList* path_list = new BoxedList();
     listAppendInternal(path_list, b_path);
 
+    static BoxedString* path_str = internStringImmortal("__path__");
     module->setattr(path_str, path_list, NULL);
 
     AST_Module* ast = caching_parse_file(fn.c_str());
@@ -183,18 +185,19 @@ struct SearchResult {
 };
 
 SearchResult findModule(const std::string& name, const std::string& full_name, BoxedList* path_list) {
-    BoxedList* meta_path = static_cast<BoxedList*>(sys_module->getattr("meta_path"));
+    static BoxedString* meta_path_str = internStringImmortal("meta_path");
+    BoxedList* meta_path = static_cast<BoxedList*>(sys_module->getattr(meta_path_str));
     if (!meta_path || meta_path->cls != list_cls)
         raiseExcHelper(RuntimeError, "sys.meta_path must be a list of import hooks");
 
-    static BoxedString* findmodule_str = static_cast<BoxedString*>(PyString_InternFromString("find_module"));
+    static BoxedString* findmodule_str = internStringImmortal("find_module");
     for (int i = 0; i < meta_path->size; i++) {
         Box* finder = meta_path->elts->elts[i];
 
         auto path_pass = path_list ? path_list : None;
+        CallattrFlags callattr_flags{.cls_only = false, .null_on_nonexistent = false, .argspec = ArgPassSpec(2) };
         Box* loader
-            = callattr(finder, findmodule_str, CallattrFlags({.cls_only = false, .null_on_nonexistent = false }),
-                       ArgPassSpec(2), boxString(full_name), path_pass, NULL, NULL, NULL);
+            = callattr(finder, findmodule_str, callattr_flags, boxString(full_name), path_pass, NULL, NULL, NULL);
 
         if (loader != None)
             return SearchResult(loader);
@@ -207,11 +210,13 @@ SearchResult findModule(const std::string& name, const std::string& full_name, B
         raiseExcHelper(RuntimeError, "sys.path must be a list of directory names");
     }
 
-    BoxedList* path_hooks = static_cast<BoxedList*>(sys_module->getattr("path_hooks"));
+    static BoxedString* path_hooks_str = internStringImmortal("path_hooks");
+    BoxedList* path_hooks = static_cast<BoxedList*>(sys_module->getattr(path_hooks_str));
     if (!path_hooks || path_hooks->cls != list_cls)
         raiseExcHelper(RuntimeError, "sys.path_hooks must be a list of import hooks");
 
-    BoxedDict* path_importer_cache = static_cast<BoxedDict*>(sys_module->getattr("path_importer_cache"));
+    static BoxedString* path_importer_cache_str = internStringImmortal("path_importer_cache");
+    BoxedDict* path_importer_cache = static_cast<BoxedDict*>(sys_module->getattr(path_importer_cache_str));
     if (!path_importer_cache || path_importer_cache->cls != dict_cls)
         raiseExcHelper(RuntimeError, "sys.path_importer_cache must be a dict");
 
@@ -234,9 +239,9 @@ SearchResult findModule(const std::string& name, const std::string& full_name, B
             return SearchResult("", SearchResult::SEARCH_ERROR);
 
         if (importer != None) {
+            CallattrFlags callattr_flags{.cls_only = false, .null_on_nonexistent = false, .argspec = ArgPassSpec(1) };
             Box* loader
-                = callattr(importer, findmodule_str, CallattrFlags({.cls_only = false, .null_on_nonexistent = false }),
-                           ArgPassSpec(1), boxString(full_name), NULL, NULL, NULL, NULL);
+                = callattr(importer, findmodule_str, callattr_flags, boxString(full_name), NULL, NULL, NULL, NULL);
             if (loader != None)
                 return SearchResult(loader);
         }
@@ -278,7 +283,7 @@ static Box* getParent(Box* globals, int level, std::string& buf) {
     if (globals == NULL || globals == None || level == 0)
         return None;
 
-    static BoxedString* package_str = static_cast<BoxedString*>(PyString_InternFromString("__package__"));
+    static BoxedString* package_str = internStringImmortal("__package__");
     BoxedString* pkgname = static_cast<BoxedString*>(getFromGlobals(globals, package_str));
     if (pkgname != NULL && pkgname != None) {
         /* __package__ is set, so use it */
@@ -297,14 +302,14 @@ static Box* getParent(Box* globals, int level, std::string& buf) {
         }
         buf += pkgname->s();
     } else {
-        static BoxedString* name_str = static_cast<BoxedString*>(PyString_InternFromString("__name__"));
+        static BoxedString* name_str = internStringImmortal("__name__");
 
         /* __package__ not set, so figure it out and set it */
         BoxedString* modname = static_cast<BoxedString*>(getFromGlobals(globals, name_str));
         if (modname == NULL || modname->cls != str_cls)
             return None;
 
-        static BoxedString* path_str = static_cast<BoxedString*>(PyString_InternFromString("__path__"));
+        static BoxedString* path_str = internStringImmortal("__path__");
         Box* modpath = getFromGlobals(globals, path_str);
 
         if (modpath != NULL) {
@@ -377,8 +382,8 @@ static Box* importSub(const std::string& name, const std::string& full_name, Box
     if (parent_module == NULL || parent_module == None) {
         path_list = NULL;
     } else {
-        static BoxedString* path_str = static_cast<BoxedString*>(PyString_InternFromString("__path__"));
-        path_list = static_cast<BoxedList*>(getattrInternal(parent_module, path_str, NULL));
+        static BoxedString* path_str = internStringImmortal("__path__");
+        path_list = static_cast<BoxedList*>(getattrInternal<ExceptionStyle::CXX>(parent_module, path_str, NULL));
         if (path_list == NULL || path_list->cls != list_cls) {
             return None;
         }
@@ -397,11 +402,12 @@ static Box* importSub(const std::string& name, const std::string& full_name, Box
             else if (sr.type == SearchResult::C_EXTENSION)
                 module = importCExtension(full_name, name, sr.path);
             else if (sr.type == SearchResult::IMP_HOOK) {
-                static BoxedString* loadmodule_str
-                    = static_cast<BoxedString*>(PyString_InternFromString("load_module"));
-                module = callattr(sr.loader, loadmodule_str,
-                                  CallattrFlags({.cls_only = false, .null_on_nonexistent = false }), ArgPassSpec(1),
-                                  boxString(full_name), NULL, NULL, NULL, NULL);
+                static BoxedString* loadmodule_str = internStringImmortal("load_module");
+                CallattrFlags callattr_flags{.cls_only = false,
+                                             .null_on_nonexistent = false,
+                                             .argspec = ArgPassSpec(1) };
+                module
+                    = callattr(sr.loader, loadmodule_str, callattr_flags, boxString(full_name), NULL, NULL, NULL, NULL);
             } else
                 RELEASE_ASSERT(0, "%d", sr.type);
         } catch (ExcInfo e) {
@@ -410,7 +416,7 @@ static Box* importSub(const std::string& name, const std::string& full_name, Box
         }
 
         if (parent_module && parent_module != None)
-            parent_module->setattr(name, module, NULL);
+            parent_module->setattr(internStringMortal(name), module, NULL);
         return module;
     }
 
@@ -554,10 +560,10 @@ extern "C" PyObject* PyImport_ImportModuleLevel(const char* name, PyObject* glob
 }
 
 static void ensureFromlist(Box* module, Box* fromlist, std::string& buf, bool recursive) {
-    static BoxedString* path_str = static_cast<BoxedString*>(PyString_InternFromString("__path__"));
+    static BoxedString* path_str = internStringImmortal("__path__");
     Box* pathlist = NULL;
     try {
-        pathlist = getattrInternal(module, path_str, NULL);
+        pathlist = getattrInternal<ExceptionStyle::CXX>(module, path_str, NULL);
     } catch (ExcInfo e) {
         if (!e.matches(AttributeError))
             throw e;
@@ -571,21 +577,22 @@ static void ensureFromlist(Box* module, Box* fromlist, std::string& buf, bool re
     for (Box* _s : fromlist->pyElements()) {
         RELEASE_ASSERT(PyString_Check(_s), "");
         BoxedString* s = static_cast<BoxedString*>(_s);
+        internStringMortalInplace(s);
 
         if (s->s()[0] == '*') {
             // If __all__ contains a '*', just skip it:
             if (recursive)
                 continue;
 
-            static BoxedString* all_str = static_cast<BoxedString*>(PyString_InternFromString("__all__"));
-            Box* all = getattrInternal(module, all_str, NULL);
+            static BoxedString* all_str = internStringImmortal("__all__");
+            Box* all = getattrInternal<ExceptionStyle::CXX>(module, all_str, NULL);
             if (all) {
                 ensureFromlist(module, all, buf, true);
             }
             continue;
         }
 
-        Box* attr = getattrInternal(module, s, NULL);
+        Box* attr = getattrInternal<ExceptionStyle::CXX>(module, s, NULL);
         if (attr != NULL)
             continue;
 
@@ -639,7 +646,8 @@ extern "C" PyObject* PyImport_ExecCodeModuleEx(char* name, PyObject* co, char* p
         if (module == NULL)
             return NULL;
 
-        module->setattr("__file__", boxString(pathname), NULL);
+        static BoxedString* file_str = internStringImmortal("__file__");
+        module->setattr(file_str, boxString(pathname), NULL);
         AST_Module* ast = parse_string(code->data());
         compileAndRunModule(ast, module);
         return module;
@@ -823,7 +831,8 @@ BoxedModule* importCExtension(const std::string& full_name, const std::string& l
     assert(_m->cls == module_cls);
 
     BoxedModule* m = static_cast<BoxedModule*>(_m);
-    m->setattr("__file__", boxString(path), NULL);
+    static BoxedString* file_str = internStringImmortal("__file__");
+    m->setattr(file_str, boxString(path), NULL);
     return m;
 }
 
@@ -859,7 +868,8 @@ Box* impIsBuiltin(Box* _name) {
     if (!PyString_Check(_name))
         raiseExcHelper(TypeError, "must be string, not %s", getTypeName(_name));
 
-    BoxedTuple* builtin_modules = (BoxedTuple*)sys_module->getattr("builtin_module_names");
+    static BoxedString* builtin_module_names_str = internStringImmortal("builtin_module_names");
+    BoxedTuple* builtin_modules = (BoxedTuple*)sys_module->getattr(builtin_module_names_str);
     RELEASE_ASSERT(PyTuple_Check(builtin_modules), "");
     for (Box* m : builtin_modules->pyElements()) {
         if (compare(m, _name, AST_TYPE::Eq) == True)

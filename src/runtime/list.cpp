@@ -26,6 +26,7 @@
 #include "core/types.h"
 #include "gc/collector.h"
 #include "gc/roots.h"
+#include "runtime/inline/list.h"
 #include "runtime/objmodel.h"
 #include "runtime/types.h"
 #include "runtime/util.h"
@@ -33,8 +34,9 @@
 namespace pyston {
 
 extern "C" int PyList_Append(PyObject* op, PyObject* newitem) noexcept {
+    RELEASE_ASSERT(PyList_Check(op), "");
     try {
-        listAppend(op, newitem);
+        listAppendInternal(op, newitem);
     } catch (ExcInfo e) {
         abort();
     }
@@ -61,12 +63,21 @@ extern "C" PyObject* PyList_AsTuple(PyObject* v) noexcept {
 }
 
 extern "C" Box* listRepr(BoxedList* self) {
-    LOCK_REGION(self->lock.asRead());
-
     // TODO highly inefficient with all the string copying
 
     std::string O("");
     llvm::raw_string_ostream os(O);
+
+    // Implementing Recursive Print of list in same way from  Cpython
+    int recursive = Py_ReprEnter((PyObject*)self);
+    if (recursive != 0) {
+        if (recursive < 0)
+            return boxString(os.str());
+
+        os << "[...]";
+        return boxString(os.str());
+    }
+
     os << '[';
     for (int i = 0; i < self->size; i++) {
         if (i > 0)
@@ -79,6 +90,8 @@ extern "C" Box* listRepr(BoxedList* self) {
         os << s->s();
     }
     os << ']';
+
+    Py_ReprLeave((PyObject*)self);
     return boxString(os.str());
 }
 
@@ -87,8 +100,6 @@ extern "C" Box* listNonzero(BoxedList* self) {
 }
 
 extern "C" Box* listPop(BoxedList* self, Box* idx) {
-    LOCK_REGION(self->lock.asWrite());
-
     if (idx == None) {
         if (self->size == 0) {
             raiseExcHelper(IndexError, "pop from empty list");
@@ -131,8 +142,11 @@ extern "C" Box* listLen(BoxedList* self) {
     return boxInt(self->size);
 }
 
+static Py_ssize_t list_length(Box* self) noexcept {
+    return static_cast<BoxedList*>(self)->size;
+}
+
 Box* _listSlice(BoxedList* self, i64 start, i64 stop, i64 step, i64 length) {
-    // printf("%ld %ld %ld\n", start, stop, step);
     assert(step != 0);
     if (step > 0) {
         assert(0 <= start);
@@ -151,9 +165,39 @@ Box* _listSlice(BoxedList* self, i64 start, i64 stop, i64 step, i64 length) {
     return rtn;
 }
 
-extern "C" Box* listGetitemUnboxed(BoxedList* self, int64_t n) {
-    LOCK_REGION(self->lock.asRead());
+static Box* list_slice(Box* o, Py_ssize_t ilow, Py_ssize_t ihigh) noexcept {
+    BoxedList* a = static_cast<BoxedList*>(o);
 
+    PyObject** src, **dest;
+    Py_ssize_t i, len;
+    if (ilow < 0)
+        ilow = 0;
+    else if (ilow > Py_SIZE(a))
+        ilow = Py_SIZE(a);
+    if (ihigh < ilow)
+        ihigh = ilow;
+    else if (ihigh > Py_SIZE(a))
+        ihigh = Py_SIZE(a);
+    len = ihigh - ilow;
+
+    BoxedList* np = new BoxedList();
+
+    np->ensure(len);
+    if (len) {
+        src = a->elts->elts + ilow;
+        dest = np->elts->elts;
+        for (i = 0; i < len; i++) {
+            PyObject* v = src[i];
+            Py_INCREF(v);
+            dest[i] = v;
+        }
+    }
+    np->size = len;
+
+    return (PyObject*)np;
+}
+
+extern "C" Box* listGetitemUnboxed(BoxedList* self, int64_t n) {
     assert(isSubclass(self->cls, list_cls));
     if (n < 0)
         n = self->size + n;
@@ -180,8 +224,15 @@ extern "C" PyObject* PyList_GetItem(PyObject* op, Py_ssize_t i) noexcept {
     }
 }
 
-extern "C" Box* listGetitemSlice(BoxedList* self, BoxedSlice* slice) {
-    LOCK_REGION(self->lock.asRead());
+template <ExceptionStyle S> Box* listGetitemSlice(BoxedList* self, BoxedSlice* slice) {
+    if (S == CAPI) {
+        try {
+            return listGetitemSlice<CXX>(self, slice);
+        } catch (ExcInfo e) {
+            setCAPIException(e);
+            return NULL;
+        }
+    }
 
     assert(isSubclass(self->cls, list_cls));
     assert(slice->cls == slice_cls);
@@ -190,7 +241,26 @@ extern "C" Box* listGetitemSlice(BoxedList* self, BoxedSlice* slice) {
     return _listSlice(self, start, stop, step, length);
 }
 
-extern "C" Box* listGetitem(BoxedList* self, Box* slice) {
+extern "C" Box* listGetslice(BoxedList* self, Box* boxedStart, Box* boxedStop) {
+    assert(isSubclass(self->cls, list_cls));
+    i64 start, stop, step;
+    sliceIndex(boxedStart, &start);
+    sliceIndex(boxedStop, &stop);
+
+    boundSliceWithLength(&start, &stop, start, stop, self->size);
+    return _listSlice(self, start, stop, 1, stop - start);
+}
+
+template <ExceptionStyle S> Box* listGetitem(BoxedList* self, Box* slice) {
+    if (S == CAPI) {
+        try {
+            return listGetitem<CXX>(self, slice);
+        } catch (ExcInfo e) {
+            setCAPIException(e);
+            return NULL;
+        }
+    }
+
     assert(isSubclass(self->cls, list_cls));
     if (PyIndex_Check(slice)) {
         Py_ssize_t i = PyNumber_AsSsize_t(slice, PyExc_IndexError);
@@ -198,7 +268,7 @@ extern "C" Box* listGetitem(BoxedList* self, Box* slice) {
             throwCAPIException();
         return listGetitemUnboxed(self, i);
     } else if (slice->cls == slice_cls) {
-        return listGetitemSlice(self, static_cast<BoxedSlice*>(slice));
+        return listGetitemSlice<CXX>(self, static_cast<BoxedSlice*>(slice));
     } else {
         raiseExcHelper(TypeError, "list indices must be integers, not %s", getTypeName(slice));
     }
@@ -216,8 +286,6 @@ static void _listSetitem(BoxedList* self, int64_t n, Box* v) {
 }
 
 extern "C" Box* listSetitemUnboxed(BoxedList* self, int64_t n, Box* v) {
-    // I think r lock is ok here, since we don't change the list structure:
-    LOCK_REGION(self->lock.asRead());
     assert(isSubclass(self->cls, list_cls));
     _listSetitem(self, n, v);
     return None;
@@ -229,25 +297,26 @@ extern "C" Box* listSetitemInt(BoxedList* self, BoxedInt* slice, Box* v) {
 }
 
 extern "C" int PyList_SetItem(PyObject* op, Py_ssize_t i, PyObject* newitem) noexcept {
-    assert(isSubclass(op->cls, list_cls));
-    try {
-        listSetitemUnboxed(static_cast<BoxedList*>(op), i, newitem);
-    } catch (ExcInfo e) {
-        abort();
+    PyObject* olditem;
+    PyObject** p;
+    if (!PyList_Check(op)) {
+        Py_XDECREF(newitem);
+        PyErr_BadInternalCall();
+        return -1;
     }
+    if (i < 0 || i >= Py_SIZE(op)) {
+        Py_XDECREF(newitem);
+        PyErr_SetString(PyExc_IndexError, "list assignment index out of range");
+        return -1;
+    }
+    p = ((PyListObject*)op)->ob_item + i;
+    olditem = *p;
+    *p = newitem;
+    Py_XDECREF(olditem);
     return 0;
 }
 
 Box* listIAdd(BoxedList* self, Box* _rhs);
-
-// Analogue of _PyEval_SliceIndex
-static void sliceIndex(Box* b, int64_t* out) {
-    if (b->cls == none_cls)
-        return;
-
-    RELEASE_ASSERT(b->cls == int_cls, "");
-    *out = static_cast<BoxedInt*>(b)->n;
-}
 
 // Copied from CPython's list_ass_subscript
 int list_ass_ext_slice(BoxedList* self, PyObject* item, PyObject* value) {
@@ -258,8 +327,6 @@ int list_ass_ext_slice(BoxedList* self, PyObject* item, PyObject* value) {
     }
 
     RELEASE_ASSERT(step != 1, "should have handled this elsewhere");
-    // if (step == 1)
-    // return list_ass_slice(self, start, stop, value);
 
     /* Make sure s[5:2] = [..] inserts at the right place:
        before 5, not before 2. */
@@ -381,47 +448,10 @@ int list_ass_ext_slice(BoxedList* self, PyObject* item, PyObject* value) {
     }
 }
 
-extern "C" Box* listSetitemSlice(BoxedList* self, BoxedSlice* slice, Box* v) {
-    LOCK_REGION(self->lock.asWrite());
+Box* listSetitemSliceInt64(BoxedList* self, i64 start, i64 stop, i64 step, Box* v) {
+    RELEASE_ASSERT(step == 1, "step sizes must be 1 in this code path");
 
-    assert(isSubclass(self->cls, list_cls));
-    assert(slice->cls == slice_cls);
-
-    i64 start = 0, stop = self->size, step = 1;
-
-    sliceIndex(slice->start, &start);
-    sliceIndex(slice->stop, &stop);
-    sliceIndex(slice->step, &step);
-
-    if (self == v) // handle self assignment by creating a copy
-        v = _listSlice(self, 0, self->size, 1, self->size);
-
-    if (step != 1) {
-        int r = list_ass_ext_slice(self, slice, v);
-        if (r)
-            throwCAPIException();
-        return None;
-    }
-    RELEASE_ASSERT(step == 1, "step sizes must be 1 for now");
-
-    // Logic from PySequence_GetSlice:
-    if (start < 0)
-        start += self->size;
-    if (stop < 0)
-        stop += self->size;
-
-    // Logic from list_ass_slice:
-    if (start < 0)
-        start = 0;
-    else if (start > self->size)
-        start = self->size;
-
-    if (stop < start)
-        stop = start;
-    else if (stop > self->size)
-        stop = self->size;
-
-    assert(0 <= start && start <= stop && stop <= self->size);
+    boundSliceWithLength(&start, &stop, start, stop, self->size);
 
     size_t v_size;
     Box** v_elts;
@@ -435,17 +465,16 @@ extern "C" Box* listSetitemSlice(BoxedList* self, BoxedSlice* slice, Box* v) {
         if (v_as_seq == NULL)
             throwCAPIException();
 
-        v_size = PySequence_Fast_GET_SIZE(v_as_seq);
+        v_size = PySequence_Fast_GET_SIZE((Box*)v_as_seq);
         // If lv->size is 0, lv->elts->elts is garbage
         if (v_size)
-            v_elts = PySequence_Fast_ITEMS(v_as_seq);
+            v_elts = PySequence_Fast_ITEMS((Box*)v_as_seq);
         else
             v_elts = NULL;
     }
 
-    // If self->size is 0, self->elts->elts is garbage
-    RELEASE_ASSERT(self->size == 0 || !v_elts || self->elts->elts != v_elts,
-                   "Slice self-assignment currently unsupported");
+    if (self == v) // handle self assignment by creating a copy
+        v = _listSlice(self, 0, self->size, 1, self->size);
 
     int delts = v_size - (stop - start);
     int remaining_elts = self->size - stop;
@@ -460,6 +489,39 @@ extern "C" Box* listSetitemSlice(BoxedList* self, BoxedSlice* slice, Box* v) {
     self->size += delts;
 
     return None;
+}
+
+extern "C" Box* listSetitemSlice(BoxedList* self, BoxedSlice* slice, Box* v) {
+    assert(isSubclass(self->cls, list_cls));
+    assert(slice->cls == slice_cls);
+
+    i64 start = 0, stop = self->size, step = 1;
+
+    sliceIndex(slice->start, &start);
+    sliceIndex(slice->stop, &stop);
+    sliceIndex(slice->step, &step);
+
+    adjustNegativeIndicesOnObject(self, &start, &stop);
+
+    if (step != 1) {
+        int r = list_ass_ext_slice(self, slice, v);
+        if (r)
+            throwCAPIException();
+        return None;
+    }
+
+    return listSetitemSliceInt64(self, start, stop, step, v);
+}
+
+extern "C" Box* listSetslice(BoxedList* self, Box* boxedStart, Box* boxedStop, Box** args) {
+    Box* value = args[0];
+
+    i64 start = 0, stop = self->size;
+
+    sliceIndex(boxedStart, &start);
+    sliceIndex(boxedStop, &stop);
+
+    return listSetitemSliceInt64(self, start, stop, 1, value);
 }
 
 extern "C" Box* listSetitem(BoxedList* self, Box* slice, Box* v) {
@@ -478,8 +540,6 @@ extern "C" Box* listSetitem(BoxedList* self, Box* slice, Box* v) {
 }
 
 extern "C" Box* listDelitemInt(BoxedList* self, BoxedInt* slice) {
-    LOCK_REGION(self->lock.asWrite());
-
     int64_t n = slice->n;
     if (n < 0)
         n = self->size + n;
@@ -496,9 +556,12 @@ extern "C" Box* listDelitemSlice(BoxedList* self, BoxedSlice* slice) {
     return listSetitemSlice(self, slice, NULL);
 }
 
-extern "C" Box* listDelitem(BoxedList* self, Box* slice) {
-    LOCK_REGION(self->lock.asWrite());
+extern "C" Box* listDelslice(BoxedList* self, Box* start, Box* stop) {
+    Box* args = { NULL };
+    return listSetslice(self, start, stop, &args);
+}
 
+extern "C" Box* listDelitem(BoxedList* self, Box* slice) {
     Box* rtn;
     if (PyIndex_Check(slice)) {
         Py_ssize_t i = PyNumber_AsSsize_t(slice, PyExc_IndexError);
@@ -518,8 +581,6 @@ extern "C" Box* listInsert(BoxedList* self, Box* idx, Box* v) {
     if (idx->cls != int_cls) {
         raiseExcHelper(TypeError, "an integer is required");
     }
-
-    LOCK_REGION(self->lock.asWrite());
 
     int64_t n = static_cast<BoxedInt*>(idx)->n;
     if (n < 0)
@@ -565,8 +626,6 @@ Box* listMul(BoxedList* self, Box* rhs) {
         raiseExcHelper(TypeError, "can't multiply sequence by non-int of type '%s'", getTypeName(rhs));
     }
 
-    LOCK_REGION(self->lock.asRead());
-
     int n = static_cast<BoxedInt*>(rhs)->n;
     int s = self->size;
 
@@ -586,14 +645,16 @@ Box* listMul(BoxedList* self, Box* rhs) {
 }
 
 Box* listIAdd(BoxedList* self, Box* _rhs) {
-    LOCK_REGION(self->lock.asWrite());
-
     if (_rhs->cls == list_cls) {
         // This branch is safe if self==rhs:
         BoxedList* rhs = static_cast<BoxedList*>(_rhs);
 
         int s1 = self->size;
         int s2 = rhs->size;
+
+        if (s2 == 0)
+            return self;
+
         self->ensure(s1 + s2);
 
         memcpy(self->elts->elts + s1, rhs->elts->elts, sizeof(rhs->elts->elts[0]) * s2);
@@ -614,8 +675,6 @@ Box* listAdd(BoxedList* self, Box* _rhs) {
         raiseExcHelper(TypeError, "can only concatenate list (not \"%s\") to list", getTypeName(_rhs));
     }
 
-    LOCK_REGION(self->lock.asRead());
-
     BoxedList* rhs = static_cast<BoxedList*>(_rhs);
 
     BoxedList* rtn = new BoxedList();
@@ -631,8 +690,6 @@ Box* listAdd(BoxedList* self, Box* _rhs) {
 }
 
 Box* listReverse(BoxedList* self) {
-    LOCK_REGION(self->lock.asWrite());
-
     assert(isSubclass(self->cls, list_cls));
     for (int i = 0, j = self->size - 1; i < j; i++, j--) {
         Box* e = self->elts->elts[i];
@@ -665,7 +722,7 @@ private:
 public:
     PyCmpComparer(Box* cmp) : cmp(cmp) {}
     bool operator()(Box* lhs, Box* rhs) {
-        Box* r = runtimeCallInternal(cmp, NULL, ArgPassSpec(2), lhs, rhs, NULL, NULL, NULL);
+        Box* r = runtimeCallInternal<CXX>(cmp, NULL, ArgPassSpec(2), lhs, rhs, NULL, NULL, NULL);
         if (!isSubclass(r->cls, int_cls))
             raiseExcHelper(TypeError, "comparison function must return int, not %.200s", r->cls->tp_name);
         return static_cast<BoxedInt*>(r)->n < 0;
@@ -673,7 +730,6 @@ public:
 };
 
 void listSort(BoxedList* self, Box* cmp, Box* key, Box* reverse) {
-    LOCK_REGION(self->lock.asWrite());
     assert(isSubclass(self->cls, list_cls));
 
     if (cmp == None)
@@ -761,18 +817,11 @@ extern "C" int PyList_Sort(PyObject* v) noexcept {
 extern "C" Box* PyList_GetSlice(PyObject* a, Py_ssize_t ilow, Py_ssize_t ihigh) noexcept {
     assert(isSubclass(a->cls, list_cls));
     BoxedList* self = static_cast<BoxedList*>(a);
-    try {
-        // Lots of extra copies here; we can do better if we need to:
-        return listGetitemSlice(self, new BoxedSlice(boxInt(ilow), boxInt(ihigh), boxInt(1)));
-    } catch (ExcInfo e) {
-        setCAPIException(e);
-        return NULL;
-    }
+    // Lots of extra copies here; we can do better if we need to:
+    return listGetitemSlice<CAPI>(self, new BoxedSlice(boxInt(ilow), boxInt(ihigh), boxInt(1)));
 }
 
 Box* listContains(BoxedList* self, Box* elt) {
-    LOCK_REGION(self->lock.asRead());
-
     int size = self->size;
     for (int i = 0; i < size; i++) {
         Box* e = self->elts->elts[i];
@@ -781,33 +830,34 @@ Box* listContains(BoxedList* self, Box* elt) {
         if (identity_eq)
             return True;
 
-        Box* cmp = compareInternal(e, elt, AST_TYPE::Eq, NULL);
-        bool b = nonzero(cmp);
-        if (b)
+        int r = PyObject_RichCompareBool(e, elt, Py_EQ);
+        if (r == -1)
+            throwCAPIException();
+
+        if (r)
             return True;
     }
     return False;
 }
 
 Box* listCount(BoxedList* self, Box* elt) {
-    LOCK_REGION(self->lock.asRead());
-
     int size = self->size;
     int count = 0;
 
     for (int i = 0; i < size; i++) {
         Box* e = self->elts->elts[i];
-        Box* cmp = compareInternal(e, elt, AST_TYPE::Eq, NULL);
-        bool b = nonzero(cmp);
-        if (b)
+
+        int r = PyObject_RichCompareBool(e, elt, Py_EQ);
+        if (r == -1)
+            throwCAPIException();
+
+        if (r)
             count++;
     }
     return boxInt(count);
 }
 
 Box* listIndex(BoxedList* self, Box* elt, BoxedInt* _start, Box** args) {
-    LOCK_REGION(self->lock.asRead());
-
     BoxedInt* _stop = (BoxedInt*)args[0];
     RELEASE_ASSERT(!_start || _start->cls == int_cls, "");
     RELEASE_ASSERT(!_stop || _stop->cls == int_cls, "");
@@ -829,9 +879,12 @@ Box* listIndex(BoxedList* self, Box* elt, BoxedInt* _start, Box** args) {
 
     for (int64_t i = start; i < stop; i++) {
         Box* e = self->elts->elts[i];
-        Box* cmp = compareInternal(e, elt, AST_TYPE::Eq, NULL);
-        bool b = nonzero(cmp);
-        if (b)
+
+        int r = PyObject_RichCompareBool(e, elt, Py_EQ);
+        if (r == -1)
+            throwCAPIException();
+
+        if (r)
             return boxInt(i);
     }
 
@@ -840,16 +893,16 @@ Box* listIndex(BoxedList* self, Box* elt, BoxedInt* _start, Box** args) {
 }
 
 Box* listRemove(BoxedList* self, Box* elt) {
-    LOCK_REGION(self->lock.asWrite());
-
     assert(isSubclass(self->cls, list_cls));
 
     for (int i = 0; i < self->size; i++) {
         Box* e = self->elts->elts[i];
-        Box* cmp = compareInternal(e, elt, AST_TYPE::Eq, NULL);
-        bool b = nonzero(cmp);
 
-        if (b) {
+        int r = PyObject_RichCompareBool(e, elt, Py_EQ);
+        if (r == -1)
+            throwCAPIException();
+
+        if (r) {
             memmove(self->elts->elts + i, self->elts->elts + i + 1, (self->size - i - 1) * sizeof(Box*));
             self->size--;
             return None;
@@ -927,10 +980,11 @@ Box* _listCmp(BoxedList* lhs, BoxedList* rhs, AST_TYPE::AST_TYPE op_type) {
         if (identity_eq)
             continue;
 
-        Box* is_eq = compareInternal(lhs->elts->elts[i], rhs->elts->elts[i], AST_TYPE::Eq, NULL);
-        bool bis_eq = nonzero(is_eq);
+        int r = PyObject_RichCompareBool(lhs->elts->elts[i], rhs->elts->elts[i], Py_EQ);
+        if (r == -1)
+            throwCAPIException();
 
-        if (bis_eq)
+        if (r)
             continue;
 
         if (op_type == AST_TYPE::Eq) {
@@ -964,8 +1018,6 @@ Box* listEq(BoxedList* self, Box* rhs) {
         return NotImplemented;
     }
 
-    LOCK_REGION(self->lock.asRead());
-
     return _listCmp(self, static_cast<BoxedList*>(rhs), AST_TYPE::Eq);
 }
 
@@ -973,8 +1025,6 @@ Box* listNe(BoxedList* self, Box* rhs) {
     if (!isSubclass(rhs->cls, list_cls)) {
         return NotImplemented;
     }
-
-    LOCK_REGION(self->lock.asRead());
 
     return _listCmp(self, static_cast<BoxedList*>(rhs), AST_TYPE::NotEq);
 }
@@ -984,8 +1034,6 @@ Box* listLt(BoxedList* self, Box* rhs) {
         return NotImplemented;
     }
 
-    LOCK_REGION(self->lock.asRead());
-
     return _listCmp(self, static_cast<BoxedList*>(rhs), AST_TYPE::Lt);
 }
 
@@ -993,8 +1041,6 @@ Box* listLe(BoxedList* self, Box* rhs) {
     if (!isSubclass(rhs->cls, list_cls)) {
         return NotImplemented;
     }
-
-    LOCK_REGION(self->lock.asRead());
 
     return _listCmp(self, static_cast<BoxedList*>(rhs), AST_TYPE::LtE);
 }
@@ -1004,8 +1050,6 @@ Box* listGt(BoxedList* self, Box* rhs) {
         return NotImplemented;
     }
 
-    LOCK_REGION(self->lock.asRead());
-
     return _listCmp(self, static_cast<BoxedList*>(rhs), AST_TYPE::Gt);
 }
 
@@ -1013,8 +1057,6 @@ Box* listGe(BoxedList* self, Box* rhs) {
     if (!isSubclass(rhs->cls, list_cls)) {
         return NotImplemented;
     }
-
-    LOCK_REGION(self->lock.asRead());
 
     return _listCmp(self, static_cast<BoxedList*>(rhs), AST_TYPE::GtE);
 }
@@ -1054,18 +1096,41 @@ extern "C" int PyList_SetSlice(PyObject* a, Py_ssize_t ilow, Py_ssize_t ihigh, P
 }
 
 void setupList() {
-    list_iterator_cls = BoxedHeapClass::create(type_cls, object_cls, &listIteratorGCHandler, 0, 0, sizeof(BoxedList),
-                                               false, "listiterator");
+    list_iterator_cls = BoxedHeapClass::create(type_cls, object_cls, &listIteratorGCHandler, 0, 0,
+                                               sizeof(BoxedListIterator), false, "listiterator");
     list_reverse_iterator_cls = BoxedHeapClass::create(type_cls, object_cls, &listIteratorGCHandler, 0, 0,
                                                        sizeof(BoxedListIterator), false, "listreverseiterator");
 
     list_cls->giveAttr("__len__", new BoxedFunction(boxRTFunction((void*)listLen, BOXED_INT, 1)));
 
-    CLFunction* getitem = createRTFunction(2, 0, 0, 0);
+    CLFunction* getitem = createRTFunction(2, 0, false, false);
     addRTFunction(getitem, (void*)listGetitemInt, UNKNOWN, std::vector<ConcreteCompilerType*>{ LIST, BOXED_INT });
-    addRTFunction(getitem, (void*)listGetitemSlice, LIST, std::vector<ConcreteCompilerType*>{ LIST, SLICE });
-    addRTFunction(getitem, (void*)listGetitem, UNKNOWN, std::vector<ConcreteCompilerType*>{ UNKNOWN, UNKNOWN });
+    addRTFunction(getitem, (void*)listGetitemSlice<CXX>, LIST, std::vector<ConcreteCompilerType*>{ LIST, SLICE }, CXX);
+    addRTFunction(getitem, (void*)listGetitem<CXX>, UNKNOWN, std::vector<ConcreteCompilerType*>{ UNKNOWN, UNKNOWN },
+                  CXX);
+    addRTFunction(getitem, (void*)listGetitemSlice<CAPI>, LIST, std::vector<ConcreteCompilerType*>{ LIST, SLICE },
+                  CAPI);
+    addRTFunction(getitem, (void*)listGetitem<CAPI>, UNKNOWN, std::vector<ConcreteCompilerType*>{ UNKNOWN, UNKNOWN },
+                  CAPI);
     list_cls->giveAttr("__getitem__", new BoxedFunction(getitem));
+
+    list_cls->giveAttr("__getslice__", new BoxedFunction(boxRTFunction((void*)listGetslice, LIST, 3)));
+
+    CLFunction* setitem = createRTFunction(3, 0, false, false);
+    addRTFunction(setitem, (void*)listSetitemInt, NONE, std::vector<ConcreteCompilerType*>{ LIST, BOXED_INT, UNKNOWN });
+    addRTFunction(setitem, (void*)listSetitemSlice, NONE, std::vector<ConcreteCompilerType*>{ LIST, SLICE, UNKNOWN });
+    addRTFunction(setitem, (void*)listSetitem, NONE, std::vector<ConcreteCompilerType*>{ UNKNOWN, UNKNOWN, UNKNOWN });
+    list_cls->giveAttr("__setitem__", new BoxedFunction(setitem));
+
+    list_cls->giveAttr("__setslice__", new BoxedFunction(boxRTFunction((void*)listSetslice, NONE, 4)));
+
+    CLFunction* delitem = createRTFunction(2, 0, false, false);
+    addRTFunction(delitem, (void*)listDelitemInt, NONE, std::vector<ConcreteCompilerType*>{ LIST, BOXED_INT });
+    addRTFunction(delitem, (void*)listDelitemSlice, NONE, std::vector<ConcreteCompilerType*>{ LIST, SLICE });
+    addRTFunction(delitem, (void*)listDelitem, NONE, std::vector<ConcreteCompilerType*>{ UNKNOWN, UNKNOWN });
+    list_cls->giveAttr("__delitem__", new BoxedFunction(delitem));
+
+    list_cls->giveAttr("__delslice__", new BoxedFunction(boxRTFunction((void*)listDelslice, NONE, 3)));
 
     list_cls->giveAttr("__iter__",
                        new BoxedFunction(boxRTFunction((void*)listIter, typeFromClass(list_iterator_cls), 1)));
@@ -1087,18 +1152,6 @@ void setupList() {
 
     list_cls->giveAttr("append", new BoxedFunction(boxRTFunction((void*)listAppend, NONE, 2)));
     list_cls->giveAttr("extend", new BoxedFunction(boxRTFunction((void*)listIAdd, UNKNOWN, 2)));
-
-    CLFunction* setitem = createRTFunction(3, 0, false, false);
-    addRTFunction(setitem, (void*)listSetitemInt, NONE, std::vector<ConcreteCompilerType*>{ LIST, BOXED_INT, UNKNOWN });
-    addRTFunction(setitem, (void*)listSetitemSlice, NONE, std::vector<ConcreteCompilerType*>{ LIST, SLICE, UNKNOWN });
-    addRTFunction(setitem, (void*)listSetitem, NONE, std::vector<ConcreteCompilerType*>{ UNKNOWN, UNKNOWN, UNKNOWN });
-    list_cls->giveAttr("__setitem__", new BoxedFunction(setitem));
-
-    CLFunction* delitem = createRTFunction(2, 0, false, false);
-    addRTFunction(delitem, (void*)listDelitemInt, NONE, std::vector<ConcreteCompilerType*>{ LIST, BOXED_INT });
-    addRTFunction(delitem, (void*)listDelitemSlice, NONE, std::vector<ConcreteCompilerType*>{ LIST, SLICE });
-    addRTFunction(delitem, (void*)listDelitem, NONE, std::vector<ConcreteCompilerType*>{ UNKNOWN, UNKNOWN });
-    list_cls->giveAttr("__delitem__", new BoxedFunction(delitem));
 
     list_cls->giveAttr("insert", new BoxedFunction(boxRTFunction((void*)listInsert, NONE, 3)));
     list_cls->giveAttr("__mul__", new BoxedFunction(boxRTFunction((void*)listMul, LIST, 2)));
@@ -1126,12 +1179,18 @@ void setupList() {
     list_cls->giveAttr("__hash__", None);
     list_cls->freeze();
 
+    list_cls->tp_as_sequence->sq_slice = list_slice;
+    list_cls->tp_as_sequence->sq_length = list_length;
+
     CLFunction* hasnext = boxRTFunction((void*)listiterHasnextUnboxed, BOOL, 1);
     addRTFunction(hasnext, (void*)listiterHasnext, BOXED_BOOL);
     list_iterator_cls->giveAttr("__hasnext__", new BoxedFunction(hasnext));
     list_iterator_cls->giveAttr(
         "__iter__", new BoxedFunction(boxRTFunction((void*)listIterIter, typeFromClass(list_iterator_cls), 1)));
-    list_iterator_cls->giveAttr("next", new BoxedFunction(boxRTFunction((void*)listiterNext, UNKNOWN, 1)));
+
+    CLFunction* listiter_next = boxRTFunction((void*)listiterNext<CXX>, UNKNOWN, 1);
+    addRTFunction(listiter_next, (void*)listiterNext<CAPI>, UNKNOWN, CAPI);
+    list_iterator_cls->giveAttr("next", new BoxedFunction(listiter_next));
 
     list_iterator_cls->freeze();
     list_iterator_cls->tpp_hasnext = listiterHasnextUnboxed;

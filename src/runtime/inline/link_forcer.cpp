@@ -17,6 +17,7 @@
 
 #include "codegen/irgen/hooks.h"
 #include "core/ast.h"
+#include "core/threading.h"
 #include "core/types.h"
 #include "gc/heap.h"
 #include "runtime/complex.h"
@@ -24,12 +25,14 @@
 #include "runtime/generator.h"
 #include "runtime/import.h"
 #include "runtime/inline/boxing.h"
+#include "runtime/inline/list.h"
 #include "runtime/int.h"
 #include "runtime/list.h"
 #include "runtime/long.h"
 #include "runtime/objmodel.h"
 #include "runtime/set.h"
 #include "runtime/types.h"
+#include "runtime/util.h"
 
 namespace pyston {
 
@@ -56,6 +59,7 @@ void force() {
     FORCE(unboxCLFunction);
     FORCE(boxInstanceMethod);
     FORCE(boxBool);
+    FORCE(boxBoolNegated);
     FORCE(unboxBool);
     FORCE(createTuple);
     FORCE(createDict);
@@ -70,6 +74,7 @@ void force() {
     FORCE(decodeUTF8StringPtr);
 
     FORCE(getattr);
+    FORCE(getattr_capi);
     FORCE(setattr);
     FORCE(delattr);
     FORCE(nonzero);
@@ -78,6 +83,7 @@ void force() {
     FORCE(augbinop);
     FORCE(unboxedLen);
     FORCE(getitem);
+    FORCE(getitem_capi);
     FORCE(getclsattr);
     FORCE(getGlobal);
     FORCE(delGlobal);
@@ -97,7 +103,10 @@ void force() {
     FORCE(unpackIntoArray);
     FORCE(raiseAttributeError);
     FORCE(raiseAttributeErrorStr);
+    FORCE(raiseAttributeErrorCapi);
+    FORCE(raiseAttributeErrorStrCapi);
     FORCE(raiseIndexErrorStr);
+    FORCE(raiseIndexErrorStrCapi);
     FORCE(raiseNotIterableError);
     FORCE(assertNameDefined);
     FORCE(assertFailDerefNameDefined);
@@ -113,6 +122,11 @@ void force() {
 
     FORCE(raise0);
     FORCE(raise3);
+    FORCE(raise3_capi);
+    FORCE(PyErr_Fetch);
+    FORCE(PyErr_NormalizeException);
+    FORCE(capiExcCaughtInJit);
+    FORCE(reraiseJitCapiExc);
     FORCE(deopt);
 
     FORCE(div_i64_i64);
@@ -137,6 +151,8 @@ void force() {
     FORCE(boxedLocalsSet);
     FORCE(boxedLocalsGet);
     FORCE(boxedLocalsDel);
+
+    FORCE(threading::allowGLReadPreemption);
 
     // FORCE(listIter);
 }

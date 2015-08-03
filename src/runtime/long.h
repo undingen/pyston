@@ -15,6 +15,7 @@
 #ifndef PYSTON_RUNTIME_LONG_H
 #define PYSTON_RUNTIME_LONG_H
 
+#include <cstddef>
 #include <gmp.h>
 
 #include "core/types.h"
@@ -54,6 +55,7 @@ Box* longRshift(BoxedLong* lhs, Box* rhs);
 Box* longHex(BoxedLong* v);
 Box* longOct(BoxedLong* v);
 Box* longStr(BoxedLong* v);
+Box* longInt(Box* v);
 
 bool longNonzeroUnboxed(BoxedLong* n);
 }

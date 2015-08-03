@@ -116,6 +116,20 @@ static_assert(sizeof(GCAllocation) <= sizeof(void*),
               "we should try to make sure the gc header is word-sized or smaller");
 
 #define MARK_BIT 0x1
+// reserved bit - along with MARK_BIT, encodes the states of finalization order
+#define ORDERING_EXTRA_BIT 0x2
+#define FINALIZER_HAS_RUN_BIT 0x4
+
+#define ORDERING_BITS (MARK_BIT | ORDERING_EXTRA_BIT)
+
+enum FinalizationState {
+    UNREACHABLE = 0x0,
+    TEMPORARY = ORDERING_EXTRA_BIT,
+
+    // Note that these two states have MARK_BIT set.
+    ALIVE = MARK_BIT,
+    REACHABLE_FROM_FINALIZER = ORDERING_BITS,
+};
 
 inline bool isMarked(GCAllocation* header) {
     return (header->gc_flags & MARK_BIT) != 0;
@@ -131,7 +145,37 @@ inline void clearMark(GCAllocation* header) {
     header->gc_flags &= ~MARK_BIT;
 }
 
+inline bool hasFinalized(GCAllocation* header) {
+    return (header->gc_flags & FINALIZER_HAS_RUN_BIT) != 0;
+}
+
+inline void setFinalized(GCAllocation* header) {
+    assert(!hasFinalized(header));
+    header->gc_flags |= FINALIZER_HAS_RUN_BIT;
+}
+
+inline FinalizationState orderingState(GCAllocation* header) {
+    int state = header->gc_flags & ORDERING_BITS;
+    assert(state <= static_cast<int>(FinalizationState::REACHABLE_FROM_FINALIZER));
+    return static_cast<FinalizationState>(state);
+}
+
+inline void setOrderingState(GCAllocation* header, FinalizationState state) {
+    header->gc_flags = (header->gc_flags & ~ORDERING_BITS) | static_cast<int>(state);
+}
+
+inline void clearOrderingState(GCAllocation* header) {
+    header->gc_flags &= ~ORDERING_EXTRA_BIT;
+}
+
 #undef MARK_BIT
+#undef ORDERING_EXTRA_BIT
+#undef FINALIZER_HAS_RUN_BIT
+#undef ORDERING_BITS
+
+bool hasOrderedFinalizer(BoxedClass* cls);
+void finalize(Box* b);
+bool isWeaklyReferenced(Box* b);
 
 #define PAGE_SIZE 4096
 
@@ -226,9 +270,18 @@ public:
     void free(GCAllocation* al);
 
     GCAllocation* allocationFrom(void* ptr);
-    void freeUnmarked(std::vector<Box*>& weakly_referenced, std::vector<BoxedClass*>& classes_to_free);
+    void freeUnmarked(std::vector<Box*>& weakly_referenced);
 
     void getStatistics(HeapStatistics* stats);
+
+    void prepareForCollection() {}
+    void cleanupAfterCollection() {}
+
+#ifndef NDEBUG
+    void assertConsistent();
+#else
+    void assertConsistent() {}
+#endif
 
 private:
     template <int N> class Bitmap {
@@ -358,11 +411,19 @@ private:
     Block* _allocBlock(uint64_t size, Block** prev);
     GCAllocation* _allocFromBlock(Block* b);
     Block* _claimBlock(size_t rounded_size, Block** free_head);
-    Block** _freeChain(Block** head, std::vector<Box*>& weakly_referenced, std::vector<BoxedClass*>& classes_to_free);
+    Block** _freeChain(Block** head, std::vector<Box*>& weakly_referenced);
     void _getChainStatistics(HeapStatistics* stats, Block** head);
 
     GCAllocation* __attribute__((__malloc__)) _alloc(size_t bytes, int bucket_idx);
 };
+
+struct ObjLookupCache {
+    void* data;
+    size_t size;
+
+    ObjLookupCache(void* data, size_t size) : data(data), size(size) {}
+};
+
 
 //
 // The LargeArena allocates objects where 3584 < size <1024*1024-CHUNK_SIZE-sizeof(LargeObject) bytes.
@@ -410,6 +471,7 @@ private:
 
     static constexpr int NUM_FREE_LISTS = 32;
 
+    std::vector<ObjLookupCache> lookup; // used during gc's to speed up finding large object GCAllocations
     Heap* heap;
     LargeObj* head;
     LargeBlock* blocks;
@@ -431,9 +493,12 @@ public:
     void free(GCAllocation* alloc);
 
     GCAllocation* allocationFrom(void* ptr);
-    void freeUnmarked(std::vector<Box*>& weakly_referenced, std::vector<BoxedClass*>& classes_to_free);
+    void freeUnmarked(std::vector<Box*>& weakly_referenced);
 
     void getStatistics(HeapStatistics* stats);
+
+    void prepareForCollection();
+    void cleanupAfterCollection();
 };
 
 // The HugeArena allocates objects where size > 1024*1024 bytes.
@@ -449,18 +514,21 @@ public:
     void free(GCAllocation* alloc);
 
     GCAllocation* allocationFrom(void* ptr);
-    void freeUnmarked(std::vector<Box*>& weakly_referenced, std::vector<BoxedClass*>& classes_to_free);
+    void freeUnmarked(std::vector<Box*>& weakly_referenced);
 
     void getStatistics(HeapStatistics* stats);
+
+    void prepareForCollection();
+    void cleanupAfterCollection();
 
 private:
     struct HugeObj {
         HugeObj* next, **prev;
-        size_t obj_size;
+        size_t size;
         GCAllocation data[0];
 
         int mmap_size() {
-            size_t total_size = obj_size + sizeof(HugeObj);
+            size_t total_size = size + sizeof(HugeObj);
             total_size = (total_size + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
             return total_size;
         }
@@ -477,6 +545,7 @@ private:
     void _freeHugeObj(HugeObj* lobj);
 
     HugeObj* head;
+    std::vector<ObjLookupCache> lookup; // used during gc's to speed up finding large object GCAllocations
 
     Heap* heap;
 };
@@ -532,7 +601,18 @@ public:
     void free(GCAllocation* alloc) {
         destructContents(alloc);
 
-        _setFree(alloc);
+        if (large_arena.contains(alloc)) {
+            large_arena.free(alloc);
+            return;
+        }
+
+        if (huge_arena.contains(alloc)) {
+            huge_arena.free(alloc);
+            return;
+        }
+
+        assert(small_arena.contains(alloc));
+        small_arena.free(alloc);
     }
 
     // not thread safe:
@@ -549,34 +629,25 @@ public:
     }
 
     // not thread safe:
-    void freeUnmarked(std::vector<Box*>& weakly_referenced, std::vector<BoxedClass*>& classes_to_free) {
-        small_arena.freeUnmarked(weakly_referenced, classes_to_free);
-        large_arena.freeUnmarked(weakly_referenced, classes_to_free);
-        huge_arena.freeUnmarked(weakly_referenced, classes_to_free);
+    void freeUnmarked(std::vector<Box*>& weakly_referenced) {
+        small_arena.freeUnmarked(weakly_referenced);
+        large_arena.freeUnmarked(weakly_referenced);
+        huge_arena.freeUnmarked(weakly_referenced);
+    }
+
+    void prepareForCollection() {
+        small_arena.prepareForCollection();
+        large_arena.prepareForCollection();
+        huge_arena.prepareForCollection();
+    }
+
+    void cleanupAfterCollection() {
+        small_arena.cleanupAfterCollection();
+        large_arena.cleanupAfterCollection();
+        huge_arena.cleanupAfterCollection();
     }
 
     void dumpHeapStatistics(int level);
-
-private:
-    // Internal function that just marks the allocation as being freed, without doing any
-    // Python-semantics on it.
-    void _setFree(GCAllocation* alloc) {
-        if (large_arena.contains(alloc)) {
-            large_arena.free(alloc);
-            return;
-        }
-
-        if (huge_arena.contains(alloc)) {
-            huge_arena.free(alloc);
-            return;
-        }
-
-        assert(small_arena.contains(alloc));
-        small_arena.free(alloc);
-    }
-
-    friend void markPhase();
-    friend void runCollection();
 };
 
 extern Heap global_heap;

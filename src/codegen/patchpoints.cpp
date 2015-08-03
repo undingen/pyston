@@ -143,15 +143,6 @@ static std::unordered_set<int> extractLiveOuts(StackMap::Record* r, llvm::Callin
 }
 
 void processStackmap(CompiledFunction* cf, StackMap* stackmap) {
-    // FIXME: this is pretty hacky, that we don't delete the patchpoints here.
-    // We need them currently for the llvm interpreter.
-    // Eventually we'll get rid of that and use an AST interpreter, and then we won't need this hack.
-    if (cf->effort == EffortLevel::INTERPRETED) {
-        assert(!stackmap);
-        new_patchpoints.clear();
-        return;
-    }
-
     int nrecords = stackmap ? stackmap->records.size() : 0;
 
     assert(cf->location_map == NULL);
@@ -171,7 +162,7 @@ void processStackmap(CompiledFunction* cf, StackMap* stackmap) {
         PatchpointInfo* pp = new_patchpoints[r->id].first;
         assert(pp);
 
-        void* dst_func = new_patchpoints[r->id].second;
+        void* slowpath_func = PatchpointInfo::getSlowpathAddr(r->id);
         if (VERBOSITY() >= 2) {
             printf("Processing pp %ld; [%d, %d)\n", reinterpret_cast<int64_t>(pp), r->offset,
                    r->offset + pp->patchpointSize());
@@ -188,10 +179,7 @@ void processStackmap(CompiledFunction* cf, StackMap* stackmap) {
         uint8_t* end_addr = start_addr + pp->patchpointSize();
 
         if (ENABLE_JIT_OBJECT_CACHE)
-            setSlowpathFunc(start_addr, dst_func);
-
-        // TODO shouldn't have to do it this way
-        void* slowpath_func = extractSlowpathFunc(start_addr);
+            setSlowpathFunc(start_addr, slowpath_func);
 
         //*start_addr = 0xcc;
         // start_addr++;
@@ -244,13 +232,10 @@ void processStackmap(CompiledFunction* cf, StackMap* stackmap) {
         }
 
 
+        auto initialization_info = initializePatchpoint3(slowpath_func, start_addr, end_addr, scratch_rbp_offset,
+                                                         scratch_size, live_outs, frame_remapped);
 
-        auto _p = initializePatchpoint3(slowpath_func, start_addr, end_addr, scratch_rbp_offset, scratch_size,
-                                        live_outs, frame_remapped);
-        uint8_t* slowpath_start = _p.first;
-        uint8_t* slowpath_rtn_addr = _p.second;
-
-        ASSERT(slowpath_start - start_addr >= ic->num_slots * ic->slot_size,
+        ASSERT(initialization_info.slowpath_start - start_addr >= ic->num_slots * ic->slot_size,
                "Used more slowpath space than expected; change ICSetupInfo::totalSize()?");
 
         assert(pp->numICStackmapArgs() == 0); // don't do anything with these for now
@@ -268,9 +253,10 @@ void processStackmap(CompiledFunction* cf, StackMap* stackmap) {
         // (rbp - rsp) == (stack_size - 8)  -- the "-8" is from the value of rbp being pushed onto the stack
         int scratch_rsp_offset = scratch_rbp_offset + (stack_size - 8);
 
-        std::unique_ptr<ICInfo> icinfo
-            = registerCompiledPatchpoint(start_addr, slowpath_start, end_addr, slowpath_rtn_addr, ic,
-                                         StackInfo(scratch_size, scratch_rsp_offset), std::move(live_outs));
+        std::unique_ptr<ICInfo> icinfo = registerCompiledPatchpoint(
+            start_addr, initialization_info.slowpath_start, initialization_info.continue_addr,
+            initialization_info.slowpath_rtn_addr, ic, StackInfo(scratch_size, scratch_rsp_offset),
+            std::move(initialization_info.live_outs));
 
         assert(cf);
         // TODO: unsafe.  hard to use a unique_ptr here though.
@@ -298,6 +284,11 @@ PatchpointInfo* PatchpointInfo::create(CompiledFunction* parent_cf, const ICSetu
     return r;
 }
 
+void* PatchpointInfo::getSlowpathAddr(unsigned int pp_id) {
+    RELEASE_ASSERT(pp_id < new_patchpoints.size(), "");
+    return new_patchpoints[pp_id].second;
+}
+
 ICSetupInfo* createGenericIC(TypeRecorder* type_recorder, bool has_return_value, int size) {
     return ICSetupInfo::initialize(has_return_value, 1, size, ICSetupInfo::Generic, type_recorder);
 }
@@ -311,11 +302,11 @@ ICSetupInfo* createGetitemIC(TypeRecorder* type_recorder) {
 }
 
 ICSetupInfo* createSetitemIC(TypeRecorder* type_recorder) {
-    return ICSetupInfo::initialize(true, 1, 256, ICSetupInfo::Setitem, type_recorder);
+    return ICSetupInfo::initialize(true, 1, 512, ICSetupInfo::Setitem, type_recorder);
 }
 
 ICSetupInfo* createDelitemIC(TypeRecorder* type_recorder) {
-    return ICSetupInfo::initialize(false, 1, 256, ICSetupInfo::Delitem, type_recorder);
+    return ICSetupInfo::initialize(false, 1, 512, ICSetupInfo::Delitem, type_recorder);
 }
 
 ICSetupInfo* createSetattrIC(TypeRecorder* type_recorder) {

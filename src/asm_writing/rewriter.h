@@ -15,10 +15,12 @@
 #ifndef PYSTON_ASMWRITING_REWRITER_H
 #define PYSTON_ASMWRITING_REWRITER_H
 
+#include <deque>
 #include <map>
 #include <memory>
 #include <tuple>
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallSet.h"
 
@@ -99,6 +101,8 @@ public:
     bool operator==(const Location rhs) const { return this->asInt() == rhs.asInt(); }
 
     bool operator!=(const Location rhs) const { return !(*this == rhs); }
+
+    bool operator<(const Location& rhs) const { return this->asInt() < rhs.asInt(); }
 
     uint64_t asInt() const { return (int)type + ((uint64_t)_data << 4); }
 
@@ -218,10 +222,12 @@ public:
 
     template <typename Src, typename Dst> inline RewriterVar* getAttrCast(int offset, Location loc = Location::any());
 
+    bool isConstant() { return is_constant; }
+
 private:
     Rewriter* rewriter;
 
-    std::unordered_set<Location> locations;
+    std::set<Location> locations;
     bool isInLocation(Location l);
 
     // uses is a vector of the indices into the Rewriter::actions vector
@@ -232,18 +238,21 @@ private:
     // Here "done" means that it would be okay to release all of the var's locations and
     // thus allocate new variables in that same location. To be safe, you can always just
     // only call bumpUse at the end, but in some cases it may be possible earlier.
-    std::vector<int> uses;
+    llvm::SmallVector<int, 32> uses;
     int next_use;
     void bumpUse();
     void releaseIfNoUses();
     bool isDoneUsing() { return next_use == uses.size(); }
+    bool hasScratchAllocation() const { return scratch_allocation.second > 0; }
+    void resetHasScratchAllocation() { scratch_allocation = std::make_pair(0, 0); }
 
     // Indicates if this variable is an arg, and if so, what location the arg is from.
     bool is_arg;
-    Location arg_loc;
-
     bool is_constant;
+
     uint64_t constant_value;
+    Location arg_loc;
+    std::pair<int /*offset*/, int /*size*/> scratch_allocation;
 
     llvm::SmallSet<std::tuple<int, uint64_t, bool>, 4> attr_guards; // used to detect duplicate guards
 
@@ -266,29 +275,19 @@ private:
     RewriterVar& operator=(const RewriterVar&) = delete;
 
 public:
-#ifndef NDEBUG
-    static int nvars;
-#endif
-
     RewriterVar(Rewriter* rewriter) : rewriter(rewriter), next_use(0), is_arg(false), is_constant(false) {
-#ifndef NDEBUG
-        nvars++;
-#endif
         assert(rewriter);
     }
 
-#ifndef NDEBUG
-    ~RewriterVar() { nvars--; }
-#endif
-
     friend class Rewriter;
+    friend class JitFragmentWriter;
 };
 
 class RewriterAction {
 public:
     std::function<void()> action;
 
-    RewriterAction(std::function<void()> f) : action(f) {}
+    RewriterAction(std::function<void()> f) : action(std::move(f)) {}
 };
 
 enum class ActionType { NORMAL, GUARD, MUTATION };
@@ -297,7 +296,7 @@ enum class ActionType { NORMAL, GUARD, MUTATION };
 #define LOCATION_PLACEHOLDER ((RewriterVar*)1)
 
 class Rewriter : public ICSlotRewrite::CommitHook {
-private:
+protected:
     // Helps generating the best code for loading a const integer value.
     // By keeping track of the last known value of every register and reusing it.
     class ConstLoader {
@@ -321,21 +320,22 @@ private:
         // Loads the constant into any register or if already in a register just return it
         assembler::Register loadConst(uint64_t val, Location otherThan = Location::any());
 
-        std::unordered_map<uint64_t, RewriterVar*> constToVar;
+        std::vector<std::pair<uint64_t, RewriterVar*>> consts;
     };
 
 
     std::unique_ptr<ICSlotRewrite> rewrite;
     assembler::Assembler* assembler;
+    ICSlotInfo* picked_slot;
+
     ConstLoader const_loader;
-    std::vector<RewriterVar*> vars;
+    std::deque<RewriterVar> vars;
 
     const Location return_location;
 
     bool failed;   // if we tried to generate an invalid rewrite.
     bool finished; // committed or aborted
 #ifndef NDEBUG
-    int start_vars;
 
     bool phase_emitting;
     void initPhaseCollecting() { phase_emitting = false; }
@@ -349,16 +349,16 @@ private:
     void assertPhaseEmitting() {}
 #endif
 
-    std::vector<int> live_out_regs;
+    llvm::SmallVector<int, 8> live_out_regs;
 
     LocMap<RewriterVar*> vars_by_location;
-    std::vector<RewriterVar*> args;
-    std::vector<RewriterVar*> live_outs;
+    llvm::SmallVector<RewriterVar*, 8> args;
+    llvm::SmallVector<RewriterVar*, 8> live_outs;
 
-    Rewriter(ICSlotRewrite* rewrite, int num_args, const std::vector<int>& live_outs);
+    Rewriter(std::unique_ptr<ICSlotRewrite> rewrite, int num_args, const std::vector<int>& live_outs);
 
-    std::vector<RewriterAction> actions;
-    void addAction(const std::function<void()>& action, std::vector<RewriterVar*> const& vars, ActionType type) {
+    llvm::SmallVector<RewriterAction, 32> actions;
+    void addAction(std::function<void()> action, llvm::ArrayRef<RewriterVar*> vars, ActionType type) {
         assertPhaseCollecting();
         for (RewriterVar* var : vars) {
             assert(var != NULL);
@@ -377,11 +377,10 @@ private:
             assert(!added_changing_action);
             last_guard_action = (int)actions.size();
         }
-        actions.emplace_back(action);
+        actions.emplace_back(std::move(action));
     }
     bool added_changing_action;
     bool marked_inside_ic;
-    std::vector<void**> mark_addr_addrs;
 
     int last_guard_action;
 
@@ -419,10 +418,12 @@ private:
     // Do the bookkeeping to say that var is no longer in location l
     void removeLocationFromVar(RewriterVar* var, Location l);
 
-    bool finishAssembly(ICSlotInfo* picked_slot, int continue_offset) override;
+    bool finishAssembly(int continue_offset) override;
 
     void _trap();
     void _loadConst(RewriterVar* result, int64_t val);
+    void _setupCall(bool has_side_effects, const RewriterVar::SmallVector& args,
+                    const RewriterVar::SmallVector& args_xmm);
     void _call(RewriterVar* result, bool has_side_effects, void* func_addr, const RewriterVar::SmallVector& args,
                const RewriterVar::SmallVector& args_xmm);
     void _add(RewriterVar* result, RewriterVar* a, int64_t b, Location dest);
@@ -445,15 +446,22 @@ private:
 
     void assertConsistent() {
 #ifndef NDEBUG
-        for (RewriterVar* var : vars) {
-            for (Location l : var->locations) {
-                assert(vars_by_location[l] == var);
+        for (RewriterVar& var : vars) {
+            for (Location l : var.locations) {
+                assert(vars_by_location[l] == &var);
             }
         }
         for (std::pair<Location, RewriterVar*> p : vars_by_location.getAsMap()) {
             assert(p.second != NULL);
             if (p.second != LOCATION_PLACEHOLDER) {
-                assert(std::find(vars.begin(), vars.end(), p.second) != vars.end());
+                bool found = false;
+                for (auto& v : vars) {
+                    if (&v == p.second) {
+                        found = true;
+                        break;
+                    }
+                }
+                assert(found);
                 assert(p.second->locations.count(p.first) == 1);
             }
         }
@@ -473,15 +481,6 @@ public:
         if (!finished)
             this->abort();
         assert(finished);
-
-        for (RewriterVar* var : vars) {
-            delete var;
-        }
-
-        // This check isn't thread safe and should be fine to remove if it causes
-        // issues (along with the nvars/start_vars accounting)
-        ASSERT(threading::threadWasStarted() || RewriterVar::nvars == start_vars, "%d %d", RewriterVar::nvars,
-               start_vars);
     }
 
     Location getReturnDestination();
@@ -507,6 +506,8 @@ public:
     RewriterVar* call(bool has_side_effects, void* func_addr, RewriterVar* arg0, RewriterVar* arg1, RewriterVar* arg2);
     RewriterVar* call(bool has_side_effects, void* func_addr, RewriterVar* arg0, RewriterVar* arg1, RewriterVar* arg2,
                       RewriterVar* arg3);
+    RewriterVar* call(bool has_side_effects, void* func_addr, RewriterVar* arg0, RewriterVar* arg1, RewriterVar* arg2,
+                      RewriterVar* arg3, RewriterVar* arg4);
     RewriterVar* add(RewriterVar* a, int64_t b, Location dest);
     // Allocates n pointer-sized stack slots:
     RewriterVar* allocate(int n);
@@ -521,10 +522,11 @@ public:
 
     static Rewriter* createRewriter(void* rtn_addr, int num_args, const char* debug_name);
 
+    static bool isLargeConstant(int64_t val) { return (val < (-1L << 31) || val >= (1L << 31) - 1); }
+
     friend class RewriterVar;
 };
 
-void* extractSlowpathFunc(uint8_t* pp_addr);
 void setSlowpathFunc(uint8_t* pp_addr, void* func);
 
 struct GRCompare {
@@ -545,10 +547,23 @@ typedef std::map<assembler::GenericRegister, StackMap::Record::Location, GRCompa
 bool spillFrameArgumentIfNecessary(StackMap::Record::Location& l, uint8_t*& inst_addr, uint8_t* inst_end,
                                    int& scratch_offset, int& scratch_size, SpillMap& remapped);
 
-// returns (start_of_slowpath, return_addr_of_slowpath_call)
-std::pair<uint8_t*, uint8_t*> initializePatchpoint3(void* slowpath_func, uint8_t* start_addr, uint8_t* end_addr,
-                                                    int scratch_offset, int scratch_size,
-                                                    const std::unordered_set<int>& live_outs, SpillMap& remapped);
+struct PatchpointInitializationInfo {
+    uint8_t* slowpath_start;
+    uint8_t* slowpath_rtn_addr;
+    uint8_t* continue_addr;
+    std::unordered_set<int> live_outs;
+
+    PatchpointInitializationInfo(uint8_t* slowpath_start, uint8_t* slowpath_rtn_addr, uint8_t* continue_addr,
+                                 std::unordered_set<int>&& live_outs)
+        : slowpath_start(slowpath_start),
+          slowpath_rtn_addr(slowpath_rtn_addr),
+          continue_addr(continue_addr),
+          live_outs(std::move(live_outs)) {}
+};
+
+PatchpointInitializationInfo initializePatchpoint3(void* slowpath_func, uint8_t* start_addr, uint8_t* end_addr,
+                                                   int scratch_offset, int scratch_size,
+                                                   const std::unordered_set<int>& live_outs, SpillMap& remapped);
 
 template <> inline RewriterVar* RewriterVar::getAttrCast<bool, bool>(int offset, Location loc) {
     return getAttr(offset, loc, assembler::MovType::ZBL);

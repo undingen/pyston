@@ -53,6 +53,8 @@ StatTimer* StatTimer::createStack(StatTimer& timer) {
 }
 
 uint64_t* StatTimer::getCurrentCounter() {
+    if (counter_override)
+        return counter_override;
     if (stack)
         return stack->_statcounter;
     return NULL;
@@ -102,9 +104,6 @@ void Stats::clear() {
 }
 
 void Stats::startEstimatingCPUFreq() {
-    if (!Stats::enabled)
-        return;
-
     clock_gettime(CLOCK_REALTIME, &Stats::start_ts);
     Stats::start_tick = getCPUTicks();
 }

@@ -108,20 +108,27 @@ static void optimizeIR(llvm::Function* f, EffortLevel effort) {
     if (ENABLE_PYSTON_PASSES)
         fpm.add(createMallocsNonNullPass());
 
-    // TODO Find the right place for this pass (and ideally not duplicate it)
-    if (ENABLE_PYSTON_PASSES) {
-        fpm.add(llvm::createGVNPass());
-        fpm.add(createConstClassesPass());
-    }
-
     // TODO: find the right set of passes
-    if (0) {
-        // My original set of passes, that seem to get about 90% of the benefit:
+    if (1) {
+        // Small set of passes:
         fpm.add(llvm::createInstructionCombiningPass());
         fpm.add(llvm::createReassociatePass());
         fpm.add(llvm::createGVNPass());
         fpm.add(llvm::createCFGSimplificationPass());
+
+        if (ENABLE_PYSTON_PASSES) {
+            fpm.add(createConstClassesPass());
+            fpm.add(createDeadAllocsPass());
+            fpm.add(llvm::createInstructionCombiningPass());
+            fpm.add(llvm::createCFGSimplificationPass());
+        }
     } else {
+        // TODO Find the right place for this pass (and ideally not duplicate it)
+        if (ENABLE_PYSTON_PASSES) {
+            fpm.add(llvm::createGVNPass());
+            fpm.add(createConstClassesPass());
+        }
+
         // copied + slightly modified from llvm/lib/Transforms/IPO/PassManagerBuilder.cpp::populateModulePassManager
         fpm.add(llvm::createEarlyCSEPass());                   // Catch trivial redundancies
         fpm.add(llvm::createJumpThreadingPass());              // Thread jumps.
@@ -165,19 +172,19 @@ static void optimizeIR(llvm::Function* f, EffortLevel effort) {
         // fpm.add(llvm::createLoopVectorizePass(DisableUnrollLoops, LoopVectorize));
         fpm.add(llvm::createInstructionCombiningPass());
         fpm.add(llvm::createCFGSimplificationPass());
-    }
 
-    // TODO Find the right place for this pass (and ideally not duplicate it)
-    if (ENABLE_PYSTON_PASSES) {
-        fpm.add(createConstClassesPass());
-        fpm.add(llvm::createInstructionCombiningPass());
-        fpm.add(llvm::createCFGSimplificationPass());
-        fpm.add(createConstClassesPass());
-        fpm.add(createDeadAllocsPass());
-        // fpm.add(llvm::createSCCPPass());                  // Constant prop with SCCP
-        // fpm.add(llvm::createEarlyCSEPass());              // Catch trivial redundancies
-        // fpm.add(llvm::createInstructionCombiningPass());
-        // fpm.add(llvm::createCFGSimplificationPass());
+        // TODO Find the right place for this pass (and ideally not duplicate it)
+        if (ENABLE_PYSTON_PASSES) {
+            fpm.add(createConstClassesPass());
+            fpm.add(llvm::createInstructionCombiningPass());
+            fpm.add(llvm::createCFGSimplificationPass());
+            fpm.add(createConstClassesPass());
+            fpm.add(createDeadAllocsPass());
+            // fpm.add(llvm::createSCCPPass());                  // Constant prop with SCCP
+            // fpm.add(llvm::createEarlyCSEPass());              // Catch trivial redundancies
+            // fpm.add(llvm::createInstructionCombiningPass());
+            // fpm.add(llvm::createCFGSimplificationPass());
+        }
     }
 
     fpm.doInitialization();
@@ -544,9 +551,7 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
                 emitter->getBuilder()->CreateStore(new_call_count, call_count_ptr);
 
                 int reopt_threshold;
-                if (effort == EffortLevel::MINIMAL)
-                    reopt_threshold = REOPT_THRESHOLD_BASELINE;
-                else if (effort == EffortLevel::MODERATE)
+                if (effort == EffortLevel::MODERATE)
                     reopt_threshold = REOPT_THRESHOLD_T2;
                 else
                     RELEASE_ASSERT(0, "Unknown effort: %d", (int)effort);
@@ -581,11 +586,7 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
                 // printf("%ld\n", args.size());
                 llvm::CallInst* postcall = emitter->getBuilder()->CreateCall(bitcast_r, args);
                 postcall->setTailCall(true);
-                if (rtn_type == VOID) {
-                    emitter->getBuilder()->CreateRetVoid();
-                } else {
-                    emitter->getBuilder()->CreateRet(postcall);
-                }
+                emitter->getBuilder()->CreateRet(postcall);
 
                 emitter->getBuilder()->SetInsertPoint(llvm_entry_blocks[source->cfg->getStartingBlock()]);
             }
@@ -943,16 +944,15 @@ static std::string getUniqueFunctionName(std::string nameprefix, EffortLevel eff
     os << "_e" << (int)effort;
     if (entry) {
         os << "_osr" << entry->backedge->target->idx;
-        if (entry->cf->func)
-            os << "_from_" << entry->cf->func->getName().data();
     }
     os << '_' << num_functions;
     num_functions++;
     return os.str();
 }
 
-CompiledFunction* doCompile(SourceInfo* source, ParamNames* param_names, const OSREntryDescriptor* entry_descriptor,
-                            EffortLevel effort, FunctionSpecialization* spec, std::string nameprefix) {
+CompiledFunction* doCompile(CLFunction* clfunc, SourceInfo* source, ParamNames* param_names,
+                            const OSREntryDescriptor* entry_descriptor, EffortLevel effort,
+                            FunctionSpecialization* spec, std::string nameprefix) {
     Timer _t("in doCompile");
     Timer _t2;
     long irgen_us = 0;
@@ -1016,8 +1016,7 @@ CompiledFunction* doCompile(SourceInfo* source, ParamNames* param_names, const O
     }
 
 
-    CompiledFunction* cf
-        = new CompiledFunction(NULL, spec, (effort == EffortLevel::INTERPRETED), NULL, effort, entry_descriptor);
+    CompiledFunction* cf = new CompiledFunction(NULL, spec, NULL, effort, ExceptionStyle::CXX, entry_descriptor);
 
     // Make sure that the instruction memory keeps the module object alive.
     // TODO: implement this for real
@@ -1059,15 +1058,15 @@ CompiledFunction* doCompile(SourceInfo* source, ParamNames* param_names, const O
         computeBlockSetClosure(blocks);
     }
 
-    std::unique_ptr<LivenessAnalysis> liveness = computeLivenessInfo(source->cfg);
+    LivenessAnalysis* liveness = source->getLiveness();
     std::unique_ptr<PhiAnalysis> phis;
 
     if (entry_descriptor)
-        phis = computeRequiredPhis(entry_descriptor, liveness.get(), source->getScopeInfo());
+        phis = computeRequiredPhis(entry_descriptor, liveness, source->getScopeInfo());
     else
-        phis = computeRequiredPhis(*param_names, source->cfg, liveness.get(), source->getScopeInfo());
+        phis = computeRequiredPhis(*param_names, source->cfg, liveness, source->getScopeInfo());
 
-    IRGenState irstate(cf, source, std::move(liveness), std::move(phis), param_names, getGCBuilder(), dbg_funcinfo);
+    IRGenState irstate(clfunc, cf, source, std::move(phis), param_names, getGCBuilder(), dbg_funcinfo);
 
     emitBBs(&irstate, types, entry_descriptor, blocks);
 

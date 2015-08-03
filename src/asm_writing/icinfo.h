@@ -21,6 +21,7 @@
 
 #include "llvm/IR/CallingConv.h"
 
+#include "asm_writing/assembler.h"
 #include "asm_writing/types.h"
 
 namespace pyston {
@@ -48,31 +49,36 @@ public:
     class CommitHook {
     public:
         virtual ~CommitHook() {}
-        virtual bool finishAssembly(ICSlotInfo* picked_slot, int fastpath_offset) = 0;
+        virtual bool finishAssembly(int fastpath_offset) = 0;
     };
 
 private:
     ICInfo* ic;
-    assembler::Assembler* assembler;
     const char* debug_name;
 
     uint8_t* buf;
 
-    std::vector<std::pair<ICInvalidator*, int64_t>> dependencies;
+    assembler::Assembler assembler;
 
-    ICSlotRewrite(ICInfo* ic, const char* debug_name);
+    llvm::SmallVector<std::pair<ICInvalidator*, int64_t>, 4> dependencies;
+
+    ICSlotInfo* ic_entry;
 
 public:
+    ICSlotRewrite(ICInfo* ic, const char* debug_name);
     ~ICSlotRewrite();
 
-    assembler::Assembler* getAssembler() { return assembler; }
+    assembler::Assembler* getAssembler() { return &assembler; }
     int getSlotSize();
     int getScratchRspOffset();
     int getScratchSize();
+    uint8_t* getSlotStart();
 
     TypeRecorder* getTypeRecorder();
 
     assembler::GenericRegister returnRegister();
+
+    ICSlotInfo* prepareEntry();
 
     void addDependenceOn(ICInvalidator&);
     void commit(CommitHook* hook);
@@ -119,7 +125,7 @@ public:
     llvm::CallingConv::ID getCallingConvention() { return calling_conv; }
     const std::vector<int>& getLiveOuts() { return live_outs; }
 
-    ICSlotRewrite* startRewrite(const char* debug_name);
+    std::unique_ptr<ICSlotRewrite> startRewrite(const char* debug_name);
     void clear(ICSlotInfo* entry);
 
     bool shouldAttempt();

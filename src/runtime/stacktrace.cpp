@@ -135,7 +135,16 @@ extern "C" void abort() {
     }
 
     if (PAUSE_AT_ABORT) {
-        printf("PID %d about to call libc abort; pausing for a debugger...\n", getpid());
+        fprintf(stderr, "PID %d about to call libc abort; pausing for a debugger...\n", getpid());
+
+        // Sometimes stderr isn't available (or doesn't immediately appear), so write out a file
+        // just in case:
+        FILE* f = fopen("pausing.txt", "w");
+        if (f) {
+            fprintf(f, "PID %d about to call libc abort; pausing for a debugger...\n", getpid());
+            fclose(f);
+        }
+
         while (true) {
             sleep(1);
         }
@@ -261,6 +270,21 @@ extern "C" void raise3(Box* arg0, Box* arg1, Box* arg2) {
     exc_info.reraise = reraise;
     assert(!PyErr_Occurred());
     throw exc_info;
+}
+
+extern "C" void raise3_capi(Box* arg0, Box* arg1, Box* arg2) noexcept {
+    bool reraise = arg2 != NULL && arg2 != None;
+
+    ExcInfo exc_info(NULL, NULL, NULL);
+    try {
+        exc_info = excInfoForRaise(arg0, arg1, arg2);
+        exc_info.reraise = reraise;
+    } catch (ExcInfo e) {
+        exc_info = e;
+    }
+
+    assert(!exc_info.reraise); // would get thrown away
+    PyErr_Restore(exc_info.type, exc_info.value, exc_info.traceback);
 }
 
 void raiseExcHelper(BoxedClass* cls, Box* arg) {

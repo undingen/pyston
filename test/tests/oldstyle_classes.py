@@ -63,6 +63,50 @@ class E():
         print "ne"
         return self.n != other.n
 
+    def __neg__(self):
+        print "neg"
+        return -self.n
+
+    def __pos__(self):
+        print "pos"
+        return +self.n
+
+    def __abs__(self):
+        print "abs"
+        return abs(self.n)
+
+    def __invert__(self):
+        print "invert"
+        return ~self.n
+
+    def __int__(self):
+        print "int"
+        return int(self.n)
+
+    def __long__(self):
+        print "long"
+        return long(self.n)
+
+    def __float__(self):
+        print "float"
+        return float(self.n)
+
+    def __oct__(self):
+        print "oct"
+        return oct(self.n)
+
+    def __hex__(self):
+        print "hex"
+        return hex(self.n)
+
+    def __coerce__(self, other):
+        print "coerce"
+        return (int(self.n), other)
+
+    def __index__(self):
+        print "index"
+        return self.n
+
 e = E(1)
 print e
 print e.n
@@ -73,6 +117,18 @@ print len(e)
 print e()("test")
 print e == E(1)
 print e != E(1)
+print -e
+print +e
+print abs(e)
+print ~e
+print int(e)
+print long(e)
+print float(e)
+print oct(e)
+print hex(e)
+print coerce(e, 10)
+test_list = ["abc", "efg", "hij"]
+print test_list[e]
 
 def str2():
     return "str2"
@@ -127,6 +183,143 @@ print issubclass(OldStyleClass, object)
 
 print isinstance(OldStyleClass(), OldStyleClass)
 print issubclass(OldStyleClass, OldStyleClass)
+
+
+class G:
+    def __init__(self, n):
+        self._n = n
+
+    def __pow__(self, other, modulo=None):
+        print "pow in instance"
+
+    def __rpow__(self, other):
+        print "rpow in instance"
+
+    def __ipow__(self, other, modulo=None):
+        print "ipow in instance"
+
+p1 = G(3)
+p2 = G(4)
+
+p1 ** p2
+4 ** p2
+None ** p2
+p2 ** None
+
+pow(p1, p2)
+pow(p1, None)
+pow(None, p1)
+
+pow(p1, p2, p2)
+pow(p1, p2, None)
+
+p1.__ipow__(p1, p2)
+p1 **= p2
+
+
+class H:
+    def __init__(self, n):
+        self._n = n
+
+p3 = H(3)
+p4 = H(4)
+p5 = G(5)
+
+pow(p5, p3)
+pow(p3, p5)
+
+try:
+    pow(p3, p4)
+except Exception as e:
+    print type(e), e.message
+
+try:
+    pow(p3, p4, p4)
+except Exception as e:
+    assert type(e) in (AttributeError, TypeError)
+
+
+# mixed calling
+class I(object):
+    def __init__(self, n):
+        self._n = n
+
+    def __pow__(self, other, modulo=None):
+        print "pow in object"
+
+    def __rpow__(self, n):
+        print "rpow in object"
+
+    def __ipow__(self, other, modulo=None):
+        print "ipow in object"
+
+p5 = I(3)
+
+try:
+    pow(p3, p5)
+except Exception as e:
+    print type(e), e.message
+
+try:
+    p3 ** p5
+except Exception as e:
+    print type(e), e.message
+
+
+class LessEqualTest:
+    def __init__(self, a):
+        self._a = a
+
+    def __lt__(self, other):
+        print "lt"
+        return self._a < other._a
+
+    def __le__(self, other):
+        print "le"
+        return self._a <= other._a
+
+ca = LessEqualTest(3)
+cb = LessEqualTest(2)
+cc = LessEqualTest(2)
+
+print(ca < cb)
+print(cb < ca)
+
+print(ca <= cb)
+print(ca <= cc)
+
+# CompareA only defines __lt__ and __le__ but appears on the right-hand-side
+print(ca > cb)
+print(ca >= cb)
+print(cb > ca)
+print(cb > cc)
+
+class GreatEqualTest:
+    def __init__(self, a):
+        self._a = a
+
+    def __gt__(self, other):
+        print "gt"
+        return self._a > other._a
+
+    def __ge__(self, other):
+        print "ge"
+        return self._a >= other._a
+
+cd = GreatEqualTest(4)
+ce = GreatEqualTest(5)
+cf = GreatEqualTest(4)
+
+print(cd >= ce)
+print(cd > ce)
+print(cd >= cf)
+print(cd > cf)
+
+# CompareB only defines __gt__ and __ge__ but appears on the right-hand-side
+print(cd <= ce)
+print(cd < ce)
+print(cd <= cf)
+print(cd < cf)
 
 class GetattrTest:
     def __getattr__(self, attr):

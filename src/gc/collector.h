@@ -15,6 +15,8 @@
 #ifndef PYSTON_GC_COLLECTOR_H
 #define PYSTON_GC_COLLECTOR_H
 
+#include <deque>
+#include <list>
 #include <vector>
 
 #include "core/types.h"
@@ -29,6 +31,9 @@ extern FILE* trace_fp;
 #else
 #define GC_TRACE_LOG(...)
 #endif
+
+extern std::deque<Box*> pending_finalization_list;
+extern std::deque<PyWeakReference*> weakrefs_needing_callback_list;
 
 // Mark this gc-allocated object as being a root, even if there are no visible references to it.
 // (Note: this marks the gc allocation itself, not the pointer that points to one.  For that, use
@@ -58,6 +63,7 @@ public:
     Box* operator->() { return value; }
 };
 
+void callPendingDestructionLogic();
 void runCollection();
 
 // Python programs are allowed to pause the GC.  This is supposed to pause automatic GC,
@@ -71,7 +77,8 @@ void enableGC();
 bool isValidGCMemory(void* p); // if p is a valid gc-allocated pointer (or a non-heap root)
 bool isValidGCObject(void* p); // whether p is valid gc memory and is set to have Python destructor semantics applied
 bool isNonheapRoot(void* p);
-void setIsPythonObject(Box* b);
+void registerPythonObject(Box* b);
+void invalidateOrderedFinalizerList();
 
 // Debugging/validation helpers: if a GC should not happen in certain sections (ex during unwinding),
 // use these functions to mark that.  This is different from disableGC/enableGC, since it causes an

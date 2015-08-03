@@ -17,6 +17,7 @@
 
 #include "Python.h"
 
+#include "capi/typeobject.h"
 #include "capi/types.h"
 #include "core/ast.h"
 #include "core/threading.h"
@@ -404,10 +405,24 @@ static int recursive_isinstance(PyObject* inst, PyObject* cls) noexcept {
     } else if (PyType_Check(cls)) {
         retval = PyObject_TypeCheck(inst, (PyTypeObject*)cls);
         if (retval == 0) {
-            PyObject* c = PyObject_GetAttr(inst, __class__);
-            if (c == NULL) {
-                PyErr_Clear();
+            PyObject* c = NULL;
+
+            if (!inst->cls->has_getattribute) {
+                assert(inst->cls->tp_getattr == object_cls->tp_getattr);
+                assert(inst->cls->tp_getattro == object_cls->tp_getattro
+                       || inst->cls->tp_getattro == slot_tp_getattr_hook);
+            }
+            // We don't need to worry about __getattr__, since the default __class__ will always resolve.
+            bool has_custom_class = inst->cls->has___class__ || inst->cls->has_getattribute;
+            if (!has_custom_class) {
+                assert(PyObject_GetAttr(inst, __class__) == inst->cls);
             } else {
+                c = PyObject_GetAttr(inst, __class__);
+                if (!c)
+                    PyErr_Clear();
+            }
+
+            if (c) {
                 if (c != (PyObject*)(inst->cls) && PyType_Check(c))
                     retval = PyType_IsSubtype((PyTypeObject*)c, (PyTypeObject*)cls);
                 Py_DECREF(c);
@@ -435,6 +450,8 @@ extern "C" int _PyObject_RealIsInstance(PyObject* inst, PyObject* cls) noexcept 
 }
 
 extern "C" int PyObject_IsInstance(PyObject* inst, PyObject* cls) noexcept {
+    STAT_TIMER(t0, "us_timer_pyobject_isinstance", 20);
+
     static PyObject* name = NULL;
 
     /* Quick test for an exact match */
@@ -461,8 +478,15 @@ extern "C" int PyObject_IsInstance(PyObject* inst, PyObject* cls) noexcept {
     }
 
     if (!(PyClass_Check(cls) || PyInstance_Check(cls))) {
-        PyObject* checker;
-        checker = _PyObject_LookupSpecial(cls, "__instancecheck__", &name);
+        PyObject* checker = NULL;
+        if (cls->cls->has_instancecheck) {
+            checker = _PyObject_LookupSpecial(cls, "__instancecheck__", &name);
+            if (!checker && PyErr_Occurred())
+                return -1;
+
+            assert(checker);
+        }
+
         if (checker != NULL) {
             PyObject* res;
             int ok = -1;
@@ -478,8 +502,7 @@ extern "C" int PyObject_IsInstance(PyObject* inst, PyObject* cls) noexcept {
                 Py_DECREF(res);
             }
             return ok;
-        } else if (PyErr_Occurred())
-            return -1;
+        }
     }
     return recursive_isinstance(inst, cls);
 }
@@ -709,26 +732,15 @@ exit:
 }
 
 extern "C" Py_ssize_t PyObject_Size(PyObject* o) noexcept {
-    try {
-        return len(o)->n;
-    } catch (ExcInfo e) {
-        setCAPIException(e);
+    BoxedInt* r = lenInternal<ExceptionStyle::CAPI>(o, NULL);
+    if (!r)
         return -1;
-    }
+    return r->n;
 }
 
 extern "C" PyObject* PyObject_GetIter(PyObject* o) noexcept {
     try {
         return getiter(o);
-    } catch (ExcInfo e) {
-        setCAPIException(e);
-        return NULL;
-    }
-}
-
-extern "C" PyObject* PyObject_Repr(PyObject* obj) noexcept {
-    try {
-        return repr(obj);
     } catch (ExcInfo e) {
         setCAPIException(e);
         return NULL;
@@ -1431,24 +1443,77 @@ extern "C" PyObject* PySequence_InPlaceRepeat(PyObject* o, Py_ssize_t count) noe
     return nullptr;
 }
 
-extern "C" PyObject* PySequence_GetItem(PyObject* o, Py_ssize_t i) noexcept {
-    try {
-        // Not sure if this is really the same:
-        return getitem(o, boxInt(i));
-    } catch (ExcInfo e) {
-        setCAPIException(e);
-        return NULL;
+extern "C" PyObject* PySequence_GetItem(PyObject* s, Py_ssize_t i) noexcept {
+    PySequenceMethods* m;
+
+    if (s == NULL)
+        return null_error();
+
+    m = s->cls->tp_as_sequence;
+    if (m && m->sq_item) {
+        if (i < 0) {
+            if (m->sq_length) {
+                Py_ssize_t l = (*m->sq_length)(s);
+                if (l < 0)
+                    return NULL;
+                i += l;
+            }
+        }
+        return m->sq_item(s, i);
     }
+
+    return type_error("'%.200s' object does not support indexing", s);
 }
 
-extern "C" PyObject* PySequence_GetSlice(PyObject* o, Py_ssize_t i1, Py_ssize_t i2) noexcept {
-    try {
-        // Not sure if this is really the same:
-        return getitem(o, createSlice(boxInt(i1), boxInt(i2), None));
-    } catch (ExcInfo e) {
-        fatalOrError(PyExc_NotImplementedError, "unimplemented");
-        return nullptr;
+PyObject* _PySlice_FromIndices(Py_ssize_t istart, Py_ssize_t istop) {
+    PyObject* start, *end, *slice;
+    start = PyInt_FromSsize_t(istart);
+    if (!start)
+        return NULL;
+    end = PyInt_FromSsize_t(istop);
+    if (!end) {
+        Py_DECREF(start);
+        return NULL;
     }
+
+    slice = PySlice_New(start, end, NULL);
+    Py_DECREF(start);
+    Py_DECREF(end);
+    return slice;
+}
+
+extern "C" PyObject* PySequence_GetSlice(PyObject* s, Py_ssize_t i1, Py_ssize_t i2) noexcept {
+    PySequenceMethods* m;
+    PyMappingMethods* mp;
+
+    if (!s)
+        return null_error();
+
+    m = s->cls->tp_as_sequence;
+    if (m && m->sq_slice) {
+        if (i1 < 0 || i2 < 0) {
+            if (m->sq_length) {
+                Py_ssize_t l = (*m->sq_length)(s);
+                if (l < 0)
+                    return NULL;
+                if (i1 < 0)
+                    i1 += l;
+                if (i2 < 0)
+                    i2 += l;
+            }
+        }
+        return m->sq_slice(s, i1, i2);
+    } else if ((mp = s->cls->tp_as_mapping) && mp->mp_subscript) {
+        PyObject* res;
+        PyObject* slice = _PySlice_FromIndices(i1, i2);
+        if (!slice)
+            return NULL;
+        res = mp->mp_subscript(s, slice);
+        Py_DECREF(slice);
+        return res;
+    }
+
+    return type_error("'%.200s' object is unsliceable", s);
 }
 
 extern "C" int PySequence_SetItem(PyObject* o, Py_ssize_t i, PyObject* v) noexcept {
@@ -1478,13 +1543,11 @@ extern "C" int PySequence_DelSlice(PyObject* o, Py_ssize_t i1, Py_ssize_t i2) no
 }
 
 extern "C" Py_ssize_t PySequence_Count(PyObject* o, PyObject* value) noexcept {
-    fatalOrError(PyExc_NotImplementedError, "unimplemented");
-    return -1;
+    return _PySequence_IterSearch(o, value, PY_ITERSEARCH_COUNT);
 }
 
 extern "C" Py_ssize_t PySequence_Index(PyObject* o, PyObject* value) noexcept {
-    fatalOrError(PyExc_NotImplementedError, "unimplemented");
-    return -1;
+    return _PySequence_IterSearch(o, value, PY_ITERSEARCH_INDEX);
 }
 
 extern "C" PyObject* PyObject_CallFunction(PyObject* callable, const char* format, ...) noexcept {
@@ -1802,8 +1865,11 @@ extern "C" PyObject* PyNumber_InPlaceOr(PyObject*, PyObject*) noexcept {
     return nullptr;
 }
 
-extern "C" int PyNumber_Coerce(PyObject**, PyObject**) noexcept {
-    fatalOrError(PyExc_NotImplementedError, "unimplemented");
+extern "C" int PyNumber_Coerce(PyObject** pv, PyObject** pw) noexcept {
+    int err = PyNumber_CoerceEx(pv, pw);
+    if (err <= 0)
+        return err;
+    PyErr_SetString(PyExc_TypeError, "number coercion failed");
     return -1;
 }
 
@@ -1943,20 +2009,93 @@ extern "C" PyObject* PyNumber_Int(PyObject* o) noexcept {
                       o);
 }
 
+/* Add a check for embedded NULL-bytes in the argument. */
+static PyObject* long_from_string(const char* s, Py_ssize_t len) noexcept {
+    char* end;
+    PyObject* x;
+
+    x = PyLong_FromString(s, &end, 10);
+    if (x == NULL)
+        return NULL;
+    if (end != s + len) {
+        PyErr_SetString(PyExc_ValueError, "null byte in argument for long()");
+        Py_DECREF(x);
+        return NULL;
+    }
+    return x;
+}
+
 extern "C" PyObject* PyNumber_Long(PyObject* o) noexcept {
-    // This method should do quite a bit more, including checking tp_as_number->nb_long or calling __trunc__
+    PyNumberMethods* m;
+    static PyObject* trunc_name = NULL;
+    PyObject* trunc_func;
+    const char* buffer;
+    Py_ssize_t buffer_len;
 
-    if (o->cls == long_cls)
-        return o;
+    if (trunc_name == NULL) {
+        trunc_name = PyString_InternFromString("__trunc__");
+        if (trunc_name == NULL)
+            return NULL;
+    }
 
-    if (o->cls == float_cls)
-        return PyLong_FromDouble(PyFloat_AsDouble(o));
+    if (o == NULL)
+        return null_error();
+    m = o->cls->tp_as_number;
+    if (m && m->nb_long) { /* This should include subclasses of long */
+        /* Classic classes always take this branch. */
+        PyObject* res = m->nb_long(o);
+        if (res == NULL)
+            return NULL;
+        if (PyInt_Check(res)) {
+            long value = PyInt_AS_LONG(res);
+            Py_DECREF(res);
+            return PyLong_FromLong(value);
+        } else if (!PyLong_Check(res)) {
+            PyErr_Format(PyExc_TypeError, "__long__ returned non-long (type %.200s)", res->cls->tp_name);
+            Py_DECREF(res);
+            return NULL;
+        }
+        return res;
+    }
+    if (PyLong_Check(o)) { /* A long subclass without nb_long */
+        BoxedInt* lo = (BoxedInt*)o;
+        return PyLong_FromLong(lo->n);
+    }
+    trunc_func = PyObject_GetAttr(o, trunc_name);
+    if (trunc_func) {
+        PyObject* truncated = PyEval_CallObject(trunc_func, NULL);
+        PyObject* int_instance;
+        Py_DECREF(trunc_func);
+        /* __trunc__ is specified to return an Integral type,
+           but long() needs to return a long. */
+        int_instance = _PyNumber_ConvertIntegralToInt(truncated, "__trunc__ returned non-Integral (type %.200s)");
+        if (int_instance && PyInt_Check(int_instance)) {
+            /* Make sure that long() returns a long instance. */
+            long value = PyInt_AS_LONG(int_instance);
+            Py_DECREF(int_instance);
+            return PyLong_FromLong(value);
+        }
+        return int_instance;
+    }
+    PyErr_Clear(); /* It's not an error if  o.__trunc__ doesn't exist. */
 
-    if (o->cls == int_cls)
-        return PyLong_FromLong(((BoxedInt*)o)->n);
+    if (PyString_Check(o))
+        /* need to do extra error checking that PyLong_FromString()
+         * doesn't do.  In particular long('9.5') must raise an
+         * exception, not truncate the float.
+         */
+        return long_from_string(PyString_AS_STRING(o), PyString_GET_SIZE(o));
+#ifdef Py_USING_UNICODE
+    if (PyUnicode_Check(o))
+        /* The above check is done in PyLong_FromUnicode(). */
+        return PyLong_FromUnicode(PyUnicode_AS_UNICODE(o), PyUnicode_GET_SIZE(o), 10);
+#endif
+    if (!PyObject_AsCharBuffer(o, &buffer, &buffer_len))
+        return long_from_string(buffer, buffer_len);
 
-    fatalOrError(PyExc_NotImplementedError, "unimplemented");
-    return nullptr;
+    return type_error("long() argument must be a string or a "
+                      "number, not '%.200s'",
+                      o);
 }
 
 extern "C" PyObject* PyNumber_Float(PyObject* o) noexcept {

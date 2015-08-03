@@ -1127,6 +1127,21 @@ Box* fileIterHasNext(Box* s) {
     return boxBool(!fileEof(self));
 }
 
+extern "C" void PyFile_IncUseCount(PyFileObject* _f) noexcept {
+    BoxedFile* f = reinterpret_cast<BoxedFile*>(_f);
+    assert(f->cls == file_cls);
+    f->unlocked_count++;
+}
+
+extern "C" void PyFile_DecUseCount(PyFileObject* _f) noexcept {
+    BoxedFile* f = reinterpret_cast<BoxedFile*>(_f);
+    assert(f->cls == file_cls);
+    f->unlocked_count--;
+    assert(f->unlocked_count >= 0);
+}
+
+
+
 extern "C" void PyFile_SetFP(PyObject* _f, FILE* fp) noexcept {
     assert(_f->cls == file_cls);
     BoxedFile* f = static_cast<BoxedFile*>(_f);
@@ -1742,7 +1757,8 @@ void BoxedFile::gcHandler(GCVisitor* v, Box* b) {
 }
 
 void setupFile() {
-    file_cls->simple_destructor = fileDestructor;
+    file_cls->tp_dealloc = fileDestructor;
+    file_cls->has_safe_tp_dealloc = true;
 
     file_cls->giveAttr("read",
                        new BoxedFunction(boxRTFunction((void*)fileRead, STR, 2, 1, false, false), { boxInt(-1) }));
@@ -1752,7 +1768,7 @@ void setupFile() {
 
     file_cls->giveAttr("flush", new BoxedFunction(boxRTFunction((void*)fileFlush, NONE, 1)));
     file_cls->giveAttr("write", new BoxedFunction(boxRTFunction((void*)fileWrite, NONE, 2)));
-    file_cls->giveAttr("close", new BoxedFunction(boxRTFunction((void*)fileClose, NONE, 1)));
+    file_cls->giveAttr("close", new BoxedFunction(boxRTFunction((void*)fileClose, UNKNOWN, 1)));
     file_cls->giveAttr("fileno", new BoxedFunction(boxRTFunction((void*)fileFileno, BOXED_INT, 1)));
 
     file_cls->giveAttr("__repr__", new BoxedFunction(boxRTFunction((void*)fileRepr, STR, 1)));
@@ -1760,7 +1776,7 @@ void setupFile() {
     file_cls->giveAttr("__enter__", new BoxedFunction(boxRTFunction((void*)fileEnter, typeFromClass(file_cls), 1)));
     file_cls->giveAttr("__exit__", new BoxedFunction(boxRTFunction((void*)fileExit, UNKNOWN, 4)));
 
-    file_cls->giveAttr("__iter__", file_cls->getattr("__enter__"));
+    file_cls->giveAttr("__iter__", file_cls->getattr(internStringMortal("__enter__")));
     file_cls->giveAttr("__hasnext__", new BoxedFunction(boxRTFunction((void*)fileIterHasNext, BOXED_BOOL, 1)));
     file_cls->giveAttr("next", new BoxedFunction(boxRTFunction((void*)fileIterNext, STR, 1)));
 
@@ -1769,6 +1785,8 @@ void setupFile() {
                        new BoxedMemberDescriptor(BoxedMemberDescriptor::INT, offsetof(BoxedFile, f_softspace), false));
     file_cls->giveAttr("name",
                        new BoxedMemberDescriptor(BoxedMemberDescriptor::OBJECT, offsetof(BoxedFile, f_name), true));
+    file_cls->giveAttr("mode",
+                       new BoxedMemberDescriptor(BoxedMemberDescriptor::OBJECT, offsetof(BoxedFile, f_mode), true));
 
     file_cls->giveAttr("__new__", new BoxedFunction(boxRTFunction((void*)fileNew, UNKNOWN, 4, 2, false, false),
                                                     { boxString("r"), boxInt(-1) }));

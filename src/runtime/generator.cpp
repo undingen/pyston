@@ -98,8 +98,8 @@ void generatorEntry(BoxedGenerator* g) {
             BoxedFunctionBase* func = g->function;
 
             Box** args = g->args ? &g->args->elts[0] : nullptr;
-            callCLFunc(func->f, nullptr, func->f->numReceivedArgs(), func->closure, g, func->globals, g->arg1, g->arg2,
-                       g->arg3, args);
+            callCLFunc<ExceptionStyle::CXX>(func->f, nullptr, func->f->numReceivedArgs(), func->closure, g,
+                                            func->globals, g->arg1, g->arg2, g->arg3, args);
         } catch (ExcInfo e) {
             // unhandled exception: propagate the exception to the caller
             g->exception = e;
@@ -406,8 +406,8 @@ extern "C" void generatorGCHandler(GCVisitor* v, Box* b) {
         v->visit(g->exception.traceback);
 
     if (g->running) {
-        v->visitPotentialRange((void**)&g->returnContext,
-                               ((void**)&g->returnContext) + sizeof(g->returnContext) / sizeof(void*));
+        v->visitPotentialRange((void**)g->returnContext,
+                               ((void**)g->returnContext) + sizeof(*g->returnContext) / sizeof(void*));
     } else {
         // g->context is always set for a running generator, but we can trigger a GC while constructing
         // a generator in which case we can see a NULL context
@@ -436,7 +436,8 @@ void setupGenerator() {
     generator_cls
         = BoxedHeapClass::create(type_cls, object_cls, &generatorGCHandler, 0, offsetof(BoxedGenerator, weakreflist),
                                  sizeof(BoxedGenerator), false, "generator");
-    generator_cls->simple_destructor = generatorDestructor;
+    generator_cls->tp_dealloc = generatorDestructor;
+    generator_cls->has_safe_tp_dealloc = true;
     generator_cls->giveAttr("__iter__",
                             new BoxedFunction(boxRTFunction((void*)generatorIter, typeFromClass(generator_cls), 1)));
 

@@ -24,6 +24,7 @@
 #include "core/stats.h"
 #include "core/types.h"
 #include "gc/collector.h"
+#include "runtime/inline/list.h"
 #include "runtime/list.h"
 #include "runtime/objmodel.h"
 #include "runtime/types.h"
@@ -113,7 +114,7 @@ Box* BoxedTraceback::getLines(Box* b) {
 }
 
 void BoxedTraceback::here(LineInfo lineInfo, Box** tb) {
-    *tb = new BoxedTraceback(lineInfo, *tb);
+    *tb = new BoxedTraceback(std::move(lineInfo), *tb);
 }
 
 void setupTraceback() {

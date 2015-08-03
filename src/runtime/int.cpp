@@ -184,6 +184,16 @@ extern "C" int _PyInt_AsInt(PyObject* obj) noexcept {
     return (int)result;
 }
 
+#ifdef HAVE_LONG_LONG
+extern "C" unsigned PY_LONG_LONG PyInt_AsUnsignedLongLongMask(register PyObject* op) noexcept {
+    Py_FatalError("unimplemented");
+
+    unsigned PY_LONG_LONG val = 0;
+
+    return val;
+}
+#endif
+
 extern "C" PyObject* PyInt_FromString(const char* s, char** pend, int base) noexcept {
     char* end;
     long x;
@@ -334,33 +344,17 @@ extern "C" i64 mod_i64_i64(i64 lhs, i64 rhs) {
     return lhs % rhs;
 }
 
-extern "C" Box* pow_i64_i64(i64 lhs, i64 rhs) {
+extern "C" Box* pow_i64_i64(i64 lhs, i64 rhs, Box* mod) {
     i64 orig_rhs = rhs;
     i64 rtn = 1, curpow = lhs;
 
     if (rhs < 0)
+        // already checked, rhs is a integer,
+        // and mod will be None in this case.
         return boxFloat(pow_float_float(lhs, rhs));
 
-    if (rhs == 0)
-        return boxInt(1);
-
-    assert(rhs > 0);
-    while (true) {
-        if (rhs & 1) {
-            // TODO: could potentially avoid restarting the entire computation on overflow?
-            if (__builtin_smull_overflow(rtn, curpow, &rtn))
-                return longPow(boxLong(lhs), boxLong(orig_rhs));
-        }
-
-        rhs >>= 1;
-
-        if (!rhs)
-            break;
-
-        if (__builtin_smull_overflow(curpow, curpow, &curpow))
-            return longPow(boxLong(lhs), boxLong(orig_rhs));
-    }
-    return boxInt(rtn);
+    // let longPow do the checks.
+    return longPow(boxLong(lhs), boxLong(rhs), mod);
 }
 
 extern "C" Box* mul_i64_i64(i64 lhs, i64 rhs) {
@@ -663,36 +657,62 @@ extern "C" Box* intMul(BoxedInt* lhs, Box* rhs) {
     }
 }
 
-extern "C" Box* intPowInt(BoxedInt* lhs, BoxedInt* rhs) {
-    assert(isSubclass(lhs->cls, int_cls));
-    assert(isSubclass(rhs->cls, int_cls));
-    BoxedInt* rhs_int = static_cast<BoxedInt*>(rhs);
-    return pow_i64_i64(lhs->n, rhs_int->n);
+static void _addFuncPow(const char* name, ConcreteCompilerType* rtn_type, void* float_func, void* int_func) {
+    std::vector<ConcreteCompilerType*> v_ifu{ BOXED_INT, BOXED_FLOAT, UNKNOWN };
+    std::vector<ConcreteCompilerType*> v_uuu{ UNKNOWN, UNKNOWN, UNKNOWN };
+
+    CLFunction* cl = createRTFunction(3, 1, false, false);
+    addRTFunction(cl, float_func, UNKNOWN, v_ifu);
+    addRTFunction(cl, int_func, UNKNOWN, v_uuu);
+    int_cls->giveAttr(name, new BoxedFunction(cl, { None }));
 }
 
-extern "C" Box* intPowFloat(BoxedInt* lhs, BoxedFloat* rhs) {
+extern "C" Box* intPowLong(BoxedInt* lhs, BoxedLong* rhs, Box* mod) {
+    assert(isSubclass(lhs->cls, int_cls));
+    assert(isSubclass(rhs->cls, long_cls));
+    BoxedLong* lhs_long = boxLong(lhs->n);
+    return longPow(lhs_long, rhs, mod);
+}
+
+extern "C" Box* intPowFloat(BoxedInt* lhs, BoxedFloat* rhs, Box* mod) {
     assert(isSubclass(lhs->cls, int_cls));
     assert(rhs->cls == float_cls);
-    return boxFloat(pow(lhs->n, rhs->d));
+
+    if (mod != None) {
+        raiseExcHelper(TypeError, "pow() 3rd argument not allowed unless all arguments are integers");
+    }
+    return boxFloat(pow_float_float(lhs->n, rhs->d));
 }
 
 extern "C" Box* intPow(BoxedInt* lhs, Box* rhs, Box* mod) {
     if (!isSubclass(lhs->cls, int_cls))
         raiseExcHelper(TypeError, "descriptor '__pow__' requires a 'int' object but received a '%s'", getTypeName(lhs));
 
-    if (isSubclass(rhs->cls, int_cls)) {
-        BoxedInt* rhs_int = static_cast<BoxedInt*>(rhs);
-        Box* rtn = intPowInt(lhs, rhs_int);
-        if (mod == None)
-            return rtn;
-        return binop(rtn, mod, AST_TYPE::Mod);
-    } else if (rhs->cls == float_cls) {
-        RELEASE_ASSERT(mod == None, "");
-        BoxedFloat* rhs_float = static_cast<BoxedFloat*>(rhs);
-        return intPowFloat(lhs, rhs_float);
-    } else {
+    if (isSubclass(rhs->cls, long_cls))
+        return intPowLong(lhs, static_cast<BoxedLong*>(rhs), mod);
+    else if (isSubclass(rhs->cls, float_cls))
+        return intPowFloat(lhs, static_cast<BoxedFloat*>(rhs), mod);
+    else if (!isSubclass(rhs->cls, int_cls))
         return NotImplemented;
+
+    BoxedInt* rhs_int = static_cast<BoxedInt*>(rhs);
+    BoxedInt* mod_int = static_cast<BoxedInt*>(mod);
+
+    if (mod != None) {
+        if (rhs_int->n < 0)
+            raiseExcHelper(TypeError, "pow() 2nd argument "
+                                      "cannot be negative when 3rd argument specified");
+        if (!isSubclass(mod->cls, int_cls)) {
+            return NotImplemented;
+        } else if (mod_int->n == 0) {
+            raiseExcHelper(ValueError, "pow() 3rd argument cannot be 0");
+        }
     }
+
+    Box* rtn = pow_i64_i64(lhs->n, rhs_int->n, mod);
+    if (isSubclass(rtn->cls, long_cls))
+        return longInt(rtn);
+    return rtn;
 }
 
 extern "C" Box* intRShiftInt(BoxedInt* lhs, BoxedInt* rhs) {
@@ -843,7 +863,19 @@ extern "C" Box* intTrunc(BoxedInt* self) {
         raiseExcHelper(TypeError, "descriptor '__trunc__' requires a 'int' object but received a '%s'",
                        getTypeName(self));
 
-    return self;
+    if (self->cls == int_cls)
+        return self;
+    return boxInt(self->n);
+}
+
+extern "C" Box* intInt(BoxedInt* self) {
+    if (!isSubclass(self->cls, int_cls))
+        raiseExcHelper(TypeError, "descriptor '__int__' requires a 'int' object but received a '%s'",
+                       getTypeName(self));
+
+    if (self->cls == int_cls)
+        return self;
+    return boxInt(self->n);
 }
 
 extern "C" Box* intIndex(BoxedInt* v) {
@@ -853,7 +885,7 @@ extern "C" Box* intIndex(BoxedInt* v) {
 }
 
 static Box* _intNew(Box* val, Box* base) {
-    if (isSubclass(val->cls, int_cls)) {
+    if (val->cls == int_cls) {
         RELEASE_ASSERT(!base, "");
         BoxedInt* n = static_cast<BoxedInt*>(val);
         if (val->cls == int_cls)
@@ -890,13 +922,38 @@ static Box* _intNew(Box* val, Box* base) {
         return r;
     } else if (val->cls == float_cls) {
         RELEASE_ASSERT(!base, "");
-        double d = static_cast<BoxedFloat*>(val)->d;
-        return new BoxedInt(d);
+
+        // This is tricky -- code copied from CPython:
+
+        double x = PyFloat_AsDouble(val);
+        double wholepart; /* integral portion of x, rounded toward 0 */
+
+        (void)modf(x, &wholepart);
+        /* Try to get out cheap if this fits in a Python int.  The attempt
+         * to cast to long must be protected, as C doesn't define what
+         * happens if the double is too big to fit in a long.  Some rare
+         * systems raise an exception then (RISCOS was mentioned as one,
+         * and someone using a non-default option on Sun also bumped into
+         * that).  Note that checking for <= LONG_MAX is unsafe: if a long
+         * has more bits of precision than a double, casting LONG_MAX to
+         * double may yield an approximation, and if that's rounded up,
+         * then, e.g., wholepart=LONG_MAX+1 would yield true from the C
+         * expression wholepart<=LONG_MAX, despite that wholepart is
+         * actually greater than LONG_MAX.  However, assuming a two's complement
+         * machine with no trap representation, LONG_MIN will be a power of 2 (and
+         * hence exactly representable as a double), and LONG_MAX = -1-LONG_MIN, so
+         * the comparisons with (double)LONG_MIN below should be safe.
+         */
+        if ((double)LONG_MIN <= wholepart && wholepart < -(double)LONG_MIN) {
+            const long aslong = (long)wholepart;
+            return PyInt_FromLong(aslong);
+        }
+        return PyLong_FromDouble(wholepart);
     } else {
         RELEASE_ASSERT(!base, "");
-        static BoxedString* int_str = static_cast<BoxedString*>(PyString_InternFromString("__int__"));
-        Box* r = callattr(val, int_str, CallattrFlags({.cls_only = true, .null_on_nonexistent = true }), ArgPassSpec(0),
-                          NULL, NULL, NULL, NULL, NULL);
+        static BoxedString* int_str = internStringImmortal("__int__");
+        CallattrFlags callattr_flags{.cls_only = true, .null_on_nonexistent = true, .argspec = ArgPassSpec(0) };
+        Box* r = callattr(val, int_str, callattr_flags, NULL, NULL, NULL, NULL, NULL);
 
         if (!r) {
             fprintf(stderr, "TypeError: int() argument must be a string or a number, not '%s'\n", getTypeName(val));
@@ -992,7 +1049,7 @@ static void _addFuncIntUnknown(const char* name, ConcreteCompilerType* rtn_type,
     int_cls->giveAttr(name, new BoxedFunction(cl));
 }
 
-static Box* intInt(Box* b, void*) {
+static Box* intIntGetset(Box* b, void*) {
     if (b->cls == int_cls) {
         return b;
     } else {
@@ -1059,9 +1116,7 @@ void setupInt() {
     _addFuncIntFloatUnknown("__truediv__", (void*)intTruedivInt, (void*)intTruedivFloat, (void*)intTruediv);
     _addFuncIntFloatUnknown("__mul__", (void*)intMulInt, (void*)intMulFloat, (void*)intMul);
     _addFuncIntUnknown("__mod__", BOXED_INT, (void*)intModInt, (void*)intMod);
-    int_cls->giveAttr("__pow__",
-                      new BoxedFunction(boxRTFunction((void*)intPow, UNKNOWN, 3, 1, false, false), { None }));
-
+    _addFuncPow("__pow__", BOXED_INT, (void*)intPowFloat, (void*)intPow);
     // Note: CPython implements int comparisons using tp_compare
     int_cls->tp_richcompare = int_richcompare;
 
@@ -1081,6 +1136,7 @@ void setupInt() {
 
     int_cls->giveAttr("__trunc__", new BoxedFunction(boxRTFunction((void*)intTrunc, BOXED_INT, 1)));
     int_cls->giveAttr("__index__", new BoxedFunction(boxRTFunction((void*)intIndex, BOXED_INT, 1)));
+    int_cls->giveAttr("__int__", new BoxedFunction(boxRTFunction((void*)intInt, BOXED_INT, 1)));
 
     int_cls->giveAttr("__new__", new BoxedFunction(boxRTFunction((void*)intNew, UNKNOWN, 3, 2, false, false,
                                                                  ParamNames({ "", "x", "base" }, "", "")),
@@ -1088,14 +1144,16 @@ void setupInt() {
 
     int_cls->giveAttr("bit_length", new BoxedFunction(boxRTFunction((void*)intBitLength, BOXED_INT, 1)));
 
-    int_cls->giveAttr("real", new (pyston_getset_cls) BoxedGetsetDescriptor(intInt, NULL, NULL));
+    int_cls->giveAttr("real", new (pyston_getset_cls) BoxedGetsetDescriptor(intIntGetset, NULL, NULL));
     int_cls->giveAttr("imag", new (pyston_getset_cls) BoxedGetsetDescriptor(int0, NULL, NULL));
-    int_cls->giveAttr("conjugate", new BoxedFunction(boxRTFunction((void*)intInt, BOXED_INT, 1)));
-    int_cls->giveAttr("numerator", new (pyston_getset_cls) BoxedGetsetDescriptor(intInt, NULL, NULL));
+    int_cls->giveAttr("conjugate", new BoxedFunction(boxRTFunction((void*)intIntGetset, BOXED_INT, 1)));
+    int_cls->giveAttr("numerator", new (pyston_getset_cls) BoxedGetsetDescriptor(intIntGetset, NULL, NULL));
     int_cls->giveAttr("denominator", new (pyston_getset_cls) BoxedGetsetDescriptor(int1, NULL, NULL));
 
     add_operators(int_cls);
     int_cls->freeze();
+
+    int_cls->tp_repr = (reprfunc)int_to_decimal_string;
 }
 
 void teardownInt() {

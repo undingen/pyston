@@ -1,5 +1,4 @@
-// Copyright (c) 2014-2015 Dropbox, Inc.
-//
+// Copyright (c) 2014-2015 Dropbox, Inc.  //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -135,10 +134,6 @@ void Location::dump() const {
     RELEASE_ASSERT(0, "%d", type);
 }
 
-static bool isLargeConstant(int64_t val) {
-    return (val < (-1L << 31) || val >= (1L << 31) - 1);
-}
-
 Rewriter::ConstLoader::ConstLoader(Rewriter* rewriter) : rewriter(rewriter) {
 }
 
@@ -190,8 +185,11 @@ void Rewriter::ConstLoader::moveImmediate(uint64_t val, assembler::Register dst_
 assembler::Register Rewriter::ConstLoader::findConst(uint64_t val, bool& found_value) {
     assert(rewriter->phase_emitting);
 
-    if (constToVar.count(val) > 0) {
-        RewriterVar* var = constToVar[val];
+    for (auto& p : consts) {
+        if (p.first != val)
+            continue;
+
+        RewriterVar* var = p.second;
         for (Location l : var->locations) {
             if (l.type == Location::Register) {
                 found_value = true;
@@ -220,11 +218,11 @@ assembler::Register Rewriter::ConstLoader::loadConst(uint64_t val, Location othe
     assert(rewriter->phase_emitting);
 
     bool found_value = false;
-    assembler::Register reg = findConst(val, found_value);
+    assembler::Register /*reg = findConst(val, found_value);
     if (found_value)
-        return reg;
+        return reg;*/
 
-    reg = rewriter->allocReg(Location::any(), otherThan);
+        reg = rewriter->allocReg(Location::any(), otherThan);
     if (tryLea(val, reg))
         return reg;
 
@@ -251,6 +249,18 @@ void Rewriter::restoreArgs() {
         }
     }
 
+    for (int i = 0; i < live_outs.size(); i++) {
+        assembler::GenericRegister gr = assembler::GenericRegister::fromDwarf(live_out_regs[i]);
+        if (gr.type == assembler::GenericRegister::GP) {
+            assembler::Register r = gr.gp;
+            if (!live_outs[i]->isInLocation(Location(r))) {
+                allocReg(r);
+                live_outs[i]->getInReg(r);
+                assert(live_outs[i]->isInLocation(r));
+            }
+        }
+    }
+
     assertArgsInPlace();
 }
 
@@ -260,18 +270,24 @@ void Rewriter::assertArgsInPlace() {
     for (int i = 0; i < args.size(); i++) {
         assert(args[i]->isInLocation(args[i]->arg_loc));
     }
+    for (int i = 0; i < live_outs.size(); i++) {
+        assembler::GenericRegister r = assembler::GenericRegister::fromDwarf(live_out_regs[i]);
+        assert(live_outs[i]->isInLocation(r));
+    }
 }
 
 void RewriterVar::addGuard(uint64_t val) {
+    STAT_TIMER(t0, "us_timer_rewriter", 10);
+
     RewriterVar* val_var = rewriter->loadConst(val);
     rewriter->addAction([=]() { rewriter->_addGuard(this, val_var); }, { this, val_var }, ActionType::GUARD);
 }
 
 void Rewriter::_addGuard(RewriterVar* var, RewriterVar* val_constant) {
+    assembler->comment("_addGuard");
+
     assert(val_constant->is_constant);
     uint64_t val = val_constant->constant_value;
-
-    restoreArgs();
 
     assembler::Register var_reg = var->getInReg();
     if (isLargeConstant(val)) {
@@ -281,6 +297,7 @@ void Rewriter::_addGuard(RewriterVar* var, RewriterVar* val_constant) {
         assembler->cmp(var_reg, assembler::Immediate(val));
     }
 
+    restoreArgs(); // can only do movs, doesn't affect flags, so it's safe
     assertArgsInPlace();
     assembler->jne(assembler::JumpDestination::fromStart(rewrite->getSlotSize()));
 
@@ -291,15 +308,17 @@ void Rewriter::_addGuard(RewriterVar* var, RewriterVar* val_constant) {
 }
 
 void RewriterVar::addGuardNotEq(uint64_t val) {
+    STAT_TIMER(t0, "us_timer_rewriter", 10);
+
     RewriterVar* val_var = rewriter->loadConst(val);
     rewriter->addAction([=]() { rewriter->_addGuardNotEq(this, val_var); }, { this, val_var }, ActionType::GUARD);
 }
 
 void Rewriter::_addGuardNotEq(RewriterVar* var, RewriterVar* val_constant) {
+    assembler->comment("_addGuardNotEq");
+
     assert(val_constant->is_constant);
     uint64_t val = val_constant->constant_value;
-
-    restoreArgs();
 
     assembler::Register var_reg = var->getInReg();
     if (isLargeConstant(val)) {
@@ -309,6 +328,7 @@ void Rewriter::_addGuardNotEq(RewriterVar* var, RewriterVar* val_constant) {
         assembler->cmp(var_reg, assembler::Immediate(val));
     }
 
+    restoreArgs(); // can only do movs, doesn't affect flags, so it's safe
     assertArgsInPlace();
     assembler->je(assembler::JumpDestination::fromStart(rewrite->getSlotSize()));
 
@@ -319,6 +339,8 @@ void Rewriter::_addGuardNotEq(RewriterVar* var, RewriterVar* val_constant) {
 }
 
 void RewriterVar::addAttrGuard(int offset, uint64_t val, bool negate) {
+    STAT_TIMER(t0, "us_timer_rewriter", 10);
+
     if (!attr_guards.insert(std::make_tuple(offset, val, negate)).second)
         return; // duplicate guard detected
     RewriterVar* val_var = rewriter->loadConst(val);
@@ -327,10 +349,10 @@ void RewriterVar::addAttrGuard(int offset, uint64_t val, bool negate) {
 }
 
 void Rewriter::_addAttrGuard(RewriterVar* var, int offset, RewriterVar* val_constant, bool negate) {
+    assembler->comment("_addAttrGuard");
+
     assert(val_constant->is_constant);
     uint64_t val = val_constant->constant_value;
-
-    restoreArgs();
 
     // TODO if var is a constant, we will end up emitting something like
     //   mov $0x123, %rax
@@ -356,6 +378,7 @@ void Rewriter::_addAttrGuard(RewriterVar* var, int offset, RewriterVar* val_cons
         assembler->cmp(assembler::Indirect(var_reg, offset), assembler::Immediate(val));
     }
 
+    restoreArgs(); // can only do movs, doesn't affect flags, so it's safe
     assertArgsInPlace();
     if (negate)
         assembler->je(assembler::JumpDestination::fromStart(rewrite->getSlotSize()));
@@ -369,12 +392,16 @@ void Rewriter::_addAttrGuard(RewriterVar* var, int offset, RewriterVar* val_cons
 }
 
 RewriterVar* RewriterVar::getAttr(int offset, Location dest, assembler::MovType type) {
+    STAT_TIMER(t0, "us_timer_rewriter", 10);
+
     RewriterVar* result = rewriter->createNewVar();
     rewriter->addAction([=]() { rewriter->_getAttr(result, this, offset, dest, type); }, { this }, ActionType::NORMAL);
     return result;
 }
 
 void Rewriter::_getAttr(RewriterVar* result, RewriterVar* ptr, int offset, Location dest, assembler::MovType type) {
+    assembler->comment("_getAttr");
+
     // TODO if var is a constant, we will end up emitting something like
     //   mov $0x123, %rax
     //   mov $0x10(%rax), %rdi
@@ -394,12 +421,16 @@ void Rewriter::_getAttr(RewriterVar* result, RewriterVar* ptr, int offset, Locat
 }
 
 RewriterVar* RewriterVar::getAttrDouble(int offset, Location dest) {
+    STAT_TIMER(t0, "us_timer_rewriter", 10);
+
     RewriterVar* result = rewriter->createNewVar();
     rewriter->addAction([=]() { rewriter->_getAttrDouble(result, this, offset, dest); }, { this }, ActionType::NORMAL);
     return result;
 }
 
 void Rewriter::_getAttrDouble(RewriterVar* result, RewriterVar* ptr, int offset, Location dest) {
+    assembler->comment("_getAttrDouble");
+
     assembler::Register ptr_reg = ptr->getInReg();
 
     ptr->bumpUse();
@@ -412,12 +443,16 @@ void Rewriter::_getAttrDouble(RewriterVar* result, RewriterVar* ptr, int offset,
 }
 
 RewriterVar* RewriterVar::getAttrFloat(int offset, Location dest) {
+    STAT_TIMER(t0, "us_timer_rewriter", 10);
+
     RewriterVar* result = rewriter->createNewVar();
     rewriter->addAction([=]() { rewriter->_getAttrFloat(result, this, offset, dest); }, { this }, ActionType::NORMAL);
     return result;
 }
 
 void Rewriter::_getAttrFloat(RewriterVar* result, RewriterVar* ptr, int offset, Location dest) {
+    assembler->comment("_getAttrFloat");
+
     assembler::Register ptr_reg = ptr->getInReg();
 
     ptr->bumpUse();
@@ -433,6 +468,8 @@ void Rewriter::_getAttrFloat(RewriterVar* result, RewriterVar* ptr, int offset, 
 }
 
 RewriterVar* RewriterVar::cmp(AST_TYPE::AST_TYPE cmp_type, RewriterVar* other, Location dest) {
+    STAT_TIMER(t0, "us_timer_rewriter", 10);
+
     RewriterVar* result = rewriter->createNewVar();
     rewriter->addAction([=]() { rewriter->_cmp(result, this, cmp_type, other, dest); }, { this, other },
                         ActionType::NORMAL);
@@ -440,6 +477,8 @@ RewriterVar* RewriterVar::cmp(AST_TYPE::AST_TYPE cmp_type, RewriterVar* other, L
 }
 
 void Rewriter::_cmp(RewriterVar* result, RewriterVar* v1, AST_TYPE::AST_TYPE cmp_type, RewriterVar* v2, Location dest) {
+    assembler->comment("_cmp");
+
     assembler::Register v1_reg = v1->getInReg();
     assembler::Register v2_reg = v2->getInReg();
     assert(v1_reg != v2_reg); // TODO how do we ensure this?
@@ -466,12 +505,16 @@ void Rewriter::_cmp(RewriterVar* result, RewriterVar* v1, AST_TYPE::AST_TYPE cmp
 }
 
 RewriterVar* RewriterVar::toBool(Location dest) {
+    STAT_TIMER(t0, "us_timer_rewriter", 10);
+
     RewriterVar* result = rewriter->createNewVar();
     rewriter->addAction([=]() { rewriter->_toBool(result, this, dest); }, { this }, ActionType::NORMAL);
     return result;
 }
 
 void Rewriter::_toBool(RewriterVar* result, RewriterVar* var, Location dest) {
+    assembler->comment("_toBool");
+
     assembler::Register this_reg = var->getInReg();
 
     var->bumpUse();
@@ -487,10 +530,14 @@ void Rewriter::_toBool(RewriterVar* result, RewriterVar* var, Location dest) {
 }
 
 void RewriterVar::setAttr(int offset, RewriterVar* val) {
+    STAT_TIMER(t0, "us_timer_rewriter", 10);
+
     rewriter->addAction([=]() { rewriter->_setAttr(this, offset, val); }, { this, val }, ActionType::MUTATION);
 }
 
 void Rewriter::_setAttr(RewriterVar* ptr, int offset, RewriterVar* val) {
+    assembler->comment("_setAttr");
+
     assembler::Register ptr_reg = ptr->getInReg();
 
     bool is_immediate;
@@ -506,6 +553,12 @@ void Rewriter::_setAttr(RewriterVar* ptr, int offset, RewriterVar* val) {
     }
 
     ptr->bumpUse();
+
+    // If the value is a scratch allocated memory array we have to make sure we won't release it immediately.
+    // Because this setAttr stored a reference to it inside a field and the rewriter can't currently track this uses and
+    // will think it's unused.
+    if (val->hasScratchAllocation())
+        val->resetHasScratchAllocation();
     val->bumpUse();
 
     assertConsistent();
@@ -518,7 +571,7 @@ void RewriterVar::dump() {
 }
 
 assembler::Immediate RewriterVar::tryGetAsImmediate(bool* is_immediate) {
-    if (this->is_constant && !isLargeConstant(this->constant_value)) {
+    if (this->is_constant && !Rewriter::isLargeConstant(this->constant_value)) {
         *is_immediate = true;
         return assembler::Immediate(this->constant_value);
     } else {
@@ -532,7 +585,7 @@ assembler::Register RewriterVar::getInReg(Location dest, bool allow_constant_in_
 
 #ifndef NDEBUG
     if (!allow_constant_in_reg) {
-        assert(!is_constant || isLargeConstant(constant_value));
+        assert(!is_constant || Rewriter::isLargeConstant(constant_value));
     }
 #endif
 
@@ -559,6 +612,8 @@ assembler::Register RewriterVar::getInReg(Location dest, bool allow_constant_in_
             if (dest.type != Location::AnyReg) {
                 assembler::Register dest_reg = dest.asRegister();
                 assert(dest_reg != reg); // should have been caught by the previous case
+
+                rewriter->allocReg(dest);
 
                 rewriter->assembler->mov(reg, dest_reg);
                 rewriter->addLocationToVar(this, dest_reg);
@@ -656,20 +711,31 @@ void Rewriter::_trap() {
 }
 
 RewriterVar* Rewriter::loadConst(int64_t val, Location dest) {
-    RewriterVar*& const_loader_var = const_loader.constToVar[val];
-    if (!const_loader_var) {
-        const_loader_var = createNewConstantVar(val);
+    STAT_TIMER(t0, "us_timer_rewriter", 10);
+
+    for (auto& p : const_loader.consts) {
+        if (p.first != val)
+            continue;
+
+        return p.second;
     }
+
+    RewriterVar* const_loader_var = createNewConstantVar(val);
+    const_loader.consts.push_back(std::make_pair(val, const_loader_var));
     return const_loader_var;
 }
 
 RewriterVar* Rewriter::call(bool has_side_effects, void* func_addr) {
+    STAT_TIMER(t0, "us_timer_rewriter", 10);
+
     RewriterVar::SmallVector args;
     RewriterVar::SmallVector args_xmm;
     return call(has_side_effects, func_addr, args, args_xmm);
 }
 
 RewriterVar* Rewriter::call(bool has_side_effects, void* func_addr, RewriterVar* arg0) {
+    STAT_TIMER(t0, "us_timer_rewriter", 10);
+
     RewriterVar::SmallVector args;
     RewriterVar::SmallVector args_xmm;
     args.push_back(arg0);
@@ -677,6 +743,8 @@ RewriterVar* Rewriter::call(bool has_side_effects, void* func_addr, RewriterVar*
 }
 
 RewriterVar* Rewriter::call(bool has_side_effects, void* func_addr, RewriterVar* arg0, RewriterVar* arg1) {
+    STAT_TIMER(t0, "us_timer_rewriter", 10);
+
     RewriterVar::SmallVector args;
     RewriterVar::SmallVector args_xmm;
     args.push_back(arg0);
@@ -686,6 +754,8 @@ RewriterVar* Rewriter::call(bool has_side_effects, void* func_addr, RewriterVar*
 
 RewriterVar* Rewriter::call(bool has_side_effects, void* func_addr, RewriterVar* arg0, RewriterVar* arg1,
                             RewriterVar* arg2) {
+    STAT_TIMER(t0, "us_timer_rewriter", 10);
+
     RewriterVar::SmallVector args;
     RewriterVar::SmallVector args_xmm;
     args.push_back(arg0);
@@ -696,12 +766,26 @@ RewriterVar* Rewriter::call(bool has_side_effects, void* func_addr, RewriterVar*
 
 RewriterVar* Rewriter::call(bool has_side_effects, void* func_addr, RewriterVar* arg0, RewriterVar* arg1,
                             RewriterVar* arg2, RewriterVar* arg3) {
+    STAT_TIMER(t0, "us_timer_rewriter", 10);
+
     RewriterVar::SmallVector args;
     RewriterVar::SmallVector args_xmm;
     args.push_back(arg0);
     args.push_back(arg1);
     args.push_back(arg2);
     args.push_back(arg3);
+    return call(has_side_effects, func_addr, args, args_xmm);
+}
+
+RewriterVar* Rewriter::call(bool has_side_effects, void* func_addr, RewriterVar* arg0, RewriterVar* arg1,
+                            RewriterVar* arg2, RewriterVar* arg3, RewriterVar* arg4) {
+    RewriterVar::SmallVector args;
+    RewriterVar::SmallVector args_xmm;
+    args.push_back(arg0);
+    args.push_back(arg1);
+    args.push_back(arg2);
+    args.push_back(arg3);
+    args.push_back(arg4);
     return call(has_side_effects, func_addr, args, args_xmm);
 }
 
@@ -735,8 +819,8 @@ RewriterVar* Rewriter::call(bool has_side_effects, void* func_addr, const Rewrit
     return result;
 }
 
-void Rewriter::_call(RewriterVar* result, bool has_side_effects, void* func_addr, const RewriterVar::SmallVector& args,
-                     const RewriterVar::SmallVector& args_xmm) {
+void Rewriter::_setupCall(bool has_side_effects, const RewriterVar::SmallVector& args,
+                          const RewriterVar::SmallVector& args_xmm) {
     if (has_side_effects)
         assert(done_guarding);
 
@@ -755,25 +839,19 @@ void Rewriter::_call(RewriterVar* result, bool has_side_effects, void* func_addr
 
     if (has_side_effects) {
         if (!marked_inside_ic) {
-            // assembler->trap();
-
-            // TODO this is super hacky: we don't know the address that we want to inc/dec, since
-            // it depends on the slot that we end up picking, so just write out an arbitrary
-            // constant an we'll rewrite it later
-            // TODO if we can guarantee that the mark_addr will fit in 32 bits,
-            // we can use a more compact instruction encoding
-            mark_addr_addrs.push_back((void**)(assembler->curInstPointer() + 2));
-            assembler::Register reg = allocReg(Location::any());
-            assembler->mov(assembler::Immediate(0x1234567890abcdefL), reg);
-            assembler->incl(assembler::Indirect(reg, 0));
+            uintptr_t counter_addr = (uintptr_t)(&picked_slot->num_inside);
+            if (isLargeConstant(counter_addr)) {
+                assembler::Register reg = allocReg(Location::any(), getReturnDestination());
+                assembler->mov(assembler::Immediate(counter_addr), reg);
+                assembler->incl(assembler::Indirect(reg, 0));
+            } else {
+                assembler->incl(assembler::Immediate(counter_addr));
+            }
 
             assertConsistent();
             marked_inside_ic = true;
         }
     }
-
-    // RewriterVarUsage scratch = createNewVar(Location::any());
-    assembler::Register r = allocReg(assembler::R11);
 
     for (int i = 0; i < args.size(); i++) {
         Location l(Location::forArg(i));
@@ -826,15 +904,6 @@ void Rewriter::_call(RewriterVar* result, bool has_side_effects, void* func_addr
     }
 #endif
 
-    for (RewriterVar* arg : args) {
-        arg->bumpUse();
-    }
-    for (RewriterVar* arg_xmm : args_xmm) {
-        arg_xmm->bumpUse();
-    }
-
-    assertConsistent();
-
     // Spill caller-saved registers:
     for (auto check_reg : caller_save_registers) {
         // check_reg.dump();
@@ -868,10 +937,14 @@ void Rewriter::_call(RewriterVar* result, bool has_side_effects, void* func_addr
         if (need_to_spill) {
             if (check_reg.type == Location::Register) {
                 spillRegister(check_reg.asRegister());
+                if (failed)
+                    return;
             } else {
                 assert(check_reg.type == Location::XMMRegister);
                 assert(var->locations.size() == 1);
                 spillRegister(check_reg.asXMMRegister());
+                if (failed)
+                    return;
             }
         } else {
             removeLocationFromVar(var, check_reg);
@@ -890,19 +963,53 @@ void Rewriter::_call(RewriterVar* result, bool has_side_effects, void* func_addr
         assert(!l.isClobberedByCall());
     }
 #endif
+}
 
-    const_loader.loadConstIntoReg((uint64_t)func_addr, r);
-    assembler->callq(r);
+void Rewriter::_call(RewriterVar* result, bool has_side_effects, void* func_addr, const RewriterVar::SmallVector& args,
+                     const RewriterVar::SmallVector& args_xmm) {
+    assembler->comment("_call");
 
-    assert(vars_by_location.count(assembler::RAX) == 0);
-    result->initializeInReg(assembler::RAX);
+    // RewriterVarUsage scratch = createNewVar(Location::any());
+    assembler::Register r = allocReg(assembler::R11);
+
+    _setupCall(has_side_effects, args, args_xmm);
+
+    for (RewriterVar* arg : args) {
+        arg->bumpUse();
+    }
+    for (RewriterVar* arg_xmm : args_xmm) {
+        arg_xmm->bumpUse();
+    }
 
     assertConsistent();
+
+    // make sure setupCall doesn't use R11
+    assert(vars_by_location.count(assembler::R11) == 0);
+
+    uint64_t asm_address = (uint64_t)assembler->curInstPointer() + 5;
+    uint64_t real_asm_address = asm_address + (uint64_t)rewrite->getSlotStart() - (uint64_t)assembler->startAddr();
+    int64_t offset = (int64_t)((uint64_t)func_addr - real_asm_address);
+    if (isLargeConstant(offset)) {
+        const_loader.loadConstIntoReg((uint64_t)func_addr, r);
+        assembler->callq(r);
+    } else {
+        assembler->call(assembler::Immediate(offset));
+        assert(assembler->hasFailed() || asm_address == (uint64_t)assembler->curInstPointer());
+    }
+
+    if (!failed) {
+        assert(vars_by_location.count(assembler::RAX) == 0);
+        result->initializeInReg(assembler::RAX);
+
+        assertConsistent();
+    }
 
     result->releaseIfNoUses();
 }
 
 void Rewriter::abort() {
+    STAT_TIMER(t0, "us_timer_rewriter", 10);
+
     assert(!finished);
     finished = true;
     rewrite->abort();
@@ -925,6 +1032,17 @@ void RewriterVar::bumpUse() {
         for (Location loc : locations) {
             rewriter->vars_by_location.erase(loc);
         }
+
+        // releases allocated scratch space
+        if (hasScratchAllocation()) {
+            for (int i = 0; i < scratch_allocation.second; ++i) {
+                Location l = Location(Location::Scratch, (scratch_allocation.first + i) * 8);
+                assert(rewriter->vars_by_location[l] == LOCATION_PLACEHOLDER);
+                rewriter->vars_by_location.erase(l);
+            }
+            resetHasScratchAllocation();
+        }
+
         this->locations.clear();
     }
 }
@@ -939,11 +1057,24 @@ void RewriterVar::releaseIfNoUses() {
         for (Location loc : locations) {
             rewriter->vars_by_location.erase(loc);
         }
+
+        // releases allocated scratch space
+        if (hasScratchAllocation()) {
+            for (int i = 0; i < scratch_allocation.second; ++i) {
+                Location l = Location(Location::Scratch, (scratch_allocation.first + i) * 8);
+                assert(rewriter->vars_by_location[l] == LOCATION_PLACEHOLDER);
+                rewriter->vars_by_location.erase(l);
+            }
+            resetHasScratchAllocation();
+        }
+
         this->locations.clear();
     }
 }
 
 void Rewriter::commit() {
+    STAT_TIMER(t0, "us_timer_rewriter", 10);
+
     assert(!finished);
     initPhaseEmitting();
 
@@ -975,6 +1106,13 @@ void Rewriter::commit() {
     for (int i = 0; i < live_outs.size(); i++) {
         live_outs[i]->uses.push_back(actions.size());
     }
+    for (RewriterVar& var : vars) {
+        // Add a use for every constant. This helps make constants available for the lea stuff
+        // But since "spilling" a constant has no cost, it shouldn't add register pressure.
+        if (var.is_constant) {
+            var.uses.push_back(actions.size());
+        }
+    }
 
     assertConsistent();
 
@@ -1005,6 +1143,12 @@ void Rewriter::commit() {
         on_done_guarding();
     }
 
+    picked_slot = rewrite->prepareEntry();
+    if (picked_slot == NULL) {
+        on_assemblyfail();
+        return;
+    }
+
     // Now, start emitting assembly; check if we're dong guarding after each.
     for (int i = 0; i < actions.size(); i++) {
         actions[i].action();
@@ -1022,32 +1166,41 @@ void Rewriter::commit() {
     }
 
     if (marked_inside_ic) {
-        // TODO this is super hacky: we don't know the address that we want to inc/dec, since
-        // it depends on the slot that we end up picking, so just write out an arbitrary
-        // constant an we'll rewrite it later
-        // TODO if we can guarantee that the mark_addr will fit in 32 bits,
-        // we can use a more compact instruction encoding
-        mark_addr_addrs.push_back((void**)(assembler->curInstPointer() + 2));
-        assembler::Register reg = allocReg(Location::any(), getReturnDestination());
-        assembler->mov(assembler::Immediate(0x1234567890abcdefL), reg);
-        assembler->decl(assembler::Indirect(reg, 0));
+        assembler->comment("mark inside ic");
+
+        uintptr_t counter_addr = (uintptr_t)(&picked_slot->num_inside);
+        if (isLargeConstant(counter_addr)) {
+            assembler::Register reg = allocReg(Location::any(), getReturnDestination());
+            assembler->mov(assembler::Immediate(counter_addr), reg);
+            assembler->decl(assembler::Indirect(reg, 0));
+        } else {
+            assembler->decl(assembler::Immediate(counter_addr));
+        }
     }
+
+    assembler->comment("live outs");
 
 // Make sure that we have been calling bumpUse correctly.
 // All uses should have been accounted for, other than the live outs
 #ifndef NDEBUG
-    for (RewriterVar* var : vars) {
+    for (RewriterVar& var : vars) {
         int num_as_live_out = 0;
         for (RewriterVar* live_out : live_outs) {
-            if (live_out == var) {
+            if (live_out == &var) {
                 num_as_live_out++;
             }
         }
-        assert(var->next_use + num_as_live_out == var->uses.size());
+        assert(var.next_use + num_as_live_out + (var.is_constant ? 1 : 0) == var.uses.size());
     }
 #endif
 
     assert(live_out_regs.size() == live_outs.size());
+
+    for (RewriterVar& var : vars) {
+        if (var.is_constant) {
+            var.bumpUse();
+        }
+    }
 
     // Live-outs placement: sometimes a live out can be placed into the location of a different live-out,
     // so we need to reshuffle and solve those conflicts.
@@ -1141,6 +1294,15 @@ void Rewriter::commit() {
         return;
     }
 
+    uint64_t asm_size_bytes = assembler->bytesWritten();
+#ifndef NDEBUG
+    std::string asm_dump;
+    if (ASSEMBLY_LOGGING) {
+        assembler->comment("size in bytes: " + std::to_string(asm_size_bytes));
+        asm_dump = assembler->dump();
+    }
+#endif
+
     rewrite->commit(this);
 
     if (assembler->hasFailed()) {
@@ -1150,20 +1312,21 @@ void Rewriter::commit() {
 
     finished = true;
 
+#ifndef NDEBUG
+    if (ASSEMBLY_LOGGING) {
+        fprintf(stderr, "%s\n\n", asm_dump.c_str());
+    }
+#endif
+
     static StatCounter ic_rewrites_committed("ic_rewrites_committed");
     ic_rewrites_committed.log();
+
+    static StatCounter ic_rewrites_total_bytes("ic_rewrites_total_bytes");
+    ic_rewrites_total_bytes.log(asm_size_bytes);
 }
 
-bool Rewriter::finishAssembly(ICSlotInfo* picked_slot, int continue_offset) {
-    if (marked_inside_ic) {
-        void* mark_addr = &picked_slot->num_inside;
-
-        // Go back and rewrite the faked constants to point to the correct address:
-        for (void** mark_addr_addr : mark_addr_addrs) {
-            assert(*mark_addr_addr == (void*)0x1234567890abcdefL);
-            *mark_addr_addr = mark_addr;
-        }
-    }
+bool Rewriter::finishAssembly(int continue_offset) {
+    assert(picked_slot);
 
     assembler->jmp(assembler::JumpDestination::fromStart(continue_offset));
 
@@ -1173,7 +1336,10 @@ bool Rewriter::finishAssembly(ICSlotInfo* picked_slot, int continue_offset) {
 }
 
 void Rewriter::commitReturning(RewriterVar* var) {
+    STAT_TIMER(t0, "us_timer_rewriter", 10);
+
     addAction([=]() {
+        assembler->comment("commitReturning");
         var->getInReg(getReturnDestination(), true /* allow_constant_in_reg */);
         var->bumpUse();
     }, { var }, ActionType::NORMAL);
@@ -1195,18 +1361,21 @@ Location Rewriter::allocScratch() {
             return l;
         }
     }
-
     failed = true;
     return Location(Location::None, 0);
 }
 
 RewriterVar* Rewriter::add(RewriterVar* a, int64_t b, Location dest) {
+    STAT_TIMER(t0, "us_timer_rewriter", 10);
+
     RewriterVar* result = createNewVar();
     addAction([=]() { this->_add(result, a, b, dest); }, { a }, ActionType::NORMAL);
     return result;
 }
 
 void Rewriter::_add(RewriterVar* result, RewriterVar* a, int64_t b, Location dest) {
+    assembler->comment("_add");
+
     // TODO better reg alloc (e.g., mov `a` directly to the dest reg)
 
     assembler::Register newvar_reg = allocReg(dest);
@@ -1229,12 +1398,16 @@ void Rewriter::_add(RewriterVar* result, RewriterVar* a, int64_t b, Location des
 }
 
 RewriterVar* Rewriter::allocate(int n) {
+    STAT_TIMER(t0, "us_timer_rewriter", 10);
+
     RewriterVar* result = createNewVar();
     addAction([=]() { this->_allocate(result, n); }, {}, ActionType::NORMAL);
     return result;
 }
 
 int Rewriter::_allocate(RewriterVar* result, int n) {
+    assembler->comment("_allocate");
+
     assert(n >= 1);
 
     int scratch_size = rewrite->getScratchSize();
@@ -1255,13 +1428,14 @@ int Rewriter::_allocate(RewriterVar* result, int n) {
                     vars_by_location[m] = LOCATION_PLACEHOLDER;
                 }
 
+                assert(result->scratch_allocation == std::make_pair(0, 0));
+                result->scratch_allocation = std::make_pair(a, n);
+
                 assembler::Register r = result->initializeInReg();
 
-                // TODO should be a LEA instruction
-                // In fact, we could do something like we do for constants and only load
+                // TODO we could do something like we do for constants and only load
                 // this when necessary, so it won't spill. Is that worth?
-                assembler->mov(assembler::RSP, r);
-                assembler->add(assembler::Immediate(8 * a + rewrite->getScratchRspOffset()), r);
+                assembler->lea(assembler::Indirect(assembler::RSP, 8 * a + rewrite->getScratchRspOffset()), r);
 
                 assertConsistent();
                 result->releaseIfNoUses();
@@ -1271,16 +1445,21 @@ int Rewriter::_allocate(RewriterVar* result, int n) {
             consec = 0;
         }
     }
-    RELEASE_ASSERT(0, "Using all %d bytes of scratch!", scratch_size);
+    failed = true;
+    return 0;
 }
 
 RewriterVar* Rewriter::allocateAndCopy(RewriterVar* array_ptr, int n) {
+    STAT_TIMER(t0, "us_timer_rewriter", 10);
+
     RewriterVar* result = createNewVar();
     addAction([=]() { this->_allocateAndCopy(result, array_ptr, n); }, { array_ptr }, ActionType::NORMAL);
     return result;
 }
 
 void Rewriter::_allocateAndCopy(RewriterVar* result, RewriterVar* array_ptr, int n) {
+    assembler->comment("_allocateAndCopy");
+
     // TODO smart register allocation
 
     int offset = _allocate(result, n);
@@ -1301,6 +1480,8 @@ void Rewriter::_allocateAndCopy(RewriterVar* result, RewriterVar* array_ptr, int
 }
 
 RewriterVar* Rewriter::allocateAndCopyPlus1(RewriterVar* first_elem, RewriterVar* rest_ptr, int n_rest) {
+    STAT_TIMER(t0, "us_timer_rewriter", 10);
+
     if (n_rest > 0)
         assert(rest_ptr != NULL);
     else
@@ -1315,6 +1496,8 @@ RewriterVar* Rewriter::allocateAndCopyPlus1(RewriterVar* first_elem, RewriterVar
 }
 
 void Rewriter::_allocateAndCopyPlus1(RewriterVar* result, RewriterVar* first_elem, RewriterVar* rest_ptr, int n_rest) {
+    assembler->comment("_allocateAndCopyPlus1");
+
     int offset = _allocate(result, n_rest + 1);
 
     assembler::Register first_reg = first_elem->getInReg();
@@ -1510,9 +1693,8 @@ void Rewriter::removeLocationFromVar(RewriterVar* var, Location l) {
 RewriterVar* Rewriter::createNewVar() {
     assertPhaseCollecting();
 
-    RewriterVar* var = new RewriterVar(this);
-    vars.push_back(var);
-    return var;
+    vars.emplace_back(this);
+    return &vars.back();
 }
 
 RewriterVar* Rewriter::createNewConstantVar(uint64_t val) {
@@ -1568,11 +1750,12 @@ TypeRecorder* Rewriter::getTypeRecorder() {
     return rewrite->getTypeRecorder();
 }
 
-Rewriter::Rewriter(ICSlotRewrite* rewrite, int num_args, const std::vector<int>& live_outs)
-    : rewrite(rewrite),
-      assembler(rewrite->getAssembler()),
+Rewriter::Rewriter(std::unique_ptr<ICSlotRewrite> rewrite, int num_args, const std::vector<int>& live_outs)
+    : rewrite(std::move(rewrite)),
+      assembler(this->rewrite->getAssembler()),
+      picked_slot(NULL),
       const_loader(this),
-      return_location(rewrite->returnRegister()),
+      return_location(this->rewrite->returnRegister()),
       failed(false),
       added_changing_action(false),
       marked_inside_ic(false),
@@ -1580,9 +1763,6 @@ Rewriter::Rewriter(ICSlotRewrite* rewrite, int num_args, const std::vector<int>&
       done_guarding(false) {
     initPhaseCollecting();
 
-#ifndef NDEBUG
-    start_vars = RewriterVar::nvars;
-#endif
     finished = false;
 
     for (int i = 0; i < num_args; i++) {
@@ -1630,10 +1810,10 @@ Rewriter::Rewriter(ICSlotRewrite* rewrite, int num_args, const std::vector<int>&
     // the entire scratch space.
     bool VALIDATE_SCRATCH_SPACE = false;
     if (VALIDATE_SCRATCH_SPACE) {
-        int scratch_size = rewrite->getScratchSize();
+        int scratch_size = this->rewrite->getScratchSize();
         for (int i = 0; i < scratch_size; i += 8) {
             assembler->movq(assembler::Immediate(0x12345678UL),
-                            assembler::Indirect(assembler::RSP, i + rewrite->getScratchRspOffset()));
+                            assembler::Indirect(assembler::RSP, i + this->rewrite->getScratchRspOffset()));
         }
     }
 }
@@ -1697,6 +1877,8 @@ static inline void log_ic_attempts_started(const char* debug_name) {
 }
 
 Rewriter* Rewriter::createRewriter(void* rtn_addr, int num_args, const char* debug_name) {
+    STAT_TIMER(t0, "us_timer_createrewriter", 10);
+
     ICInfo* ic = NULL;
 
     // Horrible non-robust optimization: addresses below this address are probably in the binary (ex the interpreter),
@@ -1725,10 +1907,6 @@ Rewriter* Rewriter::createRewriter(void* rtn_addr, int num_args, const char* deb
     log_ic_attempts_started(debug_name);
     return new Rewriter(ic->startRewrite(debug_name), num_args, ic->getLiveOuts());
 }
-
-#ifndef NDEBUG
-int RewriterVar::nvars = 0;
-#endif
 
 static const int INITIAL_CALL_SIZE = 13;
 static const int DWARF_RBP_REGNUM = 6;
@@ -1798,28 +1976,6 @@ bool spillFrameArgumentIfNecessary(StackMap::Record::Location& l, uint8_t*& inst
     }
 }
 
-void* extractSlowpathFunc(uint8_t* pp_addr) {
-#ifndef NDEBUG
-    // mov $imm, %r11:
-    ASSERT(pp_addr[0] == 0x49, "%x", pp_addr[0]);
-    assert(pp_addr[1] == 0xbb);
-    // 8 bytes of the addr
-
-    // callq *%r11:
-    assert(pp_addr[10] == 0x41);
-    assert(pp_addr[11] == 0xff);
-    assert(pp_addr[12] == 0xd3);
-
-    int i = INITIAL_CALL_SIZE;
-    while (*(pp_addr + i) == 0x66 || *(pp_addr + i) == 0x0f || *(pp_addr + i) == 0x2e)
-        i++;
-    assert(*(pp_addr + i) == 0x90 || *(pp_addr + i) == 0x1f);
-#endif
-
-    void* call_addr = *(void**)&pp_addr[2];
-    return call_addr;
-}
-
 void setSlowpathFunc(uint8_t* pp_addr, void* func) {
 #ifndef NDEBUG
     // mov $imm, %r11:
@@ -1841,9 +1997,9 @@ void setSlowpathFunc(uint8_t* pp_addr, void* func) {
     *(void**)&pp_addr[2] = func;
 }
 
-std::pair<uint8_t*, uint8_t*> initializePatchpoint3(void* slowpath_func, uint8_t* start_addr, uint8_t* end_addr,
-                                                    int scratch_offset, int scratch_size,
-                                                    const std::unordered_set<int>& live_outs, SpillMap& remapped) {
+PatchpointInitializationInfo initializePatchpoint3(void* slowpath_func, uint8_t* start_addr, uint8_t* end_addr,
+                                                   int scratch_offset, int scratch_size,
+                                                   const std::unordered_set<int>& live_outs, SpillMap& remapped) {
     assert(start_addr < end_addr);
 
     int est_slowpath_size = INITIAL_CALL_SIZE;
@@ -1851,14 +2007,18 @@ std::pair<uint8_t*, uint8_t*> initializePatchpoint3(void* slowpath_func, uint8_t
     std::vector<assembler::GenericRegister> regs_to_spill;
     std::vector<assembler::Register> regs_to_reload;
 
+    std::unordered_set<int> live_outs_for_slot;
+
     for (int dwarf_regnum : live_outs) {
         assembler::GenericRegister ru = assembler::GenericRegister::fromDwarf(dwarf_regnum);
 
         assert(!(ru.type == assembler::GenericRegister::GP && ru.gp == assembler::R11) && "We assume R11 is free!");
 
         if (ru.type == assembler::GenericRegister::GP) {
-            if (ru.gp == assembler::RSP || ru.gp.isCalleeSave())
+            if (ru.gp == assembler::RSP || ru.gp.isCalleeSave()) {
+                live_outs_for_slot.insert(dwarf_regnum);
                 continue;
+            }
         }
 
         // Location(ru).dump();
@@ -1868,8 +2028,11 @@ std::pair<uint8_t*, uint8_t*> initializePatchpoint3(void* slowpath_func, uint8_t
 
             regs_to_reload.push_back(ru.gp);
             est_slowpath_size += 7; // 7 bytes for a single mov
+
             continue;
         }
+
+        live_outs_for_slot.insert(dwarf_regnum);
 
         regs_to_spill.push_back(ru);
 
@@ -1899,8 +2062,21 @@ std::pair<uint8_t*, uint8_t*> initializePatchpoint3(void* slowpath_func, uint8_t
     // if (regs_to_spill.size())
     // assem.trap();
     assem.emitBatchPush(scratch_offset, scratch_size, regs_to_spill);
-    uint8_t* rtn = assem.emitCall(slowpath_func, assembler::R11);
+    uint8_t* slowpath_rtn_addr = assem.emitCall(slowpath_func, assembler::R11);
     assem.emitBatchPop(scratch_offset, scratch_size, regs_to_spill);
+
+    // The place we should continue if we took a fast path.
+    // If we have to reload things, make sure to set it to the beginning
+    // of the reloading section.
+    // If there's nothing to reload, as a small optimization, set it to the end of
+    // the patchpoint, past any nops.
+    // (Actually I think the calculations of the size above were exact so there should
+    // always be 0 nops, but this optimization shouldn't hurt.)
+    uint8_t* continue_addr;
+    if (regs_to_reload.empty())
+        continue_addr = end_addr;
+    else
+        continue_addr = assem.curInstPointer();
 
     for (assembler::Register r : regs_to_reload) {
         StackMap::Record::Location& l = remapped[r];
@@ -1913,6 +2089,7 @@ std::pair<uint8_t*, uint8_t*> initializePatchpoint3(void* slowpath_func, uint8_t
     assem.fillWithNops();
     assert(!assem.hasFailed());
 
-    return std::make_pair(slowpath_start, rtn);
+    return PatchpointInitializationInfo(slowpath_start, slowpath_rtn_addr, continue_addr,
+                                        std::move(live_outs_for_slot));
 }
 }

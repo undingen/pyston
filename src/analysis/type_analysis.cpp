@@ -74,10 +74,7 @@ static BoxedClass* simpleCallSpeculation(AST_Call* node, CompilerType* rtn_type,
     if (node->func->type == AST_TYPE::Name && ast_cast<AST_Name>(node->func)->id.s() == "xrange")
         return xrange_cls;
 
-    // if (node->func->type == AST_TYPE::Attribute && ast_cast<AST_Attribute>(node->func)->attr == "dot")
-    // return float_cls;
-
-    return NULL;
+    return predictClassFor(node);
 }
 
 typedef llvm::DenseMap<InternedString, CompilerType*> TypeMap;
@@ -115,8 +112,7 @@ private:
         assert(old_type);
         assert(speculation != TypeAnalysis::NONE);
 
-        if (VERBOSITY() >= 3)
-            printf("Would maybe try to speculate but deopt is currently broken\n");
+        // TODO: reenable this
         return old_type;
 
         if (speculated_cls != NULL && speculated_cls->is_constant) {
@@ -226,7 +222,7 @@ private:
 
         // TODO this isn't the exact behavior
         BoxedString* name = getInplaceOpName(node->op_type);
-        CompilerType* attr_type = left->getattrType(name->s(), true);
+        CompilerType* attr_type = left->getattrType(name, true);
 
         if (attr_type == UNDEF)
             attr_type = UNKNOWN;
@@ -255,7 +251,7 @@ private:
 
         // TODO this isn't the exact behavior
         BoxedString* name = getOpName(node->op_type);
-        CompilerType* attr_type = left->getattrType(name->s(), true);
+        CompilerType* attr_type = left->getattrType(name, true);
 
         if (attr_type == UNDEF)
             attr_type = UNKNOWN;
@@ -340,7 +336,7 @@ private:
             }
 
             BoxedString* name = getOpName(node->ops[0]);
-            CompilerType* attr_type = left->getattrType(name->s(), true);
+            CompilerType* attr_type = left->getattrType(name, true);
 
             if (attr_type == UNDEF)
                 attr_type = UNKNOWN;
@@ -478,7 +474,7 @@ private:
     void* visit_subscript(AST_Subscript* node) override {
         CompilerType* val = getType(node->value);
         CompilerType* slice = getType(node->slice);
-        static std::string name("__getitem__");
+        static BoxedString* name = internStringImmortal("__getitem__");
         CompilerType* getitem_type = val->getattrType(name, true);
         std::vector<CompilerType*> args;
         args.push_back(slice);
@@ -498,7 +494,7 @@ private:
 
         // TODO this isn't the exact behavior
         BoxedString* name = getOpName(node->op_type);
-        CompilerType* attr_type = operand->getattrType(name->s(), true);
+        CompilerType* attr_type = operand->getattrType(name, true);
         std::vector<CompilerType*> arg_types;
         return attr_type->callType(ArgPassSpec(0), arg_types, NULL);
     }

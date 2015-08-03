@@ -17,6 +17,7 @@
 
 #include <map>
 
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/IR/Instructions.h"
 
@@ -33,6 +34,7 @@ class MDNode;
 
 namespace pyston {
 
+class AST_Invoke;
 class CFGBlock;
 class GCBuilder;
 struct PatchpointInfo;
@@ -54,9 +56,11 @@ extern const std::string FRAME_INFO_PTR_NAME;
 // TODO this probably shouldn't be here
 class IRGenState {
 private:
+    // Note: due to some not-yet-fixed behavior, cf->clfunc is NULL will only get set to point
+    // to clfunc at the end of irgen.
+    CLFunction* clfunc;
     CompiledFunction* cf;
     SourceInfo* source_info;
-    std::unique_ptr<LivenessAnalysis> liveness;
     std::unique_ptr<PhiAnalysis> phis;
     ParamNames* param_names;
     GCBuilder* gc;
@@ -68,13 +72,15 @@ private:
     llvm::Value* frame_info_arg;
     int scratch_size;
 
+    llvm::DenseMap<CFGBlock*, ExceptionStyle> landingpad_styles;
 
 public:
-    IRGenState(CompiledFunction* cf, SourceInfo* source_info, std::unique_ptr<LivenessAnalysis> liveness,
-               std::unique_ptr<PhiAnalysis> phis, ParamNames* param_names, GCBuilder* gc, llvm::MDNode* func_dbg_info);
+    IRGenState(CLFunction* clfunc, CompiledFunction* cf, SourceInfo* source_info, std::unique_ptr<PhiAnalysis> phis,
+               ParamNames* param_names, GCBuilder* gc, llvm::MDNode* func_dbg_info);
     ~IRGenState();
 
     CompiledFunction* getCurFunction() { return cf; }
+    CLFunction* getCL() { return clfunc; }
 
     llvm::Function* getLLVMFunction() { return cf->func; }
 
@@ -90,7 +96,7 @@ public:
 
     SourceInfo* getSourceInfo() { return source_info; }
 
-    LivenessAnalysis* getLiveness() { return liveness.get(); }
+    LivenessAnalysis* getLiveness() { return source_info->getLiveness(); }
     PhiAnalysis* getPhis() { return phis.get(); }
 
     ScopeInfo* getScopeInfo();
@@ -101,6 +107,9 @@ public:
     ParamNames* getParamNames() { return param_names; }
 
     void setFrameInfoArgument(llvm::Value* v) { frame_info_arg = v; }
+
+    ExceptionStyle getLandingpadStyle(AST_Invoke* invoke);
+    ExceptionStyle getLandingpadStyle(CFGBlock* block);
 };
 
 // turns CFGBlocks into LLVM IR
@@ -133,11 +142,13 @@ public:
 };
 
 class IREmitter;
+class AST_Call;
 IREmitter* createIREmitter(IRGenState* irstate, llvm::BasicBlock*& curblock, IRGenerator* irgenerator = NULL);
 IRGenerator* createIRGenerator(IRGenState* irstate, std::unordered_map<CFGBlock*, llvm::BasicBlock*>& entry_blocks,
                                CFGBlock* myblock, TypeAnalysis* types);
 
 CLFunction* wrapFunction(AST* node, AST_arguments* args, const std::vector<AST_stmt*>& body, SourceInfo* source);
+std::vector<BoxedString*>* getKeywordNameStorage(AST_Call* node);
 }
 
 #endif

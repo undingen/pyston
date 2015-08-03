@@ -56,23 +56,31 @@ void ICSlotInfo::clear() {
     ic->clear(this);
 }
 
-ICSlotRewrite::ICSlotRewrite(ICInfo* ic, const char* debug_name) : ic(ic), debug_name(debug_name) {
-    buf = (uint8_t*)malloc(ic->getSlotSize());
-    assembler = new Assembler(buf, ic->getSlotSize());
-    assembler->nop();
+ICSlotRewrite::ICSlotRewrite(ICInfo* ic, const char* debug_name)
+    : ic(ic), debug_name(debug_name), buf((uint8_t*)malloc(ic->getSlotSize())), assembler(buf, ic->getSlotSize()) {
+    assembler.nop();
 
     if (VERBOSITY() >= 4)
         printf("starting %s icentry\n", debug_name);
 }
 
 ICSlotRewrite::~ICSlotRewrite() {
-    delete assembler;
     free(buf);
 }
 
 void ICSlotRewrite::abort() {
     ic->retry_backoff = std::min(MAX_RETRY_BACKOFF, 2 * ic->retry_backoff);
     ic->retry_in = ic->retry_backoff;
+}
+
+ICSlotInfo* ICSlotRewrite::prepareEntry() {
+    this->ic_entry = ic->pickEntryForRewrite(debug_name);
+    return this->ic_entry;
+}
+
+uint8_t* ICSlotRewrite::getSlotStart() {
+    assert(ic_entry != NULL);
+    return (uint8_t*)ic->start_addr + ic_entry->idx * ic->getSlotSize();
 }
 
 void ICSlotRewrite::commit(CommitHook* hook) {
@@ -91,25 +99,22 @@ void ICSlotRewrite::commit(CommitHook* hook) {
         return;
     }
 
-    ICSlotInfo* ic_entry = ic->pickEntryForRewrite(debug_name);
-    if (ic_entry == NULL)
-        return;
-
-    uint8_t* slot_start = (uint8_t*)ic->start_addr + ic_entry->idx * ic->getSlotSize();
+    uint8_t* slot_start = getSlotStart();
     uint8_t* continue_point = (uint8_t*)ic->continue_addr;
 
-    bool do_commit = hook->finishAssembly(ic_entry, continue_point - slot_start);
+    bool do_commit = hook->finishAssembly(continue_point - slot_start);
 
     if (!do_commit)
         return;
 
-    assert(assembler->isExactlyFull());
-    assert(!assembler->hasFailed());
+    assert(!assembler.hasFailed());
 
     for (int i = 0; i < dependencies.size(); i++) {
         ICInvalidator* invalidator = dependencies[i].first;
         invalidator->addDependent(ic_entry);
     }
+
+    ic->next_slot_to_try++;
 
     // if (VERBOSITY()) printf("Commiting to %p-%p\n", start, start + ic->slot_size);
     memcpy(slot_start, buf, ic->getSlotSize());
@@ -151,8 +156,8 @@ assembler::GenericRegister ICSlotRewrite::returnRegister() {
 
 
 
-ICSlotRewrite* ICInfo::startRewrite(const char* debug_name) {
-    return new ICSlotRewrite(this, debug_name);
+std::unique_ptr<ICSlotRewrite> ICInfo::startRewrite(const char* debug_name) {
+    return std::unique_ptr<ICSlotRewrite>(new ICSlotRewrite(this, debug_name));
 }
 
 ICSlotInfo* ICInfo::pickEntryForRewrite(const char* debug_name) {
@@ -166,18 +171,16 @@ ICSlotInfo* ICInfo::pickEntryForRewrite(const char* debug_name) {
             continue;
 
         if (VERBOSITY() >= 4) {
-            printf("committing %s icentry to in-use slot %d at %p\n", debug_name, i, start_addr);
+            printf("picking %s icentry to in-use slot %d at %p\n", debug_name, i, start_addr);
         }
-        next_slot_to_try = i + 1;
 
+        next_slot_to_try = i;
         return &sinfo;
     }
     if (VERBOSITY() >= 4)
         printf("not committing %s icentry since there are no available slots\n", debug_name);
     return NULL;
 }
-
-
 
 ICInfo::ICInfo(void* start_addr, void* slowpath_rtn_addr, void* continue_addr, StackInfo stack_info, int num_slots,
                int slot_size, llvm::CallingConv::ID calling_conv, const std::unordered_set<int>& live_outs,
@@ -201,7 +204,7 @@ ICInfo::ICInfo(void* start_addr, void* slowpath_rtn_addr, void* continue_addr, S
     }
 }
 
-static std::unordered_map<void*, ICInfo*> ics_by_return_addr;
+static llvm::DenseMap<void*, ICInfo*> ics_by_return_addr;
 std::unique_ptr<ICInfo> registerCompiledPatchpoint(uint8_t* start_addr, uint8_t* slowpath_start_addr,
                                                    uint8_t* continue_addr, uint8_t* slowpath_rtn_addr,
                                                    const ICSetupInfo* ic, StackInfo stack_info,
@@ -236,11 +239,11 @@ std::unique_ptr<ICInfo> registerCompiledPatchpoint(uint8_t* start_addr, uint8_t*
         // writer->emitNop();
         // writer->emitGuardFalse();
 
-        std::unique_ptr<Assembler> writer(new Assembler(start, ic->slot_size));
-        writer->nop();
-        // writer->trap();
-        // writer->jmp(JumpDestination::fromStart(ic->slot_size * (ic->num_slots - i)));
-        writer->jmp(JumpDestination::fromStart(slowpath_start_addr - start));
+        Assembler writer(start, ic->slot_size);
+        writer.nop();
+        // writer.trap();
+        // writer.jmp(JumpDestination::fromStart(ic->slot_size * (ic->num_slots - i)));
+        writer.jmp(JumpDestination::fromStart(slowpath_start_addr - start));
     }
 
     ICInfo* icinfo = new ICInfo(start_addr, slowpath_rtn_addr, continue_addr, stack_info, ic->num_slots, ic->slot_size,
@@ -258,7 +261,7 @@ void deregisterCompiledPatchpoint(ICInfo* ic) {
 
 ICInfo* getICInfo(void* rtn_addr) {
     // TODO: load this from the CF instead of tracking it separately
-    std::unordered_map<void*, ICInfo*>::iterator it = ics_by_return_addr.find(rtn_addr);
+    auto&& it = ics_by_return_addr.find(rtn_addr);
     if (it == ics_by_return_addr.end())
         return NULL;
     return it->second;
@@ -272,10 +275,10 @@ void ICInfo::clear(ICSlotInfo* icentry) {
     if (VERBOSITY() >= 4)
         printf("clearing patchpoint %p, slot at %p\n", start_addr, start);
 
-    std::unique_ptr<Assembler> writer(new Assembler(start, getSlotSize()));
-    writer->nop();
-    writer->jmp(JumpDestination::fromStart(getSlotSize()));
-    assert(writer->bytesWritten() <= IC_INVALDITION_HEADER_SIZE);
+    Assembler writer(start, getSlotSize());
+    writer.nop();
+    writer.jmp(JumpDestination::fromStart(getSlotSize()));
+    assert(writer.bytesWritten() <= IC_INVALDITION_HEADER_SIZE);
 
     // std::unique_ptr<MCWriter> writer(createMCWriter(start, getSlotSize(), 0));
     // writer->emitNop();

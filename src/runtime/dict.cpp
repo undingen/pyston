@@ -20,6 +20,7 @@
 #include "core/stats.h"
 #include "core/types.h"
 #include "gc/collector.h"
+#include "runtime/inline/list.h"
 #include "runtime/objmodel.h"
 #include "runtime/types.h"
 #include "runtime/util.h"
@@ -182,23 +183,54 @@ extern "C" int PyDict_Update(PyObject* a, PyObject* b) noexcept {
     return PyDict_Merge(a, b, 1);
 }
 
-Box* dictGetitem(BoxedDict* self, Box* k) {
-    if (!isSubclass(self->cls, dict_cls))
-        raiseExcHelper(TypeError, "descriptor '__getitem__' requires a 'dict' object but received a '%s'",
-                       getTypeName(self));
+template <enum ExceptionStyle S> Box* dictGetitem(BoxedDict* self, Box* k) noexcept(S == CAPI) {
+    if (!isSubclass(self->cls, dict_cls)) {
+        if (S == CAPI) {
+            PyErr_Format(TypeError, "descriptor '__getitem__' requires a 'dict' object but received a '%s'",
+                         getTypeName(self));
+            return NULL;
+        } else {
+            raiseExcHelper(TypeError, "descriptor '__getitem__' requires a 'dict' object but received a '%s'",
+                           getTypeName(self));
+        }
+    }
 
-    auto it = self->d.find(k);
+    BoxedDict::DictMap::iterator it;
+    try {
+        it = self->d.find(k);
+    } catch (ExcInfo e) {
+        if (S == CAPI) {
+            setCAPIException(e);
+            return NULL;
+        } else {
+            throw e;
+        }
+    }
+
     if (it == self->d.end()) {
         // Try calling __missing__ if this is a subclass
         if (self->cls != dict_cls) {
-            static BoxedString* missing_str = static_cast<BoxedString*>(PyString_InternFromString("__missing__"));
-            Box* r = callattr(self, missing_str, CallattrFlags({.cls_only = true, .null_on_nonexistent = true }),
-                              ArgPassSpec(1), k, NULL, NULL, NULL, NULL);
+            static BoxedString* missing_str = internStringImmortal("__missing__");
+            CallattrFlags callattr_flags{.cls_only = true, .null_on_nonexistent = true, .argspec = ArgPassSpec(1) };
+            Box* r;
+            try {
+                r = callattr(self, missing_str, callattr_flags, k, NULL, NULL, NULL, NULL);
+            } catch (ExcInfo e) {
+                if (S == CAPI) {
+                    setCAPIException(e);
+                    return NULL;
+                } else
+                    throw e;
+            }
             if (r)
                 return r;
         }
 
-        raiseExcHelper(KeyError, k);
+        if (S == CAPI) {
+            PyErr_SetObject(KeyError, BoxedTuple::create1(k));
+            return NULL;
+        } else
+            raiseExcHelper(KeyError, k);
     }
     return it->second;
 }
@@ -248,6 +280,8 @@ extern "C" PyObject* PyDict_GetItem(PyObject* dict, PyObject* key) noexcept {
         BoxedDict* d = static_cast<BoxedDict*>(dict);
         return d->getOrNull(key);
     }
+
+    // XXX this would be easy to make much faster.
 
     // This path doesn't exist in CPython; we have it to support extension modules that do
     // something along the lines of PyDict_GetItem(PyModule_GetDict()):
@@ -304,6 +338,9 @@ extern "C" int PyDict_Next(PyObject* op, Py_ssize_t* ppos, PyObject** pkey, PyOb
 }
 
 extern "C" PyObject* PyDict_GetItemString(PyObject* dict, const char* key) noexcept {
+    if (dict->cls == attrwrapper_cls)
+        return unwrapAttrWrapper(dict)->getattr(internStringMortal(key));
+
     Box* key_s;
     try {
         key_s = boxString(key);
@@ -518,9 +555,9 @@ void dictMerge(BoxedDict* self, Box* other) {
         return;
     }
 
-    static BoxedString* keys_str = static_cast<BoxedString*>(PyString_InternFromString("keys"));
-    Box* keys = callattr(other, keys_str, CallattrFlags({.cls_only = false, .null_on_nonexistent = true }),
-                         ArgPassSpec(0), NULL, NULL, NULL, NULL, NULL);
+    static BoxedString* keys_str = internStringImmortal("keys");
+    CallattrFlags callattr_flags{.cls_only = false, .null_on_nonexistent = true, .argspec = ArgPassSpec(0) };
+    Box* keys = callattr(other, keys_str, callattr_flags, NULL, NULL, NULL, NULL, NULL);
     assert(keys);
 
     for (Box* k : keys->pyElements()) {
@@ -576,21 +613,20 @@ extern "C" int PyDict_Merge(PyObject* a, PyObject* b, int override_) noexcept {
 
 Box* dictUpdate(BoxedDict* self, BoxedTuple* args, BoxedDict* kwargs) {
     assert(args->cls == tuple_cls);
-    assert(kwargs);
-    assert(kwargs->cls == dict_cls);
+    assert(!kwargs || kwargs->cls == dict_cls);
 
     RELEASE_ASSERT(args->size() <= 1, ""); // should throw a TypeError
     if (args->size()) {
         Box* arg = args->elts[0];
-        static BoxedString* keys_str = static_cast<BoxedString*>(PyString_InternFromString("keys"));
-        if (getattrInternal(arg, keys_str, NULL)) {
+        static BoxedString* keys_str = internStringImmortal("keys");
+        if (getattrInternal<ExceptionStyle::CXX>(arg, keys_str, NULL)) {
             dictMerge(self, arg);
         } else {
             dictMergeFromSeq2(self, arg);
         }
     }
 
-    if (kwargs->d.size())
+    if (kwargs && kwargs->d.size())
         dictMerge(self, kwargs);
 
     return None;
@@ -598,7 +634,7 @@ Box* dictUpdate(BoxedDict* self, BoxedTuple* args, BoxedDict* kwargs) {
 
 extern "C" Box* dictInit(BoxedDict* self, BoxedTuple* args, BoxedDict* kwargs) {
     int args_sz = args->size();
-    int kwargs_sz = kwargs->d.size();
+    int kwargs_sz = kwargs ? kwargs->d.size() : 0;
 
     // CPython accepts a single positional and keyword arguments, in any combination
     if (args_sz > 1)
@@ -606,11 +642,13 @@ extern "C" Box* dictInit(BoxedDict* self, BoxedTuple* args, BoxedDict* kwargs) {
 
     dictUpdate(self, args, kwargs);
 
-    // handle keyword arguments by merging (possibly over positional entries per CPy)
-    assert(kwargs->cls == dict_cls);
+    if (kwargs) {
+        // handle keyword arguments by merging (possibly over positional entries per CPy)
+        assert(kwargs->cls == dict_cls);
 
-    for (const auto& p : kwargs->d)
-        self->d[p.first] = p.second;
+        for (const auto& p : kwargs->d)
+            self->d[p.first] = p.second;
+    }
 
     return None;
 }
@@ -691,7 +729,7 @@ void setupDict() {
                        new BoxedFunction(boxRTFunction((void*)dictIterValues, typeFromClass(dict_iterator_cls), 1)));
 
     dict_cls->giveAttr("keys", new BoxedFunction(boxRTFunction((void*)dictKeys, LIST, 1)));
-    dict_cls->giveAttr("iterkeys", dict_cls->getattr("__iter__"));
+    dict_cls->giveAttr("iterkeys", dict_cls->getattr(internStringMortal("__iter__")));
 
     dict_cls->giveAttr("pop", new BoxedFunction(boxRTFunction((void*)dictPop, UNKNOWN, 3, 1, false, false), { NULL }));
     dict_cls->giveAttr("popitem", new BoxedFunction(boxRTFunction((void*)dictPopitem, BOXED_TUPLE, 1)));
@@ -708,7 +746,9 @@ void setupDict() {
     dict_cls->giveAttr("setdefault",
                        new BoxedFunction(boxRTFunction((void*)dictSetdefault, UNKNOWN, 3, 1, false, false), { None }));
 
-    dict_cls->giveAttr("__getitem__", new BoxedFunction(boxRTFunction((void*)dictGetitem, UNKNOWN, 2)));
+    auto dict_getitem = boxRTFunction((void*)dictGetitem<CXX>, UNKNOWN, 2, ParamNames::empty(), CXX);
+    addRTFunction(dict_getitem, (void*)dictGetitem<CAPI>, UNKNOWN, CAPI);
+    dict_cls->giveAttr("__getitem__", new BoxedFunction(dict_getitem));
     dict_cls->giveAttr("__setitem__", new BoxedFunction(boxRTFunction((void*)dictSetitem, NONE, 3)));
     dict_cls->giveAttr("__delitem__", new BoxedFunction(boxRTFunction((void*)dictDelitem, UNKNOWN, 2)));
     dict_cls->giveAttr("__contains__", new BoxedFunction(boxRTFunction((void*)dictContains, BOXED_BOOL, 2)));
@@ -739,6 +779,8 @@ void setupDict() {
     // subclass Python classes.
     dict_cls->tp_init = dict_init;
     dict_cls->tp_repr = dict_repr;
+
+    dict_cls->tp_as_mapping->mp_subscript = (binaryfunc)dictGetitem<CAPI>;
 
     dict_keys_cls->giveAttr(
         "__iter__", new BoxedFunction(boxRTFunction((void*)dictViewKeysIter, typeFromClass(dict_iterator_cls), 1)));

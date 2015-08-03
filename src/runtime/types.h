@@ -95,6 +95,35 @@ extern BoxedClass* object_cls, *type_cls, *bool_cls, *int_cls, *long_cls, *float
 #define unicode_cls (&PyUnicode_Type)
 #define memoryview_cls (&PyMemoryView_Type)
 
+#define unicode_cls (&PyUnicode_Type)
+#define memoryview_cls (&PyMemoryView_Type)
+
+#define SystemError ((BoxedClass*)PyExc_SystemError)
+#define StopIteration ((BoxedClass*)PyExc_StopIteration)
+#define NameError ((BoxedClass*)PyExc_NameError)
+#define UnboundLocalError ((BoxedClass*)PyExc_UnboundLocalError)
+#define BaseException ((BoxedClass*)PyExc_BaseException)
+#define TypeError ((BoxedClass*)PyExc_TypeError)
+#define AssertionError ((BoxedClass*)PyExc_AssertionError)
+#define ValueError ((BoxedClass*)PyExc_ValueError)
+#define SystemExit ((BoxedClass*)PyExc_SystemExit)
+#define SyntaxError ((BoxedClass*)PyExc_SyntaxError)
+#define Exception ((BoxedClass*)PyExc_Exception)
+#define AttributeError ((BoxedClass*)PyExc_AttributeError)
+#define RuntimeError ((BoxedClass*)PyExc_RuntimeError)
+#define ZeroDivisionError ((BoxedClass*)PyExc_ZeroDivisionError)
+#define ImportError ((BoxedClass*)PyExc_ImportError)
+#define IndexError ((BoxedClass*)PyExc_IndexError)
+#define GeneratorExit ((BoxedClass*)PyExc_GeneratorExit)
+#define IOError ((BoxedClass*)PyExc_IOError)
+#define KeyError ((BoxedClass*)PyExc_KeyError)
+#define OverflowError ((BoxedClass*)PyExc_OverflowError)
+
+// Contains a list classes that have BaseException as a parent. This list is NOT guaranteed to be
+// comprehensive - it will not contain user-defined exception types. This is mainly for optimization
+// purposes, where it's useful to speed up the garbage collection of some exceptions.
+extern std::vector<BoxedClass*> exception_types;
+
 extern "C" {
 extern Box* None, *NotImplemented, *True, *False;
 }
@@ -106,7 +135,14 @@ extern "C" {
 extern BoxedModule* sys_module, *builtins_module, *math_module, *time_module, *thread_module;
 }
 
-extern "C" Box* boxBool(bool);
+extern "C" inline Box* boxBool(bool b) __attribute__((visibility("default")));
+extern "C" inline Box* boxBool(bool b) {
+    return b ? True : False;
+}
+extern "C" inline Box* boxBoolNegated(bool b) __attribute__((visibility("default")));
+extern "C" inline Box* boxBoolNegated(bool b) {
+    return b ? False : True;
+}
 extern "C" Box* boxInt(i64) __attribute__((visibility("default")));
 extern "C" i64 unboxInt(Box*);
 extern "C" Box* boxFloat(double d);
@@ -120,16 +156,10 @@ BoxedString* boxStringTwine(const llvm::Twine& s);
 
 extern "C" Box* decodeUTF8StringPtr(llvm::StringRef s);
 
-// creates an uninitialized string of length n; useful for directly constructing into the string and avoiding copies:
-BoxedString* createUninitializedString(ssize_t n);
-// Gets a writeable pointer to the contents of a string.
-// Is only meant to be used with something just created from createUninitializedString(), though
-// in theory it might work in more cases.
-char* getWriteableStringContents(BoxedString* s);
-
-extern "C" void listAppendInternal(Box* self, Box* v);
+extern "C" inline void listAppendInternal(Box* self, Box* v) __attribute__((visibility("default")));
 extern "C" void listAppendArrayInternal(Box* self, Box** v, int nelts);
-extern "C" Box* boxCLFunction(CLFunction* f, BoxedClosure* closure, Box* globals, std::initializer_list<Box*> defaults);
+extern "C" Box* boxCLFunction(CLFunction* f, BoxedClosure* closure, Box* globals,
+                              std::initializer_list<Box*> defaults) noexcept;
 extern "C" CLFunction* unboxCLFunction(Box* b);
 extern "C" Box* createUserClass(BoxedString* name, Box* base, Box* attr_dict);
 extern "C" double unboxFloat(Box* b);
@@ -142,7 +172,8 @@ extern "C" void printFloat(double d);
 Box* objectStr(Box*);
 Box* objectRepr(Box*);
 
-
+// In Pyston, this is the same type as CPython's PyTypeObject (they are interchangeable, but we
+// use BoxedClass in Pyston wherever possible as a convention).
 class BoxedClass : public BoxVar {
 public:
     typedef void (*gcvisit_func)(GCVisitor*, Box*);
@@ -162,22 +193,28 @@ public:
 
     gcvisit_func gc_visit;
 
-    // A "simple" destructor -- one that is allowed to be called at any point after the object is dead.
-    // In particular, this means that it can't touch any Python objects or other gc-managed memory,
-    // since it will be in an undefined state.
-    // (Context: in Python destructors are supposed to be called in topological order, due to reference counting.
-    // We don't support that yet, but still want some simple ability to run code when an object gets freed.)
-    void (*simple_destructor)(Box*);
-
     // Offset of the HCAttrs object or 0 if there are no hcattrs.
     // Negative offset is from the end of the class (useful for variable-size objects with the attrs at the end)
     // Analogous to tp_dictoffset
     // A class should have at most of one attrs_offset and tp_dictoffset be nonzero.
     // (But having nonzero attrs_offset here would map to having nonzero tp_dictoffset in CPython)
-    const int attrs_offset;
+    int attrs_offset;
 
     bool instancesHaveHCAttrs() { return attrs_offset != 0; }
     bool instancesHaveDictAttrs() { return tp_dictoffset != 0; }
+
+    // A "safe" tp_dealloc destructor/finalizer is one we believe:
+    //  1) Can be called at any point after the object is dead.
+    //      (implies it's references could be finalized already)
+    //  2) Won't take a lot of time to run.
+    //  3) Won't take up a lot of memory (requiring another GC run).
+    //  4) Won't resurrect itself.
+    //
+    // We specify that such destructors are safe for optimization purposes (in our GC, we try to
+    // emulate the order of destructor calls and support resurrection by calling them in topological
+    // order through multiple GC passes, which is potentially quite expensive). We call the tp_dealloc
+    // as the object gets freed rather than put it in a pending finalizer list.
+    bool has_safe_tp_dealloc;
 
     // Whether this class object is constant or not, ie whether or not class-level
     // attributes can be changed or added.
@@ -194,6 +231,10 @@ public:
     // that we can't rely on for extension classes.
     bool is_pyston_class;
 
+    bool has___class__; // Has a custom __class__ attribute (ie different from object's __class__ descriptor)
+    bool has_instancecheck;
+    bool has_getattribute;
+
     typedef bool (*pyston_inquiry)(Box*);
 
     // tpp_descr_get is currently just a cache only for the use of tp_descr_get, and shouldn't
@@ -206,7 +247,20 @@ public:
                                 const std::vector<BoxedString*>*);
     pyston_call tpp_call;
 
-    bool hasGenericGetattr() { return tp_getattr == NULL; }
+    bool hasGenericGetattr() {
+        if (tp_getattr || tp_getattro != object_cls->tp_getattro)
+            return false;
+
+        // instancemethod_cls should have a custom tp_getattr but is currently implemented
+        // as a hack within getattrInternalGeneric
+        if (this == instancemethod_cls)
+            return false;
+
+        return true;
+    }
+
+    // Checks if this class or one of its parents has a non-default tp_dealloc
+    bool hasNonDefaultTpDealloc();
 
     void freeze();
 
@@ -273,118 +327,6 @@ static_assert(offsetof(pyston::BoxedHeapClass, as_mapping) == offsetof(PyHeapTyp
 static_assert(offsetof(pyston::BoxedHeapClass, as_sequence) == offsetof(PyHeapTypeObject, as_sequence), "");
 static_assert(offsetof(pyston::BoxedHeapClass, as_buffer) == offsetof(PyHeapTypeObject, as_buffer), "");
 static_assert(sizeof(pyston::BoxedHeapClass) == sizeof(PyHeapTypeObject), "");
-
-
-class HiddenClass : public GCAllocated<gc::GCKind::HIDDEN_CLASS> {
-public:
-    // We have a couple different storage strategies for attributes, which
-    // are distinguished by having a different hidden class type.
-    enum HCType {
-        NORMAL,      // attributes stored in attributes array, name->offset map stored in hidden class
-        DICT_BACKED, // first attribute in array is a dict-like object which stores the attributes
-        SINGLETON,   // name->offset map stored in hidden class, but hcls is mutable
-    } const type;
-
-    static HiddenClass* dict_backed;
-
-private:
-    HiddenClass(HCType type) : type(type) {}
-    HiddenClass(HiddenClass* parent) : type(NORMAL), attr_offsets(), attrwrapper_offset(parent->attrwrapper_offset) {
-        assert(parent->type == NORMAL);
-        for (auto& p : parent->attr_offsets) {
-            this->attr_offsets.insert(&p);
-        }
-    }
-
-    // These fields only make sense for NORMAL or SINGLETON hidden classes:
-    llvm::StringMap<int> attr_offsets;
-    // If >= 0, is the offset where we stored an attrwrapper object
-    int attrwrapper_offset = -1;
-
-    // These are only for NORMAL hidden classes:
-    ContiguousMap<llvm::StringRef, HiddenClass*, llvm::StringMap<int>> children;
-    HiddenClass* attrwrapper_child = NULL;
-
-    // Only for SINGLETON hidden classes:
-    ICInvalidator dependent_getattrs;
-
-public:
-    static HiddenClass* makeSingleton() { return new HiddenClass(SINGLETON); }
-
-    static HiddenClass* makeRoot() {
-#ifndef NDEBUG
-        static bool made = false;
-        assert(!made);
-        made = true;
-#endif
-        return new HiddenClass(NORMAL);
-    }
-    static HiddenClass* makeDictBacked() {
-#ifndef NDEBUG
-        static bool made = false;
-        assert(!made);
-        made = true;
-#endif
-        return new HiddenClass(DICT_BACKED);
-    }
-
-    void gc_visit(GCVisitor* visitor) {
-        // Visit children even for the dict-backed case, since children will just be empty
-        visitor->visitRange((void* const*)&children.vector()[0], (void* const*)&children.vector()[children.size()]);
-        if (attrwrapper_child)
-            visitor->visit(attrwrapper_child);
-    }
-
-    // The total size of the attribute array.  The slots in the attribute array may not correspond 1:1 to Python
-    // attributes.
-    int attributeArraySize() {
-        if (type == DICT_BACKED)
-            return 1;
-
-        ASSERT(type == NORMAL || type == SINGLETON, "%d", type);
-        int r = attr_offsets.size();
-        if (attrwrapper_offset != -1)
-            r += 1;
-        return r;
-    }
-
-    // The mapping from string attribute names to attribute offsets.  There may be other objects in the attributes
-    // array.
-    // Only valid for NORMAL or SINGLETON hidden classes
-    const llvm::StringMap<int>& getStrAttrOffsets() {
-        assert(type == NORMAL || type == SINGLETON);
-        return attr_offsets;
-    }
-
-    // Only valid for NORMAL hidden classes:
-    HiddenClass* getOrMakeChild(llvm::StringRef attr);
-
-    // Only valid for NORMAL or SINGLETON hidden classes:
-    int getOffset(llvm::StringRef attr) {
-        assert(type == NORMAL || type == SINGLETON);
-        auto it = attr_offsets.find(attr);
-        if (it == attr_offsets.end())
-            return -1;
-        return it->second;
-    }
-
-    int getAttrwrapperOffset() {
-        assert(type == NORMAL || type == SINGLETON);
-        return attrwrapper_offset;
-    }
-
-    // Only valid for SINGLETON hidden classes:
-    void appendAttribute(llvm::StringRef attr);
-    void appendAttrwrapper();
-    void delAttribute(llvm::StringRef attr);
-    void addDependence(Rewriter* rewriter);
-
-    // Only valid for NORMAL hidden classes:
-    HiddenClass* getAttrwrapperChild();
-
-    // Only valid for NORMAL hidden classes:
-    HiddenClass* delAttrToMakeHC(llvm::StringRef attr);
-};
 
 class BoxedInt : public Box {
 public:
@@ -469,8 +411,19 @@ public:
     explicit BoxedString(llvm::StringRef s) __attribute__((visibility("default")));
     explicit BoxedString(llvm::StringRef lhs, llvm::StringRef rhs) __attribute__((visibility("default")));
 
+    // creates an uninitialized string of length n; useful for directly constructing into the string and avoiding
+    // copies:
+    static BoxedString* createUninitializedString(ssize_t n) { return new (n) BoxedString(n); }
+
+    // Gets a writeable pointer to the contents of a string.
+    // Is only meant to be used with something just created from createUninitializedString(), though
+    // in theory it might work in more cases.
+    char* getWriteableStringContents() { return s_data; }
+
 private:
     void* operator new(size_t size) = delete;
+
+    BoxedString(size_t n); // non-initializing constructor
 
     char s_data[0];
 
@@ -538,61 +491,119 @@ public:
 };
 
 class BoxedList : public Box {
-public:
-    int64_t size, capacity;
-    GCdArray* elts;
+private:
+    void grow(int min_free);
 
-    DS_DEFINE_MUTEX(lock);
+public:
+    Py_ssize_t size;
+    GCdArray* elts;
+    Py_ssize_t capacity;
 
     BoxedList() __attribute__((visibility("default"))) : size(0), capacity(0) {}
 
-    void ensure(int space);
+    void ensure(int min_free);
     void shrink();
     static const int INITIAL_CAPACITY;
 
     DEFAULT_CLASS_SIMPLE(list_cls);
 };
+static_assert(sizeof(BoxedList) <= sizeof(PyListObject), "");
+static_assert(sizeof(BoxedList) >= sizeof(PyListObject), "");
+static_assert(offsetof(BoxedList, size) == offsetof(PyListObject, ob_size), "");
+static_assert(offsetof(BoxedList, elts) == offsetof(PyListObject, ob_item), "");
+static_assert(offsetof(GCdArray, elts) == 0, "");
+static_assert(offsetof(BoxedList, capacity) == offsetof(PyListObject, allocated), "");
 
 class BoxedTuple : public BoxVar {
 public:
-    typedef std::vector<Box*, StlCompatAllocator<Box*>> GCVector;
-
-    DEFAULT_CLASS_VAR_SIMPLE(tuple_cls, sizeof(Box*));
-
-    static BoxedTuple* create(int64_t size) { return new (size) BoxedTuple(size); }
+    static BoxedTuple* create(int64_t size) {
+        BoxedTuple* rtn = new (size) BoxedTuple();
+        memset(rtn->elts, 0, size * sizeof(Box*)); // TODO not all callers want this (but some do)
+        return rtn;
+    }
     static BoxedTuple* create(int64_t nelts, Box** elts) {
-        BoxedTuple* rtn = new (nelts) BoxedTuple(nelts);
+        BoxedTuple* rtn = new (nelts) BoxedTuple();
+        for (int i = 0; i < nelts; i++)
+            assert(gc::isValidGCObject(elts[i]));
         memmove(&rtn->elts[0], elts, sizeof(Box*) * nelts);
         return rtn;
     }
     static BoxedTuple* create1(Box* elt0) {
-        BoxedTuple* rtn = new (1) BoxedTuple(1);
+        BoxedTuple* rtn = new (1) BoxedTuple();
         rtn->elts[0] = elt0;
+        for (int i = 0; i < rtn->size(); i++)
+            assert(gc::isValidGCObject(rtn->elts[i]));
         return rtn;
     }
     static BoxedTuple* create2(Box* elt0, Box* elt1) {
-        BoxedTuple* rtn = new (2) BoxedTuple(2);
+        BoxedTuple* rtn = new (2) BoxedTuple();
         rtn->elts[0] = elt0;
         rtn->elts[1] = elt1;
+        for (int i = 0; i < rtn->size(); i++)
+            assert(gc::isValidGCObject(rtn->elts[i]));
         return rtn;
     }
     static BoxedTuple* create3(Box* elt0, Box* elt1, Box* elt2) {
-        BoxedTuple* rtn = new (3) BoxedTuple(3);
+        BoxedTuple* rtn = new (3) BoxedTuple();
         rtn->elts[0] = elt0;
         rtn->elts[1] = elt1;
         rtn->elts[2] = elt2;
+        for (int i = 0; i < rtn->size(); i++)
+            assert(gc::isValidGCObject(rtn->elts[i]));
         return rtn;
     }
-    static BoxedTuple* create(std::initializer_list<Box*> members) { return new (members.size()) BoxedTuple(members); }
+    static BoxedTuple* create4(Box* elt0, Box* elt1, Box* elt2, Box* elt3) {
+        BoxedTuple* rtn = new (4) BoxedTuple();
+        rtn->elts[0] = elt0;
+        rtn->elts[1] = elt1;
+        rtn->elts[2] = elt2;
+        rtn->elts[3] = elt3;
+        for (int i = 0; i < rtn->size(); i++)
+            assert(gc::isValidGCObject(rtn->elts[i]));
+        return rtn;
+    }
+    static BoxedTuple* create5(Box* elt0, Box* elt1, Box* elt2, Box* elt3, Box* elt4) {
+        BoxedTuple* rtn = new (5) BoxedTuple();
+        rtn->elts[0] = elt0;
+        rtn->elts[1] = elt1;
+        rtn->elts[2] = elt2;
+        rtn->elts[3] = elt3;
+        rtn->elts[4] = elt4;
+        for (int i = 0; i < rtn->size(); i++)
+            assert(gc::isValidGCObject(rtn->elts[i]));
+        return rtn;
+    }
+    static BoxedTuple* create(std::initializer_list<Box*> members) {
+        auto rtn = new (members.size()) BoxedTuple(members);
 
-    static BoxedTuple* create(int64_t size, BoxedClass* cls) { return new (cls, size) BoxedTuple(size); }
+        for (int i = 0; i < rtn->size(); i++)
+            assert(gc::isValidGCObject(rtn->elts[i]));
+        return rtn;
+    }
+
+    static BoxedTuple* create(int64_t size, BoxedClass* cls) {
+        BoxedTuple* rtn;
+        if (cls == tuple_cls)
+            rtn = new (size) BoxedTuple();
+        else
+            rtn = new (cls, size) BoxedTuple();
+        memset(rtn->elts, 0, size * sizeof(Box*)); // TODO not all callers want this (but some do)
+        return rtn;
+    }
     static BoxedTuple* create(int64_t nelts, Box** elts, BoxedClass* cls) {
-        BoxedTuple* rtn = new (cls, nelts) BoxedTuple(nelts);
+        BoxedTuple* rtn;
+        if (cls == tuple_cls)
+            rtn = new (nelts) BoxedTuple();
+        else
+            rtn = new (cls, nelts) BoxedTuple();
         memmove(&rtn->elts[0], elts, sizeof(Box*) * nelts);
         return rtn;
     }
     static BoxedTuple* create(std::initializer_list<Box*> members, BoxedClass* cls) {
-        return new (cls, members.size()) BoxedTuple(members);
+        if (cls == tuple_cls)
+            return new (members.size()) BoxedTuple(members);
+        else
+            return new (cls, members.size()) BoxedTuple(members);
     }
 
     static int Resize(BoxedTuple** pt, size_t newsize) noexcept;
@@ -603,20 +614,57 @@ public:
 
     size_t size() const { return ob_size; }
 
+    // DEFAULT_CLASS_VAR_SIMPLE doesn't work because of declaring 1 element in 'elts'
+    void* operator new(size_t size, BoxedClass* cls, size_t nitems) __attribute__((visibility("default"))) {
+        ALLOC_STATS_VAR(tuple_cls)
+
+        assert(cls->tp_itemsize == sizeof(Box*));
+        return BoxVar::operator new(size, cls, nitems);
+    }
+
+    void* operator new(size_t size, size_t nitems) __attribute__((visibility("default"))) {
+        ALLOC_STATS_VAR(tuple_cls)
+
+        assert(tuple_cls->tp_alloc == PystonType_GenericAlloc);
+        assert(tuple_cls->tp_itemsize == sizeof(Box*));
+        assert(tuple_cls->tp_basicsize == offsetof(BoxedTuple, elts));
+        assert(tuple_cls->is_pyston_class);
+        assert(tuple_cls->attrs_offset == 0);
+
+        void* mem = gc_alloc(sizeof(BoxedTuple) + nitems * sizeof(Box*), gc::GCKind::PYTHON);
+        assert(mem);
+
+        BoxVar* rtn = static_cast<BoxVar*>(mem);
+        rtn->cls = tuple_cls;
+        rtn->ob_size = nitems;
+        return rtn;
+    }
+
 private:
-    BoxedTuple(size_t size) { memset(elts, 0, sizeof(Box*) * size); }
+    BoxedTuple() {}
 
     BoxedTuple(std::initializer_list<Box*>& members) {
         // by the time we make it here elts[] is big enough to contain members
         Box** p = &elts[0];
         for (auto b : members) {
             *p++ = b;
+            assert(gc::isValidGCObject(b));
         }
     }
 
 public:
-    Box* elts[0];
+    // CPython declares ob_item (their version of elts) to have 1 element.  We want to
+    // copy that behavior so that the sizes of the objects match, but we want to also
+    // have a zero-length array in there since we have some extra compiler warnings turned
+    // on.  _elts[1] will throw an error, but elts[1] will not.
+    union {
+        Box* elts[0];
+        Box* _elts[1];
+    };
 };
+static_assert(sizeof(BoxedTuple) == sizeof(PyTupleObject), "");
+static_assert(offsetof(BoxedTuple, ob_size) == offsetof(PyTupleObject, ob_size), "");
+static_assert(offsetof(BoxedTuple, elts) == offsetof(PyTupleObject, ob_item), "");
 
 extern "C" BoxedTuple* EmptyTuple;
 extern "C" BoxedString* EmptyString;
@@ -701,7 +749,8 @@ public:
     Box* doc;          // __doc__
 
     BoxedFunctionBase(CLFunction* f);
-    BoxedFunctionBase(CLFunction* f, std::initializer_list<Box*> defaults, BoxedClosure* closure = NULL);
+    BoxedFunctionBase(CLFunction* f, std::initializer_list<Box*> defaults, BoxedClosure* closure = NULL,
+                      Box* globals = NULL);
 };
 
 class BoxedFunction : public BoxedFunctionBase {
@@ -733,7 +782,7 @@ public:
     BoxedModule() {} // noop constructor to disable zero-initialization of cls
     std::string name();
 
-    BoxedString* getStringConstant(llvm::StringRef ast_str);
+    BoxedString* getStringConstant(llvm::StringRef ast_str, bool intern = false);
     Box* getUnicodeConstant(llvm::StringRef ast_str);
     BoxedInt* getIntConstant(int64_t n);
     BoxedFloat* getFloatConstant(double d);
@@ -750,9 +799,11 @@ private:
     ContiguousMap<int64_t, BoxedInt*, std::unordered_map<int64_t, int>> int_constants;
     // I'm not sure how well it works to use doubles as hashtable keys; thankfully
     // it's not a big deal if we get misses.
-    ContiguousMap<double, BoxedFloat*, std::unordered_map<double, int>> float_constants;
-    ContiguousMap<double, Box*, std::unordered_map<double, int>> imaginary_constants;
+    ContiguousMap<int64_t, BoxedFloat*, std::unordered_map<int64_t, int>> float_constants;
+    ContiguousMap<int64_t, Box*, std::unordered_map<int64_t, int>> imaginary_constants;
     ContiguousMap<llvm::StringRef, Box*, llvm::StringMap<int>> long_constants;
+    // Other objects that this module needs to keep alive; see getStringConstant.
+    llvm::SmallVector<Box*, 8> keep_alive;
 
 public:
     DEFAULT_CLASS(module_cls);
@@ -906,7 +957,7 @@ struct wrapper_def {
     wrapperfunc wrapper; // "wrapper" that ends up getting called by the Python-visible WrapperDescr
     const llvm::StringRef doc;
     int flags;
-    // exists in CPython: PyObject *name_strobj
+    BoxedString* name_strobj;
 };
 
 class BoxedWrapperDescriptor : public Box {
@@ -969,32 +1020,12 @@ void attrwrapperDel(Box* b, llvm::StringRef attr);
 Box* boxAst(AST* ast);
 AST* unboxAst(Box* b);
 
-#define SystemError ((BoxedClass*)PyExc_SystemError)
-#define StopIteration ((BoxedClass*)PyExc_StopIteration)
-#define NameError ((BoxedClass*)PyExc_NameError)
-#define UnboundLocalError ((BoxedClass*)PyExc_UnboundLocalError)
-#define BaseException ((BoxedClass*)PyExc_BaseException)
-#define TypeError ((BoxedClass*)PyExc_TypeError)
-#define AssertionError ((BoxedClass*)PyExc_AssertionError)
-#define ValueError ((BoxedClass*)PyExc_ValueError)
-#define SystemExit ((BoxedClass*)PyExc_SystemExit)
-#define SyntaxError ((BoxedClass*)PyExc_SyntaxError)
-#define Exception ((BoxedClass*)PyExc_Exception)
-#define AttributeError ((BoxedClass*)PyExc_AttributeError)
-#define RuntimeError ((BoxedClass*)PyExc_RuntimeError)
-#define ZeroDivisionError ((BoxedClass*)PyExc_ZeroDivisionError)
-#define ImportError ((BoxedClass*)PyExc_ImportError)
-#define IndexError ((BoxedClass*)PyExc_IndexError)
-#define GeneratorExit ((BoxedClass*)PyExc_GeneratorExit)
-#define IOError ((BoxedClass*)PyExc_IOError)
-#define KeyError ((BoxedClass*)PyExc_KeyError)
-#define OverflowError ((BoxedClass*)PyExc_OverflowError)
-
 // Our default for tp_alloc:
 extern "C" PyObject* PystonType_GenericAlloc(BoxedClass* cls, Py_ssize_t nitems) noexcept;
 
 void checkAndThrowCAPIException();
 void throwCAPIException() __attribute__((noreturn));
+void ensureCAPIExceptionSet();
 struct ExcInfo;
 void setCAPIException(const ExcInfo& e);
 
