@@ -1480,6 +1480,7 @@ void setupBuiltins() {
     enumerate_cls->giveAttr("__hasnext__",
                             new BoxedFunction(boxRTFunction((void*)BoxedEnumerate::hasnext, BOXED_BOOL, 1)));
     enumerate_cls->freeze();
+    enumerate_cls->tp_iter = BoxedEnumerate::iter;
     builtins_module->giveAttr("enumerate", enumerate_cls);
 
 
