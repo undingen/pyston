@@ -23,6 +23,34 @@
 
 namespace pyston {
 
+/* Support type attribute cache */
+
+struct method_cache_entry {
+    unsigned int version;
+    PyObject* name;  /* reference to exactly a str or None */
+    PyObject* value; /* borrowed */
+};
+#define MCACHE_SIZE_EXP 10
+extern struct method_cache_entry method_cache[1 << MCACHE_SIZE_EXP];
+static unsigned int next_version_tag = 0;
+
+unsigned int PyType_ClearCache(void) noexcept {
+    Py_ssize_t i;
+    unsigned int cur_version_tag = next_version_tag - 1;
+
+    for (i = 0; i < (1 << MCACHE_SIZE_EXP); i++) {
+        method_cache[i].version = 0;
+        Py_CLEAR(method_cache[i].name);
+        method_cache[i].value = NULL;
+    }
+    next_version_tag = 0;
+    /* mark all version tags as invalid */
+    PyType_Modified(&PyBaseObject_Type);
+    return cur_version_tag;
+}
+
+
+
 typedef int (*update_callback)(PyTypeObject*, void*);
 
 static PyObject* tp_new_wrapper(PyTypeObject* self, BoxedTuple* args, Box* kwds) noexcept;
@@ -2077,6 +2105,52 @@ static void type_mro_modified(PyTypeObject* type, PyObject* bases) {
         type->tp_flags &= ~(Py_TPFLAGS_HAVE_VERSION_TAG | Py_TPFLAGS_VALID_VERSION_TAG);
 }
 
+int assign_version_tag(PyTypeObject* type) noexcept {
+    /* Ensure that the tp_version_tag is valid and set
+       Py_TPFLAGS_VALID_VERSION_TAG.  To respect the invariant, this
+       must first be done on all super classes.  Return 0 if this
+       cannot be done, 1 if Py_TPFLAGS_VALID_VERSION_TAG.
+    */
+    Py_ssize_t i, n;
+    PyObject* bases;
+
+    if (PyType_HasFeature(type, Py_TPFLAGS_VALID_VERSION_TAG))
+        return 1;
+    if (!PyType_HasFeature(type, Py_TPFLAGS_HAVE_VERSION_TAG))
+        return 0;
+    if (!PyType_HasFeature(type, Py_TPFLAGS_READY))
+        return 0;
+
+    type->tp_version_tag = next_version_tag++;
+    /* for stress-testing: next_version_tag &= 0xFF; */
+
+    if (type->tp_version_tag == 0) {
+        /* wrap-around or just starting Python - clear the whole
+           cache by filling names with references to Py_None.
+           Values are also set to NULL for added protection, as they
+           are borrowed reference */
+        for (i = 0; i < (1 << MCACHE_SIZE_EXP); i++) {
+            method_cache[i].value = NULL;
+            Py_XDECREF(method_cache[i].name);
+            method_cache[i].name = Py_None;
+            Py_INCREF(Py_None);
+        }
+        /* mark all version tags as invalid */
+        PyType_Modified(&PyBaseObject_Type);
+        return 1;
+    }
+    bases = type->tp_bases;
+    n = PyTuple_GET_SIZE(bases);
+    for (i = 0; i < n; i++) {
+        PyObject* b = PyTuple_GET_ITEM(bases, i);
+        assert(PyType_Check(b));
+        if (!assign_version_tag((PyTypeObject*)b))
+            return 0;
+    }
+    type->tp_flags |= Py_TPFLAGS_VALID_VERSION_TAG;
+    return 1;
+}
+
 static int extra_ivars(PyTypeObject* type, PyTypeObject* base) noexcept {
     size_t t_size = type->tp_basicsize;
     size_t b_size = base->tp_basicsize;
@@ -3182,6 +3256,24 @@ void commonClassSetup(BoxedClass* cls) {
 
 extern "C" void PyType_Modified(PyTypeObject* type) noexcept {
     // We don't cache anything yet that would need to be invalidated:
+    PyObject* raw, *ref;
+    Py_ssize_t i, n;
+
+    if (!PyType_HasFeature(type, Py_TPFLAGS_VALID_VERSION_TAG))
+        return;
+
+    raw = type->tp_subclasses;
+    if (raw != NULL) {
+        n = PyList_GET_SIZE(raw);
+        for (i = 0; i < n; i++) {
+            ref = PyList_GET_ITEM(raw, i);
+            ref = PyWeakref_GET_OBJECT(ref);
+            if (ref != Py_None) {
+                PyType_Modified((PyTypeObject*)ref);
+            }
+        }
+    }
+    type->tp_flags &= ~Py_TPFLAGS_VALID_VERSION_TAG;
 }
 
 static Box* tppProxyToTpCall(Box* self, CallRewriteArgs* rewrite_args, ArgPassSpec argspec, Box* arg1, Box* arg2,

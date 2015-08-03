@@ -60,6 +60,25 @@
 
 namespace pyston {
 
+/* The cache can keep references to the names alive for longer than
+   they normally would.  This is why the maximum size is limited to
+   MCACHE_MAX_ATTR_SIZE, since it might be a problem if very large
+   strings are used as attribute names. */
+#define MCACHE_MAX_ATTR_SIZE 100
+#define MCACHE_SIZE_EXP 10
+#define MCACHE_HASH(version, name_hash)                                                                                \
+    (((unsigned int)(version) * (unsigned int)(name_hash)) >> (8 * sizeof(unsigned int) - MCACHE_SIZE_EXP))
+#define MCACHE_HASH_METHOD(type, name) MCACHE_HASH((type)->tp_version_tag, ((unsigned int)(uint64_t)(name)))
+#define MCACHE_CACHEABLE_NAME(name) PyString_CheckExact(name) && PyString_GET_SIZE(name) <= MCACHE_MAX_ATTR_SIZE
+
+struct method_cache_entry {
+    unsigned int version;
+    PyObject* name;  /* reference to exactly a str or None */
+    PyObject* value; /* borrowed */
+};
+struct method_cache_entry method_cache[1 << MCACHE_SIZE_EXP];
+
+
 static const std::string iter_str("__iter__");
 static const std::string new_str("__new__");
 static const std::string none_str("None");
@@ -420,6 +439,7 @@ void BoxedClass::freeze() {
                "%s", tp_name);
 
     is_constant = true;
+    tp_flags = (tp_flags & ~Py_TPFLAGS_READYING) | Py_TPFLAGS_READY;
 }
 
 BoxedClass::BoxedClass(BoxedClass* base, gcvisit_func gc_visit, int attrs_offset, int weaklist_offset,
@@ -442,6 +462,7 @@ BoxedClass::BoxedClass(BoxedClass* base, gcvisit_func gc_visit, int attrs_offset
     tp_flags |= Py_TPFLAGS_CHECKTYPES;
     tp_flags |= Py_TPFLAGS_BASETYPE;
     tp_flags |= Py_TPFLAGS_HAVE_GC;
+    tp_flags |= Py_TPFLAGS_HAVE_VERSION_TAG;
 
     if (base && (base->tp_flags & Py_TPFLAGS_HAVE_NEWBUFFER))
         tp_flags |= Py_TPFLAGS_HAVE_NEWBUFFER;
@@ -675,13 +696,16 @@ Box* Box::getattr(BoxedString* attr, GetattrRewriteArgs* rewrite_args) {
         rewrite_args->obj->addAttrGuard(offsetof(Box, cls), (intptr_t)cls);
 
 #if 0
-    if (attr.data()[0] == '_' && attr.data()[1] == '_') {
+    if ((attr->data()[0] == '_' && attr->data()[1] == '_') || 1) {
         // Only do this logging for potentially-avoidable cases:
         if (!rewrite_args && cls != classobj_cls) {
-            if (attr == "__setattr__")
+            if (attr->s() == "__setattr__")
                 printf("");
 
-            std::string per_name_stat_name = "slowpath_box_getattr." + std::string(attr);
+            if (attr->s() == "visit_column")
+                printf("");
+
+            std::string per_name_stat_name = "slowpath_box_getattr." + std::string(attr->s());
             Stats::log(Stats::getStatCounter(per_name_stat_name));
         }
     }
@@ -698,6 +722,8 @@ Box* Box::getattr(BoxedString* attr, GetattrRewriteArgs* rewrite_args) {
     // structure (ex user class) and the same hidden classes, because
     // otherwise the guard will fail anyway.;
     if (cls->instancesHaveHCAttrs()) {
+        UNAVOIDABLE_STAT_TIMER(t0, "us_timer_box_getattr");
+
         HCAttrs* attrs = getHCAttrsPtr();
         HiddenClass* hcls = attrs->hcls;
 
@@ -946,6 +972,8 @@ extern "C" PyObject* _PyType_Lookup(PyTypeObject* type, PyObject* name) noexcept
     }
 }
 
+int assign_version_tag(PyTypeObject* type) noexcept;
+
 Box* typeLookup(BoxedClass* cls, BoxedString* attr, GetattrRewriteArgs* rewrite_args) {
     Box* val;
 
@@ -992,6 +1020,15 @@ Box* typeLookup(BoxedClass* cls, BoxedString* attr, GetattrRewriteArgs* rewrite_
 
         assert(cls->tp_mro);
         assert(cls->tp_mro->cls == tuple_cls);
+
+        if (MCACHE_CACHEABLE_NAME(attr) && PyType_HasFeature(cls, Py_TPFLAGS_VALID_VERSION_TAG)) {
+            /* fast path */
+            unsigned int h = (unsigned int)MCACHE_HASH_METHOD(cls, attr);
+            if (method_cache[h].version == cls->tp_version_tag && method_cache[h].name == attr)
+                return method_cache[h].value;
+        }
+
+
         for (auto b : *static_cast<BoxedTuple*>(cls->tp_mro)) {
             // object_cls will get checked very often, but it only
             // has attributes that start with an underscore.
@@ -1003,9 +1040,26 @@ Box* typeLookup(BoxedClass* cls, BoxedString* attr, GetattrRewriteArgs* rewrite_
             }
 
             val = b->getattr(attr, NULL);
-            if (val)
+            if (val) {
+                if (MCACHE_CACHEABLE_NAME(attr) && assign_version_tag(cls)) {
+                    unsigned int h = MCACHE_HASH_METHOD(cls, attr);
+                    method_cache[h].version = cls->tp_version_tag;
+                    method_cache[h].value = val;
+                    method_cache[h].name = attr;
+                }
+
                 return val;
+            }
         }
+
+        val = NULL;
+        if (MCACHE_CACHEABLE_NAME(attr) && assign_version_tag(cls)) {
+            unsigned int h = MCACHE_HASH_METHOD(cls, attr);
+            method_cache[h].version = cls->tp_version_tag;
+            method_cache[h].value = val;
+            method_cache[h].name = attr;
+        }
+
         return NULL;
     }
 }

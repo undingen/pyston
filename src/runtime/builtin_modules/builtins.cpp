@@ -458,6 +458,8 @@ Box* delattrFunc(Box* obj, Box* _str) {
 }
 
 Box* getattrFunc(Box* obj, Box* _str, Box* default_value) {
+    UNAVOIDABLE_STAT_TIMER(t0, "us_timer_getattrFunc");
+
     _str = coerceUnicodeToStr(_str);
 
     if (!isSubclass(_str->cls, str_cls)) {
