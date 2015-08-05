@@ -29,6 +29,25 @@
 #include "runtime/types.h"
 #include "runtime/util.h"
 
+// GDB JIT API
+extern "C" {
+typedef enum { JIT_NOACTION = 0, JIT_REGISTER_FN, JIT_UNREGISTER_FN } jit_actions_t;
+struct jit_code_entry {
+    struct jit_code_entry* next_entry;
+    struct jit_code_entry* prev_entry;
+    const char* symfile_addr;
+    uint64_t symfile_size;
+};
+struct jit_descriptor {
+    uint32_t version;
+    uint32_t action_flag;
+    struct jit_code_entry* relevant_entry;
+    struct jit_code_entry* first_entry;
+};
+void __attribute__((noinline)) __jit_debug_register_code();
+extern struct jit_descriptor __jit_debug_descriptor;
+}
+
 namespace pyston {
 
 static llvm::DenseSet<CFGBlock*> blocks_aborted;
@@ -70,8 +89,9 @@ JitCodeBlock::JitCodeBlock(llvm::StringRef name)
     a.push(assembler::R12);
     static_assert(sp_adjustment % 16 == 8, "stack isn't aligned");
     a.sub(assembler::Immediate(sp_adjustment), assembler::RSP);
-    a.mov(assembler::RDI, assembler::R12);                                // interpreter pointer
-    a.mov(assembler::RDX, assembler::R14);                                // vreg array
+    a.mov(assembler::RDI, assembler::R12); // interpreter pointer
+    a.mov(assembler::RDX, assembler::R14); // vreg array
+    a.trap();
     a.jmp(assembler::Indirect(assembler::RSI, offsetof(CFGBlock, code))); // jump to block
 
     entry_offset = a.bytesWritten();
@@ -92,6 +112,33 @@ JitCodeBlock::JitCodeBlock(llvm::StringRef name)
     registerEHFrames((uint8_t*)eh_frame_addr, (uint64_t)eh_frame_addr, size);
 
     g.func_addr_registry.registerFunction(("bjit_" + name).str(), code.get(), code_size, NULL);
+
+
+    struct MyHeader {
+        char name[512];
+        void* start;
+        int size;
+    };
+
+    MyHeader header;
+    memset(&header, 0, sizeof(header));
+    strcpy(header.name, ("bjit_" + name).str().c_str());
+    header.start = code.get();
+    header.size = code_size;
+
+    jit_code_entry* entry = new jit_code_entry;
+    memset(entry, 0, sizeof(jit_code_entry));
+    entry->next_entry = __jit_debug_descriptor.first_entry;
+    entry->prev_entry = NULL;
+    entry->symfile_addr = (const char*)&header;
+    entry->symfile_size = sizeof(header);
+
+    __jit_debug_descriptor.action_flag = JIT_REGISTER_FN;
+    if (__jit_debug_descriptor.first_entry)
+        __jit_debug_descriptor.first_entry->prev_entry = entry;
+    __jit_debug_descriptor.first_entry = entry;
+    __jit_debug_descriptor.relevant_entry = entry;
+    __jit_debug_register_code();
 }
 
 std::unique_ptr<JitFragmentWriter> JitCodeBlock::newFragment(CFGBlock* block, int patch_jump_offset) {
