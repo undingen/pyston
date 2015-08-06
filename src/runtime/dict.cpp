@@ -574,8 +574,13 @@ extern "C" Box* dictNew(Box* _cls, BoxedTuple* args, BoxedDict* kwargs) {
 
 void dictMerge(BoxedDict* self, Box* other) {
     if (isSubclass(other->cls, dict_cls)) {
-        for (const auto& p : static_cast<BoxedDict*>(other)->d)
-            self->d[p.first] = p.second;
+        BoxedDict* other_dict = static_cast<BoxedDict*>(other);
+        if (self->d.empty())
+            self->d = other_dict->d;
+        else {
+            for (const auto& p : other_dict->d)
+                self->d[p.first] = p.second;
+        }
         return;
     }
 

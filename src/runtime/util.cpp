@@ -104,7 +104,7 @@ Box* noneIfNull(Box* b) {
 }
 
 Box* coerceUnicodeToStr(Box* unicode) {
-    if (!isSubclass(unicode->cls, unicode_cls))
+    if (!PyUnicode_Check(unicode))
         return unicode;
 
     Box* r = PyUnicode_AsASCIIString(unicode);
