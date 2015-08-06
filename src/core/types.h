@@ -525,8 +525,7 @@ inline BoxedString* internStringMortal(const char* s) {
 }
 
 inline BoxedString* internStringMortal(llvm::StringRef s) {
-    assert(s.data()[s.size()] == '\0');
-    return internStringMortal(s.data());
+    return internStringImmortal(s);
 }
 
 // TODO this is an immortal intern for now

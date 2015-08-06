@@ -477,6 +477,7 @@ std::string BoxedModule::name() {
 
 BoxedString* BoxedModule::getStringConstant(llvm::StringRef ast_str, bool intern) {
     BoxedString*& r = str_constants[ast_str];
+    intern = true;
     if (intern) {
         // If we had previously created a box for this string, we have to create a new
         // string (or at least, be prepared to return a different value that we had already
