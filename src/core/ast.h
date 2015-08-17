@@ -701,6 +701,7 @@ public:
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Suite;
 };
 
+class ICSetupInfo;
 class AST_Name : public AST_expr {
 public:
     AST_TYPE::AST_TYPE ctx_type;
@@ -714,6 +715,8 @@ public:
     // The interpreter and baseline JIT store variables with FAST and CLOSURE scopes in an array (vregs) this specifies
     // the zero based index of this variable inside the vregs array. If uninitialized it's value is -1.
     int vreg;
+
+    std::vector<ICSetupInfo*> ic_infos;
 
     virtual void accept(ASTVisitor* v);
     virtual void* accept_expr(ExprVisitor* v);

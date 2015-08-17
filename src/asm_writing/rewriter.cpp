@@ -1193,7 +1193,41 @@ void Rewriter::commit() {
     }
 
     if (actions.size() && no_generic_actions && !failed) {
+
+
+
+        auto func_print = [](RewriterVar* v) -> std::string {
+            if (v->is_constant) {
+                char buf[100];
+                sprintf(buf, "C(%p)", (void*)v->constant_value);
+                return buf;
+            }
+            static llvm::DenseMap<RewriterVar*, int> vars;
+            int num = 0;
+            if (vars.count(v))
+                num = vars[v];
+            else
+                num = vars[v] = vars.size();
+
+            return std::to_string(num);
+        };
         printf("yeah %d\n", (int)actions.size());
+        for (int i = 0; i < actions.size(); i++) {
+            RewriterAction& a = actions[i];
+            if (a.op == RewriterAction::Guard) {
+                printf("\tGuard %s %s\n", func_print(a.args.guard.var).c_str(),
+                       func_print(a.args.guard.val_constant).c_str());
+            } else if (a.op == RewriterAction::AttrGuard) {
+                printf("\tAttrGuard %s[%d] %s\n", func_print(a.args.attr_guard.var).c_str(), a.args.attr_guard.offset,
+                       func_print(a.args.attr_guard.val).c_str());
+            } else if (a.op == RewriterAction::GetAttr) {
+                printf("\t%s = GetAttr %s[%d]\n", func_print(a.args.get_attr.result).c_str(),
+                       func_print(a.args.get_attr.ptr).c_str(), a.args.get_attr.offset);
+            } else if (a.op == RewriterAction::Commit) {
+                printf("\tCommit %s\n", func_print(a.args.commit.var).c_str());
+            } else
+                RELEASE_ASSERT(0, "foobar");
+        }
     }
 
     if (marked_inside_ic) {
