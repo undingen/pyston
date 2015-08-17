@@ -214,7 +214,6 @@ Box* getFromGlobals(Box* globals, BoxedString* name);
 void setGlobal(Box* globals, BoxedString* name, Box* value);
 extern "C" void delGlobal(Box* globals, BoxedString* name);
 
-extern "C" void boxedLocalsSet(Box* boxedLocals, BoxedString* attr, Box* val);
 extern "C" Box* boxedLocalsGet(Box* boxedLocals, BoxedString* attr, Box* globals);
 extern "C" void boxedLocalsDel(Box* boxedLocals, BoxedString* attr);
 }

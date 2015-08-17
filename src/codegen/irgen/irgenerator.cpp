@@ -1719,11 +1719,24 @@ private:
             module->setattr(emitter, getEmptyOpInfo(unw_info), name.getBox(), val);
             module->decvref(emitter);
         } else if (vst == ScopeInfo::VarScopeType::NAME) {
-            // TODO inefficient
             llvm::Value* boxedLocals = irstate->getBoxedLocalsVar();
-            llvm::Value* attr = embedRelocatablePtr(name.getBox(), g.llvm_boxedstring_type_ptr);
-            emitter.createCall3(unw_info, g.funcs.boxedLocalsSet, boxedLocals, attr,
-                                val->makeConverted(emitter, UNKNOWN)->getValue());
+
+            bool do_patchpoint = ENABLE_ICSETITEMS;
+            if (do_patchpoint) {
+                ICSetupInfo* pp = createSetitemIC(getEmptyOpInfo(unw_info).getTypeRecorder());
+
+                std::vector<llvm::Value*> llvm_args;
+                llvm_args.push_back(boxedLocals);
+                llvm_args.push_back(embedRelocatablePtr(name.getBox(), g.llvm_boxedstring_type_ptr));
+                llvm_args.push_back(val->makeConverted(emitter, UNKNOWN)->getValue());
+
+                emitter.createIC(pp, (void*)pyston::setitem, llvm_args, unw_info);
+            } else {
+                emitter.createCall3(unw_info, g.funcs.setitem, boxedLocals,
+                                    embedRelocatablePtr(name.getBox(), g.llvm_boxedstring_type_ptr),
+                                    val->makeConverted(emitter, UNKNOWN)->getValue());
+            }
+
         } else {
             // FAST or CLOSURE
 

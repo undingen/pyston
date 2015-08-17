@@ -47,7 +47,7 @@ struct GlobalFuncs {
     ExceptionSwitchable<llvm::Value*> callattr0, callattr1, callattr2, callattr3, callattr, callattrN;
     llvm::Value* reoptCompiledFunc, *compilePartialFunc;
     llvm::Value* exec;
-    llvm::Value* boxedLocalsSet, *boxedLocalsGet, *boxedLocalsDel;
+    llvm::Value* boxedLocalsGet, *boxedLocalsDel;
 
     llvm::Value* __cxa_end_catch;
     llvm::Value* raise0, *raise0_capi, *raise3, *raise3_capi;

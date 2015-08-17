@@ -5661,10 +5661,6 @@ extern "C" Box* importStar(Box* _from_module, Box* to_globals) {
 
 // TODO Make these fast, do inline caches and stuff
 
-extern "C" void boxedLocalsSet(Box* boxedLocals, BoxedString* attr, Box* val) {
-    setitem(boxedLocals, attr, val);
-}
-
 extern "C" Box* boxedLocalsGet(Box* boxedLocals, BoxedString* attr, Box* globals) {
     assert(boxedLocals != NULL);
 
