@@ -281,7 +281,7 @@ void RewriterVar::addGuard(uint64_t val) {
     STAT_TIMER(t0, "us_timer_rewriter", 10);
 
     RewriterVar* val_var = rewriter->loadConst(val);
-    rewriter->addAction(RewriterAction::AttrGuard, { this, val_var }, { this, val_var }, ActionType::GUARD);
+    rewriter->addAction(RewriterAction::createGuard(this, val_var), { this, val_var }, ActionType::GUARD);
 }
 
 void Rewriter::_addGuard(RewriterVar* var, RewriterVar* val_constant) {
@@ -312,8 +312,7 @@ void RewriterVar::addGuardNotEq(uint64_t val) {
     STAT_TIMER(t0, "us_timer_rewriter", 10);
 
     RewriterVar* val_var = rewriter->loadConst(val);
-    // rewriter->addAction([=]() { rewriter->_addGuardNotEq(this, val_var); }, { this, val_var }, ActionType::GUARD);
-    rewriter->addAction(RewriterAction::GuardNotEq, { this, val_var }, { this, val_var }, ActionType::GUARD);
+    rewriter->addAction([=]() { rewriter->_addGuardNotEq(this, val_var); }, { this, val_var }, ActionType::GUARD);
 }
 
 void Rewriter::_addGuardNotEq(RewriterVar* var, RewriterVar* val_constant) {
@@ -348,7 +347,7 @@ void RewriterVar::addAttrGuard(int offset, uint64_t val, bool negate) {
     RewriterVar* val_var = rewriter->loadConst(val);
     // rewriter->addAction([=]() { rewriter->_addAttrGuard(this, offset, val_var, negate); }, { this, val_var },
     //                    ActionType::GUARD);
-    rewriter->addAction(RewriterAction::AttrGuard, { this, offset, val_var, negate }, { this, val_var },
+    rewriter->addAction(RewriterAction::createAttrGuard(this, offset, val_var, negate), { this, val_var },
                         ActionType::GUARD);
 }
 
@@ -401,7 +400,7 @@ RewriterVar* RewriterVar::getAttr(int offset, Location dest, assembler::MovType 
     RewriterVar* result = rewriter->createNewVar();
     // rewriter->addAction([=]() { rewriter->_getAttr(result, this, offset, dest, type); }, { this },
     // ActionType::NORMAL);
-    rewriter->addAction(RewriterAction::GetAttr, { result, this, offset, dest, type }, { this }, ActionType::NORMAL);
+    rewriter->addAction(RewriterAction::createGetAttr(result, this, offset, dest, type), { this }, ActionType::NORMAL);
     return result;
 }
 
@@ -430,9 +429,8 @@ RewriterVar* RewriterVar::getAttrDouble(int offset, Location dest) {
     STAT_TIMER(t0, "us_timer_rewriter", 10);
 
     RewriterVar* result = rewriter->createNewVar();
-    // rewriter->addAction([=]() { rewriter->_getAttrDouble(result, this, offset, dest); }, { this },
-    // ActionType::NORMAL);
-    rewriter->addAction(RewriterAction::GetAttrDouble, { result, this, offset, dest }, { this }, ActionType::NORMAL);
+    rewriter->addAction([=]() { rewriter->_getAttrDouble(result, this, offset, dest); }, { this }, ActionType::NORMAL);
+    // rewriter->addAction(RewriterAction::GetAttrDouble, { result, this, offset, dest }, { this }, ActionType::NORMAL);
     return result;
 }
 
@@ -454,9 +452,8 @@ RewriterVar* RewriterVar::getAttrFloat(int offset, Location dest) {
     STAT_TIMER(t0, "us_timer_rewriter", 10);
 
     RewriterVar* result = rewriter->createNewVar();
-    // rewriter->addAction([=]() { rewriter->_getAttrFloat(result, this, offset, dest); }, { this },
-    // ActionType::NORMAL);
-    rewriter->addAction(RewriterAction::GetAttrFloat, { result, this, offset, dest }, { this }, ActionType::NORMAL);
+    rewriter->addAction([=]() { rewriter->_getAttrFloat(result, this, offset, dest); }, { this }, ActionType::NORMAL);
+    // rewriter->addAction(RewriterAction::GetAttrFloat, { result, this, offset, dest }, { this }, ActionType::NORMAL);
     return result;
 }
 
@@ -481,10 +478,10 @@ RewriterVar* RewriterVar::cmp(AST_TYPE::AST_TYPE cmp_type, RewriterVar* other, L
     STAT_TIMER(t0, "us_timer_rewriter", 10);
 
     RewriterVar* result = rewriter->createNewVar();
-    // rewriter->addAction([=]() { rewriter->_cmp(result, this, cmp_type, other, dest); }, { this, other },
-    //                    ActionType::NORMAL);
-    rewriter->addAction(RewriterAction::Compare, { result, this, cmp_type, other, dest }, { this, other },
+    rewriter->addAction([=]() { rewriter->_cmp(result, this, cmp_type, other, dest); }, { this, other },
                         ActionType::NORMAL);
+    // rewriter->addAction(RewriterAction::Compare, { result, this, cmp_type, other, dest }, { this, other },
+    //                    ActionType::NORMAL);
     return result;
 }
 
@@ -520,8 +517,8 @@ RewriterVar* RewriterVar::toBool(Location dest) {
     STAT_TIMER(t0, "us_timer_rewriter", 10);
 
     RewriterVar* result = rewriter->createNewVar();
-    // rewriter->addAction([=]() { rewriter->_toBool(result, this, dest); }, { this }, ActionType::NORMAL);
-    rewriter->addAction(RewriterAction::ToBool, { result, this, dest }, { this }, ActionType::NORMAL);
+    rewriter->addAction([=]() { rewriter->_toBool(result, this, dest); }, { this }, ActionType::NORMAL);
+    // rewriter->addAction(RewriterAction::ToBool, { result, this, dest }, { this }, ActionType::NORMAL);
     return result;
 }
 
@@ -545,8 +542,8 @@ void Rewriter::_toBool(RewriterVar* result, RewriterVar* var, Location dest) {
 void RewriterVar::setAttr(int offset, RewriterVar* val) {
     STAT_TIMER(t0, "us_timer_rewriter", 10);
 
-    // rewriter->addAction([=]() { rewriter->_setAttr(this, offset, val); }, { this, val }, ActionType::MUTATION);
-    rewriter->addAction(RewriterAction::SetAttr, { this, offset, val }, { this, val }, ActionType::MUTATION);
+    rewriter->addAction([=]() { rewriter->_setAttr(this, offset, val); }, { this, val }, ActionType::MUTATION);
+    // rewriter->addAction(RewriterAction::SetAttr, { this, offset, val }, { this, val }, ActionType::MUTATION);
 }
 
 void Rewriter::_setAttr(RewriterVar* ptr, int offset, RewriterVar* val) {
@@ -1165,7 +1162,23 @@ void Rewriter::commit() {
 
     // Now, start emitting assembly; check if we're dong guarding after each.
     for (int i = 0; i < actions.size(); i++) {
-        actions[i].action();
+        RewriterAction& a = actions[i];
+        if (a.action && a.op == RewriterAction::Generic)
+            a.action();
+        else {
+            if (a.op == RewriterAction::Guard) {
+                _addGuard(a.args.guard.var, a.args.guard.val_constant);
+            } else if (a.op == RewriterAction::AttrGuard) {
+                _addAttrGuard(a.args.attr_guard.var, a.args.attr_guard.offset, a.args.attr_guard.val,
+                              a.args.attr_guard.negate);
+            } else if (a.op == RewriterAction::GetAttr) {
+                _getAttr(a.args.get_attr.result, a.args.get_attr.ptr, a.args.get_attr.offset,
+                         Location::fromInt(a.args.get_attr.dest), a.args.get_attr.type);
+            } else if (a.op == RewriterAction::Commit) {
+                _commitReturning(a.args.commit.var);
+            } else
+                RELEASE_ASSERT(0, "foobar");
+        }
 
         if (failed) {
             ic_rewrites_aborted_failed.log();
@@ -1352,13 +1365,14 @@ bool Rewriter::finishAssembly(int continue_offset) {
 void Rewriter::commitReturning(RewriterVar* var) {
     STAT_TIMER(t0, "us_timer_rewriter", 10);
 
-    addAction([=]() {
-        assembler->comment("commitReturning");
-        var->getInReg(getReturnDestination(), true /* allow_constant_in_reg */);
-        var->bumpUse();
-    }, { var }, ActionType::NORMAL);
-
+    addAction(RewriterAction::createCommit(var), { var }, ActionType::NORMAL);
     commit();
+}
+
+void Rewriter::_commitReturning(RewriterVar* var) {
+    assembler->comment("commitReturning");
+    var->getInReg(getReturnDestination(), true /* allow_constant_in_reg */);
+    var->bumpUse();
 }
 
 void Rewriter::addDependenceOn(ICInvalidator& invalidator) {

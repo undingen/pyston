@@ -105,6 +105,7 @@ public:
     bool operator<(const Location& rhs) const { return this->asInt() < rhs.asInt(); }
 
     uint64_t asInt() const { return (int)type + ((uint64_t)_data << 4); }
+    static Location fromInt(uint64_t val) { return Location((LocationType)(0xF & val), val >> 4); }
 
     void dump() const;
 };
@@ -291,6 +292,7 @@ public:
         Guard,
         AttrGuard,
         GetAttr,
+        Commit,
 
         Generic
     };
@@ -315,6 +317,10 @@ public:
             uint64_t dest;
             assembler::MovType type;
         } get_attr;
+
+        struct RewriterCommit {
+            RewriterVar* var;
+        } commit;
     } args;
 
     static RewriterAction createGuard(RewriterVar* var, RewriterVar* val_constant) {
@@ -335,7 +341,7 @@ public:
 
     static RewriterAction createGetAttr(RewriterVar* result, RewriterVar* ptr, int offset, Location dest,
                                         assembler::MovType type) {
-        RewriterAction rtn(AttrGuard);
+        RewriterAction rtn(GetAttr);
         rtn.args.get_attr.result = result;
         rtn.args.get_attr.ptr = ptr;
         rtn.args.get_attr.offset = offset;
@@ -344,6 +350,11 @@ public:
         return rtn;
     }
 
+    static RewriterAction createCommit(RewriterVar* var) {
+        RewriterAction rtn(Commit);
+        rtn.args.commit.var = var;
+        return rtn;
+    }
 
     std::function<void()> action;
     ActionOp op;
@@ -395,6 +406,7 @@ protected:
 
     const Location return_location;
 
+    bool no_generic_actions = true;
     bool failed;   // if we tried to generate an invalid rewrite.
     bool finished; // committed or aborted
 #ifndef NDEBUG
@@ -439,6 +451,7 @@ protected:
             assert(!added_changing_action);
             last_guard_action = (int)actions.size();
         }
+        no_generic_actions = false;
         actions.emplace_back(std::move(action));
     }
     void addAction(RewriterAction action, llvm::ArrayRef<RewriterVar*> vars, ActionType type) {
@@ -528,6 +541,7 @@ protected:
     void _cmp(RewriterVar* result, RewriterVar* var1, AST_TYPE::AST_TYPE cmp_type, RewriterVar* var2,
               Location loc = Location::any());
     void _toBool(RewriterVar* result, RewriterVar* var, Location loc = Location::any());
+    void _commitReturning(RewriterVar* var);
 
     void assertConsistent() {
 #ifndef NDEBUG
