@@ -1192,6 +1192,10 @@ void Rewriter::commit() {
         }
     }
 
+    if (actions.size() && no_generic_actions && !failed) {
+        printf("yeah %d\n", (int)actions.size());
+    }
+
     if (marked_inside_ic) {
         assembler->comment("mark inside ic");
 
