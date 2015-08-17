@@ -283,11 +283,73 @@ public:
     friend class JitFragmentWriter;
 };
 
+
+
 class RewriterAction {
 public:
-    std::function<void()> action;
+    enum ActionOp {
+        Guard,
+        AttrGuard,
+        GetAttr,
 
-    RewriterAction(std::function<void()> f) : action(std::move(f)) {}
+        Generic
+    };
+
+    union ActionArgs {
+        struct RewriterGuard {
+            RewriterVar* var;
+            RewriterVar* val_constant;
+        } guard;
+
+        struct RewriterAttrGuard {
+            RewriterVar* var;
+            int offset;
+            RewriterVar* val;
+            bool negate;
+        } attr_guard;
+
+        struct RewriterGetAttr {
+            RewriterVar* result;
+            RewriterVar* ptr;
+            int offset;
+            uint64_t dest;
+            assembler::MovType type;
+        } get_attr;
+    } args;
+
+    static RewriterAction createGuard(RewriterVar* var, RewriterVar* val_constant) {
+        RewriterAction rtn(Guard);
+        rtn.args.guard.var = var;
+        rtn.args.guard.val_constant = val_constant;
+        return rtn;
+    }
+
+    static RewriterAction createAttrGuard(RewriterVar* var, int offset, RewriterVar* val_constant, bool negate) {
+        RewriterAction rtn(AttrGuard);
+        rtn.args.attr_guard.var = var;
+        rtn.args.attr_guard.offset = offset;
+        rtn.args.attr_guard.val = val_constant;
+        rtn.args.attr_guard.negate = negate;
+        return rtn;
+    }
+
+    static RewriterAction createGetAttr(RewriterVar* result, RewriterVar* ptr, int offset, Location dest,
+                                        assembler::MovType type) {
+        RewriterAction rtn(AttrGuard);
+        rtn.args.get_attr.result = result;
+        rtn.args.get_attr.ptr = ptr;
+        rtn.args.get_attr.offset = offset;
+        rtn.args.get_attr.dest = dest.asInt();
+        rtn.args.get_attr.type = type;
+        return rtn;
+    }
+
+
+    std::function<void()> action;
+    ActionOp op;
+
+    RewriterAction(std::function<void()> f) : action(std::move(f)), op(Generic) {}
+    RewriterAction(ActionOp op) : op(op) {}
 };
 
 enum class ActionType { NORMAL, GUARD, MUTATION };
@@ -379,6 +441,28 @@ protected:
         }
         actions.emplace_back(std::move(action));
     }
+    void addAction(RewriterAction action, llvm::ArrayRef<RewriterVar*> vars, ActionType type) {
+        assertPhaseCollecting();
+        for (RewriterVar* var : vars) {
+            assert(var != NULL);
+            var->uses.push_back(actions.size());
+        }
+        if (type == ActionType::MUTATION) {
+            added_changing_action = true;
+        } else if (type == ActionType::GUARD) {
+            if (added_changing_action) {
+                failed = true;
+                return;
+            }
+            for (RewriterVar* arg : args) {
+                arg->uses.push_back(actions.size());
+            }
+            assert(!added_changing_action);
+            last_guard_action = (int)actions.size();
+        }
+        actions.emplace_back(std::move(action));
+    }
+
     bool added_changing_action;
     bool marked_inside_ic;
 
