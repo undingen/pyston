@@ -1207,8 +1207,10 @@ void Rewriter::commit() {
 
             int i = 0;
             for (auto&& arg : args) {
-                if (arg == v)
+                if (arg == v) {
+                    assert(v->is_arg && v->arg_num == i);
                     return "a" + std::to_string(i);
+                }
                 ++i;
             }
 

@@ -1065,9 +1065,10 @@ private:
     }
 
     llvm::DenseMap<RewriterVar*, int> vars;
-    llvm::Value* getV(RewriterVar* v, const std::vector<llvm::Value*>& llvm_args) {
+    llvm::Value* getV(RewriterVar* v, const std::vector<llvm::Value*>& llvm_args,
+                      const llvm::DenseMap<RewriterVar*, llvm::Value*>& llvm_vals) {
         if (v->is_constant) {
-            return embedConstantPtr(v->constant_value, g.llvm_value_type_ptr);
+            return embedConstantPtr((void*)(v->constant_value), g.llvm_value_type_ptr);
         }
 
         if (v->is_arg) {
@@ -1076,6 +1077,7 @@ private:
             return llvm_args[v->arg_num];
         }
 
+        /*
         int num = 0;
         if (vars.count(v))
             num = vars[v];
@@ -1083,6 +1085,9 @@ private:
             num = vars[v] = vars.size();
 
         return "v" + std::to_string(num);
+        */
+        assert(llvm_vals.count(v));
+        return llvm_vals.find(v)->second;
     }
 
     ConcreteCompilerVariable* _getGlobal(AST_Name* node, const UnwindInfo& unw_info) {
@@ -1097,6 +1102,17 @@ private:
             llvm_args.push_back(embedParentModulePtr());
             llvm_args.push_back(embedRelocatablePtr(node->id.getBox(), g.llvm_boxedstring_type_ptr));
 
+            auto&& builder = emitter.getBuilder();
+
+            llvm::BasicBlock* commit_block = NULL;
+            llvm::Value* commit_value = NULL;
+
+            llvm::BasicBlock* pp_dest = llvm::BasicBlock::Create(g.context, "pp_dest", irstate->getLLVMFunction());
+            pp_dest->moveAfter(curblock);
+
+            llvm::BasicBlock* finished = llvm::BasicBlock::Create(g.context, "finished", irstate->getLLVMFunction());
+            finished->moveAfter(pp_dest);
+
             if (irstate->getCL()->versions.size()) {
                 auto&& v = irstate->getCL()->versions.back();
                 if (v->ics.size() && unw_info.current_stmt->icinfos.size() == 1) {
@@ -1106,51 +1122,95 @@ private:
                         if (slot_info->actions) {
                             printf("getGlobal: found previous version '%s'\n", node->id.getBox()->s().data());
 
-                            llvm::BasicBlock* pp_dest
-                                = llvm::BasicBlock::Create(g.context, curblock->getName(), irstate->getLLVMFunction());
-                            pp_dest->moveAfter(curblock);
+
                             auto&& actions = slot_info->actions;
+
+
+
+                            auto i64p = g.i64->getPointerTo();
+                            auto i64pp = i64p->getPointerTo();
+
+
+
+                            llvm::DenseMap<RewriterVar*, llvm::Value*> llvm_vals;
+
+
+
                             for (auto&& a : *actions) {
                                 if (a.op == RewriterAction::Guard) {
                                     assert(0);
                                 } else if (a.op == RewriterAction::AttrGuard) {
-                                    llvm::Value* ptr = getV(a.args.attr_guard.var);
+                                    llvm::Value* ptr = getV(a.args.attr_guard.var, llvm_args, llvm_vals);
+                                    ptr = builder->CreateBitCast(ptr, i64pp);
                                     assert(!(a.args.attr_guard.offset % 8));
-                                    llvm::Value* attr = emitter.getBuilder()->CreateConstInBoundsGEP2_32(
-                                        ptr, 0, a.args.attr_guard.offset / 8);
-                                    llvm::Value* val = getV(a.args.attr_guard.val);
+                                    llvm::Value* attr = ptr;
+                                    attr = builder->CreateConstInBoundsGEP1_32(ptr, a.args.attr_guard.offset / 8);
+                                    attr = builder->CreateBitCast(attr, i64pp);
+                                    attr = builder->CreateLoad(attr);
+                                    attr = builder->CreateBitCast(attr, i64p);
 
 
-                                    llvm::BasicBlock* fast_path = llvm::BasicBlock::Create(
-                                        g.context, curblock->getName(), irstate->getLLVMFunction());
+                                    llvm::Value* val = getV(a.args.attr_guard.val, llvm_args, llvm_vals);
+                                    val = builder->CreateBitCast(val, i64p);
 
-                                    assert(returned_val->getType() == exc_val->getType());
+
+                                    llvm::BasicBlock* fast_path = llvm::BasicBlock::Create(g.context, "AttrGuard_if",
+                                                                                           irstate->getLLVMFunction());
                                     llvm::Value* check_val = NULL;
                                     if (a.args.attr_guard.negate)
-                                        check_val = getBuilder()->CreateICmpNE(attr, val);
+                                        check_val = builder->CreateICmpNE(attr, val);
                                     else
-                                        check_val = getBuilder()->CreateICmpEQ(attr, val);
-                                    getBuilder()->CreateCondBr(check_val, fast_path, pp_dest);
+                                        check_val = builder->CreateICmpEQ(attr, val);
+                                    builder->CreateCondBr(check_val, fast_path, pp_dest);
 
-                                    setCurrentBasicBlock(fast_path);
+                                    emitter.setCurrentBasicBlock(fast_path);
                                 } else if (a.op == RewriterAction::GetAttr) {
-                                    assert(0);
+                                    llvm::Value* ptr = getV(a.args.get_attr.ptr, llvm_args, llvm_vals);
+                                    ptr = builder->CreateBitCast(ptr, i64pp);
+                                    assert(!(a.args.attr_guard.offset % 8));
+                                    llvm::Value* attr = ptr;
+                                    attr = builder->CreateConstInBoundsGEP1_32(ptr, a.args.get_attr.offset / 8);
+                                    attr = builder->CreateBitCast(attr, i64pp);
+                                    attr = builder->CreateLoad(attr);
+                                    attr = builder->CreateBitCast(attr, g.llvm_value_type_ptr);
+
+                                    llvm_vals[a.args.get_attr.result] = attr;
                                 } else if (a.op == RewriterAction::Commit) {
-                                    assert(0);
+                                    llvm::Value* val = getV(a.args.commit.var, llvm_args, llvm_vals);
+                                    val = builder->CreateBitCast(val, g.llvm_value_type_ptr);
+                                    commit_block = curblock;
+                                    commit_value = val;
+                                    builder->CreateBr(finished);
                                 } else {
                                     RELEASE_ASSERT(0, "foobar2");
                                 }
                             }
-                            setCurrentBasicBlock(pp_dest);
                         }
                     }
                 }
             }
+            if (!commit_block)
+                builder->CreateBr(pp_dest);
 
-            llvm::Value* uncasted = emitter.createIC(pp, (void*)pyston::getGlobal, llvm_args, unw_info);
-            node->ic_infos.push_back(pp);
-            llvm::Value* r = emitter.getBuilder()->CreateIntToPtr(uncasted, g.llvm_value_type_ptr);
-            return new ConcreteCompilerVariable(UNKNOWN, r, true);
+            emitter.setCurrentBasicBlock(pp_dest);
+            llvm::Value* r = NULL;
+            if (commit_block) {
+                r = embedConstantPtr((void*)(0), g.llvm_value_type_ptr);
+            } else {
+                llvm::Value* uncasted
+                    = emitter.createIC(pp, commit_block ? (void*)1 : (void*)pyston::getGlobal, llvm_args, unw_info);
+                node->ic_infos.push_back(pp);
+                r = emitter.getBuilder()->CreateIntToPtr(uncasted, g.llvm_value_type_ptr);
+            }
+            builder->CreateBr(finished);
+
+            emitter.setCurrentBasicBlock(finished);
+            auto phi = builder->CreatePHI(g.llvm_value_type_ptr, commit_block ? 2 : 1, "result");
+            if (commit_block)
+                phi->addIncoming(commit_value, commit_block);
+            phi->addIncoming(r, pp_dest);
+
+            return new ConcreteCompilerVariable(UNKNOWN, phi, true);
         } else {
             llvm::Value* r = emitter.createCall2(unw_info, g.funcs.getGlobal, embedParentModulePtr(),
                                                  embedRelocatablePtr(node->id.getBox(), g.llvm_boxedstring_type_ptr));

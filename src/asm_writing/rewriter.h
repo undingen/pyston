@@ -405,7 +405,8 @@ protected:
     ICSlotInfo* picked_slot;
 
     ConstLoader const_loader;
-    std::deque<RewriterVar> vars;
+    std::deque<RewriterVar>* real_vars = new std::deque<RewriterVar>;
+    std::deque<RewriterVar>& vars = *real_vars;
 
     const Location return_location;
 
