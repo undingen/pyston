@@ -259,6 +259,16 @@ void processStackmap(CompiledFunction* cf, StackMap* stackmap) {
             std::move(initialization_info.live_outs));
 
         assert(cf);
+        auto& l = cf->location_map->names["!current_stmt"].locations;
+        assert(!l.empty());
+        auto&& le = l.back();
+        assert(le._debug_pp_id == (uint64_t)pp);
+        assert(le.locations.size() == 1);
+        auto&& ll = le.locations[0];
+        assert(ll.type == StackMap::Record::Location::ConstIndex);
+        icinfo->stmt = (AST_stmt*)cf->location_map->constants[ll.offset];
+        icinfo->stmt->icinfos.push_back(icinfo.get());
+
         // TODO: unsafe.  hard to use a unique_ptr here though.
         cf->ics.push_back(icinfo.release());
     }

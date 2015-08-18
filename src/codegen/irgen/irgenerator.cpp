@@ -1066,6 +1066,13 @@ private:
         if (node->id.s() == "None")
             return getNone();
 
+        if (irstate->getCL()->versions.size()) {
+            auto&& v = irstate->getCL()->versions.back();
+            if (v->ics.size()) {
+                printf("found previous version\n");
+            }
+        }
+
         bool do_patchpoint = ENABLE_ICGETGLOBALS;
         if (do_patchpoint) {
             ICSetupInfo* pp = createGetGlobalIC(getOpInfoForNode(node, unw_info).getTypeRecorder());

@@ -42,6 +42,7 @@ public:
     int num_inside; // the number of stack frames that are currently inside this slot
 
     void clear();
+    std::vector<class RewriterAction>* actions = NULL;
 };
 
 class ICSlotRewrite {
@@ -115,6 +116,7 @@ private:
     ICSlotInfo* pickEntryForRewrite(const char* debug_name);
 
 public:
+    class AST_stmt* stmt = NULL;
     ICInfo(void* start_addr, void* slowpath_rtn_addr, void* continue_addr, StackInfo stack_info, int num_slots,
            int slot_size, llvm::CallingConv::ID calling_conv, const std::unordered_set<int>& live_outs,
            assembler::GenericRegister return_register, TypeRecorder* type_recorder);
