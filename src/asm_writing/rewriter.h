@@ -296,6 +296,7 @@ public:
         AttrGuard,
         GetAttr,
         Commit,
+        Call,
 
         Generic
     };
@@ -324,6 +325,16 @@ public:
         struct RewriterCommit {
             RewriterVar* var;
         } commit;
+
+        struct RewriterCall {
+            RewriterVar* result;
+            bool has_side_effects;
+            void* func_addr;
+            RewriterVar* arg0;
+            RewriterVar* arg1;
+            RewriterVar* arg2;
+            RewriterVar* arg3;
+        } call;
     } args;
 
     static RewriterAction createGuard(RewriterVar* var, RewriterVar* val_constant) {
@@ -356,6 +367,19 @@ public:
     static RewriterAction createCommit(RewriterVar* var) {
         RewriterAction rtn(Commit);
         rtn.args.commit.var = var;
+        return rtn;
+    }
+
+    static RewriterAction createCall(RewriterVar* result, bool has_side_effects, void* func_addr,
+                                     const RewriterVar::SmallVector& args) {
+        RewriterAction rtn(Call);
+        rtn.args.call.result = result;
+        rtn.args.call.has_side_effects = has_side_effects;
+        rtn.args.call.func_addr = func_addr;
+        rtn.args.call.arg0 = args.size() > 0 ? args[0] : NULL;
+        rtn.args.call.arg1 = args.size() > 1 ? args[1] : NULL;
+        rtn.args.call.arg2 = args.size() > 2 ? args[2] : NULL;
+        rtn.args.call.arg3 = args.size() > 3 ? args[3] : NULL;
         return rtn;
     }
 
@@ -523,10 +547,9 @@ protected:
 
     void _trap();
     void _loadConst(RewriterVar* result, int64_t val);
-    void _setupCall(bool has_side_effects, const RewriterVar::SmallVector& args,
-                    const RewriterVar::SmallVector& args_xmm);
-    void _call(RewriterVar* result, bool has_side_effects, void* func_addr, const RewriterVar::SmallVector& args,
-               const RewriterVar::SmallVector& args_xmm);
+    void _setupCall(bool has_side_effects, llvm::ArrayRef<RewriterVar*> args, llvm::ArrayRef<RewriterVar*> args_xmm);
+    void _call(RewriterVar* result, bool has_side_effects, void* func_addr, llvm::ArrayRef<RewriterVar*> args,
+               llvm::ArrayRef<RewriterVar*> args_xmm);
     void _add(RewriterVar* result, RewriterVar* a, int64_t b, Location dest);
     int _allocate(RewriterVar* result, int n);
     void _allocateAndCopy(RewriterVar* result, RewriterVar* array, int n);

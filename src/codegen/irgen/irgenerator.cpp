@@ -1090,6 +1090,65 @@ private:
         return llvm_vals.find(v)->second;
     }
 
+    void handle_rewriter(ICSlotInfo* slot_info, const std::vector<llvm::Value*>& llvm_args, llvm::BasicBlock* pp_dest,
+                         llvm::BasicBlock* finished, llvm::BasicBlock*& commit_block, llvm::Value*& commit_value) {
+        auto&& builder = emitter.getBuilder();
+        auto&& actions = slot_info->actions;
+
+        auto i64p = g.i64->getPointerTo();
+        auto i64pp = i64p->getPointerTo();
+        llvm::DenseMap<RewriterVar*, llvm::Value*> llvm_vals;
+        for (auto&& a : *actions) {
+            if (a.op == RewriterAction::Guard) {
+                assert(0);
+            } else if (a.op == RewriterAction::AttrGuard) {
+                llvm::Value* ptr = getV(a.args.attr_guard.var, llvm_args, llvm_vals);
+                ptr = builder->CreateBitCast(ptr, i64pp);
+                assert(!(a.args.attr_guard.offset % 8));
+                llvm::Value* attr = ptr;
+                attr = builder->CreateConstInBoundsGEP1_32(ptr, a.args.attr_guard.offset / 8);
+                attr = builder->CreateBitCast(attr, i64pp);
+                attr = builder->CreateLoad(attr);
+                attr = builder->CreateBitCast(attr, i64p);
+
+
+                llvm::Value* val = getV(a.args.attr_guard.val, llvm_args, llvm_vals);
+                val = builder->CreateBitCast(val, i64p);
+
+
+                llvm::BasicBlock* fast_path
+                    = llvm::BasicBlock::Create(g.context, "AttrGuard_if", irstate->getLLVMFunction());
+                llvm::Value* check_val = NULL;
+                if (a.args.attr_guard.negate)
+                    check_val = builder->CreateICmpNE(attr, val);
+                else
+                    check_val = builder->CreateICmpEQ(attr, val);
+                builder->CreateCondBr(check_val, fast_path, pp_dest);
+
+                emitter.setCurrentBasicBlock(fast_path);
+            } else if (a.op == RewriterAction::GetAttr) {
+                llvm::Value* ptr = getV(a.args.get_attr.ptr, llvm_args, llvm_vals);
+                ptr = builder->CreateBitCast(ptr, i64pp);
+                assert(!(a.args.attr_guard.offset % 8));
+                llvm::Value* attr = ptr;
+                attr = builder->CreateConstInBoundsGEP1_32(ptr, a.args.get_attr.offset / 8);
+                attr = builder->CreateBitCast(attr, i64pp);
+                attr = builder->CreateLoad(attr);
+                attr = builder->CreateBitCast(attr, g.llvm_value_type_ptr);
+
+                llvm_vals[a.args.get_attr.result] = attr;
+            } else if (a.op == RewriterAction::Commit) {
+                llvm::Value* val = getV(a.args.commit.var, llvm_args, llvm_vals);
+                val = builder->CreateBitCast(val, g.llvm_value_type_ptr);
+                commit_block = curblock;
+                commit_value = val;
+                builder->CreateBr(finished);
+            } else {
+                RELEASE_ASSERT(0, "foobar2");
+            }
+        }
+    }
+
     ConcreteCompilerVariable* _getGlobal(AST_Name* node, const UnwindInfo& unw_info) {
         if (node->id.s() == "None")
             return getNone();
@@ -1106,13 +1165,10 @@ private:
 
             llvm::BasicBlock* commit_block = NULL;
             llvm::Value* commit_value = NULL;
-
             llvm::BasicBlock* pp_dest = llvm::BasicBlock::Create(g.context, "pp_dest", irstate->getLLVMFunction());
             pp_dest->moveAfter(curblock);
-
             llvm::BasicBlock* finished = llvm::BasicBlock::Create(g.context, "finished", irstate->getLLVMFunction());
             finished->moveAfter(pp_dest);
-
             if (irstate->getCL()->versions.size()) {
                 auto&& v = irstate->getCL()->versions.back();
                 if (v->ics.size() && unw_info.current_stmt->icinfos.size() == 1) {
@@ -1121,70 +1177,7 @@ private:
                         ICSlotInfo* slot_info = icinfo->getSlot(0);
                         if (slot_info->actions) {
                             printf("getGlobal: found previous version '%s'\n", node->id.getBox()->s().data());
-
-
-                            auto&& actions = slot_info->actions;
-
-
-
-                            auto i64p = g.i64->getPointerTo();
-                            auto i64pp = i64p->getPointerTo();
-
-
-
-                            llvm::DenseMap<RewriterVar*, llvm::Value*> llvm_vals;
-
-
-
-                            for (auto&& a : *actions) {
-                                if (a.op == RewriterAction::Guard) {
-                                    assert(0);
-                                } else if (a.op == RewriterAction::AttrGuard) {
-                                    llvm::Value* ptr = getV(a.args.attr_guard.var, llvm_args, llvm_vals);
-                                    ptr = builder->CreateBitCast(ptr, i64pp);
-                                    assert(!(a.args.attr_guard.offset % 8));
-                                    llvm::Value* attr = ptr;
-                                    attr = builder->CreateConstInBoundsGEP1_32(ptr, a.args.attr_guard.offset / 8);
-                                    attr = builder->CreateBitCast(attr, i64pp);
-                                    attr = builder->CreateLoad(attr);
-                                    attr = builder->CreateBitCast(attr, i64p);
-
-
-                                    llvm::Value* val = getV(a.args.attr_guard.val, llvm_args, llvm_vals);
-                                    val = builder->CreateBitCast(val, i64p);
-
-
-                                    llvm::BasicBlock* fast_path = llvm::BasicBlock::Create(g.context, "AttrGuard_if",
-                                                                                           irstate->getLLVMFunction());
-                                    llvm::Value* check_val = NULL;
-                                    if (a.args.attr_guard.negate)
-                                        check_val = builder->CreateICmpNE(attr, val);
-                                    else
-                                        check_val = builder->CreateICmpEQ(attr, val);
-                                    builder->CreateCondBr(check_val, fast_path, pp_dest);
-
-                                    emitter.setCurrentBasicBlock(fast_path);
-                                } else if (a.op == RewriterAction::GetAttr) {
-                                    llvm::Value* ptr = getV(a.args.get_attr.ptr, llvm_args, llvm_vals);
-                                    ptr = builder->CreateBitCast(ptr, i64pp);
-                                    assert(!(a.args.attr_guard.offset % 8));
-                                    llvm::Value* attr = ptr;
-                                    attr = builder->CreateConstInBoundsGEP1_32(ptr, a.args.get_attr.offset / 8);
-                                    attr = builder->CreateBitCast(attr, i64pp);
-                                    attr = builder->CreateLoad(attr);
-                                    attr = builder->CreateBitCast(attr, g.llvm_value_type_ptr);
-
-                                    llvm_vals[a.args.get_attr.result] = attr;
-                                } else if (a.op == RewriterAction::Commit) {
-                                    llvm::Value* val = getV(a.args.commit.var, llvm_args, llvm_vals);
-                                    val = builder->CreateBitCast(val, g.llvm_value_type_ptr);
-                                    commit_block = curblock;
-                                    commit_value = val;
-                                    builder->CreateBr(finished);
-                                } else {
-                                    RELEASE_ASSERT(0, "foobar2");
-                                }
-                            }
+                            handle_rewriter(slot_info, llvm_args, pp_dest, finished, commit_block, commit_value);
                         }
                     }
                 }

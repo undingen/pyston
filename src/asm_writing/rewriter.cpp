@@ -826,12 +826,16 @@ RewriterVar* Rewriter::call(bool has_side_effects, void* func_addr, const Rewrit
         type = ActionType::MUTATION;
     else
         type = ActionType::NORMAL;
-    addAction([=]() { this->_call(result, has_side_effects, func_addr, args, args_xmm); }, uses, type);
+
+    if (args.size() <= 4 && args_xmm.empty())
+        addAction(RewriterAction::createCall(result, has_side_effects, func_addr, args), uses, type);
+    else
+        addAction([=]() { this->_call(result, has_side_effects, func_addr, args, args_xmm); }, uses, type);
     return result;
 }
 
-void Rewriter::_setupCall(bool has_side_effects, const RewriterVar::SmallVector& args,
-                          const RewriterVar::SmallVector& args_xmm) {
+void Rewriter::_setupCall(bool has_side_effects, llvm::ArrayRef<RewriterVar*> args,
+                          llvm::ArrayRef<RewriterVar*> args_xmm) {
     if (has_side_effects)
         assert(done_guarding);
 
@@ -976,8 +980,8 @@ void Rewriter::_setupCall(bool has_side_effects, const RewriterVar::SmallVector&
 #endif
 }
 
-void Rewriter::_call(RewriterVar* result, bool has_side_effects, void* func_addr, const RewriterVar::SmallVector& args,
-                     const RewriterVar::SmallVector& args_xmm) {
+void Rewriter::_call(RewriterVar* result, bool has_side_effects, void* func_addr, llvm::ArrayRef<RewriterVar*> args,
+                     llvm::ArrayRef<RewriterVar*> args_xmm) {
     assembler->comment("_call");
 
     // RewriterVarUsage scratch = createNewVar(Location::any());
@@ -1176,6 +1180,18 @@ void Rewriter::commit() {
                          Location::fromInt(a.args.get_attr.dest), a.args.get_attr.type);
             } else if (a.op == RewriterAction::Commit) {
                 _commitReturning(a.args.commit.var);
+            } else if (a.op == RewriterAction::Call) {
+                std::vector<RewriterVar*> args;
+                if (a.args.call.arg0)
+                    args.push_back(a.args.call.arg0);
+                if (a.args.call.arg1)
+                    args.push_back(a.args.call.arg1);
+                if (a.args.call.arg2)
+                    args.push_back(a.args.call.arg2);
+                if (a.args.call.arg3)
+                    args.push_back(a.args.call.arg3);
+                _call(a.args.call.result, a.args.call.has_side_effects, a.args.call.func_addr, args,
+                      std::vector<RewriterVar*>());
             } else
                 RELEASE_ASSERT(0, "foobar");
         }
@@ -1201,7 +1217,7 @@ void Rewriter::commit() {
         auto func_print = [&vars, this](RewriterVar* v) -> std::string {
             if (v->is_constant) {
                 char buf[100];
-                sprintf(buf, "C(%p)", (void*)v->constant_value);
+                sprintf(buf, "C(0x%lx)", v->constant_value);
                 return buf;
             }
 
@@ -1236,6 +1252,12 @@ void Rewriter::commit() {
                        func_print(a.args.get_attr.ptr).c_str(), a.args.get_attr.offset);
             } else if (a.op == RewriterAction::Commit) {
                 printf("\tCommit %s\n", func_print(a.args.commit.var).c_str());
+            } else if (a.op == RewriterAction::Call) {
+                printf("\t%s = Call %p %s %s %s %s\n", func_print(a.args.call.result).c_str(), a.args.call.func_addr,
+                       a.args.call.arg0 ? func_print(a.args.call.arg0).c_str() : "",
+                       a.args.call.arg1 ? func_print(a.args.call.arg1).c_str() : "",
+                       a.args.call.arg2 ? func_print(a.args.call.arg2).c_str() : "",
+                       a.args.call.arg3 ? func_print(a.args.call.arg3).c_str() : "");
             } else
                 RELEASE_ASSERT(0, "foobar");
         }
