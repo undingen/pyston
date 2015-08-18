@@ -1064,6 +1064,27 @@ private:
         return embedRelocatablePtr(parent_module, g.llvm_value_type_ptr, "cParentModule");
     }
 
+    llvm::DenseMap<RewriterVar*, int> vars;
+    llvm::Value* getV(RewriterVar* v, const std::vector<llvm::Value*>& llvm_args) {
+        if (v->is_constant) {
+            return embedConstantPtr(v->constant_value, g.llvm_value_type_ptr);
+        }
+
+        if (v->is_arg) {
+            assert(v->arg_num >= 0);
+            assert(v->arg_num < llvm_args.size());
+            return llvm_args[v->arg_num];
+        }
+
+        int num = 0;
+        if (vars.count(v))
+            num = vars[v];
+        else
+            num = vars[v] = vars.size();
+
+        return "v" + std::to_string(num);
+    }
+
     ConcreteCompilerVariable* _getGlobal(AST_Name* node, const UnwindInfo& unw_info) {
         if (node->id.s() == "None")
             return getNone();
@@ -1072,6 +1093,9 @@ private:
         if (do_patchpoint) {
             ICSetupInfo* pp = createGetGlobalIC(getOpInfoForNode(node, unw_info).getTypeRecorder());
 
+            std::vector<llvm::Value*> llvm_args;
+            llvm_args.push_back(embedParentModulePtr());
+            llvm_args.push_back(embedRelocatablePtr(node->id.getBox(), g.llvm_boxedstring_type_ptr));
 
             if (irstate->getCL()->versions.size()) {
                 auto&& v = irstate->getCL()->versions.back();
@@ -1082,12 +1106,33 @@ private:
                         if (slot_info->actions) {
                             printf("getGlobal: found previous version '%s'\n", node->id.getBox()->s().data());
 
+                            llvm::BasicBlock* pp_dest
+                                = llvm::BasicBlock::Create(g.context, curblock->getName(), irstate->getLLVMFunction());
+                            pp_dest->moveAfter(curblock);
                             auto&& actions = slot_info->actions;
                             for (auto&& a : *actions) {
                                 if (a.op == RewriterAction::Guard) {
                                     assert(0);
                                 } else if (a.op == RewriterAction::AttrGuard) {
-                                    assert(0);
+                                    llvm::Value* ptr = getV(a.args.attr_guard.var);
+                                    assert(!(a.args.attr_guard.offset % 8));
+                                    llvm::Value* attr = emitter.getBuilder()->CreateConstInBoundsGEP2_32(
+                                        ptr, 0, a.args.attr_guard.offset / 8);
+                                    llvm::Value* val = getV(a.args.attr_guard.val);
+
+
+                                    llvm::BasicBlock* fast_path = llvm::BasicBlock::Create(
+                                        g.context, curblock->getName(), irstate->getLLVMFunction());
+
+                                    assert(returned_val->getType() == exc_val->getType());
+                                    llvm::Value* check_val = NULL;
+                                    if (a.args.attr_guard.negate)
+                                        check_val = getBuilder()->CreateICmpNE(attr, val);
+                                    else
+                                        check_val = getBuilder()->CreateICmpEQ(attr, val);
+                                    getBuilder()->CreateCondBr(check_val, fast_path, pp_dest);
+
+                                    setCurrentBasicBlock(fast_path);
                                 } else if (a.op == RewriterAction::GetAttr) {
                                     assert(0);
                                 } else if (a.op == RewriterAction::Commit) {
@@ -1096,15 +1141,11 @@ private:
                                     RELEASE_ASSERT(0, "foobar2");
                                 }
                             }
+                            setCurrentBasicBlock(pp_dest);
                         }
                     }
                 }
             }
-
-
-            std::vector<llvm::Value*> llvm_args;
-            llvm_args.push_back(embedParentModulePtr());
-            llvm_args.push_back(embedRelocatablePtr(node->id.getBox(), g.llvm_boxedstring_type_ptr));
 
             llvm::Value* uncasted = emitter.createIC(pp, (void*)pyston::getGlobal, llvm_args, unw_info);
             node->ic_infos.push_back(pp);

@@ -1198,11 +1198,18 @@ void Rewriter::commit() {
 
         llvm::DenseMap<RewriterVar*, int> vars;
 
-        auto func_print = [&vars](RewriterVar* v) -> std::string {
+        auto func_print = [&vars, this](RewriterVar* v) -> std::string {
             if (v->is_constant) {
                 char buf[100];
                 sprintf(buf, "C(%p)", (void*)v->constant_value);
                 return buf;
+            }
+
+            int i = 0;
+            for (auto&& arg : args) {
+                if (arg == v)
+                    return "a" + std::to_string(i);
+                ++i;
             }
 
             int num = 0;
@@ -1875,6 +1882,7 @@ Rewriter::Rewriter(std::unique_ptr<ICSlotRewrite> rewrite, int num_args, const s
 
         var->is_arg = true;
         var->arg_loc = l;
+        var->arg_num = i;
 
         args.push_back(var);
     }
