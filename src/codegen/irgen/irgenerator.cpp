@@ -20,6 +20,8 @@
 #include "analysis/function_analysis.h"
 #include "analysis/scoping_analysis.h"
 #include "analysis/type_analysis.h"
+#include "asm_writing/icinfo.h"
+#include "asm_writing/rewriter.h"
 #include "codegen/codegen.h"
 #include "codegen/compvars.h"
 #include "codegen/irgen.h"
@@ -1066,16 +1068,39 @@ private:
         if (node->id.s() == "None")
             return getNone();
 
-        if (irstate->getCL()->versions.size()) {
-            auto&& v = irstate->getCL()->versions.back();
-            if (v->ics.size()) {
-                printf("found previous version\n");
-            }
-        }
-
         bool do_patchpoint = ENABLE_ICGETGLOBALS;
         if (do_patchpoint) {
             ICSetupInfo* pp = createGetGlobalIC(getOpInfoForNode(node, unw_info).getTypeRecorder());
+
+
+            if (irstate->getCL()->versions.size()) {
+                auto&& v = irstate->getCL()->versions.back();
+                if (v->ics.size() && unw_info.current_stmt->icinfos.size() == 1) {
+                    ICInfo* icinfo = unw_info.current_stmt->icinfos[0];
+                    if (icinfo->timesRewritten() == 1) {
+                        ICSlotInfo* slot_info = icinfo->getSlot(0);
+                        if (slot_info->actions) {
+                            printf("getGlobal: found previous version '%s'\n", node->id.getBox()->s().data());
+
+                            auto&& actions = slot_info->actions;
+                            for (auto&& a : *actions) {
+                                if (a.op == RewriterAction::Guard) {
+                                    assert(0);
+                                } else if (a.op == RewriterAction::AttrGuard) {
+                                    assert(0);
+                                } else if (a.op == RewriterAction::GetAttr) {
+                                    assert(0);
+                                } else if (a.op == RewriterAction::Commit) {
+                                    assert(0);
+                                } else {
+                                    RELEASE_ASSERT(0, "foobar2");
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
 
             std::vector<llvm::Value*> llvm_args;
             llvm_args.push_back(embedParentModulePtr());

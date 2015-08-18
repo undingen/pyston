@@ -133,6 +133,9 @@ public:
     bool shouldAttempt();
     bool isMegamorphic();
 
+    int timesRewritten() const { return times_rewritten; }
+    ICSlotInfo* getSlot(int i) { return &slots[i]; }
+
     friend class ICSlotRewrite;
 };
 
