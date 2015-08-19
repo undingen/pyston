@@ -227,7 +227,8 @@ private:
 
     bool hasFixedBinops(CompilerType* type) {
         // This is non-exhaustive:
-        return type == STR || type == INT || type == FLOAT || type == LIST || type == DICT;
+        return type == STR || type == INT || type == FLOAT || type == LIST || type == DICT || type == LONG
+               || type == BOXED_TUPLE || type == typeFromClass(unicode_cls);
     }
 
     void* visit_augbinop(AST_AugBinOp* node) override {
