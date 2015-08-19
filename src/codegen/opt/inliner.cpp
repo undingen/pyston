@@ -190,6 +190,7 @@ public:
                     f->materialize();
 #endif
                 }
+                f->dump();
 
                 // It could still be a declaration, though I think the code won't generate this case any more:
                 if (f->isDeclaration())
@@ -201,6 +202,7 @@ public:
                 for (llvm::Argument& arg : f->args()) {
                     ++op_idx;
                     llvm::Type* op_type = call->getOperand(op_idx)->getType();
+
                     if (arg.getType() != op_type) {
                         llvm::errs() << f->getName() << " has arg " << op_idx << " mismatched!\n";
                         llvm::errs() << "Given ";

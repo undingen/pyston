@@ -29,6 +29,7 @@
 #include "analysis/scoping_analysis.h"
 #include "codegen/baseline_jit.h"
 #include "codegen/compvars.h"
+#include "codegen/irgen.h"
 #include "core/ast.h"
 #include "core/util.h"
 
@@ -142,7 +143,15 @@ llvm::Function* FunctionAddressRegistry::getLLVMFuncAtAddress(void* addr) {
             return NULL;
         }
 
+
+
         llvm::Function* r = g.stdlib_module->getFunction(name);
+
+        if (!r) {
+            auto* cf = cfFromPointer(addr);
+            if (cf)
+                r = cf->func;
+        }
 
         if (!r) {
             lookup_neg_cache.insert(addr);
@@ -231,7 +240,11 @@ public:
             uint64_t sym_addr = L.getSymbolLoadAddress(name);
             assert(sym_addr);
 
-            g.func_addr_registry.registerFunction(name.data(), (void*)sym_addr, size, NULL);
+            llvm::Function* llvm_func = NULL;
+            if (g.cur_cf)
+                llvm_func = g.cur_cf->func;
+
+            g.func_addr_registry.registerFunction(name.data(), (void*)sym_addr, size, llvm_func);
         }
     }
 };

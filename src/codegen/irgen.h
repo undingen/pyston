@@ -69,9 +69,14 @@ public:
 
     virtual ~IREmitter() {}
 
+    virtual void handle_rewriter(ICSlotInfo* slot_info, const std::vector<llvm::Value*>& llvm_args,
+                                 llvm::BasicBlock* pp_dest, llvm::BasicBlock* finished, llvm::BasicBlock*& commit_block,
+                                 llvm::Value*& commit_value) = 0;
+
     virtual IRBuilder* getBuilder() = 0;
     virtual GCBuilder* getGC() = 0;
     virtual CompiledFunction* currentFunction() = 0;
+    virtual CLFunction* currentCLFunction() = 0;
     virtual llvm::BasicBlock* currentBasicBlock() = 0;
     virtual llvm::BasicBlock* createBasicBlock(const char* name = "") = 0;
 
@@ -111,6 +116,7 @@ extern const std::string PASSED_GENERATOR_NAME;
 InternedString getIsDefinedName(InternedString name, InternedStringPool& interned_strings);
 bool isIsDefinedName(llvm::StringRef name);
 
+CompiledFunction* cfFromPointer(void* ptr);
 CompiledFunction* doCompile(CLFunction* clfunc, SourceInfo* source, ParamNames* param_names,
                             const OSREntryDescriptor* entry_descriptor, EffortLevel effort,
                             ExceptionStyle exception_style, FunctionSpecialization* spec, std::string nameprefix);

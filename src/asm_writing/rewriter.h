@@ -329,6 +329,7 @@ public:
         struct RewriterCall {
             RewriterVar* result;
             bool has_side_effects;
+            int num_args;
             void* func_addr;
             RewriterVar* arg0;
             RewriterVar* arg1;
@@ -374,6 +375,7 @@ public:
                                      const RewriterVar::SmallVector& args) {
         RewriterAction rtn(Call);
         rtn.args.call.result = result;
+        rtn.args.call.num_args = args.size();
         rtn.args.call.has_side_effects = has_side_effects;
         rtn.args.call.func_addr = func_addr;
         rtn.args.call.arg0 = args.size() > 0 ? args[0] : NULL;

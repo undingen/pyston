@@ -20,6 +20,7 @@
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include "asm_writing/icinfo.h"
 #include "codegen/codegen.h"
 #include "codegen/gcbuilder.h"
 #include "codegen/irgen.h"
@@ -614,13 +615,58 @@ static ConcreteCompilerVariable* _call(IREmitter& emitter, const OpInfo& info, l
     if (do_patchpoint) {
         assert(func_addr);
 
-        ICSetupInfo* pp = createCallsiteIC(info.getTypeRecorder(), args.size());
+        bool finished = false;
 
-        llvm::Value* uncasted = emitter.createIC(pp, func_addr, llvm_args, info.unw_info, target_exception_style);
+        if (1 && emitter.currentCLFunction()->versions.size()) {
+            auto&& v = emitter.currentCLFunction()->versions.back();
+            if (v->ics.size() && info.unw_info.current_stmt->icinfos.size() == 1) {
+                ICInfo* icinfo = info.unw_info.current_stmt->icinfos[0];
+                printf("timesRewritten %d\n", icinfo->timesRewritten());
+                if (icinfo->timesRewritten() < 5) {
+                    ICSlotInfo* slot_info = icinfo->getSlot(0);
+                    if (slot_info->actions) {
+                        printf("call2: found previous version\n");
 
-        assert(llvm::cast<llvm::FunctionType>(llvm::cast<llvm::PointerType>(func->getType())->getElementType())
-                   ->getReturnType() == g.llvm_value_type_ptr);
-        rtn = emitter.getBuilder()->CreateIntToPtr(uncasted, g.llvm_value_type_ptr);
+                        auto&& builder = emitter.getBuilder();
+
+                        llvm::BasicBlock* commit_block = NULL;
+                        llvm::Value* commit_value = NULL;
+                        llvm::BasicBlock* pp_dest
+                            = llvm::BasicBlock::Create(g.context, "pp_dest", emitter.currentBasicBlock()->getParent());
+                        // pp_dest->moveAfter(curblock);
+                        llvm::BasicBlock* finished_bb
+                            = llvm::BasicBlock::Create(g.context, "finished", emitter.currentBasicBlock()->getParent());
+                        finished_bb->moveAfter(pp_dest);
+
+                        emitter.handle_rewriter(slot_info, llvm_args, pp_dest, finished_bb, commit_block, commit_value);
+
+                        emitter.setCurrentBasicBlock(pp_dest);
+                        llvm::Value* r = NULL;
+                        r = embedConstantPtr((void*)0, g.llvm_value_type_ptr);
+                        builder->CreateBr(finished_bb);
+
+                        emitter.setCurrentBasicBlock(finished_bb);
+                        auto phi = builder->CreatePHI(g.llvm_value_type_ptr, 2, "result");
+                        phi->addIncoming(commit_value, commit_block);
+                        phi->addIncoming(r, pp_dest);
+                        rtn = phi;
+                        // rtn = emitter.getBuilder()->CreateIntToPtr(phi, g.llvm_value_type_ptr);
+
+                        finished = true;
+                    }
+                }
+            }
+        }
+
+        if (!finished) {
+            ICSetupInfo* pp = createCallsiteIC(info.getTypeRecorder(), args.size());
+
+            llvm::Value* uncasted = emitter.createIC(pp, func_addr, llvm_args, info.unw_info, target_exception_style);
+
+            assert(llvm::cast<llvm::FunctionType>(llvm::cast<llvm::PointerType>(func->getType())->getElementType())
+                       ->getReturnType() == g.llvm_value_type_ptr);
+            rtn = emitter.getBuilder()->CreateIntToPtr(uncasted, g.llvm_value_type_ptr);
+        }
     } else {
         // printf("\n");
         // func->dump();
@@ -675,6 +721,22 @@ CompilerVariable* UnknownType::call(IREmitter& emitter, const OpInfo& info, Conc
 
     llvm::Value* llvm_argspec = llvm::ConstantInt::get(g.i32, argspec.asInt(), false);
     other_args.push_back(llvm_argspec);
+
+
+    if (0 && emitter.currentCLFunction()->versions.size()) {
+        auto&& v = emitter.currentCLFunction()->versions.back();
+        if (v->ics.size() && info.unw_info.current_stmt->icinfos.size() == 1) {
+            ICInfo* icinfo = info.unw_info.current_stmt->icinfos[0];
+            if (icinfo->timesRewritten() == 1) {
+                ICSlotInfo* slot_info = icinfo->getSlot(0);
+                if (slot_info->actions) {
+                    printf("runtimecall: found previous version\n");
+                    // handle_rewriter(slot_info, llvm_args, pp_dest, finished, commit_block, commit_value);
+                }
+            }
+        }
+    }
+
     return _call(emitter, info, func, exception_style, func_ptr, other_args, argspec, args, keyword_names, UNKNOWN);
 }
 
@@ -705,6 +767,20 @@ CompilerVariable* UnknownType::callattr(IREmitter& emitter, const OpInfo& info, 
         func = g.funcs.callattrN.get(exception_style);
 
     void* func_ptr = (exception_style == ExceptionStyle::CXX) ? (void*)pyston::callattr : (void*)callattrCapi;
+
+    if (0 && emitter.currentCLFunction()->versions.size()) {
+        auto&& v = emitter.currentCLFunction()->versions.back();
+        if (v->ics.size() && info.unw_info.current_stmt->icinfos.size() == 1) {
+            ICInfo* icinfo = info.unw_info.current_stmt->icinfos[0];
+            if (icinfo->timesRewritten() == 1) {
+                ICSlotInfo* slot_info = icinfo->getSlot(0);
+                if (slot_info->actions) {
+                    printf("callattr: found previous version '%s'\n", attr->s().data());
+                    // handle_rewriter(slot_info, llvm_args, pp_dest, finished, commit_block, commit_value);
+                }
+            }
+        }
+    }
 
     std::vector<llvm::Value*> other_args;
     other_args.push_back(var->getValue());

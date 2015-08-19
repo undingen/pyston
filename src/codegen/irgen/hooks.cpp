@@ -138,6 +138,11 @@ LivenessAnalysis* SourceInfo::getLiveness() {
     return liveness_info.get();
 }
 
+static llvm::DenseMap<void*, CompiledFunction*> cfFromPointerMap;
+CompiledFunction* cfFromPointer(void* ptr) {
+    return cfFromPointerMap[ptr];
+}
+
 static void compileIR(CompiledFunction* cf, EffortLevel effort) {
     assert(cf);
     assert(cf->func);
@@ -156,6 +161,9 @@ static void compileIR(CompiledFunction* cf, EffortLevel effort) {
         g.cur_cf = cf;
         void* compiled = (void*)g.engine->getFunctionAddress(cf->func->getName());
         g.cur_cf = NULL;
+
+        cfFromPointerMap[compiled] = cf;
+
         assert(compiled);
         ASSERT(compiled == cf->code, "cf->code should have gotten filled in");
 
@@ -779,6 +787,8 @@ static CompiledFunction* _doReopt(CompiledFunction* cf, EffortLevel new_effort) 
             return new_cf;
         }
     }
+
+    return versions[0];
 
     printf("Couldn't find a version; %ld exist:\n", versions.size());
     for (auto cf : versions) {

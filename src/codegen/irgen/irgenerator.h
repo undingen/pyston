@@ -113,6 +113,10 @@ public:
 class IRGenerator {
 private:
 public:
+    virtual void handle_rewriter(ICSlotInfo* slot_info, const std::vector<llvm::Value*>& llvm_args,
+                                 llvm::BasicBlock* pp_dest, llvm::BasicBlock* finished, llvm::BasicBlock*& commit_block,
+                                 llvm::Value*& commit_value) = 0;
+
     struct ExceptionState {
         llvm::BasicBlock* from_block;
         ConcreteCompilerVariable* exc_type, *exc_value, *exc_tb;

@@ -53,6 +53,7 @@ void ICInvalidator::invalidateAll() {
 
 
 void ICSlotInfo::clear() {
+    // actions = 0;
     ic->clear(this);
 }
 

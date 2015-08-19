@@ -1211,7 +1211,7 @@ void Rewriter::commit() {
     delete picked_slot->actions;
     picked_slot->actions = NULL;
     if (actions.size() && no_generic_actions && !failed) {
-
+#if 0
         llvm::DenseMap<RewriterVar*, int> vars;
 
         auto func_print = [&vars, this](RewriterVar* v) -> std::string {
@@ -1261,6 +1261,7 @@ void Rewriter::commit() {
             } else
                 RELEASE_ASSERT(0, "foobar");
         }
+#endif
 
         picked_slot->actions = new std::vector<RewriterAction>(actions.begin(), actions.end());
     }

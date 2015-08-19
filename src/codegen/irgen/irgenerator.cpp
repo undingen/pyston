@@ -253,6 +253,8 @@ private:
     llvm::BasicBlock*& curblock;
     IRGenerator* irgenerator;
 
+    CLFunction* currentCLFunction() override { return irstate->getCL(); }
+
     llvm::CallSite emitCall(const UnwindInfo& unw_info, llvm::Value* callee, const std::vector<llvm::Value*>& args,
                             ExceptionStyle target_exception_style) {
         if (target_exception_style == CXX && (unw_info.hasHandler() || irstate->getExceptionStyle() == CAPI)) {
@@ -356,6 +358,12 @@ public:
 
         builder->setEmitter(this);
         builder->SetInsertPoint(curblock);
+    }
+
+    void handle_rewriter(ICSlotInfo* slot_info, const std::vector<llvm::Value*>& llvm_args, llvm::BasicBlock* pp_dest,
+                         llvm::BasicBlock* finished, llvm::BasicBlock*& commit_block,
+                         llvm::Value*& commit_value) override {
+        return irgenerator->handle_rewriter(slot_info, llvm_args, pp_dest, finished, commit_block, commit_value);
     }
 
     IRBuilder* getBuilder() override { return builder; }
@@ -1100,7 +1108,19 @@ private:
         llvm::DenseMap<RewriterVar*, llvm::Value*> llvm_vals;
         for (auto&& a : *actions) {
             if (a.op == RewriterAction::Guard) {
-                assert(0);
+                llvm::Value* v1 = getV(a.args.guard.var, llvm_args, llvm_vals);
+                v1 = builder->CreateBitCast(v1, i64p);
+                llvm::Value* v2 = getV(a.args.guard.val_constant, llvm_args, llvm_vals);
+                v2 = builder->CreateBitCast(v2, i64p);
+
+                llvm::BasicBlock* fast_path
+                    = llvm::BasicBlock::Create(g.context, "Guard_if", irstate->getLLVMFunction());
+                llvm::Value* check_val = NULL;
+                check_val = builder->CreateICmpEQ(v1, v2);
+                builder->CreateCondBr(check_val, fast_path, pp_dest);
+
+                emitter.setCurrentBasicBlock(fast_path);
+
             } else if (a.op == RewriterAction::AttrGuard) {
                 llvm::Value* ptr = getV(a.args.attr_guard.var, llvm_args, llvm_vals);
                 ptr = builder->CreateBitCast(ptr, i64pp);
@@ -1143,6 +1163,80 @@ private:
                 commit_block = curblock;
                 commit_value = val;
                 builder->CreateBr(finished);
+            } else if (a.op == RewriterAction::Call) {
+                printf("num args %d\n", a.args.call.num_args);
+
+                void* func_addr = a.args.call.func_addr;
+                llvm::Function* f = g.func_addr_registry.getLLVMFuncAtAddress(func_addr);
+
+                CompiledFunction* cf = cfFromPointer(func_addr);
+                if (cf) {
+                    assert(cf->clfunc->versions.size() == 1);
+                    cf = cf->clfunc->versions[0];
+                    f = cf->func;
+                    func_addr = cf->code;
+                }
+                if (f) {
+                    printf("found f (%p): %s %i\n", func_addr, f->getName().data(), f->isDeclaration());
+
+                    llvm::Value* func = embedConstantPtr(func_addr, f->getType());
+                    llvm::SmallVector<llvm::Value*, 8> args;
+                    auto aa = f->arg_begin();
+                    if (a.args.call.arg0) {
+                        args.push_back(
+                            builder->CreateBitCast(getV(a.args.call.arg0, llvm_args, llvm_vals), aa->getType()));
+                        ++aa;
+                    }
+                    if (a.args.call.arg1) {
+                        args.push_back(
+                            builder->CreateBitCast(getV(a.args.call.arg1, llvm_args, llvm_vals), aa->getType()));
+                        ++aa;
+                    }
+                    if (a.args.call.arg2) {
+                        args.push_back(
+                            builder->CreateBitCast(getV(a.args.call.arg2, llvm_args, llvm_vals), aa->getType()));
+                        ++aa;
+                    }
+                    if (a.args.call.arg3) {
+                        args.push_back(
+                            builder->CreateBitCast(getV(a.args.call.arg3, llvm_args, llvm_vals), aa->getType()));
+                        ++aa;
+                    }
+
+
+                    llvm::Value* val = builder->CreateCall(func, args);
+                    llvm_vals[a.args.call.result] = val;
+                } else {
+                    bool lookup_success = false;
+                    printf("haven't found: %s\n",
+                           g.func_addr_registry.getFuncNameAtAddress(func_addr, true, &lookup_success).c_str());
+                    std::vector<llvm::Type*> func_proto_args;
+                    llvm::FunctionType* func_proto = llvm::FunctionType::get(
+                        /*Result=*/g.llvm_value_type_ptr,
+                        /*Params=*/func_proto_args,
+                        /*isVarArg=*/true);
+
+                    llvm::Value* func = embedConstantPtr((void*)func_addr, func_proto->getPointerTo());
+
+
+
+                    llvm::SmallVector<llvm::Value*, 8> args;
+                    if (a.args.call.arg0)
+                        args.push_back(getV(a.args.call.arg0, llvm_args, llvm_vals));
+                    if (a.args.call.arg1)
+                        args.push_back(getV(a.args.call.arg1, llvm_args, llvm_vals));
+                    if (a.args.call.arg2)
+                        args.push_back(getV(a.args.call.arg2, llvm_args, llvm_vals));
+                    if (a.args.call.arg3)
+                        args.push_back(getV(a.args.call.arg3, llvm_args, llvm_vals));
+
+
+
+                    llvm::Value* val = builder->CreateCall(func, args);
+                    llvm_vals[a.args.call.result] = val;
+                }
+
+
             } else {
                 RELEASE_ASSERT(0, "foobar2");
             }
@@ -1173,6 +1267,7 @@ private:
                 auto&& v = irstate->getCL()->versions.back();
                 if (v->ics.size() && unw_info.current_stmt->icinfos.size() == 1) {
                     ICInfo* icinfo = unw_info.current_stmt->icinfos[0];
+                    printf("timesRewritten %d\n", icinfo->timesRewritten());
                     if (icinfo->timesRewritten() == 1) {
                         ICSlotInfo* slot_info = icinfo->getSlot(0);
                         if (slot_info->actions) {
