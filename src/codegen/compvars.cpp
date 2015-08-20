@@ -447,8 +447,54 @@ public:
             llvm_args.push_back(converted_rhs->getValue());
             llvm_args.push_back(getConstantInt(op_type, g.i32));
 
-            llvm::Value* uncasted = emitter.createIC(pp, rt_func_addr, llvm_args, info.unw_info);
-            rtn = emitter.getBuilder()->CreateIntToPtr(uncasted, g.llvm_value_type_ptr);
+            bool finished = false;
+
+            if (1 && emitter.currentCLFunction()->versions.size()) {
+                auto&& v = emitter.currentCLFunction()->versions.back();
+                if (v->ics.size() && info.unw_info.current_stmt->icinfos.size() == 1) {
+                    ICInfo* icinfo = info.unw_info.current_stmt->icinfos[0];
+                    printf("timesRewritten %d\n", icinfo->timesRewritten());
+                    if (icinfo->timesRewritten() < 5) {
+                        ICSlotInfo* slot_info = icinfo->getSlot(0);
+                        if (slot_info->actions) {
+                            printf("binop: found previous version\n");
+
+                            auto&& builder = emitter.getBuilder();
+
+                            llvm::BasicBlock* commit_block = NULL;
+                            llvm::Value* commit_value = NULL;
+                            llvm::BasicBlock* pp_dest = llvm::BasicBlock::Create(
+                                g.context, "pp_dest", emitter.currentBasicBlock()->getParent());
+                            // pp_dest->moveAfter(curblock);
+                            llvm::BasicBlock* finished_bb = llvm::BasicBlock::Create(
+                                g.context, "finished", emitter.currentBasicBlock()->getParent());
+                            finished_bb->moveAfter(pp_dest);
+
+                            emitter.handle_rewriter(slot_info, llvm_args, pp_dest, finished_bb, commit_block,
+                                                    commit_value);
+
+                            emitter.setCurrentBasicBlock(pp_dest);
+                            llvm::Value* r = NULL;
+                            r = embedConstantPtr((void*)0, g.llvm_value_type_ptr);
+                            builder->CreateBr(finished_bb);
+
+                            emitter.setCurrentBasicBlock(finished_bb);
+                            auto phi = builder->CreatePHI(g.llvm_value_type_ptr, 2, "result");
+                            phi->addIncoming(commit_value, commit_block);
+                            phi->addIncoming(r, pp_dest);
+                            rtn = phi;
+                            // rtn = emitter.getBuilder()->CreateIntToPtr(phi, g.llvm_value_type_ptr);
+
+                            finished = true;
+                        }
+                    }
+                }
+            }
+
+            if (!finished) {
+                llvm::Value* uncasted = emitter.createIC(pp, rt_func_addr, llvm_args, info.unw_info);
+                rtn = emitter.getBuilder()->CreateIntToPtr(uncasted, g.llvm_value_type_ptr);
+            }
         } else {
             rtn = emitter.createCall3(info.unw_info, rt_func, var->getValue(), converted_rhs->getValue(),
                                       getConstantInt(op_type, g.i32));
@@ -619,6 +665,7 @@ static ConcreteCompilerVariable* _call(IREmitter& emitter, const OpInfo& info, l
 
         if (1 && emitter.currentCLFunction()->versions.size()) {
             auto&& v = emitter.currentCLFunction()->versions.back();
+            printf("icinfos.size() %d\n", (int)info.unw_info.current_stmt->icinfos.size());
             if (v->ics.size() && info.unw_info.current_stmt->icinfos.size() == 1) {
                 ICInfo* icinfo = info.unw_info.current_stmt->icinfos[0];
                 printf("timesRewritten %d\n", icinfo->timesRewritten());

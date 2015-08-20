@@ -159,6 +159,8 @@ static void compileIR(CompiledFunction* cf, EffortLevel effort) {
 #endif
 
         g.cur_cf = cf;
+        printf("funcname %s\n", cf->func->getName().data());
+        fflush(stdout);
         void* compiled = (void*)g.engine->getFunctionAddress(cf->func->getName());
         g.cur_cf = NULL;
 
@@ -777,11 +779,12 @@ static CompiledFunction* _doReopt(CompiledFunction* cf, EffortLevel new_effort) 
     FunctionList& versions = clfunc->versions;
     for (int i = 0; i < versions.size(); i++) {
         if (versions[i] == cf) {
-            versions.erase(versions.begin() + i);
+            // versions.erase(versions.begin() + i);
 
             // this pushes the new CompiledVersion to the back of the version list
             CompiledFunction* new_cf = compileFunction(clfunc, cf->spec, new_effort, NULL, true, cf->exception_style);
 
+            versions.erase(versions.begin() + i);
             cf->dependent_callsites.invalidateAll();
 
             return new_cf;

@@ -190,7 +190,6 @@ public:
                     f->materialize();
 #endif
                 }
-                f->dump();
 
                 // It could still be a declaration, though I think the code won't generate this case any more:
                 if (f->isDeclaration())
