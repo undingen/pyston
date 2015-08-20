@@ -905,7 +905,7 @@ ConcreteCompilerVariable* UnknownType::hasnext(IREmitter& emitter, const OpInfo&
                         llvm::Value* r = NULL;
                         std::vector<llvm::Type*> func_proto_args;
                         llvm::FunctionType* func_proto = llvm::FunctionType::get(
-                            /*Result=*/g.i8,
+                            /*Result=*/g.i1,
                             /*Params=*/func_proto_args,
                             /*isVarArg=*/true);
                         r = builder->CreateCall(embedConstantPtr((void*)1, func_proto->getPointerTo()));
