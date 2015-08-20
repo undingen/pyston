@@ -1159,7 +1159,10 @@ private:
                 llvm_vals[a.args.get_attr.result] = attr;
             } else if (a.op == RewriterAction::Commit) {
                 llvm::Value* val = getV(a.args.commit.var, llvm_args, llvm_vals);
-                val = builder->CreateBitCast(val, g.llvm_value_type_ptr);
+                if (val->getType() != g.i1)
+                    val = builder->CreateBitCast(val, g.llvm_value_type_ptr);
+                else
+                    val->getType()->dump();
                 commit_block = curblock;
                 commit_value = val;
                 builder->CreateBr(finished);

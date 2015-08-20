@@ -856,7 +856,7 @@ ConcreteCompilerVariable* UnknownType::nonzero(IREmitter& emitter, const OpInfo&
 
 ConcreteCompilerVariable* UnknownType::hasnext(IREmitter& emitter, const OpInfo& info, ConcreteCompilerVariable* var) {
     bool do_patchpoint = ENABLE_ICS;
-    do_patchpoint = false; // we are currently using runtime ics for this
+    do_patchpoint = true; // we are currently using runtime ics for this
     llvm::Value* rtn_val;
     if (do_patchpoint) {
         ICSetupInfo* pp = createHasnextIC(info.getTypeRecorder());
@@ -864,8 +864,55 @@ ConcreteCompilerVariable* UnknownType::hasnext(IREmitter& emitter, const OpInfo&
         std::vector<llvm::Value*> llvm_args;
         llvm_args.push_back(var->getValue());
 
-        llvm::Value* uncasted = emitter.createIC(pp, (void*)pyston::hasnext, llvm_args, info.unw_info);
-        rtn_val = emitter.getBuilder()->CreateTrunc(uncasted, g.i1);
+
+
+        bool finished = false;
+
+        if (1 && emitter.currentCLFunction()->versions.size()) {
+            auto&& v = emitter.currentCLFunction()->versions.back();
+            if (v->ics.size() && info.unw_info.current_stmt->icinfos.size() == 1) {
+                ICInfo* icinfo = info.unw_info.current_stmt->icinfos[0];
+                printf("timesRewritten %d\n", icinfo->timesRewritten());
+                if (icinfo->timesRewritten() < 5) {
+                    ICSlotInfo* slot_info = icinfo->getSlot(0);
+                    if (slot_info->actions) {
+                        printf("hasnext: found previous version\n");
+
+                        auto&& builder = emitter.getBuilder();
+
+                        llvm::BasicBlock* commit_block = NULL;
+                        llvm::Value* commit_value = NULL;
+                        llvm::BasicBlock* pp_dest
+                            = llvm::BasicBlock::Create(g.context, "pp_dest", emitter.currentBasicBlock()->getParent());
+                        // pp_dest->moveAfter(curblock);
+                        llvm::BasicBlock* finished_bb
+                            = llvm::BasicBlock::Create(g.context, "finished", emitter.currentBasicBlock()->getParent());
+                        finished_bb->moveAfter(pp_dest);
+
+                        emitter.handle_rewriter(slot_info, llvm_args, pp_dest, finished_bb, commit_block, commit_value);
+
+                        emitter.setCurrentBasicBlock(pp_dest);
+                        llvm::Value* r = NULL;
+                        r = getConstantInt(0, g.i1);
+                        builder->CreateBr(finished_bb);
+
+                        emitter.setCurrentBasicBlock(finished_bb);
+                        auto phi = builder->CreatePHI(g.i1, 2, "result");
+                        phi->addIncoming(commit_value, commit_block);
+                        phi->addIncoming(r, pp_dest);
+                        rtn_val = phi;
+                        // rtn = emitter.getBuilder()->CreateIntToPtr(phi, g.llvm_value_type_ptr);
+
+                        finished = true;
+                    }
+                }
+            }
+        }
+
+        if (!finished) {
+            llvm::Value* uncasted = emitter.createIC(pp, (void*)pyston::hasnext, llvm_args, info.unw_info);
+            rtn_val = emitter.getBuilder()->CreateTrunc(uncasted, g.i1);
+        }
     } else {
         rtn_val = emitter.createCall(info.unw_info, g.funcs.hasnext, var->getValue());
     }

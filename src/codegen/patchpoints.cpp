@@ -347,7 +347,7 @@ ICSetupInfo* createNonzeroIC(TypeRecorder* type_recorder) {
 }
 
 ICSetupInfo* createHasnextIC(TypeRecorder* type_recorder) {
-    return ICSetupInfo::initialize(true, 2, 64, ICSetupInfo::Hasnext, type_recorder);
+    return ICSetupInfo::initialize(true, 2, 128, ICSetupInfo::Hasnext, type_recorder);
 }
 
 } // namespace pyston

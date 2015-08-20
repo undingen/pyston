@@ -14,6 +14,7 @@
 
 #include "runtime/util.h"
 
+#include "asm_writing/rewriter.h"
 #include "codegen/codegen.h"
 #include "core/options.h"
 #include "core/types.h"
@@ -121,6 +122,14 @@ Box* boxStringFromCharPtr(const char* s) {
 }
 
 extern "C" bool hasnext(Box* o) {
+    std::unique_ptr<Rewriter> rewriter(
+        Rewriter::createRewriter(__builtin_extract_return_addr(__builtin_return_address(0)), 1, "hasnext"));
+    if (rewriter) {
+        RewriterVar* obj_r = rewriter->getArg(0);
+        obj_r->addAttrGuard(offsetof(Box, cls), (intptr_t)o->cls);
+        RewriterVar* res = rewriter->call(true, (void*)o->cls->tpp_hasnext, obj_r);
+        rewriter->commitReturning(res);
+    }
     return o->cls->tpp_hasnext(o);
 }
 

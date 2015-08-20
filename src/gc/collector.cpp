@@ -710,6 +710,7 @@ static void sweepPhase(std::vector<Box*>& weakly_referenced) {
 }
 
 bool gcIsEnabled() {
+    return false;
     return gc_enabled;
 }
 
