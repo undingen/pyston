@@ -1161,14 +1161,10 @@ private:
                 llvm::Value* val = getV(a.args.commit.var, llvm_args, llvm_vals);
                 if (val->getType() != g.i1)
                     val = builder->CreateBitCast(val, g.llvm_value_type_ptr);
-                else
-                    val->getType()->dump();
                 commit_block = curblock;
                 commit_value = val;
                 builder->CreateBr(finished);
             } else if (a.op == RewriterAction::Call) {
-                printf("num args %d\n", a.args.call.num_args);
-
                 void* func_addr = a.args.call.func_addr;
                 llvm::Function* f = g.func_addr_registry.getLLVMFuncAtAddress(func_addr);
 
@@ -1211,8 +1207,9 @@ private:
                     llvm_vals[a.args.call.result] = val;
                 } else {
                     bool lookup_success = false;
-                    printf("haven't found: %s\n",
-                           g.func_addr_registry.getFuncNameAtAddress(func_addr, true, &lookup_success).c_str());
+                    printf("haven't found: %s %p\n",
+                           g.func_addr_registry.getFuncNameAtAddress(func_addr, true, &lookup_success).c_str(),
+                           func_addr);
                     std::vector<llvm::Type*> func_proto_args;
                     llvm::FunctionType* func_proto = llvm::FunctionType::get(
                         /*Result=*/g.llvm_value_type_ptr,
@@ -1264,7 +1261,7 @@ private:
                 auto&& v = irstate->getCL()->versions.back();
                 if (v->ics.size() && unw_info.current_stmt->icinfos.size() == 1) {
                     ICInfo* icinfo = unw_info.current_stmt->icinfos[0];
-                    printf("timesRewritten %d\n", icinfo->timesRewritten());
+                    // printf("timesRewritten %d\n", icinfo->timesRewritten());
                     if (icinfo->timesRewritten() == 1) {
                         ICSlotInfo* slot_info = icinfo->getSlot(0);
                         if (slot_info->actions) {

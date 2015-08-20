@@ -746,6 +746,7 @@ extern "C" Box* intRShift(BoxedInt* lhs, Box* rhs) {
     return intRShiftInt(lhs, rhs_int);
 }
 
+/*
 extern "C" Box* intSubInt(BoxedInt* lhs, BoxedInt* rhs) {
     assert(PyInt_Check(lhs));
     assert(PyInt_Check(rhs));
@@ -757,6 +758,7 @@ extern "C" Box* intSubFloat(BoxedInt* lhs, BoxedFloat* rhs) {
     assert(rhs->cls == float_cls);
     return boxFloat(lhs->n - rhs->d);
 }
+*/
 
 extern "C" Box* intSub(BoxedInt* lhs, Box* rhs) {
     if (!PyInt_Check(lhs))
@@ -1116,7 +1118,8 @@ static int64_t int_hash(BoxedInt* o) noexcept {
     return n;
 }
 
-static PyObject* int_richcompare(PyObject* v, PyObject* w, int op) noexcept {
+
+/*static*/ PyObject* int_richcompare(PyObject* v, PyObject* w, int op) noexcept; /* {
     if (!PyInt_Check(v) || !PyInt_Check(w)) {
         Py_INCREF(Py_NotImplemented);
         return Py_NotImplemented;
@@ -1141,7 +1144,7 @@ static PyObject* int_richcompare(PyObject* v, PyObject* w, int op) noexcept {
         default:
             RELEASE_ASSERT(0, "%d", op);
     }
-}
+}*/
 
 void setupInt() {
     for (int i = 0; i < NUM_INTERNED_INTS; i++) {

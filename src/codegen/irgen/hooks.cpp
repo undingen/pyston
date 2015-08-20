@@ -159,8 +159,6 @@ static void compileIR(CompiledFunction* cf, EffortLevel effort) {
 #endif
 
         g.cur_cf = cf;
-        printf("funcname %s\n", cf->func->getName().data());
-        fflush(stdout);
         void* compiled = (void*)g.engine->getFunctionAddress(cf->func->getName());
         g.cur_cf = NULL;
 

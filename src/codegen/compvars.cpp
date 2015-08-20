@@ -453,7 +453,7 @@ public:
                 auto&& v = emitter.currentCLFunction()->versions.back();
                 if (v->ics.size() && info.unw_info.current_stmt->icinfos.size() == 1) {
                     ICInfo* icinfo = info.unw_info.current_stmt->icinfos[0];
-                    printf("timesRewritten %d\n", icinfo->timesRewritten());
+                    // printf("timesRewritten %d\n", icinfo->timesRewritten());
                     if (icinfo->timesRewritten() < 5) {
                         ICSlotInfo* slot_info = icinfo->getSlot(0);
                         if (slot_info->actions) {
@@ -481,6 +481,7 @@ public:
                                 /*Params=*/func_proto_args,
                                 /*isVarArg=*/true);
                             r = builder->CreateCall(embedConstantPtr((void*)1, func_proto->getPointerTo()));
+                            builder->CreateUnreachable();
                             builder->CreateBr(finished_bb);
 
                             emitter.setCurrentBasicBlock(finished_bb);
@@ -670,10 +671,10 @@ static ConcreteCompilerVariable* _call(IREmitter& emitter, const OpInfo& info, l
 
         if (1 && emitter.currentCLFunction()->versions.size()) {
             auto&& v = emitter.currentCLFunction()->versions.back();
-            printf("icinfos.size() %d\n", (int)info.unw_info.current_stmt->icinfos.size());
+            // printf("icinfos.size() %d\n", (int)info.unw_info.current_stmt->icinfos.size());
             if (v->ics.size() && info.unw_info.current_stmt->icinfos.size() == 1) {
                 ICInfo* icinfo = info.unw_info.current_stmt->icinfos[0];
-                printf("timesRewritten %d\n", icinfo->timesRewritten());
+                // printf("timesRewritten %d\n", icinfo->timesRewritten());
                 if (icinfo->timesRewritten() < 5) {
                     ICSlotInfo* slot_info = icinfo->getSlot(0);
                     if (slot_info->actions) {
@@ -700,6 +701,7 @@ static ConcreteCompilerVariable* _call(IREmitter& emitter, const OpInfo& info, l
                             /*Params=*/func_proto_args,
                             /*isVarArg=*/true);
                         r = builder->CreateCall(embedConstantPtr((void*)1, func_proto->getPointerTo()));
+                        builder->CreateUnreachable();
                         builder->CreateBr(finished_bb);
 
                         emitter.setCurrentBasicBlock(finished_bb);
@@ -856,8 +858,60 @@ ConcreteCompilerVariable* UnknownType::nonzero(IREmitter& emitter, const OpInfo&
         std::vector<llvm::Value*> llvm_args;
         llvm_args.push_back(var->getValue());
 
-        llvm::Value* uncasted = emitter.createIC(pp, (void*)pyston::nonzero, llvm_args, info.unw_info);
-        rtn_val = emitter.getBuilder()->CreateTrunc(uncasted, g.i1);
+
+        bool finished = false;
+
+        if (1 && emitter.currentCLFunction()->versions.size()) {
+            auto&& v = emitter.currentCLFunction()->versions.back();
+            if (v->ics.size() && info.unw_info.current_stmt->icinfos.size() == 1) {
+                ICInfo* icinfo = info.unw_info.current_stmt->icinfos[0];
+                // printf("timesRewritten %d\n", icinfo->timesRewritten());
+                if (icinfo->timesRewritten() < 5) {
+                    ICSlotInfo* slot_info = icinfo->getSlot(0);
+                    if (slot_info->actions) {
+                        printf("nonzero: found previous version\n");
+
+                        auto&& builder = emitter.getBuilder();
+
+                        llvm::BasicBlock* commit_block = NULL;
+                        llvm::Value* commit_value = NULL;
+                        llvm::BasicBlock* pp_dest
+                            = llvm::BasicBlock::Create(g.context, "pp_dest", emitter.currentBasicBlock()->getParent());
+                        // pp_dest->moveAfter(curblock);
+                        llvm::BasicBlock* finished_bb
+                            = llvm::BasicBlock::Create(g.context, "finished", emitter.currentBasicBlock()->getParent());
+                        finished_bb->moveAfter(pp_dest);
+
+                        emitter.handle_rewriter(slot_info, llvm_args, pp_dest, finished_bb, commit_block, commit_value);
+
+                        emitter.setCurrentBasicBlock(pp_dest);
+                        llvm::Value* r = NULL;
+                        std::vector<llvm::Type*> func_proto_args;
+                        llvm::FunctionType* func_proto = llvm::FunctionType::get(
+                            /*Result=*/g.i1,
+                            /*Params=*/func_proto_args,
+                            /*isVarArg=*/true);
+                        r = builder->CreateCall(embedConstantPtr((void*)1, func_proto->getPointerTo()));
+                        builder->CreateUnreachable();
+                        builder->CreateBr(finished_bb);
+
+                        emitter.setCurrentBasicBlock(finished_bb);
+                        auto phi = builder->CreatePHI(g.i1, 2, "result");
+                        phi->addIncoming(commit_value, commit_block);
+                        phi->addIncoming(r, pp_dest);
+                        rtn_val = phi;
+                        // rtn = emitter.getBuilder()->CreateIntToPtr(phi, g.llvm_value_type_ptr);
+
+                        finished = true;
+                    }
+                }
+            }
+        }
+
+        if (!finished) {
+            llvm::Value* uncasted = emitter.createIC(pp, (void*)pyston::nonzero, llvm_args, info.unw_info);
+            rtn_val = emitter.getBuilder()->CreateTrunc(uncasted, g.i1);
+        }
     } else {
         rtn_val = emitter.createCall(info.unw_info, g.funcs.nonzero, var->getValue());
     }
@@ -882,7 +936,7 @@ ConcreteCompilerVariable* UnknownType::hasnext(IREmitter& emitter, const OpInfo&
             auto&& v = emitter.currentCLFunction()->versions.back();
             if (v->ics.size() && info.unw_info.current_stmt->icinfos.size() == 1) {
                 ICInfo* icinfo = info.unw_info.current_stmt->icinfos[0];
-                printf("timesRewritten %d\n", icinfo->timesRewritten());
+                // printf("timesRewritten %d\n", icinfo->timesRewritten());
                 if (icinfo->timesRewritten() < 5) {
                     ICSlotInfo* slot_info = icinfo->getSlot(0);
                     if (slot_info->actions) {
@@ -909,6 +963,7 @@ ConcreteCompilerVariable* UnknownType::hasnext(IREmitter& emitter, const OpInfo&
                             /*Params=*/func_proto_args,
                             /*isVarArg=*/true);
                         r = builder->CreateCall(embedConstantPtr((void*)1, func_proto->getPointerTo()));
+                        builder->CreateUnreachable();
                         builder->CreateBr(finished_bb);
 
                         emitter.setCurrentBasicBlock(finished_bb);

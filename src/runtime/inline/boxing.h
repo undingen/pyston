@@ -49,6 +49,8 @@ extern "C" Box* intAddInt(BoxedInt* lhs, BoxedInt* rhs);
 extern "C" Box* intAddFloat(BoxedInt* lhs, BoxedFloat* rhs);
 extern "C" Box* intMulInt(BoxedInt* lhs, BoxedInt* rhs);
 extern "C" Box* intMulFloat(BoxedInt* lhs, BoxedFloat* rhs);
+extern "C" Box* intSubInt(BoxedInt* lhs, BoxedInt* rhs);
+extern "C" Box* intSubFloat(BoxedInt* lhs, BoxedFloat* rhs);
 }
 
 #endif

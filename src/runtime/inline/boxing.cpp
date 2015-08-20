@@ -51,6 +51,26 @@ extern "C" __attribute__((always_inline)) Box* intAddInt(BoxedInt* lhs, BoxedInt
     return intAddIntFallback(lhs->n, rhs->n);
 }
 
+extern "C" Box* intSubIntFallback(i64 lhs, i64 rhs) {
+    return longSub(boxLong(lhs), boxLong(rhs));
+}
+
+extern "C" Box* __attribute__((always_inline)) intSubInt(BoxedInt* lhs, BoxedInt* rhs) {
+    assert(PyInt_Check(lhs));
+    assert(PyInt_Check(rhs));
+    i64 result;
+    if (!__builtin_ssubl_overflow(lhs->n, rhs->n, &result))
+        return boxInt(result);
+    return intSubIntFallback(lhs->n, rhs->n);
+}
+
+extern "C" Box* intSubFloat(BoxedInt* lhs, BoxedFloat* rhs) {
+    assert(PyInt_Check(lhs));
+    assert(rhs->cls == float_cls);
+    return boxFloat(lhs->n - rhs->d);
+}
+
+
 extern "C" Box* intAddFloat(BoxedInt* lhs, BoxedFloat* rhs) {
     assert(PyInt_Check(lhs));
     assert(rhs->cls == float_cls);
@@ -66,6 +86,33 @@ extern "C" Box* intMulFloat(BoxedInt* lhs, BoxedFloat* rhs) {
     assert(PyInt_Check(lhs));
     assert(rhs->cls == float_cls);
     return boxFloat(lhs->n * rhs->d);
+}
+
+PyObject* int_richcompare(PyObject* v, PyObject* w, int op) noexcept {
+    if (!PyInt_Check(v) || !PyInt_Check(w)) {
+        Py_INCREF(Py_NotImplemented);
+        return Py_NotImplemented;
+    }
+
+    int64_t lhs = static_cast<BoxedInt*>(v)->n;
+    int64_t rhs = static_cast<BoxedInt*>(w)->n;
+
+    switch (op) {
+        case Py_EQ:
+            return boxBool(lhs == rhs);
+        case Py_NE:
+            return boxBool(lhs != rhs);
+        case Py_LT:
+            return boxBool(lhs < rhs);
+        case Py_LE:
+            return boxBool(lhs <= rhs);
+        case Py_GT:
+            return boxBool(lhs > rhs);
+        case Py_GE:
+            return boxBool(lhs >= rhs);
+        default:
+            RELEASE_ASSERT(0, "%d", op);
+    }
 }
 
 BoxedString* boxStringTwine(const llvm::Twine& t) {
