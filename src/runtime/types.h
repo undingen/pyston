@@ -1071,13 +1071,18 @@ inline BoxedString* boxString(llvm::StringRef s) {
     return new (s.size()) BoxedString(s);
 }
 
+extern "C" Box* boxIntInternal(int64_t n);
+
 #define NUM_INTERNED_INTS 100
 extern BoxedInt* interned_ints[NUM_INTERNED_INTS];
 extern "C" inline Box* boxInt(int64_t n) {
     if (0 <= n && n < NUM_INTERNED_INTS) {
-        return interned_ints[n];
+        Box* rtn = interned_ints[n];
+        if (((BoxedInt*)rtn)->n != n)
+            __builtin_unreachable();
+        return rtn;
     }
-    return new BoxedInt(n);
+    return boxIntInternal(n);
 }
 
 // Helper function: fetch an arg from our calling convention

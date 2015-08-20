@@ -17,6 +17,7 @@
 #include "llvm/ADT/SmallString.h"
 
 #include "runtime/int.h"
+#include "runtime/long.h"
 #include "runtime/objmodel.h"
 #include "runtime/types.h"
 
@@ -28,6 +29,43 @@ extern "C" Box* createDict() {
 
 extern "C" Box* createList() {
     return new BoxedList();
+}
+
+extern "C" Box* add_i64_i64(i64 lhs, i64 rhs) {
+    i64 result;
+    if (!__builtin_saddl_overflow(lhs, rhs, &result))
+        return boxInt(result);
+    return longAdd(boxLong(lhs), boxLong(rhs));
+}
+
+extern "C" Box* intAddIntFallback(i64 lhs, i64 rhs) {
+    return longAdd(boxLong(lhs), boxLong(rhs));
+}
+
+extern "C" __attribute__((always_inline)) Box* intAddInt(BoxedInt* lhs, BoxedInt* rhs) {
+    assert(PyInt_Check(lhs));
+    assert(PyInt_Check(rhs));
+    i64 result;
+    if (!__builtin_saddl_overflow(lhs->n, rhs->n, &result))
+        return boxInt(result);
+    return intAddIntFallback(lhs->n, rhs->n);
+}
+
+extern "C" Box* intAddFloat(BoxedInt* lhs, BoxedFloat* rhs) {
+    assert(PyInt_Check(lhs));
+    assert(rhs->cls == float_cls);
+    return boxFloat(lhs->n + rhs->d);
+}
+
+extern "C" Box* intMulInt(BoxedInt* lhs, BoxedInt* rhs) {
+    assert(PyInt_Check(lhs));
+    assert(PyInt_Check(rhs));
+    return mul_i64_i64(lhs->n, rhs->n);
+}
+extern "C" Box* intMulFloat(BoxedInt* lhs, BoxedFloat* rhs) {
+    assert(PyInt_Check(lhs));
+    assert(rhs->cls == float_cls);
+    return boxFloat(lhs->n * rhs->d);
 }
 
 BoxedString* boxStringTwine(const llvm::Twine& t) {

@@ -1790,7 +1790,7 @@ private:
 
     CompilerVariable* evalSlice(AST_slice* node, const UnwindInfo& unw_info) {
         // printf("%d expr: %d\n", node->type, node->lineno);
-        if (node->lineno) {
+        if (0 && node->lineno) {
             emitter.getBuilder()->SetCurrentDebugLocation(
                 llvm::DebugLoc::get(node->lineno, 0, irstate->getFuncDbgInfo()));
         }
@@ -1815,7 +1815,7 @@ private:
 
     CompilerVariable* evalExpr(AST_expr* node, const UnwindInfo& unw_info) {
         // printf("%d expr: %d\n", node->type, node->lineno);
-        if (node->lineno) {
+        if (0 && node->lineno) {
             emitter.getBuilder()->SetCurrentDebugLocation(
                 llvm::DebugLoc::get(node->lineno, 0, irstate->getFuncDbgInfo()));
         }
@@ -2589,7 +2589,7 @@ private:
 
     void doStmt(AST_stmt* node, const UnwindInfo& unw_info) {
         // printf("%d stmt: %d\n", node->type, node->lineno);
-        if (node->lineno) {
+        if (0 && node->lineno) {
             emitter.getBuilder()->SetCurrentDebugLocation(
                 llvm::DebugLoc::get(node->lineno, 0, irstate->getFuncDbgInfo()));
         }

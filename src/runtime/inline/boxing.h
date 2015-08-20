@@ -43,6 +43,12 @@ extern "C" inline bool unboxBool(Box* b) {
     return b == True;
     // return static_cast<BoxedBool*>(b)->b;
 }
+
+extern "C" Box* add_i64_i64(i64 lhs, i64 rhs);
+extern "C" Box* intAddInt(BoxedInt* lhs, BoxedInt* rhs);
+extern "C" Box* intAddFloat(BoxedInt* lhs, BoxedFloat* rhs);
+extern "C" Box* intMulInt(BoxedInt* lhs, BoxedInt* rhs);
+extern "C" Box* intMulFloat(BoxedInt* lhs, BoxedFloat* rhs);
 }
 
 #endif

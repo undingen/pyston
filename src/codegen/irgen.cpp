@@ -95,7 +95,7 @@ static void optimizeIR(llvm::Function* f, EffortLevel effort) {
     }
 
     if (ENABLE_INLINING && effort >= EffortLevel::MAXIMAL)
-        fpm.add(makeFPInliner(275));
+        fpm.add(makeFPInliner(275 * 5));
     fpm.add(llvm::createCFGSimplificationPass());
 
     fpm.add(llvm::createBasicAliasAnalysisPass());

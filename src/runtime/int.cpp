@@ -258,6 +258,10 @@ extern "C" PyObject* PyInt_FromUnicode(Py_UNICODE* s, Py_ssize_t length, int bas
 
 BoxedInt* interned_ints[NUM_INTERNED_INTS];
 
+extern "C" Box* boxIntInternal(int64_t n) {
+    return new BoxedInt(n);
+}
+
 // If we don't have fast overflow-checking builtins, provide some slow variants:
 #if !__has_builtin(__builtin_saddl_overflow)
 
@@ -297,12 +301,14 @@ bool __builtin_smull_overflow(i64 lhs, i64 rhs, i64* result) {
 
 // Could add this to the others, but the inliner should be smart enough
 // that this isn't needed:
+/*
 extern "C" Box* add_i64_i64(i64 lhs, i64 rhs) {
     i64 result;
     if (!__builtin_saddl_overflow(lhs, rhs, &result))
         return boxInt(result);
     return longAdd(boxLong(lhs), boxLong(rhs));
 }
+*/
 
 extern "C" Box* sub_i64_i64(i64 lhs, i64 rhs) {
     i64 result;
@@ -388,7 +394,7 @@ extern "C" i1 ge_i64_i64(i64 lhs, i64 rhs) {
     return lhs >= rhs;
 }
 
-
+/*
 extern "C" Box* intAddInt(BoxedInt* lhs, BoxedInt* rhs) {
     assert(PyInt_Check(lhs));
     assert(PyInt_Check(rhs));
@@ -400,6 +406,7 @@ extern "C" Box* intAddFloat(BoxedInt* lhs, BoxedFloat* rhs) {
     assert(rhs->cls == float_cls);
     return boxFloat(lhs->n + rhs->d);
 }
+*/
 
 extern "C" Box* intAdd(BoxedInt* lhs, Box* rhs) {
     if (!PyInt_Check(lhs))
@@ -629,19 +636,18 @@ extern "C" Box* intDivmod(BoxedInt* lhs, Box* rhs) {
     return createTuple(2, arg);
 }
 
-
+/*
 extern "C" Box* intMulInt(BoxedInt* lhs, BoxedInt* rhs) {
     assert(PyInt_Check(lhs));
     assert(PyInt_Check(rhs));
     return mul_i64_i64(lhs->n, rhs->n);
 }
-
 extern "C" Box* intMulFloat(BoxedInt* lhs, BoxedFloat* rhs) {
     assert(PyInt_Check(lhs));
     assert(rhs->cls == float_cls);
     return boxFloat(lhs->n * rhs->d);
 }
-
+*/
 extern "C" Box* intMul(BoxedInt* lhs, Box* rhs) {
     if (!PyInt_Check(lhs))
         raiseExcHelper(TypeError, "descriptor '__mul__' requires a 'int' object but received a '%s'", getTypeName(lhs));

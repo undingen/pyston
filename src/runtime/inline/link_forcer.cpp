@@ -159,6 +159,11 @@ void force() {
     FORCE(boxedLocalsDel);
 
     FORCE(threading::allowGLReadPreemption);
+    FORCE(intAddInt);
+    FORCE(intAddFloat);
+    FORCE(intMulInt);
+    FORCE(intMulFloat);
+    FORCE(add_i64_i64);
 
     // FORCE(listIter);
 }
