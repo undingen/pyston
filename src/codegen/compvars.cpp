@@ -475,7 +475,12 @@ public:
 
                             emitter.setCurrentBasicBlock(pp_dest);
                             llvm::Value* r = NULL;
-                            r = embedConstantPtr((void*)0, g.llvm_value_type_ptr);
+                            std::vector<llvm::Type*> func_proto_args;
+                            llvm::FunctionType* func_proto = llvm::FunctionType::get(
+                                /*Result=*/g.llvm_value_type_ptr,
+                                /*Params=*/func_proto_args,
+                                /*isVarArg=*/true);
+                            r = builder->CreateCall(embedConstantPtr((void*)1, func_proto->getPointerTo()));
                             builder->CreateBr(finished_bb);
 
                             emitter.setCurrentBasicBlock(finished_bb);
@@ -689,7 +694,12 @@ static ConcreteCompilerVariable* _call(IREmitter& emitter, const OpInfo& info, l
 
                         emitter.setCurrentBasicBlock(pp_dest);
                         llvm::Value* r = NULL;
-                        r = embedConstantPtr((void*)0, g.llvm_value_type_ptr);
+                        std::vector<llvm::Type*> func_proto_args;
+                        llvm::FunctionType* func_proto = llvm::FunctionType::get(
+                            /*Result=*/g.llvm_value_type_ptr,
+                            /*Params=*/func_proto_args,
+                            /*isVarArg=*/true);
+                        r = builder->CreateCall(embedConstantPtr((void*)1, func_proto->getPointerTo()));
                         builder->CreateBr(finished_bb);
 
                         emitter.setCurrentBasicBlock(finished_bb);
@@ -893,7 +903,12 @@ ConcreteCompilerVariable* UnknownType::hasnext(IREmitter& emitter, const OpInfo&
 
                         emitter.setCurrentBasicBlock(pp_dest);
                         llvm::Value* r = NULL;
-                        r = getConstantInt(0, g.i1);
+                        std::vector<llvm::Type*> func_proto_args;
+                        llvm::FunctionType* func_proto = llvm::FunctionType::get(
+                            /*Result=*/g.i8,
+                            /*Params=*/func_proto_args,
+                            /*isVarArg=*/true);
+                        r = builder->CreateCall(embedConstantPtr((void*)1, func_proto->getPointerTo()));
                         builder->CreateBr(finished_bb);
 
                         emitter.setCurrentBasicBlock(finished_bb);
