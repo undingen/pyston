@@ -1258,14 +1258,8 @@ private:
             llvm_args.push_back(embedParentModulePtr());
             llvm_args.push_back(embedRelocatablePtr(node->id.getBox(), g.llvm_boxedstring_type_ptr));
 
-            auto&& builder = emitter.getBuilder();
 
-            llvm::BasicBlock* commit_block = NULL;
-            llvm::Value* commit_value = NULL;
-            llvm::BasicBlock* pp_dest = llvm::BasicBlock::Create(g.context, "pp_dest", irstate->getLLVMFunction());
-            pp_dest->moveAfter(curblock);
-            llvm::BasicBlock* finished = llvm::BasicBlock::Create(g.context, "finished", irstate->getLLVMFunction());
-            finished->moveAfter(pp_dest);
+            auto&& builder = emitter.getBuilder();
             if (irstate->getCL()->versions.size()) {
                 auto&& v = irstate->getCL()->versions.back();
                 if (v->ics.size() && unw_info.current_stmt->icinfos.size() == 1) {
@@ -1274,34 +1268,37 @@ private:
                     if (icinfo->timesRewritten() == 1) {
                         ICSlotInfo* slot_info = icinfo->getSlot(0);
                         if (slot_info->actions) {
+                            llvm::BasicBlock* commit_block = NULL;
+                            llvm::Value* commit_value = NULL;
+                            llvm::BasicBlock* pp_dest
+                                = llvm::BasicBlock::Create(g.context, "pp_dest", irstate->getLLVMFunction());
+                            pp_dest->moveAfter(curblock);
+                            llvm::BasicBlock* finished_bb
+                                = llvm::BasicBlock::Create(g.context, "finished", irstate->getLLVMFunction());
+                            finished_bb->moveAfter(pp_dest);
+
+
                             printf("getGlobal: found previous version '%s'\n", node->id.getBox()->s().data());
-                            handle_rewriter(slot_info, llvm_args, pp_dest, finished, commit_block, commit_value);
+                            handle_rewriter(slot_info, llvm_args, pp_dest, finished_bb, commit_block, commit_value);
+
+                            emitter.setCurrentBasicBlock(pp_dest);
+                            llvm::Value* r = embedConstantPtr((void*)(0), g.llvm_value_type_ptr);
+                            builder->CreateBr(finished_bb);
+
+                            emitter.setCurrentBasicBlock(finished_bb);
+                            auto phi = builder->CreatePHI(g.llvm_value_type_ptr, 2, "result");
+                            phi->addIncoming(commit_value, commit_block);
+                            phi->addIncoming(r, pp_dest);
+                            return new ConcreteCompilerVariable(UNKNOWN, phi, true);
                         }
                     }
                 }
             }
-            if (!commit_block)
-                builder->CreateBr(pp_dest);
 
-            emitter.setCurrentBasicBlock(pp_dest);
-            llvm::Value* r = NULL;
-            if (commit_block) {
-                r = embedConstantPtr((void*)(0), g.llvm_value_type_ptr);
-            } else {
-                llvm::Value* uncasted
-                    = emitter.createIC(pp, commit_block ? (void*)1 : (void*)pyston::getGlobal, llvm_args, unw_info);
-                node->ic_infos.push_back(pp);
-                r = emitter.getBuilder()->CreateIntToPtr(uncasted, g.llvm_value_type_ptr);
-            }
-            builder->CreateBr(finished);
-
-            emitter.setCurrentBasicBlock(finished);
-            auto phi = builder->CreatePHI(g.llvm_value_type_ptr, commit_block ? 2 : 1, "result");
-            if (commit_block)
-                phi->addIncoming(commit_value, commit_block);
-            phi->addIncoming(r, pp_dest);
-
-            return new ConcreteCompilerVariable(UNKNOWN, phi, true);
+            llvm::Value* uncasted = emitter.createIC(pp, (void*)pyston::getGlobal, llvm_args, unw_info);
+            node->ic_infos.push_back(pp);
+            llvm::Value* r = emitter.getBuilder()->CreateIntToPtr(uncasted, g.llvm_value_type_ptr);
+            return new ConcreteCompilerVariable(UNKNOWN, r, true);
         } else {
             llvm::Value* r = emitter.createCall2(unw_info, g.funcs.getGlobal, embedParentModulePtr(),
                                                  embedRelocatablePtr(node->id.getBox(), g.llvm_boxedstring_type_ptr));
