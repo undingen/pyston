@@ -1648,6 +1648,11 @@ Box* _strSlice(BoxedString* self, i64 start, i64 stop, i64 step, i64 length) {
     if (length == 0)
         return EmptyString;
 
+    if (length == 1) {
+        char c = s[start];
+        return characters[c & UCHAR_MAX];
+    }
+
     BoxedString* bs = BoxedString::createUninitializedString(length);
     copySlice(bs->data(), s.data(), start, step, length);
     return bs;
