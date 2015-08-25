@@ -272,7 +272,7 @@ Box* BoxedClass::callNextIC(Box* obj) {
 
     auto ic = next_ic.get();
     if (!ic) {
-        ic = new CallattrIC();
+        ic = new CallattrCapiIC();
         next_ic.reset(ic);
     }
 
