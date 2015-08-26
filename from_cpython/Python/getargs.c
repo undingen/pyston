@@ -884,11 +884,11 @@ convertsimple(PyObject *arg, const char **p_format, va_list *p_va, int flags,
                 if (getbuffer(arg, p, &buf) < 0)
                     return converterr(buf, arg, msgbuf, bufsize);
             }
-            if (addcleanup(p, freelist, cleanup_buffer)) {
-                return converterr(
-                    "(cleanup problem)",
-                    arg, msgbuf, bufsize);
-            }
+            //if (addcleanup(p, freelist, cleanup_buffer)) {
+            //    return converterr(
+            //        "(cleanup problem)",
+            //        arg, msgbuf, bufsize);
+            //}
             format++;
         } else if (*format == '#') {
             void **p = (void **)va_arg(*p_va, char **);
@@ -966,11 +966,11 @@ convertsimple(PyObject *arg, const char **p_format, va_list *p_va, int flags,
                 if (getbuffer(arg, p, &buf) < 0)
                     return converterr(buf, arg, msgbuf, bufsize);
             }
-            if (addcleanup(p, freelist, cleanup_buffer)) {
-                return converterr(
-                    "(cleanup problem)",
-                    arg, msgbuf, bufsize);
-            }
+            //if (addcleanup(p, freelist, cleanup_buffer)) {
+            //    return converterr(
+            //        "(cleanup problem)",
+            //        arg, msgbuf, bufsize);
+            //}
             format++;
         } else if (*format == '#') { /* any buffer-like object */
             void **p = (void **)va_arg(*p_va, char **);
@@ -1148,12 +1148,12 @@ convertsimple(PyObject *arg, const char **p_format, va_list *p_va, int flags,
                         "(memory error)",
                         arg, msgbuf, bufsize);
                 }
-                if (addcleanup(*buffer, freelist, cleanup_ptr)) {
-                    Py_DECREF(s);
-                    return converterr(
-                        "(cleanup problem)",
-                        arg, msgbuf, bufsize);
-                }
+                //if (addcleanup(*buffer, freelist, cleanup_ptr)) {
+                //    Py_DECREF(s);
+                //    return converterr(
+                //        "(cleanup problem)",
+                //        arg, msgbuf, bufsize);
+                //}
             } else {
                 if (size + 1 > BUFFER_LEN) {
                     Py_DECREF(s);
@@ -1193,11 +1193,11 @@ convertsimple(PyObject *arg, const char **p_format, va_list *p_va, int flags,
                 return converterr("(memory error)",
                                   arg, msgbuf, bufsize);
             }
-            if (addcleanup(*buffer, freelist, cleanup_ptr)) {
-                Py_DECREF(s);
-                return converterr("(cleanup problem)",
-                                arg, msgbuf, bufsize);
-            }
+            //if (addcleanup(*buffer, freelist, cleanup_ptr)) {
+            //    Py_DECREF(s);
+            //    return converterr("(cleanup problem)",
+            //                    arg, msgbuf, bufsize);
+            //}
             memcpy(*buffer,
                    PyString_AS_STRING(s),
                    size + 1);
@@ -1311,11 +1311,11 @@ convertsimple(PyObject *arg, const char **p_format, va_list *p_va, int flags,
                 PyErr_Clear();
                 return converterr("read-write buffer", arg, msgbuf, bufsize);
             }
-            if (addcleanup(p, freelist, cleanup_buffer)) {
-                return converterr(
-                    "(cleanup problem)",
-                    arg, msgbuf, bufsize);
-            }
+            //if (addcleanup(p, freelist, cleanup_buffer)) {
+            //    return converterr(
+            //        "(cleanup problem)",
+            //        arg, msgbuf, bufsize);
+            //}
             if (!PyBuffer_IsContiguous((Py_buffer*)p, 'C'))
                 return converterr("contiguous buffer", arg, msgbuf, bufsize);
             break;
