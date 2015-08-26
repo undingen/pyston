@@ -289,7 +289,7 @@ RewriterVar* JitFragmentWriter::emitExceptionMatches(RewriterVar* v, RewriterVar
 }
 
 RewriterVar* JitFragmentWriter::emitGetAttr(RewriterVar* obj, BoxedString* s, AST_expr* node) {
-    return emitPPCall((void*)getattr, { obj, imm(s) }, 2, 512, getTypeRecorderForNode(node));
+    return emitPPCall((void*)getattr, { obj, imm(s) }, 2, 600, getTypeRecorderForNode(node));
 }
 
 RewriterVar* JitFragmentWriter::emitGetBlockLocal(InternedString s, int vreg) {
