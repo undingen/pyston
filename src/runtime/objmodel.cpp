@@ -701,20 +701,6 @@ Box* Box::getattr(BoxedString* attr, GetattrRewriteArgs* rewrite_args) {
         HCAttrs* attrs = getHCAttrsPtr();
         HiddenClass* hcls = attrs->hcls;
 
-        if (unlikely(hcls->type == HiddenClass::DICT_BACKED)) {
-            if (rewrite_args)
-                assert(!rewrite_args->out_success);
-            rewrite_args = NULL;
-            Box* d = attrs->attr_list->attrs[0];
-            assert(d);
-            assert(attr->data()[attr->size()] == '\0');
-            Box* r = PyDict_GetItem(d, attr);
-            // r can be NULL if the item didn't exist
-            return r;
-        }
-
-        assert(hcls->type == HiddenClass::NORMAL || hcls->type == HiddenClass::SINGLETON);
-
         if (unlikely(rewrite_args)) {
             if (!rewrite_args->obj_hcls_guarded) {
                 if (cls->attrs_offset < 0) {
@@ -730,6 +716,35 @@ Box* Box::getattr(BoxedString* attr, GetattrRewriteArgs* rewrite_args) {
                 }
             }
         }
+
+        if (unlikely(hcls->type == HiddenClass::DICT_BACKED)) {
+            if (rewrite_args)
+                assert(!rewrite_args->out_success);
+            // rewrite_args = NULL;
+            Box* d = attrs->attr_list->attrs[0];
+            assert(d);
+            assert(attr->data()[attr->size()] == '\0');
+            Box* r = PyDict_GetItem(d, attr);
+            // r can be NULL if the item didn't exist
+
+            if (rewrite_args) {
+                RewriterVar* a = rewrite_args->rewriter->loadConst((int64_t)attr);
+
+                RewriterVar* r_attrs
+                    = rewrite_args->obj->getAttr(cls->attrs_offset + offsetof(HCAttrs, attr_list), Location::any());
+                RewriterVar* r_d = r_attrs->getAttr(offsetof(HCAttrs::AttrList, attrs), Location::any());
+
+                rewrite_args->out_rtn = rewrite_args->rewriter->call(true, (void*)PyDict_GetItem, r_d, a);
+                rewrite_args->out_success = true;
+            }
+
+
+            return r;
+        }
+
+        assert(hcls->type == HiddenClass::NORMAL || hcls->type == HiddenClass::SINGLETON);
+
+
 
         int offset = hcls->getOffset(attr);
         if (offset == -1) {
