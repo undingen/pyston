@@ -663,17 +663,17 @@ Box* hasattrFuncInternal(BoxedFunctionBase* func, CallRewriteArgs* rewrite_args,
         rtn = getattrInternal<CAPI>(obj, str, &grewrite_args);
         if (!grewrite_args.out_success)
             rewrite_args = NULL;
-        else if (rtn) {
+    } else {
+        rtn = getattrInternal<CAPI>(obj, str, NULL);
+    }
+    if (rtn) {
+        if (rewrite_args) {
             RewriterVar* r_true
                 = rewrite_args->rewriter->loadConst((intptr_t)True, rewrite_args->rewriter->getReturnDestination());
             rewrite_args->out_rtn = r_true;
             rewrite_args->out_success = true;
-            return True;
         }
-    } else {
-        rtn = getattrInternal<CAPI>(obj, str, NULL);
-        if (rtn)
-            return True;
+        return True;
     }
 
     assert(rtn == NULL);
