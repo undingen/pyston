@@ -651,17 +651,17 @@ Box* hasattrFuncInternal(BoxedFunctionBase* func, CallRewriteArgs* rewrite_args,
         rtn = getattrInternal<CAPI>(obj, str, &grewrite_args);
         if (!grewrite_args.out_success)
             rewrite_args = NULL;
-        else if (rtn) {
-            RewriterVar* r_true
-                = rewrite_args->rewriter->loadConst((intptr_t)True, rewrite_args->rewriter->getReturnDestination());
-            rewrite_args->out_rtn = r_true;
-            rewrite_args->out_success = true;
-            return True;
-        }
     } else {
         rtn = getattrInternal<CAPI>(obj, str, NULL);
-        if (rtn)
-            return True;
+    }
+    if (rtn) {
+        if (rewrite_args) {
+            RewriterVar* r_true
+                = rewrite_args->rewriter->loadConst((intptr_t)True, rewrite_args->rewriter->getReturnDestination());
+            rewrite_args->out_success = true;
+            rewrite_args->out_rtn = r_true;
+        }
+        return True;
     }
 
     assert(rtn == NULL);
@@ -678,29 +678,6 @@ Box* hasattrFuncInternal(BoxedFunctionBase* func, CallRewriteArgs* rewrite_args,
     if (S == CXX && !r)
         throwCAPIException();
     return r;
-}
-
-Box* hasattr(Box* obj, Box* _str) {
-    _str = coerceUnicodeToStr(_str);
-
-    if (_str->cls != str_cls) {
-        raiseExcHelper(TypeError, "hasattr(): attribute name must be string");
-    }
-
-    BoxedString* str = static_cast<BoxedString*>(_str);
-    internStringMortalInplace(str);
-
-    Box* attr;
-    try {
-        attr = getattrInternal<ExceptionStyle::CXX>(obj, str, NULL);
-    } catch (ExcInfo e) {
-        if (e.matches(Exception))
-            return False;
-        throw e;
-    }
-
-    Box* rtn = attr ? True : False;
-    return rtn;
 }
 
 Box* map2(Box* f, Box* container) {
