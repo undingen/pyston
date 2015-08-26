@@ -87,6 +87,7 @@ extern "C" Box* vars(Box* obj) {
 }
 
 extern "C" Box* abs_(Box* x) {
+    UNAVOIDABLE_STAT_TIMER(t0, "us_timer_1_abs");
     if (PyInt_Check(x)) {
         i64 n = static_cast<BoxedInt*>(x)->n;
         return boxInt(n >= 0 ? n : -n);
@@ -142,6 +143,7 @@ extern "C" Box* octFunc(Box* x) {
 }
 
 extern "C" Box* all(Box* container) {
+    UNAVOIDABLE_STAT_TIMER(t0, "us_timer_1_all");
     for (Box* e : container->pyElements()) {
         if (!nonzero(e)) {
             return boxBool(false);
@@ -151,6 +153,7 @@ extern "C" Box* all(Box* container) {
 }
 
 extern "C" Box* any(Box* container) {
+    UNAVOIDABLE_STAT_TIMER(t0, "us_timer_1_any");
     for (Box* e : container->pyElements()) {
         if (nonzero(e)) {
             return boxBool(true);
@@ -225,6 +228,7 @@ Box* min_max(Box* arg0, BoxedTuple* args, BoxedDict* kwargs, int opid) {
 }
 
 extern "C" Box* min(Box* arg0, BoxedTuple* args, BoxedDict* kwargs) {
+    UNAVOIDABLE_STAT_TIMER(t0, "us_timer_1_min");
     if (arg0 == None && args->size() == 0) {
         raiseExcHelper(TypeError, "min expected 1 arguments, got 0");
     }
@@ -238,6 +242,7 @@ extern "C" Box* min(Box* arg0, BoxedTuple* args, BoxedDict* kwargs) {
 }
 
 extern "C" Box* max(Box* arg0, BoxedTuple* args, BoxedDict* kwargs) {
+    UNAVOIDABLE_STAT_TIMER(t0, "us_timer_1_max");
     if (arg0 == None && args->size() == 0) {
         raiseExcHelper(TypeError, "max expected 1 arguments, got 0");
     }
@@ -251,6 +256,7 @@ extern "C" Box* max(Box* arg0, BoxedTuple* args, BoxedDict* kwargs) {
 }
 
 extern "C" Box* next(Box* iterator, Box* _default) {
+    UNAVOIDABLE_STAT_TIMER(t0, "us_timer_1_next");
     try {
         static BoxedString* next_str = internStringImmortal("next");
         CallattrFlags callattr_flags{.cls_only = true, .null_on_nonexistent = false, .argspec = ArgPassSpec(0) };
@@ -263,6 +269,7 @@ extern "C" Box* next(Box* iterator, Box* _default) {
 }
 
 extern "C" Box* sum(Box* container, Box* initial) {
+    UNAVOIDABLE_STAT_TIMER(t0, "us_timer_1_sum");
     if (initial->cls == str_cls)
         raiseExcHelper(TypeError, "sum() can't sum strings [use ''.join(seq) instead]");
 
@@ -361,6 +368,7 @@ extern "C" Box* ord(Box* obj) {
 }
 
 Box* range(Box* start, Box* stop, Box* step) {
+    UNAVOIDABLE_STAT_TIMER(t0, "us_timer_1_range");
     i64 istart, istop, istep;
     if (stop == NULL) {
         istart = 0;
@@ -404,6 +412,7 @@ Box* notimplementedRepr(Box* self) {
 }
 
 Box* sorted(Box* obj, Box* cmp, Box* key, Box** args) {
+    UNAVOIDABLE_STAT_TIMER(t0, "us_timer_1_sorted");
     Box* reverse = args[0];
 
     BoxedList* rtn = new BoxedList();
@@ -416,6 +425,7 @@ Box* sorted(Box* obj, Box* cmp, Box* key, Box** args) {
 }
 
 Box* isinstance_func(Box* obj, Box* cls) {
+    UNAVOIDABLE_STAT_TIMER(t0, "us_timer_isinstance_func");
     int rtn = PyObject_IsInstance(obj, cls);
     if (rtn < 0)
         throwCAPIException();
@@ -423,6 +433,7 @@ Box* isinstance_func(Box* obj, Box* cls) {
 }
 
 Box* issubclass_func(Box* child, Box* parent) {
+    UNAVOIDABLE_STAT_TIMER(t0, "us_timer_1_issubclass");
     int rtn = PyObject_IsSubclass(child, parent);
     if (rtn < 0)
         checkAndThrowCAPIException();
@@ -575,6 +586,7 @@ Box* getattrFuncInternal(BoxedFunctionBase* func, CallRewriteArgs* rewrite_args,
 }
 
 Box* setattrFunc(Box* obj, Box* _str, Box* value) {
+    UNAVOIDABLE_STAT_TIMER(t0, "us_timer_1_setattrfunc");
     _str = coerceUnicodeToStr(_str);
 
     if (_str->cls != str_cls) {
@@ -589,6 +601,7 @@ Box* setattrFunc(Box* obj, Box* _str, Box* value) {
 }
 
 Box* hasattr(Box* obj, Box* _str) {
+    UNAVOIDABLE_STAT_TIMER(t0, "us_timer_1_hasattrfunc");
     _str = coerceUnicodeToStr(_str);
 
     if (_str->cls != str_cls) {
@@ -626,6 +639,7 @@ Box* map2(Box* f, Box* container) {
 }
 
 Box* map(Box* f, BoxedTuple* args) {
+    UNAVOIDABLE_STAT_TIMER(t0, "us_timer_1_map");
     assert(args->cls == tuple_cls);
     auto num_iterable = args->size();
     if (num_iterable < 1)
@@ -681,6 +695,7 @@ Box* map(Box* f, BoxedTuple* args) {
 }
 
 Box* reduce(Box* f, Box* container, Box* initial) {
+    UNAVOIDABLE_STAT_TIMER(t0, "us_timer_1_reduce");
     Box* current = initial;
 
     for (Box* e : container->pyElements()) {
@@ -923,6 +938,7 @@ Box* filter2(Box* f, Box* container) {
 }
 
 Box* zip(BoxedTuple* containers) {
+    UNAVOIDABLE_STAT_TIMER(t0, "us_timer_1_zip");
     assert(containers->cls == tuple_cls);
 
     BoxedList* rtn = new BoxedList();
