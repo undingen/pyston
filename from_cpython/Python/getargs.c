@@ -884,11 +884,11 @@ convertsimple(PyObject *arg, const char **p_format, va_list *p_va, int flags,
                 if (getbuffer(arg, p, &buf) < 0)
                     return converterr(buf, arg, msgbuf, bufsize);
             }
-            //if (addcleanup(p, freelist, cleanup_buffer)) {
-            //    return converterr(
-            //        "(cleanup problem)",
-            //        arg, msgbuf, bufsize);
-            //}
+            if (addcleanup(p, freelist, cleanup_buffer)) {
+                return converterr(
+                    "(cleanup problem)",
+                    arg, msgbuf, bufsize);
+            }
             format++;
         } else if (*format == '#') {
             void **p = (void **)va_arg(*p_va, char **);
@@ -966,11 +966,11 @@ convertsimple(PyObject *arg, const char **p_format, va_list *p_va, int flags,
                 if (getbuffer(arg, p, &buf) < 0)
                     return converterr(buf, arg, msgbuf, bufsize);
             }
-            //if (addcleanup(p, freelist, cleanup_buffer)) {
-            //    return converterr(
-            //        "(cleanup problem)",
-            //        arg, msgbuf, bufsize);
-            //}
+            if (addcleanup(p, freelist, cleanup_buffer)) {
+                return converterr(
+                    "(cleanup problem)",
+                    arg, msgbuf, bufsize);
+            }
             format++;
         } else if (*format == '#') { /* any buffer-like object */
             void **p = (void **)va_arg(*p_va, char **);
