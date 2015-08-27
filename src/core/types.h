@@ -407,9 +407,13 @@ CompiledFunction* compileFunction(CLFunction* f, FunctionSpecialization* spec, E
                                   const OSREntryDescriptor* entry, bool force_exception_style = false,
                                   ExceptionStyle forced_exception_style = CXX);
 EffortLevel initialEffort();
-
+#ifdef I1_IS_I64
+typedef int64_t i1;
+typedef int64_t i64;
+#else
 typedef bool i1;
 typedef int64_t i64;
+#endif
 
 const char* getNameOfClass(BoxedClass* cls);
 std::string getFullNameOfClass(BoxedClass* cls);

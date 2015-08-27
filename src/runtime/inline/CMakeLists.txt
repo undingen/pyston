@@ -40,7 +40,8 @@
 # don't want to bake the instrumentation into the resulting bitcode anyway.
 REMOVE_PROFILE_FLAGS()
 
-set(BC_INLINE_SRCS boxing.cpp dict.cpp link_forcer.cpp list.cpp tuple.cpp xrange.cpp)
+#set(BC_INLINE_SRCS boxing.cpp dict.cpp link_forcer.cpp list.cpp tuple.cpp xrange.cpp)
+set(BC_INLINE_SRCS all.cpp)
 
 include_directories(${CMAKE_SOURCE_DIR}/src)
 
@@ -123,6 +124,7 @@ add_custom_command(OUTPUT stdlib.unopt.bc
 
 # optimize stdlib
 add_custom_command(OUTPUT stdlib${STDLIB_SUFFIX}.bc
+                   COMMAND ${LLVM_TOOLS_BINARY_DIR}/opt -O3 ${OPT_OPTIONS} stdlib.unopt.bc -o stdlib${STDLIB_SUFFIX}.bc
                    COMMAND ${LLVM_TOOLS_BINARY_DIR}/opt -O3 ${OPT_OPTIONS} stdlib.unopt.bc -o stdlib${STDLIB_SUFFIX}.bc
                    DEPENDS stdlib.unopt.bc opt
                    COMMENT "Optimizing stdlib.unopt.bc -> stdlib.bc")
