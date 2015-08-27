@@ -215,22 +215,6 @@ void Rewriter::ConstLoader::loadConstIntoReg(uint64_t val, assembler::Register d
     moveImmediate(val, dst_reg);
 }
 
-assembler::Register Rewriter::ConstLoader::loadConst(uint64_t val, Location otherThan) {
-    assert(rewriter->phase_emitting);
-
-    bool found_value = false;
-    assembler::Register /*reg = findConst(val, found_value);
-    if (found_value)
-        return reg;*/
-
-        reg = rewriter->allocReg(Location::any(), otherThan);
-    if (tryLea(val, reg))
-        return reg;
-
-    moveImmediate(val, reg);
-    return reg;
-}
-
 void Rewriter::restoreArgs() {
     ASSERT(!done_guarding, "this will probably work but why are we calling this at this time");
 
@@ -300,7 +284,8 @@ void Rewriter::_addGuard(RewriterVar* var, RewriterVar* val_constant) {
 
     restoreArgs(); // can only do movs, doesn't affect flags, so it's safe
     assertArgsInPlace();
-    assembler->jne(assembler::JumpDestination::fromStart(rewrite->getSlotSize()));
+    // assembler->jne(assembler::JumpDestination::fromStart(rewrite->getSlotSize()));
+    _emitJneSlowpath();
 
     var->bumpUse();
     val_constant->bumpUse();
@@ -313,6 +298,16 @@ void RewriterVar::addGuardNotEq(uint64_t val) {
 
     RewriterVar* val_var = rewriter->loadConst(val);
     rewriter->addAction([=]() { rewriter->_addGuardNotEq(this, val_var); }, { this, val_var }, ActionType::GUARD);
+}
+
+void Rewriter::_emitJneSlowpath() {
+    if (assembler->bytesLeft() >= 0x80 && offset_last_jump_slow != -1
+        && assembler->bytesWritten() - offset_last_jump_slow < 0x80) {
+        assembler->jne(assembler::JumpDestination::fromStart(offset_last_jump_slow));
+    } else {
+        offset_last_jump_slow = assembler->bytesWritten();
+        assembler->jne(assembler::JumpDestination::fromStart(rewrite->getSlotSize()));
+    }
 }
 
 void Rewriter::_addGuardNotEq(RewriterVar* var, RewriterVar* val_constant) {
@@ -384,7 +379,8 @@ void Rewriter::_addAttrGuard(RewriterVar* var, int offset, RewriterVar* val_cons
     if (negate)
         assembler->je(assembler::JumpDestination::fromStart(rewrite->getSlotSize()));
     else
-        assembler->jne(assembler::JumpDestination::fromStart(rewrite->getSlotSize()));
+        // assembler->jne(assembler::JumpDestination::fromStart(rewrite->getSlotSize()));
+        _emitJneSlowpath();
 
     var->bumpUse();
     val_constant->bumpUse();

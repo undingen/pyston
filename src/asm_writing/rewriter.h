@@ -379,9 +379,6 @@ protected:
         // Loads the constant into the specified register
         void loadConstIntoReg(uint64_t val, assembler::Register reg);
 
-        // Loads the constant into any register or if already in a register just return it
-        assembler::Register loadConst(uint64_t val, Location otherThan = Location::any());
-
         llvm::SmallVector<std::pair<uint64_t, RewriterVar*>, 16> consts;
     };
 
@@ -394,6 +391,9 @@ protected:
     std::deque<RewriterVar> vars;
 
     const Location return_location;
+
+    int offset_last_jump_slow = -1;
+    void _emitJneSlowpath();
 
     bool failed;   // if we tried to generate an invalid rewrite.
     bool finished; // committed or aborted
