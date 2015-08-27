@@ -49,6 +49,7 @@
 #include "runtime/super.h"
 #include "runtime/traceback.h"
 #include "runtime/util.h"
+#include "runtime/inline/boxing.h"
 
 extern "C" void initerrno();
 extern "C" void init_sha();
@@ -1552,10 +1553,6 @@ extern "C" BoxedString* noneRepr(Box* v) {
 
 extern "C" Box* noneHash(Box* v) {
     return boxInt(819239); // chosen randomly
-}
-
-extern "C" Box* noneNonzero(Box* v) {
-    return False;
 }
 
 extern "C" BoxedString* builtinFunctionOrMethodRepr(BoxedBuiltinFunctionOrMethod* v) {

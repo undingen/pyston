@@ -47,5 +47,9 @@ i64 unboxInt(Box* b) {
     return ((BoxedInt*)b)->n;
 }
 
+extern "C" Box* noneNonzero(Box* v) {
+    return False;
+}
+
 // BoxedInt::BoxedInt(int64_t n) : Box(int_cls), n(n) {}
 }

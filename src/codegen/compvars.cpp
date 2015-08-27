@@ -32,6 +32,11 @@
 #include "runtime/objmodel.h"
 #include "runtime/types.h"
 #include "runtime/util.h"
+#include "runtime/list.h"
+#include "runtime/inline/boxing.h"
+#include "runtime/inline/list.h"
+#include "runtime/tuple.h"
+#include "runtime/types.h"
 
 namespace pyston {
 
@@ -632,7 +637,13 @@ static ConcreteCompilerVariable* _call(IREmitter& emitter, const OpInfo& info, l
         //}
         // printf("%ld %ld\n", llvm_args.size(), args.size());
         // printf("\n");
-        rtn = emitter.createCall(info.unw_info, func, llvm_args, target_exception_style);
+
+        if (func_addr == listAppend || func_addr == listIterIter || func_addr == listreviterHasnextUnboxed
+            || func_addr == noneNonzero || func_addr == listIter || func_addr == listiterHasnextUnboxed
+            || func_addr == tupleIter || func_addr == tupleiterHasnextUnboxed)
+            rtn = emitter.getBuilder()->CreateCall(func, llvm_args);
+        else
+            rtn = emitter.createCall(info.unw_info, func, llvm_args, target_exception_style);
     }
 
     for (int i = 0; i < args.size(); i++) {

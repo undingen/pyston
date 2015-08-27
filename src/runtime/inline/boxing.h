@@ -43,6 +43,8 @@ extern "C" inline bool unboxBool(Box* b) {
     return b == True;
     // return static_cast<BoxedBool*>(b)->b;
 }
+
+extern "C" Box* noneNonzero(Box* v);
 }
 
 #endif
