@@ -156,7 +156,7 @@ bool Rewriter::ConstLoader::tryLea(uint64_t val, assembler::Register dst_reg) {
     assert(rewriter->phase_emitting);
 
     // for large constants it maybe beneficial to create the value with a LEA from a known const value
-    if (isLargeConstant(val)) {
+    if (!assembler::Immediate(val).fitsInto32Bit()) {
         for (int reg_num = 0; reg_num < assembler::Register::numRegs(); ++reg_num) {
             RewriterVar* var = rewriter->vars_by_location[assembler::Register(reg_num)];
             if (var == NULL)

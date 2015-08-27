@@ -218,7 +218,7 @@ public:
 };
 
 constexpr uintptr_t ARENA_SIZE = 0x1000000000L;
-constexpr uintptr_t SMALL_ARENA_START = 0x1270000000L;
+constexpr uintptr_t SMALL_ARENA_START = 0x12700000L;
 constexpr uintptr_t LARGE_ARENA_START = 0x2270000000L;
 constexpr uintptr_t HUGE_ARENA_START = 0x3270000000L;
 
