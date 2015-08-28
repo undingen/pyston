@@ -527,7 +527,7 @@ Box* BoxedWrapperObject::__call__(BoxedWrapperObject* self, Box* args, Box* kwds
     assert(rtn && "should have set + thrown an exception!");
     return rtn;
 }
-
+PyObject* wrap_binaryfunc(PyObject* self, PyObject* args, void* wrapped) noexcept;
 template <ExceptionStyle S>
 Box* BoxedWrapperObject::tppCall(Box* _self, CallRewriteArgs* rewrite_args, ArgPassSpec argspec, Box* arg1, Box* arg2,
                                  Box* arg3, Box** args,
@@ -554,11 +554,16 @@ Box* BoxedWrapperObject::tppCall(Box* _self, CallRewriteArgs* rewrite_args, ArgP
         rewrite_args->obj->addAttrGuard(offsetof(BoxedWrapperObject, descr), (intptr_t)self->descr);
     }
 
+
     ParamReceiveSpec paramspec(0, 0, true, false);
     if (flags == PyWrapperFlag_KEYWORDS) {
         paramspec = ParamReceiveSpec(0, 0, true, true);
     } else if (flags == PyWrapperFlag_PYSTON || flags == 0) {
         paramspec = ParamReceiveSpec(0, 0, true, false);
+    } else if (flags == PyWrapperFlag_PYSTON_1ARG) {
+        paramspec = ParamReceiveSpec(0, 0, false, false);
+    } else if (flags == PyWrapperFlag_PYSTON_2ARG) {
+        paramspec = ParamReceiveSpec(1, 0, false, false);
     } else {
         RELEASE_ASSERT(0, "%d", flags);
     }
@@ -566,10 +571,16 @@ Box* BoxedWrapperObject::tppCall(Box* _self, CallRewriteArgs* rewrite_args, ArgP
     Box** oargs = NULL;
 
     bool rewrite_success = false;
+    int is_binary_func = rewrite_args && wrapper == wrap_binaryfunc;
+    is_binary_func = false;
+    if (is_binary_func) {
+        paramspec = ParamReceiveSpec(1, 0, false, false);
+    }
+
     rearrangeArguments(paramspec, NULL, self->descr->wrapper->name.data(), NULL, rewrite_args, rewrite_success, argspec,
                        arg1, arg2, arg3, args, oargs, keyword_names);
 
-    assert(arg1 && arg1->cls == tuple_cls);
+    // assert(arg1 && arg1->cls == tuple_cls);
     if (!paramspec.takes_kwargs)
         assert(arg2 == NULL);
     assert(arg3 == NULL);
@@ -592,9 +603,52 @@ Box* BoxedWrapperObject::tppCall(Box* _self, CallRewriteArgs* rewrite_args, ArgP
             rewrite_args->out_success = true;
         }
     } else if (flags == PyWrapperFlag_PYSTON || flags == 0) {
-        rtn = (*wrapper)(self->obj, arg1, self->descr->wrapped);
+
 
         if (rewrite_args) {
+            if (is_binary_func) {
+
+                auto rewriter = rewrite_args->rewriter;
+                auto r_obj = rewrite_args->obj->getAttr(offsetof(BoxedWrapperObject, obj), Location::forArg(0));
+                rewrite_args->out_rtn = rewriter->call(true, (void*)self->descr->wrapped, r_obj, rewrite_args->arg1);
+                rewrite_args->rewriter->checkAndThrowCAPIException(rewrite_args->out_rtn);
+                rewrite_args->out_success = true;
+
+                paramspec = ParamReceiveSpec(0, 0, true, false);
+                rearrangeArguments(paramspec, NULL, self->descr->wrapper->name.data(), NULL, NULL, rewrite_success,
+                                   argspec, arg1, arg2, arg3, args, oargs, keyword_names);
+
+                rtn = (*wrapper)(self->obj, arg1, self->descr->wrapped);
+            } else {
+                rtn = (*wrapper)(self->obj, arg1, self->descr->wrapped);
+                auto rewriter = rewrite_args->rewriter;
+                auto r_obj = rewrite_args->obj->getAttr(offsetof(BoxedWrapperObject, obj), Location::forArg(0));
+                rewrite_args->out_rtn
+                    = rewriter->call(true, (void*)wrapper, r_obj, rewrite_args->arg1,
+                                     rewriter->loadConst((intptr_t)self->descr->wrapped, Location::forArg(2)));
+                rewrite_args->rewriter->checkAndThrowCAPIException(rewrite_args->out_rtn);
+                rewrite_args->out_success = true;
+            }
+
+
+
+        } else
+            rtn = (*wrapper)(self->obj, arg1, self->descr->wrapped);
+    } else if (flags == PyWrapperFlag_PYSTON_1ARG) {
+        if (rewrite_args) {
+            rtn = (*wrapper)(self->obj, NULL, self->descr->wrapped);
+            auto rewriter = rewrite_args->rewriter;
+            auto r_obj = rewrite_args->obj->getAttr(offsetof(BoxedWrapperObject, obj), Location::forArg(0));
+            rewrite_args->out_rtn
+                = rewriter->call(true, (void*)wrapper, r_obj, rewriter->loadConst((intptr_t)0, Location::forArg(1)),
+                                 rewriter->loadConst((intptr_t)self->descr->wrapped, Location::forArg(2)));
+            rewrite_args->rewriter->checkAndThrowCAPIException(rewrite_args->out_rtn);
+            rewrite_args->out_success = true;
+        } else
+            rtn = (*wrapper)(self->obj, arg1, self->descr->wrapped);
+    } else if (flags == PyWrapperFlag_PYSTON_2ARG) {
+        if (rewrite_args) {
+            rtn = (*wrapper)(self->obj, arg1, self->descr->wrapped);
             auto rewriter = rewrite_args->rewriter;
             auto r_obj = rewrite_args->obj->getAttr(offsetof(BoxedWrapperObject, obj), Location::forArg(0));
             rewrite_args->out_rtn
@@ -602,7 +656,8 @@ Box* BoxedWrapperObject::tppCall(Box* _self, CallRewriteArgs* rewrite_args, ArgP
                                  rewriter->loadConst((intptr_t)self->descr->wrapped, Location::forArg(2)));
             rewrite_args->rewriter->checkAndThrowCAPIException(rewrite_args->out_rtn);
             rewrite_args->out_success = true;
-        }
+        } else
+            rtn = (*wrapper)(self->obj, arg1, self->descr->wrapped);
     } else {
         RELEASE_ASSERT(0, "%d", flags);
     }

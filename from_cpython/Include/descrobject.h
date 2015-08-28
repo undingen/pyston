@@ -37,7 +37,9 @@ struct wrapperbase {
 /* Flags for above struct */
 #define PyWrapperFlag_KEYWORDS 1 /* wrapper function takes keyword args */
 #define PyWrapperFlag_PYSTON   2 /* wrapper function is a Pyston function */
-#define PyWrapperFlag_BOOL     4 /* not really a wrapper, just set a bool field */
+#define PyWrapperFlag_PYSTON_1ARG   4
+#define PyWrapperFlag_PYSTON_2ARG   8
+#define PyWrapperFlag_BOOL     16 /* not really a wrapper, just set a bool field */
 
 /* Various kinds of descriptor objects */
 

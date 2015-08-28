@@ -4158,6 +4158,7 @@ extern "C" Box* binopInternal(Box* lhs, Box* rhs, int op_type, bool inplace, Bin
     if (rewrite_args) {
         CallRewriteArgs srewrite_args(rewrite_args->rewriter, rewrite_args->lhs, rewrite_args->destination);
         srewrite_args.arg1 = rewrite_args->rhs;
+        srewrite_args.args_guarded = true;
         lrtn = callattrInternal1<CXX>(lhs, op_name, CLASS_ONLY, &srewrite_args, ArgPassSpec(1), rhs);
 
         if (!srewrite_args.out_success)
@@ -4250,7 +4251,6 @@ extern "C" Box* binop(Box* lhs, Box* rhs, int op_type) {
 
     Box* rtn;
     if (rewriter.get()) {
-        // rewriter->trap();
         BinopRewriteArgs rewrite_args(rewriter.get(), rewriter->getArg(0), rewriter->getArg(1),
                                       rewriter->getReturnDestination());
         rtn = binopInternal(lhs, rhs, op_type, false, &rewrite_args);
