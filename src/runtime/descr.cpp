@@ -558,6 +558,7 @@ Box* BoxedWrapperObject::tppCall(Box* _self, CallRewriteArgs* rewrite_args, ArgP
     }
     bool is_trivial = flags & PyWrapperFlag_PYSTON_TRIVIAL;
     flags &= ~PyWrapperFlag_PYSTON_TRIVIAL;
+    is_trivial = false;
 
     ParamReceiveSpec paramspec(0, 0, true, false);
     if (flags == PyWrapperFlag_KEYWORDS) {
