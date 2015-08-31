@@ -455,8 +455,8 @@ Box* BoxedWrapperDescriptor::descr_get(Box* _self, Box* inst, Box* owner) noexce
         return NULL;
     }
 
-    static StatCounter descr_get("descr_get");
-    descr_get.log();
+    // static StatCounter descr_get("descr_get");
+    // descr_get.log();
 
     return new BoxedWrapperObject(self, inst);
 }
