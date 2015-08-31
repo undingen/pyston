@@ -1585,15 +1585,15 @@ static void** slotptr(BoxedClass* type, int offset) noexcept {
     { NAME, offsetof(PyTypeObject, SLOT), (void*)(FUNCTION), WRAPPER, PyDoc_STR(DOC), PyWrapperFlag_PYSTON_1ARG, NULL }
 #define TPSLOT_1ARG_T(NAME, SLOT, FUNCTION, WRAPPER, DOC)                                                              \
     {                                                                                                                  \
-        NAME, offsetof(PyTypeObject, SLOT), (void*)(FUNCTION), WRAPPER, PyDoc_STR(DOC),                                \
-            PyWrapperFlag_PYSTON_1ARG | PyWrapperFlag_PYSTON_TRIVIAL, NULL                                             \
+        NAME, offsetof(PyTypeObject, SLOT), (void*)(FUNCTION), (wrapperfunc)1, PyDoc_STR(DOC),                         \
+            PyWrapperFlag_PYSTON_1ARG, NULL                                                                            \
     }
 #define TPSLOT_2ARG(NAME, SLOT, FUNCTION, WRAPPER, DOC)                                                                \
     { NAME, offsetof(PyTypeObject, SLOT), (void*)(FUNCTION), WRAPPER, PyDoc_STR(DOC), PyWrapperFlag_PYSTON_2ARG, NULL }
 #define TPSLOT_2ARG_T(NAME, SLOT, FUNCTION, WRAPPER, DOC)                                                              \
     {                                                                                                                  \
-        NAME, offsetof(PyTypeObject, SLOT), (void*)(FUNCTION), WRAPPER, PyDoc_STR(DOC),                                \
-            PyWrapperFlag_PYSTON_2ARG | PyWrapperFlag_PYSTON_TRIVIAL, NULL                                             \
+        NAME, offsetof(PyTypeObject, SLOT), (void*)(FUNCTION), (wrapperfunc)1, PyDoc_STR(DOC),                         \
+            PyWrapperFlag_PYSTON_2ARG, NULL                                                                            \
     }
 #define TPPSLOT(NAME, SLOT, FUNCTION, WRAPPER, DOC)                                                                    \
     { NAME, offsetof(PyTypeObject, SLOT), (void*)(FUNCTION), WRAPPER, PyDoc_STR(DOC), PyWrapperFlag_PYSTON, NULL }
@@ -1608,8 +1608,8 @@ static void** slotptr(BoxedClass* type, int offset) noexcept {
     }
 #define ETSLOT_1ARG_T(NAME, SLOT, FUNCTION, WRAPPER, DOC)                                                              \
     {                                                                                                                  \
-        NAME, offsetof(PyHeapTypeObject, SLOT), (void*)(FUNCTION), WRAPPER, PyDoc_STR(DOC),                            \
-            PyWrapperFlag_PYSTON_1ARG | PyWrapperFlag_PYSTON_TRIVIAL, NULL                                             \
+        NAME, offsetof(PyHeapTypeObject, SLOT), (void*)(FUNCTION), (wrapperfunc)1, PyDoc_STR(DOC),                     \
+            PyWrapperFlag_PYSTON_1ARG, NULL                                                                            \
     }
 #define ETSLOT_2ARG(NAME, SLOT, FUNCTION, WRAPPER, DOC)                                                                \
     {                                                                                                                  \
@@ -1618,8 +1618,8 @@ static void** slotptr(BoxedClass* type, int offset) noexcept {
     }
 #define ETSLOT_2ARG_T(NAME, SLOT, FUNCTION, WRAPPER, DOC)                                                              \
     {                                                                                                                  \
-        NAME, offsetof(PyHeapTypeObject, SLOT), (void*)(FUNCTION), WRAPPER, PyDoc_STR(DOC),                            \
-            PyWrapperFlag_PYSTON_2ARG | PyWrapperFlag_PYSTON_TRIVIAL, NULL                                             \
+        NAME, offsetof(PyHeapTypeObject, SLOT), (void*)(FUNCTION), (wrapperfunc)1, PyDoc_STR(DOC),                     \
+            PyWrapperFlag_PYSTON_2ARG, NULL                                                                            \
     }
 #define SQSLOT(NAME, SLOT, FUNCTION, WRAPPER, DOC) ETSLOT(NAME, as_sequence.SLOT, FUNCTION, WRAPPER, DOC)
 #define SQSLOT_1ARG(NAME, SLOT, FUNCTION, WRAPPER, DOC) ETSLOT_1ARG(NAME, as_sequence.SLOT, FUNCTION, WRAPPER, DOC)

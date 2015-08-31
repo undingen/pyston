@@ -553,9 +553,9 @@ Box* BoxedWrapperDescriptor::tppCall(Box* _self, CallRewriteArgs* rewrite_args, 
     wrapperfunc wrapper = self->wrapper->wrapper;
     assert(self->wrapper->offset > 0);
 
-    bool is_trivial = flags & PyWrapperFlag_PYSTON_TRIVIAL;
-    flags &= ~PyWrapperFlag_PYSTON_TRIVIAL;
-    is_trivial = false;
+    bool is_trivial = wrapper == (wrapperfunc)1;
+    if (is_trivial)
+        wrapper = (wrapperfunc)self->wrapped;
 
     ParamReceiveSpec paramspec(1, 0, true, false);
     if (flags == PyWrapperFlag_KEYWORDS) {
@@ -584,6 +584,7 @@ Box* BoxedWrapperDescriptor::tppCall(Box* _self, CallRewriteArgs* rewrite_args, 
 
     Box* rtn;
     if (flags == PyWrapperFlag_KEYWORDS) {
+        assert(!is_trivial);
         wrapperfunc_kwds wk = (wrapperfunc_kwds)wrapper;
         rtn = (*wk)(arg1, arg2, self->wrapped, arg3);
 
@@ -597,6 +598,7 @@ Box* BoxedWrapperDescriptor::tppCall(Box* _self, CallRewriteArgs* rewrite_args, 
             rewrite_args->out_success = true;
         }
     } else if (flags == PyWrapperFlag_PYSTON || flags == 0) {
+        assert(!is_trivial);
         if (rewrite_args) {
             rtn = (*wrapper)(arg1, arg2, self->wrapped);
             auto rewriter = rewrite_args->rewriter;
@@ -607,8 +609,13 @@ Box* BoxedWrapperDescriptor::tppCall(Box* _self, CallRewriteArgs* rewrite_args, 
         } else
             rtn = (*wrapper)(arg1, arg2, self->wrapped);
     } else if (flags == PyWrapperFlag_PYSTON_1ARG) {
-        if (rewrite_args) {
+        typedef Box* (*func_arg1)(Box*);
+        if (is_trivial)
+            rtn = ((func_arg1)(self->wrapped))(arg1);
+        else
             rtn = (*wrapper)(arg1, arg2, self->wrapped);
+
+        if (rewrite_args) {
             auto rewriter = rewrite_args->rewriter;
             if (is_trivial) {
                 rewrite_args->out_rtn = rewriter->call(true, (void*)self->wrapped, rewrite_args->arg1);
@@ -619,11 +626,16 @@ Box* BoxedWrapperDescriptor::tppCall(Box* _self, CallRewriteArgs* rewrite_args, 
             }
             rewrite_args->rewriter->checkAndThrowCAPIException(rewrite_args->out_rtn);
             rewrite_args->out_success = true;
-        } else
-            rtn = (*wrapper)(arg1, arg2, self->wrapped);
+        }
+
     } else if (flags == PyWrapperFlag_PYSTON_2ARG) {
-        if (rewrite_args) {
+        typedef Box* (*func_arg2)(Box*, Box*);
+        if (is_trivial)
+            rtn = ((func_arg2)(self->wrapped))(arg1, arg2);
+        else
             rtn = (*wrapper)(arg1, arg2, self->wrapped);
+
+        if (rewrite_args) {
             auto rewriter = rewrite_args->rewriter;
             if (is_trivial) {
                 rewrite_args->out_rtn
@@ -635,13 +647,13 @@ Box* BoxedWrapperDescriptor::tppCall(Box* _self, CallRewriteArgs* rewrite_args, 
             }
             rewrite_args->rewriter->checkAndThrowCAPIException(rewrite_args->out_rtn);
             rewrite_args->out_success = true;
-        } else
-            rtn = (*wrapper)(arg1, arg2, self->wrapped);
+        }
     } else {
         RELEASE_ASSERT(0, "%d", flags);
     }
 
-    checkAndThrowCAPIException();
+    if (!rtn)
+        checkAndThrowCAPIException();
     assert(rtn && "should have set + thrown an exception!");
     return rtn;
 }
@@ -671,9 +683,7 @@ Box* BoxedWrapperObject::tppCall(Box* _self, CallRewriteArgs* rewrite_args, ArgP
     if (rewrite_args && !rewrite_args->func_guarded) {
         rewrite_args->obj->addAttrGuard(offsetof(BoxedWrapperObject, descr), (intptr_t)self->descr);
     }
-    bool is_trivial = flags & PyWrapperFlag_PYSTON_TRIVIAL;
-    flags &= ~PyWrapperFlag_PYSTON_TRIVIAL;
-    is_trivial = false;
+    bool is_trivial = false;
 
     ParamReceiveSpec paramspec(0, 0, true, false);
     if (flags == PyWrapperFlag_KEYWORDS) {
@@ -762,7 +772,8 @@ Box* BoxedWrapperObject::tppCall(Box* _self, CallRewriteArgs* rewrite_args, ArgP
         RELEASE_ASSERT(0, "%d", flags);
     }
 
-    checkAndThrowCAPIException();
+    if (!rtn)
+        checkAndThrowCAPIException();
     assert(rtn && "should have set + thrown an exception!");
     return rtn;
 }
