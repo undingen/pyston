@@ -1129,19 +1129,24 @@ Box* nondataDescriptorInstanceSpecialCases(GetattrRewriteArgs* rewrite_args, Box
         Box* inst = obj;
         Box* owner = obj->cls;
 
-        Box* r = BoxedWrapperDescriptor::descr_get(self, inst, owner);
+        if (for_call) {
 
-        if (rewrite_args) {
-            // TODO: inline this?
-            RewriterVar* r_rtn = rewrite_args->rewriter->call(
-                /* has_side_effects= */ false, (void*)&BoxedWrapperDescriptor::descr_get, r_descr, rewrite_args->obj,
-                r_descr->getAttr(offsetof(Box, cls), Location::forArg(2)));
+            return NULL;
+        } else {
+            Box* r = BoxedWrapperDescriptor::descr_get(self, inst, owner);
 
-            rewrite_args->out_success = true;
-            rewrite_args->out_rtn = r_rtn;
-            rewrite_args->out_return_convention = GetattrRewriteArgs::VALID_RETURN;
+            if (rewrite_args) {
+                // TODO: inline this?
+                RewriterVar* r_rtn = rewrite_args->rewriter->call(
+                    /* has_side_effects= */ false, (void*)&BoxedWrapperDescriptor::descr_get, r_descr,
+                    rewrite_args->obj, r_descr->getAttr(offsetof(Box, cls), Location::forArg(2)));
+
+                rewrite_args->out_success = true;
+                rewrite_args->out_rtn = r_rtn;
+                rewrite_args->out_return_convention = GetattrRewriteArgs::VALID_RETURN;
+            }
+            return r;
         }
-        return r;
     }
 
     return NULL;
@@ -1869,11 +1874,26 @@ Box* getattrInternalGeneric(Box* obj, BoxedString* attr, GetattrRewriteArgs* rew
     // If descr and __get__ exist, then call __get__
     if (descr) {
         // Special cases first
+
+        if (for_call && descr->cls == wrapperdescr_cls) {
+            if (rewrite_args) {
+                rewrite_args->out_success = true;
+                rewrite_args->out_rtn = r_descr;
+                rewrite_args->out_return_convention = GetattrRewriteArgs::VALID_RETURN;
+            }
+            *bind_obj_out = obj;
+            if (rewrite_args)
+                *r_bind_obj_out = rewrite_args->obj;
+            return descr;
+        }
+
         Box* res = nondataDescriptorInstanceSpecialCases(rewrite_args, obj, descr, r_descr, for_call, bind_obj_out,
                                                          r_bind_obj_out);
         if (res) {
             return res;
         }
+
+
 
         // We looked up __get__ above. If we found it, call it and return
         // the result.
