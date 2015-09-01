@@ -1655,8 +1655,50 @@ public:
             return undefVariable();
         }
 
-        if (rtattr->cls != function_cls)
-            return NULL;
+        if (rtattr->cls != function_cls) {
+            //if (rtattr->cls != wrapperdescr_cls) {
+            //    printf("unsupported class %s %s:%s\n", rtattr->cls->tp_name, cls->tp_name, attr->data());
+            //    return NULL;
+            //}
+            ParamReceiveSpec paramspec(0);
+            void* code = 0;
+            if (rtattr->cls == method_cls) {
+                BoxedMethodDescriptor* m = (BoxedMethodDescriptor*)rtattr;
+                paramspec = m->getParamSpec();
+                code = (void*)m->method->ml_meth;
+            } else {
+                RELEASE_ASSERT(0, "unsupported class %s %s:%s", rtattr->cls->tp_name, cls->tp_name, attr->data());
+            }
+            if (paramspec.takes_varargs || paramspec.takes_kwargs)
+                return NULL;
+
+            if (paramspec.num_args > 3)
+                return NULL;
+
+            std::vector<llvm::Type*> arg_types;
+            for (int i = 0; i < paramspec.num_args; i++) {
+                if (i == 3) {
+                    arg_types.push_back(g.llvm_value_type_ptr->getPointerTo());
+                    break;
+                } else {
+                    arg_types.push_back(g.llvm_value_type_ptr);
+                }
+            }
+            llvm::FunctionType* ft = llvm::FunctionType::get(g.llvm_value_type_ptr, arg_types, false);
+
+            llvm::Value* linked_function = embedConstantPtr(code, ft->getPointerTo());
+
+            std::vector<CompilerVariable*> new_args;
+            new_args.push_back(var);
+            new_args.insert(new_args.end(), args.begin(), args.end());
+
+
+            std::vector<llvm::Value*> other_args;
+            ConcreteCompilerVariable* rtn = _call(emitter, info, linked_function, CAPI, code, other_args,
+                                                  argspec, new_args, keyword_names, UNKNOWN);
+
+            return rtn;
+        }
         BoxedFunction* rtattr_func = static_cast<BoxedFunction*>(rtattr);
 
         if (argspec.num_keywords || argspec.has_starargs || argspec.has_kwargs)
@@ -1881,17 +1923,27 @@ public:
         if (cls == None->cls)
             return makeBool(false);
 
-        static BoxedString* attr = internStringImmortal("__nonzero__");
+        static BoxedString* attr_nonzero = internStringImmortal("__nonzero__");
         bool no_attribute = false;
         ConcreteCompilerVariable* called_constant
-            = tryCallattrConstant(emitter, info, var, attr, true, ArgPassSpec(0, 0, 0, 0), {}, NULL, &no_attribute);
-
-        // TODO: if no_attribute, we could optimize by continuing the dispatch process and trying
-        // to call __len__ (and if that doesn't exist, returning a static true).
-        // For now, I'd rather not duplicate the dispatch behavior between here and objmodel.cpp::nonzero.
+            = tryCallattrConstant(emitter, info, var, attr_nonzero, true, ArgPassSpec(0, 0, 0, 0), {}, NULL, &no_attribute);
 
         if (called_constant && !no_attribute)
             return called_constant;
+
+
+        if (0 && called_constant && no_attribute) {
+            static BoxedString* attr_len = internStringImmortal("__len__");
+            ConcreteCompilerVariable* called_constant
+                = tryCallattrConstant(emitter, info, var, attr_len, true, ArgPassSpec(0, 0, 0, 0), {}, NULL, &no_attribute);
+
+            if (called_constant && !no_attribute)
+                return called_constant;
+
+            if (called_constant && no_attribute)
+                return makeBool(true);
+        }
+
 
         if (cls == bool_cls) {
             assert(0 && "should have been caught by above case");

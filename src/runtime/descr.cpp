@@ -240,6 +240,40 @@ Box* BoxedMethodDescriptor::__call__(BoxedMethodDescriptor* self, Box* obj, Boxe
                                                NULL);
 }
 
+ParamReceiveSpec BoxedMethodDescriptor::getParamSpec() const {
+    int ml_flags = method->ml_flags;
+    int call_flags = ml_flags & (~METH_CLASS);
+
+    ParamReceiveSpec paramspec(0, 0, false, false);
+    if (call_flags == METH_NOARGS) {
+        paramspec = ParamReceiveSpec(1, 0, false, false);
+    } else if (call_flags == METH_VARARGS) {
+        paramspec = ParamReceiveSpec(1, 0, true, false);
+    } else if (call_flags == (METH_VARARGS | METH_KEYWORDS)) {
+        paramspec = ParamReceiveSpec(1, 0, true, true);
+    } else if (call_flags == METH_O) {
+        paramspec = ParamReceiveSpec(2, 0, false, false);
+    } else if ((call_flags & ~(METH_O3 | METH_D3)) == 0) {
+        int num_args = 0;
+        if (call_flags & METH_O)
+            num_args++;
+        if (call_flags & METH_O2)
+            num_args += 2;
+
+        int num_defaults = 0;
+        if (call_flags & METH_D1)
+            num_defaults++;
+        if (call_flags & METH_D2)
+            num_defaults += 2;
+
+        paramspec = ParamReceiveSpec(1 + num_args, num_defaults, false, false);
+
+    } else {
+        RELEASE_ASSERT(0, "0x%x", call_flags);
+    }
+    return paramspec;
+}
+
 template <ExceptionStyle S>
 Box* BoxedMethodDescriptor::tppCall(Box* _self, CallRewriteArgs* rewrite_args, ArgPassSpec argspec, Box* arg1,
                                     Box* arg2, Box* arg3, Box** args,
@@ -265,37 +299,12 @@ Box* BoxedMethodDescriptor::tppCall(Box* _self, CallRewriteArgs* rewrite_args, A
         rewrite_args->obj->addAttrGuard(offsetof(BoxedMethodDescriptor, method), (intptr_t)self->method);
     }
 
-    ParamReceiveSpec paramspec(0, 0, false, false);
+    ParamReceiveSpec paramspec = self->getParamSpec();
     Box** defaults = NULL;
-    if (call_flags == METH_NOARGS) {
-        paramspec = ParamReceiveSpec(1, 0, false, false);
-    } else if (call_flags == METH_VARARGS) {
-        paramspec = ParamReceiveSpec(1, 0, true, false);
-    } else if (call_flags == (METH_VARARGS | METH_KEYWORDS)) {
-        paramspec = ParamReceiveSpec(1, 0, true, true);
-    } else if (call_flags == METH_O) {
-        paramspec = ParamReceiveSpec(2, 0, false, false);
-    } else if ((call_flags & ~(METH_O3 | METH_D3)) == 0) {
-        int num_args = 0;
-        if (call_flags & METH_O)
-            num_args++;
-        if (call_flags & METH_O2)
-            num_args += 2;
-
-        int num_defaults = 0;
-        if (call_flags & METH_D1)
-            num_defaults++;
-        if (call_flags & METH_D2)
-            num_defaults += 2;
-
-        paramspec = ParamReceiveSpec(1 + num_args, num_defaults, false, false);
-        if (num_defaults) {
-            static Box* _defaults[] = { NULL, NULL, NULL };
-            assert(num_defaults <= 3);
-            defaults = _defaults;
-        }
-    } else {
-        RELEASE_ASSERT(0, "0x%x", call_flags);
+    if (paramspec.num_defaults) {
+        static Box* _defaults[] = { NULL, NULL, NULL };
+        assert(paramspec.num_defaults <= 3);
+        defaults = _defaults;
     }
 
     Box** oargs = NULL;
