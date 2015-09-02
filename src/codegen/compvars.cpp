@@ -1683,11 +1683,25 @@ public:
                 new_args.insert(new_args.end(), args.begin(), args.end());
 
 
-                std::vector<llvm::Value*> other_args;
-                ConcreteCompilerVariable* rtn = _call(emitter, info, linked_function, CAPI, code, other_args, argspec,
-                                                      new_args, keyword_names, UNKNOWN);
 
-                return rtn;
+                std::vector<llvm::Value*> llvm_args;
+                std::vector<ConcreteCompilerVariable*> converted_args;
+                for (int i = 0; i < new_args.size(); i++) {
+                    converted_args.push_back(new_args[i]->makeConverted(emitter, new_args[i]->getBoxType()));
+                }
+
+                for (auto& i : converted_args)
+                    llvm_args.push_back(i->getValue());
+                llvm::Value* rtn = emitter.getBuilder()->CreateCall(linked_function, llvm_args);
+
+                for (int i = 0; i < converted_args.size(); i++) {
+                    converted_args[i]->decvref(emitter);
+                }
+                if (exception_style == CXX) {
+                    emitter.checkAndPropagateCapiException(info.unw_info, rtn, getNullPtr(g.llvm_value_type_ptr));
+                }
+
+                return new ConcreteCompilerVariable(UNKNOWN, rtn, true);
             } else if (rtattr->cls == wrapperdescr_cls) {
                 BoxedWrapperDescriptor* m = (BoxedWrapperDescriptor*)rtattr;
                 paramspec = m->getParamSpec();
@@ -1715,11 +1729,24 @@ public:
                     UNKNOWN, embedRelocatablePtr(m->wrapped, g.llvm_value_type_ptr), false));
 
 
-                std::vector<llvm::Value*> other_args;
-                ConcreteCompilerVariable* rtn = _call(emitter, info, linked_function, CAPI, code, other_args, argspec,
-                                                      new_args, keyword_names, UNKNOWN);
+                std::vector<llvm::Value*> llvm_args;
+                std::vector<ConcreteCompilerVariable*> converted_args;
+                for (int i = 0; i < new_args.size(); i++) {
+                    converted_args.push_back(new_args[i]->makeConverted(emitter, new_args[i]->getBoxType()));
+                }
 
-                return rtn;
+                for (auto& i : converted_args)
+                    llvm_args.push_back(i->getValue());
+                llvm::Value* rtn = emitter.getBuilder()->CreateCall(linked_function, llvm_args);
+
+                for (int i = 0; i < converted_args.size(); i++) {
+                    converted_args[i]->decvref(emitter);
+                }
+                if (exception_style == CXX) {
+                    emitter.checkAndPropagateCapiException(info.unw_info, rtn, getNullPtr(g.llvm_value_type_ptr));
+                }
+
+                return new ConcreteCompilerVariable(UNKNOWN, rtn, true);
             } else {
                 RELEASE_ASSERT(0, "unsupported class %s %s:%s", rtattr->cls->tp_name, cls->tp_name, attr->data());
             }
