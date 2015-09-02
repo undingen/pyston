@@ -1013,6 +1013,8 @@ public:
                         Box** args, const std::vector<BoxedString*>* keyword_names) noexcept(S == CAPI);
 
     static void gcHandler(GCVisitor* v, Box* _o);
+
+    ParamReceiveSpec getParamSpec() const;
 };
 
 class BoxedWrapperObject : public Box {

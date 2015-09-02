@@ -327,6 +327,10 @@ private:
         pp_args.insert(pp_args.end(), ic_stackmap_args.begin(), ic_stackmap_args.end());
 
         irgenerator->addFrameStackmapArgs(info, unw_info.current_stmt, pp_args);
+        if (/*!pp*/ 1) {
+
+            // printf("num: %ld\n", pp_args.size() - 7);
+        }
 
         llvm::Intrinsic::ID intrinsic_id;
         if (return_type->isIntegerTy() || return_type->isPointerTy()) {

@@ -480,6 +480,23 @@ Box* BoxedWrapperDescriptor::__call__(BoxedWrapperDescriptor* descr, PyObject* s
     return BoxedWrapperObject::__call__(wrapper, args, kw);
 }
 
+ParamReceiveSpec BoxedWrapperDescriptor::getParamSpec() const {
+    int flags = wrapper->flags;
+    ParamReceiveSpec paramspec(1, 0, true, false);
+    if (flags == PyWrapperFlag_KEYWORDS) {
+        paramspec = ParamReceiveSpec(1, 0, true, true);
+    } else if (flags == PyWrapperFlag_PYSTON || flags == 0) {
+        paramspec = ParamReceiveSpec(1, 0, true, false);
+    } else if (flags == PyWrapperFlag_1ARG) {
+        paramspec = ParamReceiveSpec(1, 0, false, false);
+    } else if (flags == PyWrapperFlag_2ARG) {
+        paramspec = ParamReceiveSpec(2, 0, false, false);
+    } else {
+        RELEASE_ASSERT(0, "%d", flags);
+    }
+    return paramspec;
+}
+
 template <ExceptionStyle S>
 Box* BoxedWrapperDescriptor::tppCall(Box* _self, CallRewriteArgs* rewrite_args, ArgPassSpec argspec, Box* arg1,
                                      Box* arg2, Box* arg3, Box** args,
@@ -502,18 +519,7 @@ Box* BoxedWrapperDescriptor::tppCall(Box* _self, CallRewriteArgs* rewrite_args, 
     wrapperfunc wrapper = self->wrapper->wrapper;
     assert(self->wrapper->offset > 0);
 
-    ParamReceiveSpec paramspec(1, 0, true, false);
-    if (flags == PyWrapperFlag_KEYWORDS) {
-        paramspec = ParamReceiveSpec(1, 0, true, true);
-    } else if (flags == PyWrapperFlag_PYSTON || flags == 0) {
-        paramspec = ParamReceiveSpec(1, 0, true, false);
-    } else if (flags == PyWrapperFlag_1ARG) {
-        paramspec = ParamReceiveSpec(1, 0, false, false);
-    } else if (flags == PyWrapperFlag_2ARG) {
-        paramspec = ParamReceiveSpec(2, 0, false, false);
-    } else {
-        RELEASE_ASSERT(0, "%d", flags);
-    }
+    ParamReceiveSpec paramspec = self->getParamSpec();
 
     Box** oargs = NULL;
 
