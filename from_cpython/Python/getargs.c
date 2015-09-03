@@ -1148,7 +1148,7 @@ convertsimple(PyObject *arg, const char **p_format, va_list *p_va, int flags,
                         "(memory error)",
                         arg, msgbuf, bufsize);
                 }
-                if (addcleanup(*buffer, freelist, cleanup_ptr)) {
+                if (0 && addcleanup(*buffer, freelist, cleanup_ptr)) {
                     Py_DECREF(s);
                     return converterr(
                         "(cleanup problem)",
@@ -1193,7 +1193,7 @@ convertsimple(PyObject *arg, const char **p_format, va_list *p_va, int flags,
                 return converterr("(memory error)",
                                   arg, msgbuf, bufsize);
             }
-            if (addcleanup(*buffer, freelist, cleanup_ptr)) {
+            if (0 && addcleanup(*buffer, freelist, cleanup_ptr)) {
                 Py_DECREF(s);
                 return converterr("(cleanup problem)",
                                 arg, msgbuf, bufsize);
