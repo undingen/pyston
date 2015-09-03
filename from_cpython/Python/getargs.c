@@ -884,7 +884,7 @@ convertsimple(PyObject *arg, const char **p_format, va_list *p_va, int flags,
                 if (getbuffer(arg, p, &buf) < 0)
                     return converterr(buf, arg, msgbuf, bufsize);
             }
-            if (addcleanup(p, freelist, cleanup_buffer)) {
+            if (0 && addcleanup(p, freelist, cleanup_buffer)) {
                 return converterr(
                     "(cleanup problem)",
                     arg, msgbuf, bufsize);
@@ -966,7 +966,7 @@ convertsimple(PyObject *arg, const char **p_format, va_list *p_va, int flags,
                 if (getbuffer(arg, p, &buf) < 0)
                     return converterr(buf, arg, msgbuf, bufsize);
             }
-            if (addcleanup(p, freelist, cleanup_buffer)) {
+            if (0 && addcleanup(p, freelist, cleanup_buffer)) {
                 return converterr(
                     "(cleanup problem)",
                     arg, msgbuf, bufsize);
@@ -1311,7 +1311,7 @@ convertsimple(PyObject *arg, const char **p_format, va_list *p_va, int flags,
                 PyErr_Clear();
                 return converterr("read-write buffer", arg, msgbuf, bufsize);
             }
-            if (addcleanup(p, freelist, cleanup_buffer)) {
+            if (0 && addcleanup(p, freelist, cleanup_buffer)) {
                 return converterr(
                     "(cleanup problem)",
                     arg, msgbuf, bufsize);
