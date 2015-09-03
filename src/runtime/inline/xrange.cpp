@@ -241,5 +241,6 @@ void setupXrange() {
     xrange_iterator_cls->freeze();
     xrange_iterator_cls->tpp_hasnext = BoxedXrangeIterator::xrangeIteratorHasnextUnboxed;
     xrange_iterator_cls->tp_iternext = BoxedXrangeIterator::xrangeIterator_next;
+    xrange_iterator_cls->tp_iter = PyObject_SelfIter;
 }
 }
