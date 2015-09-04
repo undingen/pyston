@@ -862,7 +862,6 @@ template <ExceptionStyle S>
 static Box* instanceNextInternal(BoxedFunctionBase* f, CallRewriteArgs* rewrite_args, ArgPassSpec argspec, Box* arg1,
                                  Box* arg2, Box* arg3, Box** args,
                                  const std::vector<BoxedString*>* keyword_names) noexcept(S == CAPI) {
-    rewrite_args = NULL;
     if (rewrite_args)
         assert(rewrite_args->func_guarded);
 
@@ -1591,8 +1590,8 @@ void setupClassobj() {
     instance_cls->giveAttr("__hash__", new BoxedFunction(boxRTFunction((void*)instanceHash, UNKNOWN, 1)));
     instance_cls->giveAttr("__iter__", new BoxedFunction(boxRTFunction((void*)instanceIter, UNKNOWN, 1)));
     auto rt_func = boxRTFunction((void*)instanceNext, UNKNOWN, 1);
-    // rt_func->internal_callable.capi_val = instanceNextInternal<CAPI>;
-    // rt_func->internal_callable.cxx_val = &instanceNextInternal<CXX>;
+    rt_func->internal_callable.capi_val = instanceNextInternal<CAPI>;
+    rt_func->internal_callable.cxx_val = &instanceNextInternal<CXX>;
     instance_cls->giveAttr("next", new BoxedFunction(rt_func));
     instance_cls->giveAttr("__call__",
                            new BoxedFunction(boxRTFunction((void*)instanceCall, UNKNOWN, 1, 0, true, true)));
