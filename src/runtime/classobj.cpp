@@ -39,6 +39,7 @@ static Box* classLookup(BoxedClassobj* cls, BoxedString* attr, GetattrRewriteArg
 
     if (rewrite_args) {
         rewrite_args->out_success = false;
+        // rewrite_args->obj->addAttrGuard(offsetof(BoxedClassobj, bases), cls->bases);
         rewrite_args = NULL;
     }
 
@@ -269,18 +270,30 @@ static Box* instanceGetattributeSimple(BoxedInstance* inst, BoxedString* attr_st
     if (r)
         return r;
 
+    RewriterVar* r_inst = NULL;
+    RewriterVar* r_inst_cls = NULL;
+
     if (rewiter_args) {
         if (!rewiter_args->out_success)
             rewiter_args = NULL;
-        else
+        else {
             rewiter_args->out_success = false;
+            r_inst = rewiter_args->obj;
+            r_inst_cls = r_inst->getAttr(offsetof(BoxedInstance, inst_cls));
+            rewiter_args->obj = r_inst_cls;
+        }
     }
 
     r = classLookup(inst->inst_cls, attr_str, rewiter_args);
     if (r) {
         Box* rtn = processDescriptor(r, inst, inst->inst_cls);
-        if (rtn != r && rewiter_args)
-            rewiter_args->out_success = false;
+        if (rewiter_args) {
+            RewriterVar* r_rtn = rewiter_args->rewriter->call(true, (void*)processDescriptor, rewiter_args->out_rtn,
+                                                              r_inst, r_inst_cls);
+            rewiter_args->out_rtn = r_rtn;
+            rewiter_args->out_success = true;
+            rewiter_args->obj = r_inst;
+        }
         return rtn;
     }
 
@@ -311,7 +324,7 @@ static Box* instanceGetattributeWithFallback(BoxedInstance* inst, BoxedString* a
 
     if (getattr) {
         getattr = processDescriptor(getattr, inst, inst->inst_cls);
-        return runtimeCall(getattr, ArgPassSpec(1), attr_str, NULL, NULL, NULL, NULL);
+        return runtimeCallInternal<CXX>(getattr, NULL, ArgPassSpec(1), attr_str, NULL, NULL, NULL, NULL);
     }
 
     return NULL;
@@ -349,6 +362,7 @@ Box* instance_getattro(Box* cls, Box* attr) noexcept {
 
 template <ExceptionStyle S>
 Box* instance_getattroInternal(Box* cls, Box* _attr, GetattrRewriteArgs* rewrite_args) noexcept(S == CAPI) {
+
     STAT_TIMER(t0, "us_timer_instance_getattribute", 0);
 
     RELEASE_ASSERT(_attr->cls == str_cls, "");
@@ -848,6 +862,7 @@ template <ExceptionStyle S>
 static Box* instanceNextInternal(BoxedFunctionBase* f, CallRewriteArgs* rewrite_args, ArgPassSpec argspec, Box* arg1,
                                  Box* arg2, Box* arg3, Box** args,
                                  const std::vector<BoxedString*>* keyword_names) noexcept(S == CAPI) {
+    rewrite_args = NULL;
     if (rewrite_args)
         assert(rewrite_args->func_guarded);
 
@@ -861,9 +876,21 @@ static Box* instanceNextInternal(BoxedFunctionBase* f, CallRewriteArgs* rewrite_
 
     BoxedInstance* inst = (BoxedInstance*)arg1;
 
-    rewrite_args = NULL;
-
     static BoxedString* next_str = internStringImmortal("next");
+
+    struct Helper {
+        static Box* call(Box* func) {
+            if (!func) {
+                if (S == CXX)
+                    raiseExcHelper(TypeError, "instance has no next() method");
+                else
+                    PyErr_SetString(TypeError, "instance has no next() method");
+                return NULL;
+            }
+            return runtimeCallInternal<S>(func, NULL, ArgPassSpec(0), NULL, NULL, NULL, NULL, NULL);
+        }
+    };
+
 
     Box* next_func = NULL;
     if (rewrite_args) {
@@ -872,18 +899,25 @@ static Box* instanceNextInternal(BoxedFunctionBase* f, CallRewriteArgs* rewrite_
         next_func = _instanceGetattribute(inst, next_str, false, &grewrite_args);
         if (!grewrite_args.out_success)
             rewrite_args = NULL;
+
+        if (rewrite_args) {
+
+
+            /* will abort because of guard after call
+            CallRewriteArgs crewrite_args(rewrite_args->rewriter, grewrite_args.out_rtn, Location::any());
+            Box* r = runtimeCallInternal<S>(next_func, &crewrite_args, ArgPassSpec(0), NULL, NULL, NULL, NULL, NULL);
+            if (crewrite_args.out_success) {
+                rewrite_args->out_rtn = grewrite_args.out_rtn;
+                rewrite_args->out_success = true;
+            }
+            return r;
+            */
+            rewrite_args->out_rtn = rewrite_args->rewriter->call(true, (void*)Helper::call, grewrite_args.out_rtn);
+            rewrite_args->out_success = true;
+        }
     } else
         next_func = _instanceGetattribute(inst, next_str, false);
-
-
-
-    if (!next_func) {
-        // not 100% sure why this is a different error:
-        raiseExcHelper(TypeError, "instance has no next() method");
-    }
-
-    Box* r = runtimeCallInternal<S>(next_func, NULL, ArgPassSpec(0), NULL, NULL, NULL, NULL, NULL);
-    return r;
+    return Helper::call(next_func);
 }
 
 static PyObject* generic_binary_op(PyObject* v, PyObject* w, char* opname) {
@@ -1557,8 +1591,8 @@ void setupClassobj() {
     instance_cls->giveAttr("__hash__", new BoxedFunction(boxRTFunction((void*)instanceHash, UNKNOWN, 1)));
     instance_cls->giveAttr("__iter__", new BoxedFunction(boxRTFunction((void*)instanceIter, UNKNOWN, 1)));
     auto rt_func = boxRTFunction((void*)instanceNext, UNKNOWN, 1);
-    rt_func->internal_callable.capi_val = instanceNextInternal<CAPI>;
-    rt_func->internal_callable.cxx_val = &instanceNextInternal<CXX>;
+    // rt_func->internal_callable.capi_val = instanceNextInternal<CAPI>;
+    // rt_func->internal_callable.cxx_val = &instanceNextInternal<CXX>;
     instance_cls->giveAttr("next", new BoxedFunction(rt_func));
     instance_cls->giveAttr("__call__",
                            new BoxedFunction(boxRTFunction((void*)instanceCall, UNKNOWN, 1, 0, true, true)));
