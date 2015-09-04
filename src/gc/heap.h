@@ -76,7 +76,7 @@ class conservative_unordered_map
 namespace gc {
 
 extern unsigned bytesAllocatedSinceCollection;
-#define ALLOCBYTES_PER_COLLECTION 5000000
+#define ALLOCBYTES_PER_COLLECTION 10000000
 void _bytesAllocatedTripped();
 
 // Notify the gc of n bytes as being under GC management.
@@ -131,6 +131,10 @@ enum FinalizationState {
 
 inline bool isMarked(GCAllocation* header) {
     return (header->gc_flags & MARK_BIT) != 0;
+}
+
+inline bool isImmortal(GCAllocation* header) {
+    return (header->gc_flags & IMMORTAL_BIT) != 0;
 }
 
 inline void setMark(GCAllocation* header) {

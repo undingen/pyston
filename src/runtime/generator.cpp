@@ -41,7 +41,7 @@ static std::deque<uint64_t> available_addrs;
 // There should be a better way of getting this:
 #define PAGE_SIZE 4096
 
-#define INITIAL_STACK_SIZE (8 * PAGE_SIZE)
+#define INITIAL_STACK_SIZE (4 * PAGE_SIZE)
 #define STACK_REDZONE_SIZE PAGE_SIZE
 #define MAX_STACK_SIZE (4 * 1024 * 1024)
 

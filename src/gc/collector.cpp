@@ -228,7 +228,9 @@ void registerPermanentRoot(void* obj, bool allow_duplicates) {
     if (!allow_duplicates)
         ASSERT(roots.count(obj) == 0, "Please only register roots once");
 
-    roots.insert(obj);
+    auto al = GCAllocation::fromUserData(obj);
+    if (!isImmortal(al))
+        roots.insert(obj);
 }
 
 void deregisterPermanentRoot(void* obj) {
