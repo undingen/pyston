@@ -19,6 +19,7 @@
 #include "capi/types.h"
 #include "core/types.h"
 #include "runtime/objmodel.h"
+#include "runtime/rewrite_args.h"
 #include "runtime/types.h"
 
 namespace pyston {
@@ -27,14 +28,23 @@ extern "C" {
 BoxedClass* classobj_cls, *instance_cls;
 }
 
-static Box* classLookup(BoxedClassobj* cls, BoxedString* attr) {
-    Box* r = cls->getattr(attr);
+
+static Box* classLookup(BoxedClassobj* cls, BoxedString* attr, GetattrRewriteArgs* rewrite_args = NULL) {
+    if (rewrite_args)
+        assert(!rewrite_args->out_success);
+
+    Box* r = cls->getattr(attr, rewrite_args);
     if (r)
         return r;
 
+    if (rewrite_args) {
+        rewrite_args->out_success = false;
+        rewrite_args = NULL;
+    }
+
     for (auto b : *cls->bases) {
         RELEASE_ASSERT(b->cls == classobj_cls, "");
-        Box* r = classLookup(static_cast<BoxedClassobj*>(b), attr);
+        Box* r = classLookup(static_cast<BoxedClassobj*>(b), attr, rewrite_args);
         if (r)
             return r;
     }
@@ -253,24 +263,47 @@ Box* classobjStr(Box* _obj) {
 
 
 // Analogous to CPython's instance_getattr2
-static Box* instanceGetattributeSimple(BoxedInstance* inst, BoxedString* attr_str) {
-    Box* r = inst->getattr(attr_str);
+static Box* instanceGetattributeSimple(BoxedInstance* inst, BoxedString* attr_str,
+                                       GetattrRewriteArgs* rewiter_args = NULL) {
+    Box* r = inst->getattr(attr_str, rewiter_args);
     if (r)
         return r;
 
-    r = classLookup(inst->inst_cls, attr_str);
+    if (rewiter_args) {
+        if (!rewiter_args->out_success)
+            rewiter_args = NULL;
+        else
+            rewiter_args->out_success = false;
+    }
+
+    r = classLookup(inst->inst_cls, attr_str, rewiter_args);
     if (r) {
-        return processDescriptor(r, inst, inst->inst_cls);
+        Box* rtn = processDescriptor(r, inst, inst->inst_cls);
+        if (rtn != r && rewiter_args)
+            rewiter_args->out_success = false;
+        return rtn;
     }
 
     return NULL;
 }
 
-static Box* instanceGetattributeWithFallback(BoxedInstance* inst, BoxedString* attr_str) {
-    Box* attr_obj = instanceGetattributeSimple(inst, attr_str);
+static Box* instanceGetattributeWithFallback(BoxedInstance* inst, BoxedString* attr_str,
+                                             GetattrRewriteArgs* rewiter_args = NULL) {
+    Box* attr_obj = instanceGetattributeSimple(inst, attr_str, rewiter_args);
 
     if (attr_obj) {
         return attr_obj;
+    }
+
+    if (rewiter_args) {
+        if (!rewiter_args->out_success)
+            rewiter_args = NULL;
+        else
+            rewiter_args->out_success = false;
+
+
+        if (rewiter_args)
+            rewiter_args = NULL;
     }
 
     static BoxedString* getattr_str = internStringImmortal("__getattr__");
@@ -284,7 +317,8 @@ static Box* instanceGetattributeWithFallback(BoxedInstance* inst, BoxedString* a
     return NULL;
 }
 
-static Box* _instanceGetattribute(Box* _inst, BoxedString* attr_str, bool raise_on_missing) {
+static Box* _instanceGetattribute(Box* _inst, BoxedString* attr_str, bool raise_on_missing,
+                                  GetattrRewriteArgs* rewiter_args = NULL) {
     RELEASE_ASSERT(_inst->cls == instance_cls, "");
     BoxedInstance* inst = static_cast<BoxedInstance*>(_inst);
 
@@ -297,7 +331,7 @@ static Box* _instanceGetattribute(Box* _inst, BoxedString* attr_str, bool raise_
             return inst->inst_cls;
     }
 
-    Box* attr = instanceGetattributeWithFallback(inst, attr_str);
+    Box* attr = instanceGetattributeWithFallback(inst, attr_str, rewiter_args);
     if (attr) {
         return attr;
     } else if (!raise_on_missing) {
@@ -308,22 +342,27 @@ static Box* _instanceGetattribute(Box* _inst, BoxedString* attr_str, bool raise_
     }
 }
 
-Box* instanceGetattribute(Box* _inst, Box* _attr) {
+// Analogous to CPython's instance_getattr
+Box* instance_getattro(Box* cls, Box* attr) noexcept {
+    return instance_getattroInternal<CAPI>(cls, attr, NULL);
+}
+
+template <ExceptionStyle S>
+Box* instance_getattroInternal(Box* cls, Box* _attr, GetattrRewriteArgs* rewrite_args) noexcept(S == CAPI) {
     STAT_TIMER(t0, "us_timer_instance_getattribute", 0);
 
     RELEASE_ASSERT(_attr->cls == str_cls, "");
     BoxedString* attr = static_cast<BoxedString*>(_attr);
-    return _instanceGetattribute(_inst, attr, true);
-}
 
-
-// Analogous to CPython's instance_getattr
-static Box* instance_getattro(Box* cls, Box* attr) noexcept {
-    try {
-        return instanceGetattribute(cls, attr);
-    } catch (ExcInfo e) {
-        setCAPIException(e);
-        return NULL;
+    if (S == CAPI) {
+        try {
+            return _instanceGetattribute(cls, attr, true, rewrite_args);
+        } catch (ExcInfo e) {
+            setCAPIException(e);
+            return NULL;
+        }
+    } else {
+        return _instanceGetattribute(cls, attr, true, rewrite_args);
     }
 }
 
@@ -802,6 +841,48 @@ static Box* instanceNext(BoxedInstance* inst) {
     }
 
     Box* r = runtimeCall(next_func, ArgPassSpec(0), NULL, NULL, NULL, NULL, NULL);
+    return r;
+}
+
+template <ExceptionStyle S>
+static Box* instanceNextInternal(BoxedFunctionBase* f, CallRewriteArgs* rewrite_args, ArgPassSpec argspec, Box* arg1,
+                                 Box* arg2, Box* arg3, Box** args,
+                                 const std::vector<BoxedString*>* keyword_names) noexcept(S == CAPI) {
+    if (rewrite_args)
+        assert(rewrite_args->func_guarded);
+
+    static StatCounter slowpath_typecall("slowpath_instanceNext");
+    slowpath_typecall.log();
+
+    if (argspec.has_starargs || argspec.num_args != 1) {
+        return callFunc<CXX>(f, rewrite_args, argspec, arg1, arg2, arg3, args, keyword_names);
+    }
+
+
+    BoxedInstance* inst = (BoxedInstance*)arg1;
+
+    rewrite_args = NULL;
+
+    static BoxedString* next_str = internStringImmortal("next");
+
+    Box* next_func = NULL;
+    if (rewrite_args) {
+        RewriterVar* r_inst = rewrite_args->arg1;
+        GetattrRewriteArgs grewrite_args(rewrite_args->rewriter, r_inst, Location::any());
+        next_func = _instanceGetattribute(inst, next_str, false, &grewrite_args);
+        if (!grewrite_args.out_success)
+            rewrite_args = NULL;
+    } else
+        next_func = _instanceGetattribute(inst, next_str, false);
+
+
+
+    if (!next_func) {
+        // not 100% sure why this is a different error:
+        raiseExcHelper(TypeError, "instance has no next() method");
+    }
+
+    Box* r = runtimeCallInternal<S>(next_func, NULL, ArgPassSpec(0), NULL, NULL, NULL, NULL, NULL);
     return r;
 }
 
@@ -1458,7 +1539,7 @@ void setupClassobj() {
 
 
     instance_cls->giveAttr("__getattribute__",
-                           new BoxedFunction(boxRTFunction((void*)instanceGetattribute, UNKNOWN, 2)));
+                           new BoxedFunction(boxRTFunction((void*)instance_getattroInternal<CXX>, UNKNOWN, 2)));
     instance_cls->giveAttr("__setattr__", new BoxedFunction(boxRTFunction((void*)instanceSetattr, UNKNOWN, 3)));
     instance_cls->giveAttr("__delattr__", new BoxedFunction(boxRTFunction((void*)instanceDelattr, UNKNOWN, 2)));
     instance_cls->giveAttr("__str__", new BoxedFunction(boxRTFunction((void*)instanceStr, UNKNOWN, 1)));
@@ -1475,7 +1556,10 @@ void setupClassobj() {
     instance_cls->giveAttr("__contains__", new BoxedFunction(boxRTFunction((void*)instanceContains, UNKNOWN, 2)));
     instance_cls->giveAttr("__hash__", new BoxedFunction(boxRTFunction((void*)instanceHash, UNKNOWN, 1)));
     instance_cls->giveAttr("__iter__", new BoxedFunction(boxRTFunction((void*)instanceIter, UNKNOWN, 1)));
-    instance_cls->giveAttr("next", new BoxedFunction(boxRTFunction((void*)instanceNext, UNKNOWN, 1)));
+    auto rt_func = boxRTFunction((void*)instanceNext, UNKNOWN, 1);
+    rt_func->internal_callable.capi_val = instanceNextInternal<CAPI>;
+    rt_func->internal_callable.cxx_val = &instanceNextInternal<CXX>;
+    instance_cls->giveAttr("next", new BoxedFunction(rt_func));
     instance_cls->giveAttr("__call__",
                            new BoxedFunction(boxRTFunction((void*)instanceCall, UNKNOWN, 1, 0, true, true)));
     instance_cls->giveAttr("__eq__", new BoxedFunction(boxRTFunction((void*)instanceEq, UNKNOWN, 2)));
