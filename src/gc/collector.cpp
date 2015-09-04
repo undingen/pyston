@@ -34,6 +34,7 @@
 #endif
 
 namespace pyston {
+extern llvm::StringMap<BoxedString*> interned_strings;
 namespace gc {
 
 #if TRACE_GC_MARKING
@@ -82,6 +83,7 @@ private:
     void** cur;
     void** start;
     void** end;
+    // unsigned long num_pushed = 0;
 
     TraceStackType visit_type;
 
@@ -112,10 +114,15 @@ private:
 public:
     TraceStack(TraceStackType type) : visit_type(type) { get_chunk(); }
     TraceStack(TraceStackType type, const std::unordered_set<void*>& roots) : visit_type(type) {
+        // printf("roots %lu\n", roots.size());
         get_chunk();
         for (void* p : roots) {
             ASSERT(!isMarked(GCAllocation::fromUserData(p)), "");
             push(p);
+        }
+        for (auto&& e : interned_strings) {
+            ASSERT(!isMarked(GCAllocation::fromUserData(e.second)), "");
+            push(e.second);
         }
     }
     ~TraceStack() {
@@ -124,6 +131,8 @@ public:
         // We always have a block available in case we want to push items onto the TraceStack,
         // but that chunk needs to be released after use to avoid a memory leak.
         release_chunk(start);
+        // if (visit_type == TraceStackType::MarkPhase)
+        //    printf("num_pushed %lu\n", num_pushed);
     }
 
     void push(void* p) {
@@ -180,6 +189,7 @@ public:
                 assert(false);
         }
 
+        //++num_pushed;
         *cur++ = p;
         if (cur == end) {
             chunks.push_back(start);

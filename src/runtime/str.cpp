@@ -357,7 +357,7 @@ extern "C" Box* strAdd(BoxedString* lhs, Box* _rhs) {
     return new (lhs->size() + rhs->size()) BoxedString(lhs->s(), rhs->s());
 }
 
-static llvm::StringMap<BoxedString*> interned_strings;
+llvm::StringMap<BoxedString*> interned_strings;
 static StatCounter num_interned_strings("num_interned_string");
 extern "C" PyObject* PyString_InternFromString(const char* s) noexcept {
     RELEASE_ASSERT(s, "");
@@ -368,7 +368,8 @@ BoxedString* internStringImmortal(llvm::StringRef s) {
     auto& entry = interned_strings[s];
     if (!entry) {
         num_interned_strings.log();
-        entry = (BoxedString*)PyGC_AddRoot(boxString(s));
+        // entry = (BoxedString*)PyGC_AddRoot(boxString(s));
+        entry = (BoxedString*)boxString(s);
         // CPython returns mortal but in our current implementation they are inmortal
         entry->interned_state = SSTATE_INTERNED_IMMORTAL;
     }
