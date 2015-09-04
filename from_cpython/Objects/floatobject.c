@@ -193,7 +193,9 @@ PyFloat_FromString(PyObject *v, char **pend)
     }
 #ifdef Py_USING_UNICODE
     else if (PyUnicode_Check(v)) {
-        s_buffer = (char *)PyMem_MALLOC(PyUnicode_GET_SIZE(v)+1);
+        // Pyston change:
+        // s_buffer = (char *)PyMem_MALLOC(PyUnicode_GET_SIZE(v)+1);
+        s_buffer = (char *)malloc(PyUnicode_GET_SIZE(v)+1);
         if (s_buffer == NULL)
             return PyErr_NoMemory();
         if (PyUnicode_EncodeDecimal(PyUnicode_AS_UNICODE(v),
@@ -234,7 +236,9 @@ PyFloat_FromString(PyObject *v, char **pend)
   error:
 #ifdef Py_USING_UNICODE
     if (s_buffer)
-        PyMem_FREE(s_buffer);
+        // Pyston change:
+        // PyMem_FREE(s_buffer);
+        free(s_buffer);
 #endif
     return result;
 }

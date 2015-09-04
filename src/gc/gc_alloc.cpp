@@ -39,6 +39,10 @@ extern "C" void* gc_compat_malloc(size_t sz) noexcept {
     return gc_alloc(sz, GCKind::CONSERVATIVE);
 }
 
+extern "C" void* gc_compat_malloc_untracked(size_t sz) noexcept {
+    return gc_alloc(sz, GCKind::UNTRACKED);
+}
+
 extern "C" void* gc_compat_realloc(void* ptr, size_t sz) noexcept {
     if (ptr == NULL)
         return gc_alloc(sz, GCKind::CONSERVATIVE);

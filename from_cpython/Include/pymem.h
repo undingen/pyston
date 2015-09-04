@@ -53,6 +53,7 @@ extern "C" {
 
 PyAPI_FUNC(void *) gc_compat_malloc(size_t) PYSTON_NOEXCEPT;
 PyAPI_FUNC(void *) gc_compat_realloc(void *, size_t) PYSTON_NOEXCEPT;
+PyAPI_FUNC(void *) gc_compat_malloc_untracked(size_t) PYSTON_NOEXCEPT;
 
 PyAPI_FUNC(void *) PyMem_Malloc(size_t) PYSTON_NOEXCEPT;
 PyAPI_FUNC(void *) PyMem_Realloc(void *, size_t) PYSTON_NOEXCEPT;

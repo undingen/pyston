@@ -8773,7 +8773,8 @@ PyObject* unicode_new_inner(PyTypeObject* type, PyObject* x, char* encoding, cha
         Py_DECREF(tmp2);
         return NULL;
     }
-    pnew->str = (Py_UNICODE*) PyObject_MALLOC(sizeof(Py_UNICODE) * (n+1));
+    // pnew->str = (Py_UNICODE*) PyObject_MALLOC(sizeof(Py_UNICODE) * (n+1));
+    pnew->str = (Py_UNICODE*) gc_compat_malloc_untracked(sizeof(Py_UNICODE) * (n+1));
     if (pnew->str == NULL) {
         _Py_ForgetReference((PyObject *)pnew);
         PyObject_Del(pnew);
