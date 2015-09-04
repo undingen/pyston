@@ -39,7 +39,6 @@ static Box* classLookup(BoxedClassobj* cls, BoxedString* attr, GetattrRewriteArg
 
     if (rewrite_args) {
         rewrite_args->out_success = false;
-        // rewrite_args->obj->addAttrGuard(offsetof(BoxedClassobj, bases), cls->bases);
         rewrite_args = NULL;
     }
 
@@ -285,6 +284,9 @@ static Box* instanceGetattributeSimple(BoxedInstance* inst, BoxedString* attr_st
     }
 
     r = classLookup(inst->inst_cls, attr_str, rewiter_args);
+    if (rewiter_args && !rewiter_args->out_success)
+        rewiter_args = NULL;
+
     if (r) {
         Box* rtn = processDescriptor(r, inst, inst->inst_cls);
         if (rewiter_args) {
@@ -900,18 +902,11 @@ static Box* instanceNextInternal(BoxedFunctionBase* f, CallRewriteArgs* rewrite_
             rewrite_args = NULL;
 
         if (rewrite_args) {
-
-
-            /* will abort because of guard after call
-            CallRewriteArgs crewrite_args(rewrite_args->rewriter, grewrite_args.out_rtn, Location::any());
-            Box* r = runtimeCallInternal<S>(next_func, &crewrite_args, ArgPassSpec(0), NULL, NULL, NULL, NULL, NULL);
-            if (crewrite_args.out_success) {
-                rewrite_args->out_rtn = grewrite_args.out_rtn;
-                rewrite_args->out_success = true;
-            }
-            return r;
-            */
-            rewrite_args->out_rtn = rewrite_args->rewriter->call(true, (void*)Helper::call, grewrite_args.out_rtn);
+            // will abort because of guard after call
+            RewriterVar* r_next_func = grewrite_args.out_rtn;
+            if (!r_next_func)
+                r_next_func = rewrite_args->rewriter->loadConst(0);
+            rewrite_args->out_rtn = rewrite_args->rewriter->call(true, (void*)Helper::call, r_next_func);
             rewrite_args->out_success = true;
         }
     } else
