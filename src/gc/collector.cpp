@@ -120,10 +120,10 @@ public:
             ASSERT(!isMarked(GCAllocation::fromUserData(p)), "");
             push(p);
         }
-        for (auto&& e : interned_strings) {
-            ASSERT(!isMarked(GCAllocation::fromUserData(e.second)), "");
-            push(e.second);
-        }
+        //for (auto&& e : interned_strings) {
+        //    ASSERT(!isMarked(GCAllocation::fromUserData(e.second)), "");
+        //    push(e.second);
+        //}
     }
     ~TraceStack() {
         RELEASE_ASSERT(end - cur == CHUNK_SIZE, "destroying non-empty TraceStack");
@@ -246,6 +246,15 @@ extern "C" PyObject* PyGC_AddRoot(PyObject* obj) noexcept {
         // Allow duplicates from CAPI code since they shouldn't have to know
         // which objects we already registered as roots:
         registerPermanentRoot(obj, /* allow_duplicates */ true);
+    }
+    return obj;
+}
+
+extern "C" PyObject* PyGC_AddRoot2(PyObject* obj) noexcept {
+    if (obj) {
+        auto al = GCAllocation::fromUserData(obj);
+        setMark(al);
+        setMarkImmortal(al);
     }
     return obj;
 }

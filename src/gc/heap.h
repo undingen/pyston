@@ -116,6 +116,7 @@ static_assert(sizeof(GCAllocation) <= sizeof(void*),
 // reserved bit - along with MARK_BIT, encodes the states of finalization order
 #define ORDERING_EXTRA_BIT 0x2
 #define FINALIZER_HAS_RUN_BIT 0x4
+#define IMMORTAL_BIT 0x8
 
 #define ORDERING_BITS (MARK_BIT | ORDERING_EXTRA_BIT)
 
@@ -129,7 +130,7 @@ enum FinalizationState {
 };
 
 inline bool isMarked(GCAllocation* header) {
-    return (header->gc_flags & MARK_BIT) != 0;
+    return (header->gc_flags & (MARK_BIT|IMMORTAL_BIT)) != 0;
 }
 
 inline void setMark(GCAllocation* header) {
@@ -137,8 +138,14 @@ inline void setMark(GCAllocation* header) {
     header->gc_flags |= MARK_BIT;
 }
 
+inline void setMarkImmortal(GCAllocation* header) {
+    header->gc_flags |= IMMORTAL_BIT | MARK_BIT;
+}
+
 inline void clearMark(GCAllocation* header) {
     assert(isMarked(header));
+    if ((header->gc_flags & IMMORTAL_BIT) != 0)
+        return;
     header->gc_flags &= ~MARK_BIT;
 }
 

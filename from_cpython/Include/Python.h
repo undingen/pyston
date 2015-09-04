@@ -157,6 +157,7 @@ PyObject* PyModule_GetDict(PyObject*) PYSTON_NOEXCEPT;
 // Our goal is to not make exception modules declare their static memory.  But until we can identify
 // that in an automated way, we have to modify extension modules to call this:
 PyObject* PyGC_AddRoot(PyObject*) PYSTON_NOEXCEPT;
+PyObject* PyGC_AddRoot2(PyObject*) PYSTON_NOEXCEPT;
 // PyGC_AddRoot returns its argument, with the intention that you do something like
 //      static PyObject* obj = PyGC_AddRoot(foo());
 // rather than
