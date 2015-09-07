@@ -304,7 +304,7 @@ private:
             void reset() { next_to_check = 0; }
         };
 
-        bool isSet(int idx) { return (data[idx / 64] >> (idx % 64)) & 1; }
+        bool isSet(int idx) { return data[idx / 64] & (1ul << (idx % 64)); }
 
         void set(int idx) { data[idx / 64] |= 1UL << (idx % 64); }
 
