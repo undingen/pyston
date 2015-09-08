@@ -14,8 +14,14 @@
 
 #include "codegen/irgen/hooks.h"
 
+#include "llvm/Bitcode/ReaderWriter.h"
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
+#include "llvm/ExecutionEngine/JITEventListener.h"
+#include "llvm/ExecutionEngine/RTDyldMemoryManager.h"
+#include "llvm/Object/ObjectFile.h"
+#include "llvm/Support/Path.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/IR/Verifier.h"
 
 #include "analysis/function_analysis.h"
 #include "analysis/scoping_analysis.h"
@@ -27,6 +33,7 @@
 #include "codegen/irgen.h"
 #include "codegen/irgen/future.h"
 #include "codegen/irgen/util.h"
+#include "codegen/memmgr.h"
 #include "codegen/osrentry.h"
 #include "codegen/parser.h"
 #include "codegen/patchpoints.h"
@@ -151,6 +158,11 @@ static void compileIR(CompiledFunction* cf, EffortLevel effort) {
 
     {
         Timer _t("to jit the IR");
+
+        // assert(!llvm::verifyModule(*cf->func->getParent(), &llvm::outs()));
+
+        // cf->func->getParent()->dump();
+
 #if LLVMREV < 215967
         g.engine->addModule(cf->func->getParent());
 #else
@@ -160,6 +172,7 @@ static void compileIR(CompiledFunction* cf, EffortLevel effort) {
         g.cur_cf = cf;
         void* compiled = (void*)g.engine->getFunctionAddress(cf->func->getName());
         g.cur_cf = NULL;
+        g.cur_cfg = NULL;
         assert(compiled);
         ASSERT(compiled == cf->code, "cf->code should have gotten filled in");
 
@@ -182,6 +195,32 @@ static void compileIR(CompiledFunction* cf, EffortLevel effort) {
     StackMap* stackmap = parseStackMap();
     processStackmap(cf, stackmap);
     delete stackmap;
+}
+
+static std::string getFunctionName(std::string nameprefix, EffortLevel effort, const OSREntryDescriptor* entry) {
+    static llvm::StringMap<int> used_module_names;
+    std::string name;
+    llvm::raw_string_ostream os(name);
+    os << nameprefix;
+    os << "_e" << (int)effort;
+    if (entry)
+        os << "_osr" << entry->backedge->target->idx;
+    // in order to generate a unique id add the number of times we encountered this name to end of the string.
+    auto& times = used_module_names[os.str()];
+    os << '_' << ++times;
+    return os.str();
+}
+
+static std::string getUniqueFunctionName(std::string nameprefix, EffortLevel effort, const OSREntryDescriptor* entry, llvm::StringRef hash) {
+    static llvm::StringMap<int> used_module_names;
+    std::string name;
+    llvm::raw_string_ostream os(name);
+    os << getFunctionName(nameprefix, effort, entry);
+    os << "_" << hash;
+    // in order to generate a unique id add the number of times we encountered this name to end of the string.
+    auto& times = used_module_names[os.str()];
+    os << '_' << ++times;
+    return os.str();
 }
 
 // Compiles a new version of the function with the given signature and adds it to the list;
@@ -259,10 +298,65 @@ CompiledFunction* compileFunction(CLFunction* f, FunctionSpecialization* spec, E
         source->cfg = computeCFG(source, source->body);
     }
 
+    llvm::SmallString<128> cache_dir;
+    llvm::sys::path::home_directory(cache_dir);
+    llvm::sys::path::append(cache_dir, ".cache");
+    llvm::sys::path::append(cache_dir, "pyston");
+    llvm::sys::path::append(cache_dir, "object_cache");
 
-    CompiledFunction* cf
-        = doCompile(f, source, &f->param_names, entry_descriptor, effort, exception_style, spec, name->s());
-    compileIR(cf, effort);
+
+    CompiledFunction* cf = NULL;
+    std::string uname = getFunctionName(name->s(), effort, entry_descriptor);
+    std::string hash = source->cfg->getHash((int)effort, uname);
+    uname += "_" + hash;
+    g.cur_cfg_hash = hash;
+    llvm::SmallString<128> cache_file = cache_dir;
+    llvm::sys::path::append(cache_file, hash + ".o");
+    bool found_it = llvm::sys::fs::exists(cache_file.str());
+
+    clearRelocatableSymsMap();
+    setRelocatableSym("cSourceInfo", source);
+    setRelocatableSym("cCL", f);
+    setRelocatableSym("cParentModule", source->parent_module);
+    setRelocatableSym("cNone", None);
+    setRelocatableSym("cTrue", True);
+    setRelocatableSym("cFalse", False);
+    setRelocatableSym("cNewLine", internStringImmortal("\n"));
+    setRelocatableSym("cSpace", internStringImmortal(" "));
+    setRelocatableSym("cUnboundLocalError", UnboundLocalError);
+    setRelocatableSym("cNameError", NameError);
+    g.cur_cfg = source->cfg;
+
+    if (1 && found_it) {
+        //printf("%s %s\n", hash.c_str(), uname.c_str());
+        static StatCounter jit_objectcache_hits("num_jit_objectcache_hits");
+        jit_objectcache_hits.log();
+
+        UNAVOIDABLE_STAT_TIMER(t1, "us_timer_found_it");
+        g.cur_module = new llvm::Module(uname, g.context);
+
+        cf = createCF(uname, source, &f->param_names, entry_descriptor, effort, exception_style, spec);
+
+
+        g.cur_module = NULL;
+        setRelocatableSym("cCF", cf);
+        setRelocatableSym("cTimesCalled", &cf->times_called);
+        g.cur_cf = cf;
+        g.engine->addObjectFile(std::move(*llvm::object::ObjectFile::createObjectFile(cache_file.str())));
+
+        void* compiled = (void*)g.engine->getFunctionAddress(uname);
+        assert(compiled);
+        g.cur_cf = NULL;
+        g.cur_cfg = NULL;
+        g.cur_cfg_hash.clear();
+
+        StackMap* stackmap = parseStackMap();
+        processStackmap(cf, stackmap);
+        delete stackmap;
+    } else {
+        cf = doCompile(f, source, &f->param_names, entry_descriptor, effort, exception_style, spec, uname);
+        compileIR(cf, effort);
+    }
 
     f->addVersion(cf);
 
@@ -861,7 +955,24 @@ CompiledFunction* compilePartialFuncInternal(OSRExit* exit) {
     return new_cf;
 }
 
-void* compilePartialFunc(OSRExit* exit) {
+extern "C" void* compilePartialFunc(OSRExit* exit, const char* types, AST_Jump* backedge, CLFunction* cl, long flags) {
+    if (!exit->entry) {
+        OSREntryDescriptor* entry = OSREntryDescriptor::create(cl, backedge, (ExceptionStyle)flags);
+        exit->entry = entry;
+        llvm::SmallVector<llvm::StringRef, 16> v;
+        llvm::StringRef(types).split(v, "|", -1, false);
+        for (llvm::StringRef s : v) {
+            llvm::SmallVector<llvm::StringRef, 2> v2;
+            s.split(v2, ":", -1, false);
+            assert(v2.size() == 2);
+
+            int num_parsed = 0;
+            CompilerType* type = getTypeFromString(v2[1], num_parsed);
+            entry->args[cl->source->getInternedStrings().get(v2[0])] = type->getConcreteType();
+        }
+    }
+
+
     CompiledFunction* new_cf = compilePartialFuncInternal(exit);
     assert(new_cf->exception_style == exit->entry->exception_style);
     return new_cf->code;
