@@ -41,6 +41,7 @@ llvm::Constant* getNullPtr(llvm::Type* t);
 
 void clearRelocatableSymsMap();
 void setPointersInCodeStorage(std::vector<const void*>* v);
+void setRelocatableSym(const std::string& str, const void* ptr);
 const void* getValueOfRelocatableSym(const std::string& str);
 
 void visitRelocatableSymsMap(gc::GCVisitor* visitor);

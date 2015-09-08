@@ -251,10 +251,15 @@ void IRGenState::setGlobals(llvm::Value* globals) {
     this->globals = globals;
 }
 
+llvm::Constant* IRGenState::getParentModule() {
+    BoxedModule* parent_module = source_info->parent_module;
+    return embedRelocatablePtr(parent_module, g.llvm_value_type_ptr, "cParentModule");
+}
+
 llvm::Value* IRGenState::getGlobals() {
     if (!globals) {
         assert(source_info->scoping->areGlobalsFromModule());
-        this->globals = embedRelocatablePtr(source_info->parent_module, g.llvm_value_type_ptr);
+        this->globals = getParentModule();
     }
     return this->globals;
 }
@@ -1077,10 +1082,7 @@ private:
         return new ConcreteCompilerVariable(typeFromClass(none_cls), none, false);
     }
 
-    llvm::Constant* embedParentModulePtr() {
-        BoxedModule* parent_module = irstate->getSourceInfo()->parent_module;
-        return embedRelocatablePtr(parent_module, g.llvm_value_type_ptr, "cParentModule");
-    }
+    llvm::Constant* embedParentModulePtr() { return irstate->getParentModule(); }
 
     ConcreteCompilerVariable* _getGlobal(AST_Name* node, const UnwindInfo& unw_info) {
         if (node->id.s() == "None")
@@ -2857,7 +2859,7 @@ public:
             assert(!phi_node);
             phi_node = emitter.getBuilder()->CreatePHI(g.llvm_aststmt_type_ptr, 0);
             emitter.getBuilder()->CreateCall2(g.funcs.caughtCapiException, phi_node,
-                                              embedRelocatablePtr(irstate->getSourceInfo(), g.i8_ptr));
+                                              embedRelocatablePtr(irstate->getSourceInfo(), g.i8_ptr, "cSourceInfo"));
 
             if (!final_dest) {
                 // Propagate the exception out of the function:

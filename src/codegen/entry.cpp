@@ -286,7 +286,7 @@ public:
 
         llvm::SmallString<128> cache_file = cache_dir;
         llvm::sys::path::append(cache_file, hash_before_codegen);
-        if (!llvm::sys::fs::exists(cache_file.str())) {
+        if (1 || !llvm::sys::fs::exists(cache_file.str())) {
 #if 0
             // This code helps with identifying why we got a cache miss for a file.
             // - clear the cache directory

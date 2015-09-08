@@ -162,6 +162,7 @@ static void compileIR(CompiledFunction* cf, EffortLevel effort) {
         g.cur_cf = cf;
         void* compiled = (void*)g.engine->getFunctionAddress(cf->func->getName());
         g.cur_cf = NULL;
+        g.cur_cfg = NULL;
         assert(compiled);
         ASSERT(compiled == cf->code, "cf->code should have gotten filled in");
 
@@ -268,6 +269,8 @@ CompiledFunction* compileFunction(CLFunction* f, FunctionSpecialization* spec, E
     llvm::sys::path::append(cache_dir, "cache");
 
 
+    CompiledFunction* cf = NULL;
+
     std::string hash = source->cfg->getHash();
     llvm::SmallString<128> cache_file = cache_dir;
     llvm::sys::path::append(cache_file, hash);
@@ -276,12 +279,32 @@ CompiledFunction* compileFunction(CLFunction* f, FunctionSpecialization* spec, E
         printf("cache hit\n");
         auto f = llvm::MemoryBuffer::getFile(cache_file.str());
         llvm::ErrorOr<llvm::Module*> e = llvm::parseBitcodeFile((*f)->getMemBufferRef(), g.context);
-        //(*e)->dump();
+        (*e)->dump();
+
+        g.cur_module = *e;
+        llvm::Function* func = NULL;
+        for (auto&& ff : g.cur_module->functions()) {
+            if (ff.isDeclaration())
+                continue;
+            func = &ff;
+        }
+
+        cf = new CompiledFunction(func, spec, NULL, effort, exception_style, entry_descriptor);
+        gc::registerPermanentRoot(source->parent_module, /* allow_duplicates= */ true);
+
+        clearRelocatableSymsMap();
+
+        for (auto&& e : source->cfg->constants_map) {
+            setRelocatableSym(("const_" + llvm::Twine(e.second)).str(), e.first);
+        }
+        setRelocatableSym("cSourceInfo", source);
+        setRelocatableSym("cTimesCalled", &cf->times_called);
+        setRelocatableSym("cCF", cf);
+        setRelocatableSym("cParentModule", source->parent_module);
+        setRelocatableSym("cNone", None);
+    } else {
+        cf = doCompile(f, source, &f->param_names, entry_descriptor, effort, exception_style, spec, name->s());
     }
-
-    CompiledFunction* cf
-        = doCompile(f, source, &f->param_names, entry_descriptor, effort, exception_style, spec, name->s());
-
     compileIR(cf, effort);
 
     if (!found_it) {

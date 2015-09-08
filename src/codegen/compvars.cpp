@@ -293,6 +293,20 @@ public:
         }
     }
 
+    llvm::StringRef fromClass(BoxedClass* cls) {
+        if (cls == int_cls)
+            return "cint_cls";
+        if (cls == long_cls)
+            return "clong_cls";
+        if (cls == float_cls)
+            return "cfloat_cls";
+        if (cls == str_cls)
+            return "cstr_cls";
+        if (cls == unicode_cls)
+            return "cunicode_cls";
+        RELEASE_ASSERT(0, "");
+    }
+
     llvm::Value* makeClassCheck(IREmitter& emitter, ConcreteCompilerVariable* var, BoxedClass* cls) override {
         assert(var->getValue()->getType() == g.llvm_value_type_ptr);
 
@@ -302,8 +316,10 @@ public:
 
         llvm::Value* cls_value = emitter.getBuilder()->CreateLoad(cls_ptr);
         assert(cls_value->getType() == g.llvm_class_type_ptr);
-        llvm::Value* rtn
-            = emitter.getBuilder()->CreateICmpEQ(cls_value, embedRelocatablePtr(cls, g.llvm_class_type_ptr));
+
+
+        llvm::Value* rtn = emitter.getBuilder()->CreateICmpEQ(
+            cls_value, embedRelocatablePtr(cls, g.llvm_class_type_ptr, fromClass(cls)));
         return rtn;
     }
 
@@ -1032,11 +1048,14 @@ public:
         } else if (other_type == UNKNOWN || other_type == BOXED_INT) {
             llvm::Value* unboxed = var->getValue();
             llvm::Value* boxed;
+            /*
             if (llvm::ConstantInt* llvm_val = llvm::dyn_cast<llvm::ConstantInt>(unboxed)) {
                 boxed = embedRelocatablePtr(emitter.getIntConstant(llvm_val->getSExtValue()), g.llvm_value_type_ptr);
             } else {
                 boxed = emitter.getBuilder()->CreateCall(g.funcs.boxInt, var->getValue());
             }
+            */
+            boxed = emitter.getBuilder()->CreateCall(g.funcs.boxInt, var->getValue());
             return new ConcreteCompilerVariable(other_type, boxed, true);
         } else {
             printf("Don't know how to convert i64 to %s\n", other_type->debugName().c_str());

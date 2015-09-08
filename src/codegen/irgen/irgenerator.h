@@ -115,6 +115,8 @@ public:
     llvm::Value* getGlobals();
     // Returns the custom globals, or null if the globals come from the module.
     llvm::Value* getGlobalsIfCustom();
+
+    llvm::Constant* getParentModule();
 };
 
 // turns CFGBlocks into LLVM IR

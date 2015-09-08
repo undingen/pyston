@@ -2529,6 +2529,7 @@ void CFG::print(llvm::raw_ostream& stream) {
 std::string CFG::getHash() {
     HashOStream stream;
     print(stream);
+    stream << constants.size();
     return stream.getHash();
 }
 
@@ -2612,6 +2613,62 @@ void CFG::assignVRegs(const ParamNames& param_names, ScopeInfo* scope_info) {
     sym_vreg_map = std::move(visitor.sym_vreg_map);
     has_vregs_assigned = true;
 }
+
+class AssignConstantVisitor : public NoopASTVisitor {
+public:
+    std::vector<void*>& constants;
+    llvm::DenseMap<void*, int>& constants_map;
+    AssignConstantVisitor(std::vector<void*>& constants, llvm::DenseMap<void*, int>& constants_map) : constants(constants), constants_map(constants_map) {}
+
+    bool visit_arguments(AST_arguments* node) override {
+        for (AST_expr* d : node->defaults)
+            d->accept(this);
+        return false;
+    }
+
+    bool visit_classdef(AST_ClassDef* node) override {
+        for (auto e : node->bases)
+            e->accept(this);
+        for (auto e : node->decorator_list)
+            e->accept(this);
+        return false;
+    }
+
+    bool visit_functiondef(AST_FunctionDef* node) override {
+        for (auto* d : node->decorator_list)
+            d->accept(this);
+        return false;
+    }
+
+    bool visit_lambda(AST_Lambda* node) override {
+        node->args->accept(this);
+        return false;
+    }
+
+    bool visit_name(AST_Name* node) override {
+        add(node->id.getBox());
+        return false;
+    }
+
+    bool visit_attribute(AST_Attribute* node) override {
+        add(node);
+        add(node->attr.getBox());
+        return false;
+    }
+
+    bool visit_clsattribute(AST_ClsAttribute* node) override {
+        add(node);
+        add(node->attr.getBox());
+        return false;
+    }
+
+    void add(void* p) {
+        if (!constants_map.count(p)) {
+            constants_map[p] = constants.size();
+            constants.push_back(p);
+        }
+    }
+};
 
 CFG* computeCFG(SourceInfo* source, std::vector<AST_stmt*> body) {
     STAT_TIMER(t0, "us_timer_computecfg", 0);
@@ -2855,6 +2912,13 @@ CFG* computeCFG(SourceInfo* source, std::vector<AST_stmt*> body) {
     }
 
 
+    AssignConstantVisitor c_visitor(rtn->constants, rtn->constants_map);
+    for (CFGBlock* b : rtn->blocks) {
+        for (AST_stmt* stmt : b->body) {
+            c_visitor.add(stmt);
+            stmt->accept(&c_visitor);
+        }
+    }
     return rtn;
 }
 }

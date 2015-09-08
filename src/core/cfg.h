@@ -80,6 +80,9 @@ public:
 
     llvm::DenseMap<InternedString, int> sym_vreg_map;
 
+    std::vector<void*> constants;
+    llvm::DenseMap<void*, int> constants_map;
+
     CFG() : next_idx(0), has_vregs_assigned(false) {}
 
     CFGBlock* getStartingBlock() { return blocks[0]; }
@@ -113,6 +116,11 @@ public:
 
     bool hasVregsAssigned() { return has_vregs_assigned; }
     void assignVRegs(const ParamNames& param_names, ScopeInfo* scope_info);
+
+    int getIndexForPtr(void* p) {
+        assert(constants_map.count(p));
+        return constants_map[p];
+    }
 };
 
 class SourceInfo;

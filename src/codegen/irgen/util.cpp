@@ -26,6 +26,7 @@
 
 #include "codegen/codegen.h"
 #include "codegen/patchpoints.h"
+#include "core/cfg.h"
 #include "core/common.h"
 #include "gc/gc.h"
 #include "runtime/types.h"
@@ -112,6 +113,10 @@ void setPointersInCodeStorage(std::vector<const void*>* v) {
     pointers_in_code = v;
 }
 
+void setRelocatableSym(const std::string& str, const void* ptr) {
+    relocatable_syms[str] = ptr;
+}
+
 const void* getValueOfRelocatableSym(const std::string& str) {
     auto it = relocatable_syms.find(str);
     if (it != relocatable_syms.end())
@@ -133,7 +138,15 @@ llvm::Constant* embedRelocatablePtr(const void* addr, llvm::Type* type, llvm::St
         assert(!relocatable_syms.count(name));
         name = shared_name;
     } else {
-        name = (llvm::Twine("c") + llvm::Twine(relocatable_syms.size())).str();
+        name = (llvm::Twine("const_") + llvm::Twine(g.cur_cfg->getIndexForPtr((void*)addr))).str();
+        llvm::GlobalVariable* gv = g.cur_module->getGlobalVariable(name, true);
+        if (gv) {
+            if (gv->getType() != type)
+                return llvm::ConstantExpr::getBitCast(gv, type);
+            return gv;
+        }
+        assert(!relocatable_syms.count(name));
+        // name = (llvm::Twine("c") + llvm::Twine(relocatable_syms.size())).str();
     }
 
     relocatable_syms[name] = addr;
