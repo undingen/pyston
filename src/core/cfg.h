@@ -109,6 +109,7 @@ public:
     }
 
     void print(llvm::raw_ostream& stream = llvm::outs());
+    std::string getHash();
 
     bool hasVregsAssigned() { return has_vregs_assigned; }
     void assignVRegs(const ParamNames& param_names, ScopeInfo* scope_info);

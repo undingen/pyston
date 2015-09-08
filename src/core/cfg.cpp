@@ -22,6 +22,7 @@
 #include "Python.h"
 
 #include "analysis/scoping_analysis.h"
+#include "codegen/entry.h"
 #include "core/ast.h"
 #include "core/options.h"
 #include "core/types.h"
@@ -71,7 +72,7 @@ void CFGBlock::print(llvm::raw_ostream& stream) {
     }
     stream << "\n";
 
-    PrintVisitor pv(4);
+    PrintVisitor pv(4, stream);
     for (int j = 0; j < body.size(); j++) {
         stream << "    ";
         body[j]->accept(&pv);
@@ -2523,6 +2524,12 @@ void CFG::print(llvm::raw_ostream& stream) {
     stream << blocks.size() << " blocks\n";
     for (int i = 0; i < blocks.size(); i++)
         blocks[i]->print(stream);
+}
+
+std::string CFG::getHash() {
+    HashOStream stream;
+    print(stream);
+    return stream.getHash();
 }
 
 class AssignVRegsVisitor : public NoopASTVisitor {

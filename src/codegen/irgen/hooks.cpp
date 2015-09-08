@@ -14,7 +14,9 @@
 
 #include "codegen/irgen/hooks.h"
 
+#include "llvm/Bitcode/ReaderWriter.h"
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
+#include "llvm/Support/Path.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include "analysis/function_analysis.h"
@@ -259,10 +261,36 @@ CompiledFunction* compileFunction(CLFunction* f, FunctionSpecialization* spec, E
         source->cfg = computeCFG(source, source->body);
     }
 
+    llvm::SmallString<128> cache_dir;
+    llvm::sys::path::home_directory(cache_dir);
+    llvm::sys::path::append(cache_dir, ".cache");
+    llvm::sys::path::append(cache_dir, "pyston");
+    llvm::sys::path::append(cache_dir, "cache");
+
+
+    std::string hash = source->cfg->getHash();
+    llvm::SmallString<128> cache_file = cache_dir;
+    llvm::sys::path::append(cache_file, hash);
+    bool found_it = llvm::sys::fs::exists(cache_file.str());
+    if (found_it) {
+        printf("cache hit\n");
+    }
 
     CompiledFunction* cf
         = doCompile(f, source, &f->param_names, entry_descriptor, effort, exception_style, spec, name->s());
+
     compileIR(cf, effort);
+
+    if (!found_it) {
+        if (!llvm::sys::fs::exists(cache_dir.str()))
+            llvm::sys::fs::create_directories(cache_dir.str());
+
+
+        std::error_code error_code;
+        llvm::raw_fd_ostream file(cache_file.str(), error_code, llvm::sys::fs::F_RW);
+        if (!error_code)
+            llvm::WriteBitcodeToFile(cf->func->getParent(), file);
+    }
 
     f->addVersion(cf);
 
