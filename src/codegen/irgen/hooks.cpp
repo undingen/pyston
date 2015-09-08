@@ -274,6 +274,9 @@ CompiledFunction* compileFunction(CLFunction* f, FunctionSpecialization* spec, E
     bool found_it = llvm::sys::fs::exists(cache_file.str());
     if (found_it) {
         printf("cache hit\n");
+        auto f = llvm::MemoryBuffer::getFile(cache_file.str());
+        llvm::ErrorOr<llvm::Module*> e = llvm::parseBitcodeFile((*f)->getMemBufferRef(), g.context);
+        //(*e)->dump();
     }
 
     CompiledFunction* cf
