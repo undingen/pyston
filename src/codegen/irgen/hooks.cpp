@@ -14,8 +14,14 @@
 
 #include "codegen/irgen/hooks.h"
 
+#include "llvm/Bitcode/ReaderWriter.h"
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
+#include "llvm/ExecutionEngine/JITEventListener.h"
+#include "llvm/ExecutionEngine/RTDyldMemoryManager.h"
+#include "llvm/Object/ObjectFile.h"
+#include "llvm/Support/Path.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/IR/Verifier.h"
 
 #include "analysis/function_analysis.h"
 #include "analysis/scoping_analysis.h"
@@ -27,6 +33,7 @@
 #include "codegen/irgen.h"
 #include "codegen/irgen/future.h"
 #include "codegen/irgen/util.h"
+#include "codegen/memmgr.h"
 #include "codegen/osrentry.h"
 #include "codegen/parser.h"
 #include "codegen/patchpoints.h"
@@ -151,6 +158,9 @@ static void compileIR(CompiledFunction* cf, EffortLevel effort) {
 
     {
         Timer _t("to jit the IR");
+
+        assert(!llvm::verifyModule(*cf->func->getParent(), &llvm::outs()));
+
 #if LLVMREV < 215967
         g.engine->addModule(cf->func->getParent());
 #else
@@ -160,6 +170,7 @@ static void compileIR(CompiledFunction* cf, EffortLevel effort) {
         g.cur_cf = cf;
         void* compiled = (void*)g.engine->getFunctionAddress(cf->func->getName());
         g.cur_cf = NULL;
+        g.cur_cfg = NULL;
         assert(compiled);
         ASSERT(compiled == cf->code, "cf->code should have gotten filled in");
 
@@ -182,6 +193,20 @@ static void compileIR(CompiledFunction* cf, EffortLevel effort) {
     StackMap* stackmap = parseStackMap();
     processStackmap(cf, stackmap);
     delete stackmap;
+}
+
+static std::string getUniqueFunctionName(std::string nameprefix, EffortLevel effort, const OSREntryDescriptor* entry = NULL) {
+    static llvm::StringMap<int> used_module_names;
+    std::string name;
+    llvm::raw_string_ostream os(name);
+    os << nameprefix;
+    os << "_e" << (int)effort;
+    if (entry)
+        os << "_osr" << entry->backedge->target->idx;
+    // in order to generate a unique id add the number of times we encountered this name to end of the string.
+    auto& times = used_module_names[os.str()];
+    os << '_' << ++times;
+    return os.str();
 }
 
 // Compiles a new version of the function with the given signature and adds it to the list;
@@ -259,10 +284,100 @@ CompiledFunction* compileFunction(CLFunction* f, FunctionSpecialization* spec, E
         source->cfg = computeCFG(source, source->body);
     }
 
+    llvm::SmallString<128> cache_dir;
+    llvm::sys::path::home_directory(cache_dir);
+    llvm::sys::path::append(cache_dir, ".cache");
+    llvm::sys::path::append(cache_dir, "pyston");
+    llvm::sys::path::append(cache_dir, "object_cache");
 
-    CompiledFunction* cf
-        = doCompile(f, source, &f->param_names, entry_descriptor, effort, exception_style, spec, name->s());
-    compileIR(cf, effort);
+
+    CompiledFunction* cf = NULL;
+    std::string uname = getUniqueFunctionName(name->s(), effort, entry_descriptor);
+    std::string hash = source->cfg->getHash((int)effort, uname);
+    g.cur_cfg_hash = hash;
+    llvm::SmallString<128> cache_file = cache_dir;
+    llvm::sys::path::append(cache_file, hash + ".o");
+    bool found_it = llvm::sys::fs::exists(cache_file.str());
+    if (1 && found_it) {
+        static StatCounter jit_objectcache_hits("num_jit_objectcache_hits");
+        jit_objectcache_hits.log();
+
+        UNAVOIDABLE_STAT_TIMER(t1, "us_timer_found_it");
+        g.cur_module = new llvm::Module(uname, g.context);
+        std::vector<llvm::Type*> llvm_arg_types;
+        if (entry_descriptor == NULL) {
+            assert(spec);
+            auto param_names = &f->param_names;
+
+            int nargs = param_names->totalParameters();
+            ASSERT(nargs == spec->arg_types.size(), "%d %ld", nargs, spec->arg_types.size());
+
+            if (source->getScopeInfo()->takesClosure())
+                llvm_arg_types.push_back(g.llvm_closure_type_ptr);
+
+            if (source->is_generator)
+                llvm_arg_types.push_back(g.llvm_generator_type_ptr);
+
+            if (!source->scoping->areGlobalsFromModule())
+                llvm_arg_types.push_back(g.llvm_value_type_ptr);
+
+            for (int i = 0; i < nargs; i++) {
+                if (i == 3) {
+                    llvm_arg_types.push_back(g.llvm_value_type_ptr->getPointerTo());
+                    break;
+                }
+                llvm_arg_types.push_back(spec->arg_types[i]->llvmType());
+            }
+        } else {
+            int arg_num = -1;
+            for (const auto& p : entry_descriptor->args) {
+                arg_num++;
+                // printf("Loading %s: %s\n", p.first.c_str(), p.second->debugName().c_str());
+                if (arg_num < 3)
+                    llvm_arg_types.push_back(p.second->llvmType());
+                else {
+                    llvm_arg_types.push_back(g.llvm_value_type_ptr->getPointerTo());
+                    break;
+                }
+            }
+        }
+        // Make sure that the instruction memory keeps the module object alive.
+        // TODO: implement this for real
+        gc::registerPermanentRoot(source->parent_module, /* allow_duplicates= */ true);
+
+        cf = new CompiledFunction(NULL, spec, NULL, effort, exception_style, entry_descriptor);
+        llvm::FunctionType* ft = llvm::FunctionType::get(cf->getReturnType()->llvmType(), llvm_arg_types, false /*vararg*/);
+        llvm::Function* f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, uname, g.cur_module);
+        cf->func = f;
+        clearRelocatableSymsMap();
+
+        for (auto&& e : source->cfg->ptrconstants_map) {
+            setRelocatableSym(("ptr_" + llvm::Twine(e.second)).str(), e.first);
+        }
+        setRelocatableSym("cSourceInfo", source);
+        setRelocatableSym("cTimesCalled", &cf->times_called);
+        setRelocatableSym("cCF", cf);
+        setRelocatableSym("cParentModule", source->parent_module);
+        setRelocatableSym("cNone", None);
+        setRelocatableSym("cUnboundLocalError", UnboundLocalError);
+        g.cur_cfg = source->cfg;
+        g.cur_module = NULL;
+
+        g.cur_cf = cf;
+        g.engine->addObjectFile(std::move(*llvm::object::ObjectFile::createObjectFile(cache_file.str())));
+
+        void* compiled = (void*)g.engine->getFunctionAddress(uname);
+        assert(compiled);
+        g.cur_cf = NULL;
+        g.cur_cfg = NULL;
+
+        StackMap* stackmap = parseStackMap();
+        processStackmap(cf, stackmap);
+        delete stackmap;
+    } else {
+        cf = doCompile(uname, f, source, &f->param_names, entry_descriptor, effort, exception_style, spec, name->s());
+        compileIR(cf, effort);
+    }
 
     f->addVersion(cf);
 

@@ -22,6 +22,8 @@
 #include "Python.h"
 
 #include "analysis/scoping_analysis.h"
+#include "codegen/entry.h"
+#include "codegen/irgen/irgenerator.h"
 #include "core/ast.h"
 #include "core/options.h"
 #include "core/types.h"
@@ -71,7 +73,7 @@ void CFGBlock::print(llvm::raw_ostream& stream) {
     }
     stream << "\n";
 
-    PrintVisitor pv(4);
+    PrintVisitor pv(4, stream);
     for (int j = 0; j < body.size(); j++) {
         stream << "    ";
         body[j]->accept(&pv);
@@ -2525,6 +2527,20 @@ void CFG::print(llvm::raw_ostream& stream) {
         blocks[i]->print(stream);
 }
 
+std::string CFG::getHash(int effort, llvm::StringRef name) {
+    UNAVOIDABLE_STAT_TIMER(t0, "us_timer_get_cfg_hash");
+    HashOStream stream;
+    print(stream);
+    stream << constants.size();
+    stream << ptrconstants_map.size();
+    stream << effort;
+    stream << name;
+#ifndef NDEBUG
+    stream << "debug";
+#endif
+    return stream.getHash();
+}
+
 class AssignVRegsVisitor : public NoopASTVisitor {
 public:
     int index = 0;
@@ -2605,6 +2621,97 @@ void CFG::assignVRegs(const ParamNames& param_names, ScopeInfo* scope_info) {
     sym_vreg_map = std::move(visitor.sym_vreg_map);
     has_vregs_assigned = true;
 }
+
+class AssignConstantVisitor : public NoopASTVisitor {
+public:
+    SourceInfo* source_info;
+    std::vector<AST*>& constants;
+    llvm::DenseMap<AST*, int>& constants_map;
+    llvm::DenseMap<void*, int>& ptrconstants_map;
+    AssignConstantVisitor(SourceInfo* source_info, std::vector<AST*>& constants, llvm::DenseMap<AST*, int>& constants_map, llvm::DenseMap<void*, int>& ptrconstants_map) : source_info(source_info), constants(constants), constants_map(constants_map), ptrconstants_map(ptrconstants_map) {}
+
+    bool visit_arguments(AST_arguments* node) override {
+        for (AST_expr* d : node->defaults)
+            d->accept(this);
+        return false;
+    }
+
+    bool visit_classdef(AST_ClassDef* node) override {
+        add(node);
+        for (auto e : node->bases)
+            e->accept(this);
+        for (auto e : node->decorator_list)
+            e->accept(this);
+        return false;
+    }
+
+    bool visit_functiondef(AST_FunctionDef* node) override {
+        add(node);
+        for (auto* d : node->decorator_list)
+            d->accept(this);
+        return false;
+    }
+
+    bool visit_lambda(AST_Lambda* node) override {
+        add(node);
+        node->args->accept(this);
+        return false;
+    }
+
+    bool visit_name(AST_Name* node) override {
+        add(node->id.getBox());
+        return false;
+    }
+
+    bool visit_attribute(AST_Attribute* node) override {
+        add(node);
+        add(node->attr.getBox());
+        return false;
+    }
+
+    bool visit_clsattribute(AST_ClsAttribute* node) override {
+        add(node);
+        add(node->attr.getBox());
+        return false;
+    }
+
+    bool visit_langprimitive(AST_LangPrimitive* node) override {
+        if (node->opcode == AST_LangPrimitive::IMPORT_FROM) {
+            //source_info->parent_module->getStringConstant(name, true);
+            addAST(ast_cast<AST_Str>(node->args[1]));
+        }
+        return false;
+    }
+
+    bool visit_str(AST_Str* node) override {
+        addAST(node);
+        return NoopASTVisitor::visit_str(node);
+    }
+
+    bool visit_num(AST_Num* node) override {
+        addAST(node);
+        return NoopASTVisitor::visit_num(node);
+    }
+
+    bool visit_call(AST_Call* node) override {
+        if (node->keywords.size())
+            add(getKeywordNameStorage(node));
+        return NoopASTVisitor::visit_call(node);
+    }
+
+    void addAST(AST* p) {
+        if (!constants_map.count(p)) {
+            constants_map[p] = constants_map.size();
+            constants.push_back(p);
+        }
+    }
+
+    void add(void* p) {
+        if (!ptrconstants_map.count(p)) {
+            ptrconstants_map[p] = ptrconstants_map.size();
+        }
+    }
+};
 
 CFG* computeCFG(SourceInfo* source, std::vector<AST_stmt*> body) {
     STAT_TIMER(t0, "us_timer_computecfg", 0);
@@ -2848,6 +2955,13 @@ CFG* computeCFG(SourceInfo* source, std::vector<AST_stmt*> body) {
     }
 
 
+    AssignConstantVisitor c_visitor(source, rtn->constants, rtn->constants_map, rtn->ptrconstants_map);
+    for (CFGBlock* b : rtn->blocks) {
+        for (AST_stmt* stmt : b->body) {
+            c_visitor.add(stmt);
+            stmt->accept(&c_visitor);
+        }
+    }
     return rtn;
 }
 }

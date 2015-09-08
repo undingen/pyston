@@ -102,6 +102,8 @@ public:
 
     virtual Box* getIntConstant(int64_t n) = 0;
     virtual Box* getFloatConstant(double d) = 0;
+
+    virtual llvm::Value* new_func(llvm::Value* f) = 0;
 };
 
 extern const std::string CREATED_CLOSURE_NAME;
@@ -111,7 +113,7 @@ extern const std::string PASSED_GENERATOR_NAME;
 InternedString getIsDefinedName(InternedString name, InternedStringPool& interned_strings);
 bool isIsDefinedName(llvm::StringRef name);
 
-CompiledFunction* doCompile(CLFunction* clfunc, SourceInfo* source, ParamNames* param_names,
+CompiledFunction* doCompile(std::string uname,CLFunction* clfunc, SourceInfo* source, ParamNames* param_names,
                             const OSREntryDescriptor* entry_descriptor, EffortLevel effort,
                             ExceptionStyle exception_style, FunctionSpecialization* spec, llvm::StringRef nameprefix);
 

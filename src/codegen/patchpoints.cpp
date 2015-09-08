@@ -17,6 +17,8 @@
 #include <memory>
 #include <unordered_map>
 
+#include "llvm/ADT/StringSwitch.h"
+
 #include "asm_writing/icinfo.h"
 #include "asm_writing/rewriter.h"
 #include "codegen/compvars.h"
@@ -41,8 +43,6 @@ int ICSetupInfo::totalSize() const {
     }
     return num_slots * slot_size + call_size;
 }
-
-static std::vector<std::pair<PatchpointInfo*, void* /* addr of func to call */>> new_patchpoints;
 
 ICSetupInfo* ICSetupInfo::initialize(bool has_return_value, int num_slots, int slot_size, ICType type,
                                      TypeRecorder* type_recorder) {
@@ -103,8 +103,9 @@ void PatchpointInfo::parseLocationMap(StackMap::Record* r, LocationMap* map) {
                                                        .locations = std::move(locations) }));
 
         cur_arg += num_args;
+
     }
-    assert(cur_arg - frameStackmapArgsStart() == numFrameStackmapArgs());
+    assert(cur_arg - frameStackmapArgsStart() == numFrameStackmapArgs() -1);
 }
 
 static int extractScratchOffset(PatchpointInfo* pp, StackMap::Record* r) {
@@ -158,8 +159,10 @@ void processStackmap(CompiledFunction* cf, StackMap* stackmap) {
         int stack_size = stack_size_record.stack_size;
 
 
-        RELEASE_ASSERT(new_patchpoints.size() > r->id, "");
-        PatchpointInfo* pp = new_patchpoints[r->id].first;
+        auto& f = r->locations[r->locations.size()-1];
+        assert(f.type == StackMap::Record::Location::ConstIndex);
+        char* c = (char*)stackmap->constants[f.offset];
+        PatchpointInfo* pp = PatchpointInfo::create(cf, c);
         assert(pp);
 
         if (VERBOSITY() >= 2) {
@@ -167,6 +170,9 @@ void processStackmap(CompiledFunction* cf, StackMap* stackmap) {
                    r->offset + pp->patchpointSize());
         }
 
+        if (!(r->locations.size() == pp->totalStackmapArgs())){
+            printf("%zu %d\n", r->locations.size(), pp->totalStackmapArgs());
+        }
         assert(r->locations.size() == pp->totalStackmapArgs());
 
         int scratch_rbp_offset = extractScratchOffset(pp, r);
@@ -218,6 +224,7 @@ void processStackmap(CompiledFunction* cf, StackMap* stackmap) {
             // or save them across the call.
             initializePatchpoint3(slowpath_func, start_addr, end_addr, scratch_rbp_offset, scratch_size, LiveOutSet(),
                                   frame_remapped);
+
             continue;
         }
 
@@ -264,15 +271,6 @@ void processStackmap(CompiledFunction* cf, StackMap* stackmap) {
         // TODO: unsafe.  hard to use a unique_ptr here though.
         cf->ics.push_back(icinfo.release());
     }
-
-    for (auto& e : new_patchpoints) {
-        PatchpointInfo* pp = e.first;
-        const ICSetupInfo* ic = pp->getICInfo();
-        if (ic)
-            delete ic;
-        delete pp;
-    }
-    new_patchpoints.clear();
 }
 
 PatchpointInfo* PatchpointInfo::create(CompiledFunction* parent_cf, const ICSetupInfo* icinfo, int num_ic_stackmap_args,
@@ -281,14 +279,74 @@ PatchpointInfo* PatchpointInfo::create(CompiledFunction* parent_cf, const ICSetu
         assert(num_ic_stackmap_args == 0);
 
     auto* r = new PatchpointInfo(parent_cf, icinfo, num_ic_stackmap_args);
-    r->id = new_patchpoints.size();
-    new_patchpoints.push_back(std::make_pair(r, func_addr));
+    //r->id = new_patchpoints.size();
+    //new_patchpoints.push_back(std::make_pair(r, func_addr));
     return r;
 }
 
-void* PatchpointInfo::getSlowpathAddr(unsigned int pp_id) {
-    RELEASE_ASSERT(pp_id < new_patchpoints.size(), "");
-    return new_patchpoints[pp_id].second;
+CompilerType* getTypeFromString(llvm::StringRef type_str, int& num_parsed) {
+    CompilerType* type = llvm::StringSwitch<CompilerType*>(type_str)
+            .Case("i64", INT)
+            .Case("AnyBox", UNKNOWN)
+            .Case("bool", BOOL)
+            .Case("double", FLOAT)
+            .Case("generator", GENERATOR)
+            .Case("NormalType(dict)", DICT)
+            .Case("NormalType(list)", LIST)
+            .Case("NormalType(str)", STR)
+            .Case("NormalType(tuple)", BOXED_TUPLE)
+            .Case("NormalType(function)", typeFromClass(function_cls))
+            .Case("closure", CLOSURE)
+            .Default(0);
+    if (type == 0 && type_str.startswith("tuple(")) {
+        llvm::StringRef vars_str = type_str.substr(strlen("tuple("));
+        vars_str = vars_str.substr(0, vars_str.size()-1);
+        //printf("vars: %s\n", vars_str.str().c_str());
+        llvm::SmallVector<llvm::StringRef, 8> vars;
+        vars_str.split(vars, ",", -1, false);
+
+        std::vector<CompilerType*> types;
+        for (llvm::StringRef tuple_var : vars) {
+            types.push_back(getTypeFromString(tuple_var.trim(), num_parsed));
+        }
+        type = makeTupleType(types);
+    } else if (type == 0 && type_str.startswith("NormalType(")) {
+        type = UNKNOWN;
+        ++num_parsed;
+    } else
+        ++num_parsed;
+    assert(type);
+
+    return type;
+}
+
+PatchpointInfo* PatchpointInfo::create(CompiledFunction* parent_cf, llvm::StringRef frame_str) {
+    llvm::SmallVector<llvm::StringRef, 16> v;
+    frame_str.split(v, "|", -1, false);
+    int frame_args = 0;
+    assert(v.size() >= 3);
+    int num_slots = 0;
+    int slot_size = 0;
+    v[1].getAsInteger(10, num_slots);
+    v[2].getAsInteger(10, slot_size);
+    ICSetupInfo* icinfo = NULL;
+    if (num_slots && slot_size)
+        icinfo = ICSetupInfo::initialize(v[0] == "1", num_slots, slot_size, ICSetupInfo::Generic, NULL);
+    auto* r = new PatchpointInfo(parent_cf, icinfo, 0);
+
+    for (llvm::StringRef s : llvm::ArrayRef<llvm::StringRef>(v).slice(3)) {
+        llvm::SmallVector<llvm::StringRef, 2> v2;
+        s.split(v2, ":", -1, false);
+        assert(v2.size() == 2);
+        //printf("%s %s\n", v2[0].str().c_str(), v2[1].str().c_str());
+
+        int num_parsed = 0;
+        CompilerType* type = getTypeFromString(v2[1], num_parsed);
+        frame_args += num_parsed;
+        r->addFrameVar(v2[0], type);
+    }
+    r->setNumFrameArgs(frame_args + 2);
+    return r;
 }
 
 ICSetupInfo* createGenericIC(TypeRecorder* type_recorder, bool has_return_value, int size) {

@@ -22,6 +22,7 @@
 #include "llvm/Analysis/Passes.h"
 #include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/IR/DIBuilder.h"
+#include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
 #if LLVMREV < 229094
@@ -552,7 +553,8 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
                 llvm::BasicBlock* reopt_bb = llvm::BasicBlock::Create(g.context, "reopt", irstate->getLLVMFunction());
                 emitter->getBuilder()->SetInsertPoint(preentry_bb);
 
-                llvm::Value* call_count_ptr = embedRelocatablePtr(&cf->times_called, g.i64->getPointerTo());
+                llvm::Value* call_count_ptr
+                    = embedRelocatablePtr(&cf->times_called, g.i64->getPointerTo(), "cTimesCalled");
                 llvm::Value* cur_call_count = emitter->getBuilder()->CreateLoad(call_count_ptr);
                 llvm::Value* new_call_count
                     = emitter->getBuilder()->CreateAdd(cur_call_count, getConstantInt(1, g.i64));
@@ -577,8 +579,11 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
 
                 emitter->getBuilder()->SetInsertPoint(reopt_bb);
                 // emitter->getBuilder()->CreateCall(g.funcs.my_assert, getConstantInt(0, g.i1));
-                llvm::Value* r = emitter->getBuilder()->CreateCall(g.funcs.reoptCompiledFunc,
-                                                                   embedRelocatablePtr(cf, g.i8->getPointerTo()));
+
+                auto* reopt = irstate->getLLVMFunction()->getParent()->getOrInsertFunction(g.funcs.reoptCompiledFunc->getName(), ((llvm::Function*)g.funcs.reoptCompiledFunc)->getFunctionType());
+
+                llvm::Value* r = emitter->getBuilder()->CreateCall(
+                    reopt, embedRelocatablePtr(cf, g.llvm_cffunction_type_ptr, "cCF"));
                 assert(r);
                 assert(r->getType() == g.i8->getPointerTo());
 
@@ -973,7 +978,7 @@ static std::string getUniqueFunctionName(std::string nameprefix, EffortLevel eff
     return os.str();
 }
 
-CompiledFunction* doCompile(CLFunction* clfunc, SourceInfo* source, ParamNames* param_names,
+CompiledFunction* doCompile(std::string name, CLFunction* clfunc, SourceInfo* source, ParamNames* param_names,
                             const OSREntryDescriptor* entry_descriptor, EffortLevel effort,
                             ExceptionStyle exception_style, FunctionSpecialization* spec, llvm::StringRef nameprefix) {
     Timer _t("in doCompile");
@@ -988,8 +993,10 @@ CompiledFunction* doCompile(CLFunction* clfunc, SourceInfo* source, ParamNames* 
     assert(g.cur_module == NULL);
 
     clearRelocatableSymsMap();
+    g.cur_cfg = source->cfg;
 
-    std::string name = getUniqueFunctionName(nameprefix, effort, entry_descriptor);
+    setRelocatableSym("cParentModule", source->parent_module);
+
     g.cur_module = new llvm::Module(name, g.context);
 #if LLVMREV < 217070 // not sure if this is the right rev
     g.cur_module->setDataLayout(g.tm->getDataLayout()->getStringRepresentation());
