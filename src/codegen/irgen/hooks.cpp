@@ -157,7 +157,7 @@ static void compileIR(CompiledFunction* cf, EffortLevel effort) {
         g.engine->addModule(std::unique_ptr<llvm::Module>(cf->func->getParent()));
 #endif
 
-        cf->func->getParent()->dump();
+        // cf->func->getParent()->dump();
 
         g.cur_cf = cf;
         void* compiled = (void*)g.engine->getFunctionAddress(cf->func->getName());
