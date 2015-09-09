@@ -2600,6 +2600,16 @@ public:
 
         int num_frame_args = stackmap_args.size() - initial_args;
         pp->setNumFrameArgs(num_frame_args);
+
+        std::string str;
+        for (auto&& v : pp->getFrameVars()) {
+            str += v.name;
+            str += ":";
+            str += v.type->debugName();
+            str += "|";
+        }
+        llvm::Constant* frame_info = llvm::ConstantDataArray::getString(g.context, str);
+        stackmap_args.insert(stackmap_args.begin()+initial_args, frame_info);
     }
 
     EndingState getEndingSymbolTable() override {

@@ -80,7 +80,7 @@ public:
         num_frame_stackmap_args = num_frame_args;
     }
 
-    int icStackmapArgsStart() { return 1; }
+    int icStackmapArgsStart() { return 2; }
     int numICStackmapArgs() { return num_ic_stackmap_args; }
 
     int frameStackmapArgsStart() { return icStackmapArgsStart() + numICStackmapArgs(); }
