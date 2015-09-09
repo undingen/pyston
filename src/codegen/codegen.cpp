@@ -19,6 +19,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/ExecutionEngine/JITEventListener.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
@@ -65,7 +66,8 @@ CLFunction::CLFunction(int num_args, bool takes_varargs, bool takes_kwargs, cons
 BoxedCode* CLFunction::getCode() {
     if (!code_obj) {
         code_obj = new BoxedCode(this);
-        // CLFunctions don't currently participate in GC.  They actually never get freed currently.
+        // CLFunctions don't currently participate in GC.  They actually never get
+        // freed currently.
         gc::registerPermanentRoot(code_obj);
     }
     return code_obj;
@@ -237,6 +239,7 @@ public:
         code_bytes.log(Obj.getData().size());
 
         llvm_error_code code;
+
         for (const auto& sym : Obj.symbols()) {
             llvm::object::section_iterator section(Obj.section_end());
             code = sym.getSection(section);
@@ -258,11 +261,11 @@ public:
             code = sym.getSize(size);
             assert(!code);
 
-            if (name == ".text")
+            if (name == ".text" || name.empty() || !size)
                 continue;
 
-
-            uint64_t sym_addr = L.getSymbolLoadAddress(name);
+            // uint64_t sym_addr = L.getSymbolLoadAddress(name);
+            uint64_t sym_addr = g.engine->getGlobalValueAddress(name);
             assert(sym_addr);
 
             g.func_addr_registry.registerFunction(name.data(), (void*)sym_addr, size, NULL);
@@ -275,7 +278,6 @@ GlobalState::GlobalState() : context(llvm::getGlobalContext()), cur_module(NULL)
 llvm::JITEventListener* makeRegistryListener() {
     return new RegistryEventListener();
 }
-
 
 FunctionSpecialization::FunctionSpecialization(ConcreteCompilerType* rtn_type) : rtn_type(rtn_type) {
     accepts_all_inputs = true;

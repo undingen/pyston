@@ -26,6 +26,7 @@
 #include "llvm/ExecutionEngine/JITEventListener.h"
 #include "llvm/ExecutionEngine/MCJIT.h"
 #include "llvm/ExecutionEngine/ObjectCache.h"
+#include "llvm/ExecutionEngine/RTDyldMemoryManager.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/CommandLine.h"
@@ -49,7 +50,8 @@
 #include "runtime/types.h"
 
 /*
- * Include this file to force the linking of non-default algorithms, such as the "basic" register allocator
+ * Include this file to force the linking of non-default algorithms, such as the
+ * "basic" register allocator
  */
 #include "llvm/CodeGen/LinkAllCodegenComponents.h"
 
@@ -86,14 +88,16 @@ static llvm::Module* loadStdlib() {
 
     llvm::StringRef data;
     if (!USE_STRIPPED_STDLIB) {
-        // Make sure the stdlib got linked in correctly; check the magic number at the beginning:
+        // Make sure the stdlib got linked in correctly; check the magic number at
+        // the beginning:
         assert(STDLIB_BC_START[0] == 'B');
         assert(STDLIB_BC_START[1] == 'C');
         intptr_t size = (intptr_t)&STDLIB_BC_SIZE;
         assert(size > 0 && size < 1 << 30); // make sure the size is being loaded correctly
         data = llvm::StringRef(STDLIB_BC_START, size);
     } else {
-        // Make sure the stdlib got linked in correctly; check the magic number at the beginning:
+        // Make sure the stdlib got linked in correctly; check the magic number at
+        // the beginning:
         assert(STRIPPED_STDLIB_BC_START[0] == 'B');
         assert(STRIPPED_STDLIB_BC_START[1] == 'C');
         intptr_t size = (intptr_t)&STRIPPED_STDLIB_BC_SIZE;
@@ -107,7 +111,8 @@ static llvm::Module* loadStdlib() {
     std::unique_ptr<llvm::MemoryBuffer> buffer = llvm::MemoryBuffer::getMemBuffer(data, "", false);
 #endif
 
-    // llvm::ErrorOr<llvm::Module*> m_or = llvm::parseBitcodeFile(buffer, g.context);
+    // llvm::ErrorOr<llvm::Module*> m_or = llvm::parseBitcodeFile(buffer,
+    // g.context);
     llvm::ErrorOr<llvm::Module*> m_or = llvm::getLazyBitcodeModule(std::move(buffer), g.context);
     RELEASE_ASSERT(m_or, "");
     llvm::Module* m = m_or.get();
@@ -130,10 +135,13 @@ public:
             return false;
 
         int uncompressed_size = data.size();
-        // Write the uncompressed size to the beginning of the file as a simple checksum.
-        // It looks like each lz4 block has its own data checksum, but we need to also
+        // Write the uncompressed size to the beginning of the file as a simple
+        // checksum.
+        // It looks like each lz4 block has its own data checksum, but we need to
+        // also
         // make sure that we have all the blocks that we expected.
-        // In particular, without this, an empty file seems to be a valid lz4 stream.
+        // In particular, without this, an empty file seems to be a valid lz4
+        // stream.
         file.write(reinterpret_cast<const char*>(&uncompressed_size), 4);
 
         LZ4F_preferences_t preferences;
@@ -250,7 +258,6 @@ public:
         cleanupCacheDirectory();
     }
 
-
 #if LLVMREV < 216002
     virtual void notifyObjectCompiled(const llvm::Module* M, const llvm::MemoryBuffer* Obj)
 #else
@@ -324,7 +331,8 @@ public:
     }
 
     void cleanupCacheDirectory() {
-        // Find all files inside the cache directory, if the number of files is larger than
+        // Find all files inside the cache directory, if the number of files is
+        // larger than
         // MAX_OBJECT_CACHE_ENTRIES,
         // sort them by last modification time and remove the oldest excessive ones.
         typedef std::pair<std::string, llvm::sys::TimeValue> CacheFileEntry;
@@ -401,7 +409,8 @@ void initCodegen() {
     eb.setUseMCJIT(true);
 #endif
 
-    eb.setEngineKind(llvm::EngineKind::JIT); // specify we only want the JIT, and not the interpreter fallback
+    eb.setEngineKind(llvm::EngineKind::JIT); // specify we only want the JIT, and
+// not the interpreter fallback
 #if LLVMREV < 223183
     eb.setMCJITMemoryManager(createMemoryManager().release());
 #else
@@ -495,8 +504,10 @@ void initCodegen() {
     setitimer(ITIMER_PROF, &prof_timer, NULL);
 #endif
 
-    // There are some parts of llvm that are only configurable through command line args,
-    // so construct a fake argc/argv pair and pass it to the llvm command line machinery:
+    // There are some parts of llvm that are only configurable through command
+    // line args,
+    // so construct a fake argc/argv pair and pass it to the llvm command line
+    // machinery:
     std::vector<const char*> llvm_args = { "fake_name" };
 
     llvm_args.push_back("--enable-patchpoint-liveness");

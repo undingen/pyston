@@ -24,6 +24,7 @@
 #else
 #include "llvm/DebugInfo/DWARF/DIContext.h"
 #endif
+#include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/ExecutionEngine/JITEventListener.h"
 #include "llvm/IR/DebugInfo.h"
 #include "llvm/Object/ObjectFile.h"
@@ -43,7 +44,6 @@
 #include "runtime/traceback.h"
 #include "runtime/types.h"
 
-
 #define UNW_LOCAL_ONLY
 #include <libunwind.h>
 #undef UNW_LOCAL_ONLY
@@ -52,7 +52,8 @@ namespace {
 int _dummy_ = unw_set_caching_policy(unw_local_addr_space, UNW_CACHE_PER_THREAD);
 }
 
-// Definition from libunwind, but standardized I suppose by the format of the .eh_frame_hdr section:
+// Definition from libunwind, but standardized I suppose by the format of the
+// .eh_frame_hdr section:
 struct uw_table_entry {
     int32_t start_ip_offset;
     int32_t fde_offset;
@@ -62,11 +63,13 @@ namespace pyston {
 
 static BoxedClass* unwind_session_cls;
 
-// Parse an .eh_frame section, and construct a "binary search table" such as you would find in a .eh_frame_hdr section.
+// Parse an .eh_frame section, and construct a "binary search table" such as you
+// would find in a .eh_frame_hdr section.
 // Currently only supports .eh_frame sections with exactly one fde.
 // See http://www.airs.com/blog/archives/460 for some useful info.
 void parseEhFrame(uint64_t start_addr, uint64_t size, uint64_t func_addr, uint64_t* out_data, uint64_t* out_len) {
-    // NB. according to sully@msully.net, this is not legal C++ b/c type-punning through unions isn't allowed.
+    // NB. according to sully@msully.net, this is not legal C++ b/c type-punning
+    // through unions isn't allowed.
     // But I can't find a compiler flag that warns on it, and it seems to work.
     union {
         uint8_t* u8;
@@ -100,9 +103,12 @@ void registerDynamicEhFrame(uint64_t code_addr, size_t code_size, uint64_t eh_fr
     unw_dyn_info_t* dyn_info = new unw_dyn_info_t();
     dyn_info->start_ip = code_addr;
     dyn_info->end_ip = code_addr + code_size;
-    // TODO: It's not clear why we use UNW_INFO_FORMAT_REMOTE_TABLE instead of UNW_INFO_FORMAT_TABLE. kmod reports that
-    // he tried FORMAT_TABLE and it didn't work, but it wasn't clear why. However, using FORMAT_REMOTE_TABLE forces
-    // indirection through an access_mem() callback, and indeed, a function named access_mem() shows up in our `perf`
+    // TODO: It's not clear why we use UNW_INFO_FORMAT_REMOTE_TABLE instead of
+    // UNW_INFO_FORMAT_TABLE. kmod reports that
+    // he tried FORMAT_TABLE and it didn't work, but it wasn't clear why. However,
+    // using FORMAT_REMOTE_TABLE forces
+    // indirection through an access_mem() callback, and indeed, a function named
+    // access_mem() shows up in our `perf`
     // results! So it's possible there's a performance win lurking here.
     dyn_info->format = UNW_INFO_FORMAT_REMOTE_TABLE;
 
@@ -114,9 +120,11 @@ void registerDynamicEhFrame(uint64_t code_addr, size_t code_size, uint64_t eh_fr
         printf("dyn_info = %p, table_data = %p\n", dyn_info, (void*)dyn_info->u.rti.table_data);
     _U_dyn_register(dyn_info);
 
-    // TODO: it looks like libunwind does a linear search over anything dynamically registered,
+    // TODO: it looks like libunwind does a linear search over anything
+    // dynamically registered,
     // as opposed to the binary search it can do within a dyn_info.
-    // If we're registering a lot of dyn_info's, it might make sense to coalesce them into a single
+    // If we're registering a lot of dyn_info's, it might make sense to coalesce
+    // them into a single
     // dyn_info that contains a binary search table.
 }
 
@@ -192,7 +200,10 @@ public:
 
             // Found a function!
             assert(!func_addr);
-            func_addr = L.getSymbolLoadAddress(Name);
+            // func_addr = g.engine->getAddressToGlobalIfAvailable(Name);
+            func_addr = g.engine->getGlobalValueAddress(Name);
+
+            // func_addr = L.getSymbolLoadAddress(Name);
             assert(func_addr);
 
 // TODO this should be the Python name, not the C name:
@@ -282,7 +293,8 @@ public:
 
     // These only exist if id.type==COMPILED:
     CompiledFunction* cf;
-    // We have to save a copy of the regs since it's very difficult to keep the unw_context_t
+    // We have to save a copy of the regs since it's very difficult to keep the
+    // unw_context_t
     // structure valid.
     intptr_t regs[16];
     uint16_t regs_valid;
@@ -437,12 +449,12 @@ static bool inGeneratorEntry(unw_word_t ip) {
 }
 
 static bool isDeopt(unw_word_t ip) {
-    // Check for astInterpretDeopt() instead of deopt(), since deopt() will do some
+    // Check for astInterpretDeopt() instead of deopt(), since deopt() will do
+    // some
     // unwinding and we don't want it to skip things.
     static unw_word_t deopt_end = getFunctionEnd((unw_word_t)astInterpretDeopt);
     return ((unw_word_t)astInterpretDeopt < ip && ip <= deopt_end);
 }
-
 
 static inline unw_word_t get_cursor_reg(unw_cursor_t* cursor, int reg) {
     unw_word_t v;
@@ -472,8 +484,10 @@ bool frameIsPythonFrame(unw_word_t ip, unw_word_t bp, unw_cursor_t* cursor, Pyth
 
     *info = PythonFrameIteratorImpl(jitted ? PythonFrameId::COMPILED : PythonFrameId::INTERPRETED, ip, bp, cl, cf);
     if (jitted) {
-        // Try getting all the callee-save registers, and save the ones we were able to get.
-        // Some of them may be inaccessible, I think because they weren't defined by that
+        // Try getting all the callee-save registers, and save the ones we were able
+        // to get.
+        // Some of them may be inaccessible, I think because they weren't defined by
+        // that
         // stack frame, which can show up as a -UNW_EBADREG return code.
         for (int i = 0; i < 16; i++) {
             if (!assembler::Register::fromDwarf(i).isCalleeSave())
@@ -504,7 +518,8 @@ static const LineInfo lineInfoForFrame(PythonFrameIteratorImpl* frame_it) {
 // A class that converts a C stack trace to a Python stack trace.
 // It allows for different ways of driving the C stack trace; it just needs
 // to have handleCFrame called once per frame.
-// If you want to do a normal (non-destructive) stack walk, use unwindPythonStack
+// If you want to do a normal (non-destructive) stack walk, use
+// unwindPythonStack
 // which will use this internally.
 class PythonStackExtractor {
 private:
@@ -624,8 +639,10 @@ void unwindingThroughFrame(PythonUnwindSession* unwind_session, unw_cursor_t* cu
     unwind_session->handleCFrame(cursor);
 }
 
-// While I'm not a huge fan of the callback-passing style, libunwind cursors are only valid for
-// the stack frame that they were created in, so we need to use this approach (as opposed to
+// While I'm not a huge fan of the callback-passing style, libunwind cursors are
+// only valid for
+// the stack frame that they were created in, so we need to use this approach
+// (as opposed to
 // C++11 range loops, for example).
 // Return true from the handler to stop iteration at that frame.
 template <typename Func> void unwindPythonStack(Func func) {
@@ -656,9 +673,11 @@ template <typename Func> void unwindPythonStack(Func func) {
         if (inGeneratorEntry(ip)) {
             unw_word_t bp = get_cursor_bp(&cursor);
 
-            // for generators continue unwinding in the context in which the generator got called
+            // for generators continue unwinding in the context in which the generator
+            // got called
             Context* remote_ctx = getReturnContextForGeneratorFrame((void*)bp);
-            // setup unw_context_t struct from the infos we have, seems like this is enough to make unwinding work.
+            // setup unw_context_t struct from the infos we have, seems like this is
+            // enough to make unwinding work.
             memset(&ctx, 0, sizeof(ctx));
             ctx.uc_mcontext.gregs[REG_R12] = remote_ctx->r12;
             ctx.uc_mcontext.gregs[REG_R13] = remote_ctx->r13;
@@ -689,7 +708,8 @@ static std::unique_ptr<PythonFrameIteratorImpl> getTopPythonFrame() {
 //
 // 1. Use libunwind to produce a cursor into our stack.
 //
-// 2. Grab the next frame in the stack and check what function it is from. There are four options:
+// 2. Grab the next frame in the stack and check what function it is from. There
+// are four options:
 //
 //    (a) A JIT-compiled Python function.
 //    (b) ASTInterpreter::execute() in codegen/ast_interpreter.cpp.
@@ -698,19 +718,27 @@ static std::unique_ptr<PythonFrameIteratorImpl> getTopPythonFrame() {
 //
 //    By cases:
 //
-//    (2a, 2b) If the previous frame we visited was an OSR frame (which we know from its CompiledFunction*), then we
-//    skip this frame (it's the frame we replaced on-stack) and keep unwinding. (FIXME: Why are we guaranteed that we
-//    on-stack-replaced at most one frame?) Otherwise, we found a frame for our traceback! Proceed to step 3.
+//    (2a, 2b) If the previous frame we visited was an OSR frame (which we know
+//    from its CompiledFunction*), then we
+//    skip this frame (it's the frame we replaced on-stack) and keep unwinding.
+//    (FIXME: Why are we guaranteed that we
+//    on-stack-replaced at most one frame?) Otherwise, we found a frame for our
+//    traceback! Proceed to step 3.
 //
-//    (2c) Continue unwinding in the stack of whatever called the generator. This involves some hairy munging of
+//    (2c) Continue unwinding in the stack of whatever called the generator.
+//    This involves some hairy munging of
 //    undocumented fields in libunwind structs to swap the context.
 //
-//    (2d) Ignore it and keep unwinding. It's some C or C++ function that we don't want in our traceback.
+//    (2d) Ignore it and keep unwinding. It's some C or C++ function that we
+//    don't want in our traceback.
 //
-// 3. We've found a frame for our traceback, along with a CompiledFunction* and some other information about it.
+// 3. We've found a frame for our traceback, along with a CompiledFunction* and
+// some other information about it.
 //
-//    We grab the current statement it is in (as an AST_stmt*) and use it and the CompiledFunction*'s source info to
-//    produce the line information for the traceback. For JIT-compiled functions, getting the statement involves the
+//    We grab the current statement it is in (as an AST_stmt*) and use it and
+//    the CompiledFunction*'s source info to
+//    produce the line information for the traceback. For JIT-compiled
+//    functions, getting the statement involves the
 //    CF's location_map.
 //
 // 4. Unless we've hit the end of the stack, go to 2 and keep unwinding.
@@ -770,7 +798,8 @@ ExcInfo* getFrameExcInfo() {
         return true;
     });
 
-    assert(copy_from_exc); // Only way this could still be NULL is if there weren't any python frames
+    assert(copy_from_exc); // Only way this could still be NULL is if there
+    // weren't any python frames
 
     if (!copy_from_exc->type) {
         // No exceptions found:
@@ -910,7 +939,8 @@ DeoptState getDeoptState() {
                     }
 
                     Box* v = e->type->deserializeFromFrame(vals);
-                    // printf("%s: (pp id %ld) %p\n", p.first().c_str(), e._debug_pp_id, v);
+                    // printf("%s: (pp id %ld) %p\n", p.first().c_str(), e._debug_pp_id,
+                    // v);
                     ASSERT(gc::isValidGCObject(v), "%p", v);
                     d->d[boxString(p.first())] = v;
                 }
@@ -945,7 +975,8 @@ Box* PythonFrameIterator::fastLocalsToBoxedLocals() {
     ScopeInfo* scope_info = clfunc->source->getScopeInfo();
 
     if (scope_info->areLocalsFromModule()) {
-        // TODO we should cache this in frame_info->locals or something so that locals()
+        // TODO we should cache this in frame_info->locals or something so that
+        // locals()
         // (and globals() too) will always return the same dict
         RELEASE_ASSERT(clfunc->source->scoping->areGlobalsFromModule(), "");
         return clfunc->source->parent_module->getAttrWrapper();
@@ -1069,7 +1100,8 @@ Box* PythonFrameIterator::fastLocalsToBoxedLocals() {
 
     // Loop through all the values found above.
     // TODO Right now d just has all the python variables that are *initialized*
-    // But we also need to loop through all the uninitialized variables that we have
+    // But we also need to loop through all the uninitialized variables that we
+    // have
     // access to and delete them from the locals dict
     for (const auto& p : *d) {
         Box* varname = p.first;
@@ -1114,7 +1146,8 @@ PythonFrameIterator PythonFrameIterator::getCurrentVersion() {
 }
 
 PythonFrameIterator PythonFrameIterator::back() {
-    // TODO this is ineffecient: the iterator is no longer valid for libunwind iteration, so
+    // TODO this is ineffecient: the iterator is no longer valid for libunwind
+    // iteration, so
     // we have to do a full stack crawl again.
     // Hopefully examination of f_back is uncommon.
 
@@ -1182,13 +1215,15 @@ extern "C" void abort() {
         Stats::dump();
         fprintf(stderr, "Someone called abort!\n");
 
-        // If traceback_cls is NULL, then we somehow died early on, and won't be able to display a traceback.
+        // If traceback_cls is NULL, then we somehow died early on, and won't be
+        // able to display a traceback.
         if (traceback_cls) {
 
             // If we call abort(), things may be seriously wrong.  Set an alarm() to
             // try to handle cases that we would just hang.
             // (Ex if we abort() from a static constructor, and _printStackTrace uses
-            // that object, _printStackTrace will hang waiting for the first construction
+            // that object, _printStackTrace will hang waiting for the first
+            // construction
             // to finish.)
             alarm(1);
             try {
@@ -1198,8 +1233,10 @@ extern "C" void abort() {
             }
 
             // Cancel the alarm.
-            // This is helpful for when running in a debugger, since otherwise the debugger will catch the
-            // abort and let you investigate, but the alarm will still come back to kill the program.
+            // This is helpful for when running in a debugger, since otherwise the
+            // debugger will catch the
+            // abort and let you investigate, but the alarm will still come back to
+            // kill the program.
             alarm(0);
         }
     }
@@ -1207,7 +1244,8 @@ extern "C" void abort() {
     if (PAUSE_AT_ABORT) {
         fprintf(stderr, "PID %d about to call libc abort; pausing for a debugger...\n", getpid());
 
-        // Sometimes stderr isn't available (or doesn't immediately appear), so write out a file
+        // Sometimes stderr isn't available (or doesn't immediately appear), so
+        // write out a file
         // just in case:
         FILE* f = fopen("pausing.txt", "w");
         if (f) {

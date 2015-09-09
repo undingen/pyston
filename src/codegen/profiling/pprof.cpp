@@ -44,7 +44,8 @@ void PprofJITEventListener::NotifyObjectEmitted(const llvm::object::ObjectFile& 
             uint64_t addr, size;
             code = sym.getName(name);
             assert(!code);
-            addr = L.getSymbolLoadAddress(name);
+            // addr = L.getSymbolLoadAddress(name);
+            addr = g.engine->getGlobalValueAddress(name);
             code = sym.getSize(size);
             assert(!code);
 

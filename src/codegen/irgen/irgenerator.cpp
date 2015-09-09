@@ -118,7 +118,7 @@ ExceptionStyle UnwindInfo::preferredExceptionStyle() const {
 static llvm::Value* getClosureParentGep(IREmitter& emitter, llvm::Value* closure) {
     static_assert(sizeof(Box) == offsetof(BoxedClosure, parent), "");
     static_assert(offsetof(BoxedClosure, parent) + sizeof(BoxedClosure*) == offsetof(BoxedClosure, nelts), "");
-    return emitter.getBuilder()->CreateConstInBoundsGEP2_32(closure, 0, 1);
+    return emitter.getBuilder()->CreateConstInBoundsGEP2_32(nullptr, closure, 0, 1);
 }
 
 static llvm::Value* getClosureElementGep(IREmitter& emitter, llvm::Value* closure, size_t index) {
@@ -134,12 +134,12 @@ static llvm::Value* getBoxedLocalsGep(llvm::IRBuilder<true>& builder, llvm::Valu
     static_assert(offsetof(FrameInfo, exc) == 0, "");
     static_assert(sizeof(ExcInfo) == 24, "");
     static_assert(offsetof(FrameInfo, boxedLocals) == 24, "");
-    return builder.CreateConstInBoundsGEP2_32(v, 0, 1);
+    return builder.CreateConstInBoundsGEP2_32(nullptr, v, 0, 1);
 }
 
 static llvm::Value* getExcinfoGep(llvm::IRBuilder<true>& builder, llvm::Value* v) {
     static_assert(offsetof(FrameInfo, exc) == 0, "");
-    return builder.CreateConstInBoundsGEP2_32(v, 0, 0);
+    return builder.CreateConstInBoundsGEP2_32(nullptr, v, 0, 0);
 }
 
 static llvm::Value* getFrameObjGep(llvm::IRBuilder<true>& builder, llvm::Value* v) {
@@ -147,29 +147,34 @@ static llvm::Value* getFrameObjGep(llvm::IRBuilder<true>& builder, llvm::Value* 
     static_assert(sizeof(ExcInfo) == 24, "");
     static_assert(sizeof(Box*) == 8, "");
     static_assert(offsetof(FrameInfo, frame_obj) == 32, "");
-    return builder.CreateConstInBoundsGEP2_32(v, 0, 2);
+    return builder.CreateConstInBoundsGEP2_32(nullptr, v, 0, 2);
     // TODO: this could be made more resilient by doing something like
     // gep->accumulateConstantOffset(g.tm->getDataLayout(), ap_offset)
 }
 
 llvm::Value* IRGenState::getFrameInfoVar() {
     /*
-        There is a matrix of possibilities here.
+      There is a matrix of possibilities here.
 
-        For complete (non-OSR) functions, we initialize the FrameInfo* with an alloca and
-        set this->frame_info to that llvm value.
-        - If the function has NAME-scope, we initialize the frame_info.boxedLocals to a dictionary
-          and set this->boxed_locals to an llvm value which is that dictionary.
-        - If it is non-NAME-scope, we leave it NULL, because  most of the time it won't
-          be initialized (unless someone calls locals() or something).
-          this->boxed_locals is unused within the IR, so we don't set it.
+      For complete (non-OSR) functions, we initialize the FrameInfo* with an
+     alloca and
+      set this->frame_info to that llvm value.
+      - If the function has NAME-scope, we initialize the frame_info.boxedLocals
+     to a dictionary
+        and set this->boxed_locals to an llvm value which is that dictionary.
+      - If it is non-NAME-scope, we leave it NULL, because  most of the time it
+     won't
+        be initialized (unless someone calls locals() or something).
+        this->boxed_locals is unused within the IR, so we don't set it.
 
-        If this is an OSR function, then a FrameInfo* is passed in as an argument, so we don't
-        need to initialize it with an alloca, and frame_info is already
-        pointer.
-        - If the function is NAME-scope, we extract the boxedLocals from the frame_info in order
-          to set this->boxed_locals.
-    */
+      If this is an OSR function, then a FrameInfo* is passed in as an argument,
+     so we don't
+      need to initialize it with an alloca, and frame_info is already
+      pointer.
+      - If the function is NAME-scope, we extract the boxedLocals from the
+     frame_info in order
+        to set this->boxed_locals.
+  */
 
     if (!this->frame_info) {
         llvm::BasicBlock& entry_block = getLLVMFunction()->getEntryBlock();
@@ -178,7 +183,6 @@ llvm::Value* IRGenState::getFrameInfoVar() {
 
         if (entry_block.begin() != entry_block.end())
             builder.SetInsertPoint(&entry_block, entry_block.getFirstInsertionPt());
-
 
         llvm::AllocaInst* al = builder.CreateAlloca(g.llvm_frame_info_type, NULL, "frame_info");
         assert(al->isStaticAlloca());
@@ -203,8 +207,8 @@ llvm::Value* IRGenState::getFrameInfoVar() {
             // frame_info.exc.type = NULL
             llvm::Constant* null_value = getNullPtr(g.llvm_value_type_ptr);
             llvm::Value* exc_info = getExcinfoGep(builder, al);
-            builder.CreateStore(
-                null_value, builder.CreateConstInBoundsGEP2_32(exc_info, 0, offsetof(ExcInfo, type) / sizeof(Box*)));
+            builder.CreateStore(null_value, builder.CreateConstInBoundsGEP2_32(nullptr, exc_info, 0,
+                                                                               offsetof(ExcInfo, type) / sizeof(Box*)));
 
             // frame_info.boxedLocals = NULL
             llvm::Value* boxed_locals_gep = getBoxedLocalsGep(builder, al);
@@ -212,7 +216,8 @@ llvm::Value* IRGenState::getFrameInfoVar() {
 
             if (getScopeInfo()->usesNameLookup()) {
                 // frame_info.boxedLocals = createDict()
-                // (Since this can call into the GC, we have to initialize it to NULL first as we did above.)
+                // (Since this can call into the GC, we have to initialize it to NULL
+                // first as we did above.)
                 this->boxed_locals = builder.CreateCall(g.funcs.createDict);
                 builder.CreateStore(this->boxed_locals, boxed_locals_gep);
             }
@@ -333,7 +338,8 @@ private:
         pp_args.push_back(getConstantInt(pp_id, g.i64));
         pp_args.push_back(getConstantInt(pp_size, g.i32));
         if (ENABLE_JIT_OBJECT_CACHE)
-            // add fixed dummy dest pointer, we will replace it with the correct address during stackmap processing
+            // add fixed dummy dest pointer, we will replace it with the correct
+            // address during stackmap processing
             pp_args.push_back(embedConstantPtr((void*)-1L, g.i8_ptr));
         else
             pp_args.push_back(func);
@@ -369,8 +375,10 @@ private:
 public:
     explicit IREmitterImpl(IRGenState* irstate, llvm::BasicBlock*& curblock, IRGenerator* irgenerator)
         : irstate(irstate), builder(new IRBuilder(g.context)), curblock(curblock), irgenerator(irgenerator) {
-        // Perf note: it seems to be more efficient to separately allocate the "builder" member,
-        // even though we could allocate it in-line; maybe it's infrequently used enough that it's better
+        // Perf note: it seems to be more efficient to separately allocate the
+        // "builder" member,
+        // even though we could allocate it in-line; maybe it's infrequently used
+        // enough that it's better
         // to not have it take up cache space.
 
         builder->setEmitter(this);
@@ -404,7 +412,8 @@ public:
     llvm::Value* createCall(const UnwindInfo& unw_info, llvm::Value* callee, const std::vector<llvm::Value*>& args,
                             ExceptionStyle target_exception_style = CXX) override {
 #ifndef NDEBUG
-        // Copied the argument-type-checking from CallInst::init, since the patchpoint arguments don't
+        // Copied the argument-type-checking from CallInst::init, since the
+        // patchpoint arguments don't
         // get checked.
         llvm::FunctionType* FTy
             = llvm::cast<llvm::FunctionType>(llvm::cast<llvm::PointerType>(callee->getType())->getElementType());
@@ -422,8 +431,9 @@ public:
 #endif
 
         if (ENABLE_FRAME_INTROSPECTION) {
-            llvm::Type* rtn_type = llvm::cast<llvm::FunctionType>(llvm::cast<llvm::PointerType>(callee->getType())
-                                                                      ->getElementType())->getReturnType();
+            llvm::Type* rtn_type
+                = llvm::cast<llvm::FunctionType>(llvm::cast<llvm::PointerType>(callee->getType())->getElementType())
+                      ->getReturnType();
 
             llvm::Value* bitcasted = getBuilder()->CreateBitCast(callee, g.i8->getPointerTo());
             llvm::CallSite cs = emitPatchpoint(rtn_type, NULL, bitcasted, args, {}, unw_info, target_exception_style);
@@ -543,15 +553,19 @@ private:
 
     llvm::BasicBlock* curblock;
     IREmitterImpl emitter;
-    // symbol_table tracks which (non-global) python variables are bound to which CompilerVariables
+    // symbol_table tracks which (non-global) python variables are bound to which
+    // CompilerVariables
     SymbolTable symbol_table;
     std::unordered_map<CFGBlock*, llvm::BasicBlock*>& entry_blocks;
     CFGBlock* myblock;
     TypeAnalysis* types;
 
-    // These are some special values used for passing exception data between blocks;
-    // this transfer is not explicitly represented in the CFG which is why it has special
-    // handling here.  ie these variables are how we handle the special "invoke->landingpad"
+    // These are some special values used for passing exception data between
+    // blocks;
+    // this transfer is not explicitly represented in the CFG which is why it has
+    // special
+    // handling here.  ie these variables are how we handle the special
+    // "invoke->landingpad"
     // value transfer, which doesn't involve the normal symbol name handling.
     //
     // These are the values that are incoming to a landingpad block:
@@ -563,9 +577,11 @@ private:
     llvm::DenseMap<llvm::BasicBlock*, llvm::PHINode*> capi_phis;
 
     enum State {
-        RUNNING,  // normal
-        DEAD,     // passed a Return statement; still syntatically valid but the code should not be compiled
-        FINISHED, // passed a pseudo-node such as Branch or Jump; internal error if there are any more statements
+        RUNNING, // normal
+        DEAD,    // passed a Return statement; still syntatically valid but the code
+        // should not be compiled
+        FINISHED, // passed a pseudo-node such as Branch or Jump; internal error if
+        // there are any more statements
     } state;
 
 public:
@@ -698,10 +714,13 @@ private:
                         exc_tb = new ConcreteCompilerVariable(UNKNOWN, phi_exc_tb, true);
                     }
                 } else {
-                    // There can be no incoming exception if the irgenerator was able to prove that
+                    // There can be no incoming exception if the irgenerator was able to
+                    // prove that
                     // an exception would not get thrown.
-                    // For example, the cfg code will conservatively assume that any name-access can
-                    // trigger an exception, but the irgenerator will know that definitely-defined
+                    // For example, the cfg code will conservatively assume that any
+                    // name-access can
+                    // trigger an exception, but the irgenerator will know that
+                    // definitely-defined
                     // local symbols will not throw.
                     exc_type = undefVariable();
                     exc_value = undefVariable();
@@ -820,18 +839,20 @@ private:
                 auto* builder = emitter.getBuilder();
 
                 llvm::Value* frame_info = irstate->getFrameInfoVar();
-                llvm::Value* exc_info = builder->CreateConstInBoundsGEP2_32(frame_info, 0, 0);
+                llvm::Value* exc_info = builder->CreateConstInBoundsGEP2_32(nullptr, frame_info, 0, 0);
                 assert(exc_info->getType() == g.llvm_excinfo_type->getPointerTo());
 
                 ConcreteCompilerVariable* converted_type = type->makeConverted(emitter, UNKNOWN);
-                builder->CreateStore(converted_type->getValue(), builder->CreateConstInBoundsGEP2_32(exc_info, 0, 0));
+                builder->CreateStore(converted_type->getValue(),
+                                     builder->CreateConstInBoundsGEP2_32(nullptr, exc_info, 0, 0));
                 converted_type->decvref(emitter);
                 ConcreteCompilerVariable* converted_value = value->makeConverted(emitter, UNKNOWN);
-                builder->CreateStore(converted_value->getValue(), builder->CreateConstInBoundsGEP2_32(exc_info, 0, 1));
+                builder->CreateStore(converted_value->getValue(),
+                                     builder->CreateConstInBoundsGEP2_32(nullptr, exc_info, 0, 1));
                 converted_value->decvref(emitter);
                 ConcreteCompilerVariable* converted_traceback = traceback->makeConverted(emitter, UNKNOWN);
                 builder->CreateStore(converted_traceback->getValue(),
-                                     builder->CreateConstInBoundsGEP2_32(exc_info, 0, 2));
+                                     builder->CreateConstInBoundsGEP2_32(nullptr, exc_info, 0, 2));
                 converted_traceback->decvref(emitter);
 
                 return getNone();
@@ -842,13 +863,13 @@ private:
                 auto* builder = emitter.getBuilder();
 
                 llvm::Value* frame_info = irstate->getFrameInfoVar();
-                llvm::Value* exc_info = builder->CreateConstInBoundsGEP2_32(frame_info, 0, 0);
+                llvm::Value* exc_info = builder->CreateConstInBoundsGEP2_32(nullptr, frame_info, 0, 0);
                 assert(exc_info->getType() == g.llvm_excinfo_type->getPointerTo());
 
                 llvm::Constant* v = getNullPtr(g.llvm_value_type_ptr);
-                builder->CreateStore(v, builder->CreateConstInBoundsGEP2_32(exc_info, 0, 0));
-                builder->CreateStore(v, builder->CreateConstInBoundsGEP2_32(exc_info, 0, 1));
-                builder->CreateStore(v, builder->CreateConstInBoundsGEP2_32(exc_info, 0, 2));
+                builder->CreateStore(v, builder->CreateConstInBoundsGEP2_32(nullptr, exc_info, 0, 0));
+                builder->CreateStore(v, builder->CreateConstInBoundsGEP2_32(nullptr, exc_info, 0, 1));
+                builder->CreateStore(v, builder->CreateConstInBoundsGEP2_32(nullptr, exc_info, 0, 2));
 
                 return getNone();
             }
@@ -976,7 +997,6 @@ private:
         struct ArgPassSpec argspec(node->args.size(), node->keywords.size(), node->starargs != NULL,
                                    node->kwargs != NULL);
 
-
         // if (VERBOSITY("irgen") >= 1)
         //_addAnnotation("before_call");
 
@@ -1044,7 +1064,6 @@ private:
 
         return converted;
     }
-
 
     CompilerVariable* evalList(AST_List* node, const UnwindInfo& unw_info) {
         std::vector<CompilerVariable*> elts;
@@ -1118,7 +1137,8 @@ private:
             assert(!is_kill);
             assert(scope_info->takesClosure());
 
-            // This is the information on how to look up the variable in the closure object.
+            // This is the information on how to look up the variable in the closure
+            // object.
             DerefInfo deref_info = scope_info->getDerefInfo(node->id);
 
             // This code is basically:
@@ -1127,7 +1147,8 @@ private:
             // [...]
             // closure = closure->parent;
             // closure->elts[deref_info.offset]
-            // Where the parent lookup is done `deref_info.num_parents_from_passed_closure` times
+            // Where the parent lookup is done
+            // `deref_info.num_parents_from_passed_closure` times
             CompilerVariable* closure = symbol_table[internString(PASSED_CLOSURE_NAME)];
             llvm::Value* closureValue = closure->makeConverted(emitter, CLOSURE)->getValue();
             closure->decvref(emitter);
@@ -1153,9 +1174,8 @@ private:
             curblock = fail_bb;
             emitter.getBuilder()->SetInsertPoint(curblock);
 
-            llvm::CallSite call = emitter.createCall(unw_info, g.funcs.assertFailDerefNameDefined,
-                                                     embedRelocatablePtr(node->id.c_str(), g.i8_ptr));
-            call.setDoesNotReturn();
+            emitter.createCall(unw_info, g.funcs.assertFailDerefNameDefined,
+                               embedRelocatablePtr(node->id.c_str(), g.i8_ptr));
             emitter.getBuilder()->CreateUnreachable();
 
             // Case that it is defined: carry on in with the retrieved value.
@@ -1172,13 +1192,13 @@ private:
         } else {
             // vst is one of {FAST, CLOSURE, NAME}
             if (symbol_table.find(node->id) == symbol_table.end()) {
-                // TODO should mark as DEAD here, though we won't end up setting all the names appropriately
+                // TODO should mark as DEAD here, though we won't end up setting all the
+                // names appropriately
                 // state = DEAD;
-                llvm::CallSite call = emitter.createCall(
-                    unw_info, g.funcs.assertNameDefined,
-                    { getConstantInt(0, g.i1), embedRelocatablePtr(node->id.c_str(), g.i8_ptr),
-                      embedRelocatablePtr(UnboundLocalError, g.llvm_class_type_ptr), getConstantInt(true, g.i1) });
-                call.setDoesNotReturn();
+                emitter.createCall(unw_info, g.funcs.assertNameDefined,
+                                   { getConstantInt(0, g.i1), embedRelocatablePtr(node->id.c_str(), g.i8_ptr),
+                                     embedRelocatablePtr(UnboundLocalError, g.llvm_class_type_ptr),
+                                     getConstantInt(true, g.i1) });
                 return undefVariable();
             }
 
@@ -1192,7 +1212,8 @@ private:
                     { i1FromBool(emitter, is_defined_var), embedRelocatablePtr(node->id.c_str(), g.i8_ptr),
                       embedRelocatablePtr(UnboundLocalError, g.llvm_class_type_ptr), getConstantInt(true, g.i1) });
 
-                // At this point we know the name must be defined (otherwise the assert would have fired):
+                // At this point we know the name must be defined (otherwise the assert
+                // would have fired):
                 _popFake(defined_name);
             }
 
@@ -1257,12 +1278,12 @@ private:
     }
 
     CompilerVariable* evalSlice(AST_Slice* node, const UnwindInfo& unw_info) {
-        CompilerVariable* start, *stop, *step;
+        CompilerVariable *start, *stop, *step;
         start = node->lower ? evalExpr(node->lower, unw_info) : getNone();
         stop = node->upper ? evalExpr(node->upper, unw_info) : getNone();
         step = node->step ? evalExpr(node->step, unw_info) : getNone();
 
-        ConcreteCompilerVariable* cstart, *cstop, *cstep;
+        ConcreteCompilerVariable *cstart, *cstop, *cstep;
         cstart = start->makeConverted(emitter, start->getBoxType());
         cstop = stop->makeConverted(emitter, stop->getBoxType());
         cstep = step->makeConverted(emitter, step->getBoxType());
@@ -1288,7 +1309,8 @@ private:
             elts.push_back(evalSlice(e, unw_info));
         }
 
-        // TODO makeTuple should probably just transfer the vref, but I want to keep things consistent
+        // TODO makeTuple should probably just transfer the vref, but I want to keep
+        // things consistent
         CompilerVariable* rtn = makeTuple(elts);
         for (auto* e : elts) {
             e->decvref(emitter);
@@ -1330,7 +1352,8 @@ private:
             elts.push_back(value);
         }
 
-        // TODO makeTuple should probably just transfer the vref, but I want to keep things consistent
+        // TODO makeTuple should probably just transfer the vref, but I want to keep
+        // things consistent
         CompilerVariable* rtn = makeTuple(elts);
         for (int i = 0; i < node->elts.size(); i++) {
             elts[i]->decvref(emitter);
@@ -1363,7 +1386,6 @@ private:
         CompilerVariable* generator = symbol_table[internString(PASSED_GENERATOR_NAME)];
         assert(generator);
         ConcreteCompilerVariable* convertedGenerator = generator->makeConverted(emitter, generator->getBoxType());
-
 
         CompilerVariable* value = node->value ? evalExpr(node->value, unw_info) : getNone();
         ConcreteCompilerVariable* convertedValue = value->makeConverted(emitter, value->getBoxType());
@@ -1416,9 +1438,11 @@ private:
             assert(created_closure);
         }
 
-        // TODO kind of silly to create the function just to usually-delete it afterwards;
+        // TODO kind of silly to create the function just to usually-delete it
+        // afterwards;
         // one reason to do this is to pass the closure through if necessary,
-        // but since the classdef can't create its own closure, shouldn't need to explicitly
+        // but since the classdef can't create its own closure, shouldn't need to
+        // explicitly
         // create that scope to pass the closure through.
         assert(irstate->getSourceInfo()->scoping->areGlobalsFromModule());
         CompilerVariable* func = makeFunction(emitter, cl, created_closure, irstate->getGlobalsIfCustom(), {});
@@ -1461,10 +1485,13 @@ private:
         CompilerVariable* created_closure = NULL;
 
         bool takes_closure;
-        // Optimization: when compiling a module, it's nice to not have to run analyses into the
+        // Optimization: when compiling a module, it's nice to not have to run
+        // analyses into the
         // entire module's source code.
-        // If we call getScopeInfoForNode, that will trigger an analysis of that function tree,
-        // but we're only using it here to figure out if that function takes a closure.
+        // If we call getScopeInfoForNode, that will trigger an analysis of that
+        // function tree,
+        // but we're only using it here to figure out if that function takes a
+        // closure.
         // Top level functions never take a closure, so we can skip the analysis.
         if (irstate->getSourceInfo()->ast->type == AST_TYPE::Module)
             takes_closure = false;
@@ -1546,7 +1573,8 @@ private:
                 printf("\n");
             }
 
-            // That's not really a speculation.... could potentially handle this here, but
+            // That's not really a speculation.... could potentially handle this here,
+            // but
             // I think it's better to just not generate bad speculations:
             assert(!rtn->canConvertTo(speculated_type));
 
@@ -1678,11 +1706,14 @@ private:
         cur = val;
     }
 
-    // whether a Python variable FOO might be undefined or not is determined by whether the corresponding is_defined_FOO
-    // variable is present in our symbol table. If it is, then it *might* be undefined. If it isn't, then it either is
+    // whether a Python variable FOO might be undefined or not is determined by
+    // whether the corresponding is_defined_FOO
+    // variable is present in our symbol table. If it is, then it *might* be
+    // undefined. If it isn't, then it either is
     // definitely defined, or definitely isn't.
     //
-    // to check whether a variable is in our symbol table, call _getFake with allow_missing = true and check whether the
+    // to check whether a variable is in our symbol table, call _getFake with
+    // allow_missing = true and check whether the
     // result is NULL.
     CompilerVariable* _getFake(InternedString name, bool allow_missing = false) {
         assert(name.s()[0] == '!');
@@ -1847,8 +1878,10 @@ private:
 
         std::vector<llvm::Value*> llvm_args;
 
-        // We could patchpoint this or try to avoid the overhead, but this should only
-        // happen when the assertion is actually thrown so I don't think it will be necessary.
+        // We could patchpoint this or try to avoid the overhead, but this should
+        // only
+        // happen when the assertion is actually thrown so I don't think it will be
+        // necessary.
         static BoxedString* AssertionError_str = internStringImmortal("AssertionError");
         llvm_args.push_back(emitter.createCall2(unw_info, g.funcs.getGlobal, irstate->getGlobals(),
                                                 embedRelocatablePtr(AssertionError_str, g.llvm_boxedstring_type_ptr)));
@@ -1862,8 +1895,7 @@ private:
         } else {
             llvm_args.push_back(getNullPtr(g.llvm_value_type_ptr));
         }
-        llvm::CallSite call = emitter.createCall(unw_info, g.funcs.assertFail, llvm_args);
-        call.setDoesNotReturn();
+        emitter.createCall(unw_info, g.funcs.assertFail, llvm_args);
     }
 
     void doAssign(AST_Assign* node, const UnwindInfo& unw_info) {
@@ -1948,12 +1980,10 @@ private:
         assert(vst == ScopeInfo::VarScopeType::FAST);
 
         if (symbol_table.count(target->id) == 0) {
-            llvm::CallSite call
-                = emitter.createCall(unw_info, g.funcs.assertNameDefined,
-                                     { getConstantInt(0, g.i1), embedConstantPtr(target->id.c_str(), g.i8_ptr),
-                                       embedRelocatablePtr(NameError, g.llvm_class_type_ptr),
-                                       getConstantInt(true /*local_error_msg*/, g.i1) });
-            call.setDoesNotReturn();
+            emitter.createCall(unw_info, g.funcs.assertNameDefined,
+                               { getConstantInt(0, g.i1), embedConstantPtr(target->id.c_str(), g.i8_ptr),
+                                 embedRelocatablePtr(NameError, g.llvm_class_type_ptr),
+                                 getConstantInt(true /*local_error_msg*/, g.i1) });
             return;
         }
 
@@ -2016,7 +2046,8 @@ private:
         static BoxedString* newline_str = internStringImmortal("\n");
         static BoxedString* space_str = internStringImmortal(" ");
 
-        // TODO: why are we inline-generating all this code instead of just emitting a call to some runtime function?
+        // TODO: why are we inline-generating all this code instead of just emitting
+        // a call to some runtime function?
         // (=printHelper())
         int nvals = node->values.size();
         for (int i = 0; i < nvals; i++) {
@@ -2046,7 +2077,6 @@ private:
             curblock = join_block;
             emitter.getBuilder()->SetInsertPoint(join_block);
             // end code for handling of softspace
-
 
             llvm::Value* v = emitter.createCall(unw_info, g.funcs.strOrUnicode, converted->getValue());
             v = emitter.getBuilder()->CreateBitCast(v, g.llvm_value_type_ptr);
@@ -2082,7 +2112,8 @@ private:
         }
         assert(val);
 
-        // If we ask the return variable to become UNKNOWN (the typical return type),
+        // If we ask the return variable to become UNKNOWN (the typical return
+        // type),
         // it will be forced to split a copy of itself and incref.
         // But often the return variable will already be in the right shape, so in
         // that case asking it to convert to itself ends up just being an incvref
@@ -2104,7 +2135,8 @@ private:
 
         endBlock(DEAD);
 
-        // This is tripping in test/tests/return_selfreferential.py. kmod says it should be removed.
+        // This is tripping in test/tests/return_selfreferential.py. kmod says it
+        // should be removed.
         // ASSERT(rtn->getVrefs() == 1, "%d", rtn->getVrefs());
         assert(rtn->getValue());
         emitter.getBuilder()->CreateRet(rtn->getValue());
@@ -2185,22 +2217,31 @@ private:
                 = new ConcreteCompilerVariable(UNKNOWN, irstate->getGlobals(), true);
         }
 
-        // For OSR calls, we use the same calling convention as in some other places; namely,
+        // For OSR calls, we use the same calling convention as in some other
+        // places; namely,
         // arg1, arg2, arg3, argarray [nargs is ommitted]
-        // It would be nice to directly pass all variables as arguments, instead of packing them into
-        // an array, for a couple reasons (eliminate copies, and allow for a tail call).
-        // But this doesn't work if the IR is being interpreted, because the interpreter can't
-        // do arbitrary-arity function calls (yet?).  One possibility is to pass them as an
-        // array for the interpreter and as all arguments for compilation, but I'd rather avoid
-        // having two different calling conventions for the same thing.  Plus, this would
-        // prevent us from having two OSR exits point to the same OSR entry; not something that
+        // It would be nice to directly pass all variables as arguments, instead of
+        // packing them into
+        // an array, for a couple reasons (eliminate copies, and allow for a tail
+        // call).
+        // But this doesn't work if the IR is being interpreted, because the
+        // interpreter can't
+        // do arbitrary-arity function calls (yet?).  One possibility is to pass
+        // them as an
+        // array for the interpreter and as all arguments for compilation, but I'd
+        // rather avoid
+        // having two different calling conventions for the same thing.  Plus, this
+        // would
+        // prevent us from having two OSR exits point to the same OSR entry; not
+        // something that
         // we're doing right now but something that would be nice in the future.
 
-        llvm::Value* arg_array = NULL, * malloc_save = NULL;
+        llvm::Value *arg_array = NULL, *malloc_save = NULL;
         if (sorted_symbol_table.size() > 3) {
             // Leave in the ability to use malloc but I guess don't use it.
             // Maybe if there are a ton of live variables it'd be nice to have them be
-            // heap-allocated, or if we don't immediately return the result of the OSR?
+            // heap-allocated, or if we don't immediately return the result of the
+            // OSR?
             bool use_malloc = false;
             if (use_malloc) {
                 llvm::Value* n_bytes = getConstantInt((sorted_symbol_table.size() - 3) * sizeof(Box*), g.i64);
@@ -2210,7 +2251,8 @@ private:
                 arg_array = emitter.getBuilder()->CreateBitCast(malloc_save, g.llvm_value_type_ptr->getPointerTo());
             } else {
                 llvm::Value* n_varargs = llvm::ConstantInt::get(g.i64, sorted_symbol_table.size() - 3, false);
-                // TODO we have a number of allocas with non-overlapping lifetimes, that end up
+                // TODO we have a number of allocas with non-overlapping lifetimes, that
+                // end up
                 // being redundant.
                 arg_array = new llvm::AllocaInst(g.llvm_value_type_ptr, n_varargs, "",
                                                  irstate->getLLVMFunction()->getEntryBlock().getFirstInsertionPt());
@@ -2221,7 +2263,8 @@ private:
         for (const auto& p : sorted_symbol_table) {
             arg_num++;
 
-            // This line can never get hit right now since we unnecessarily force every variable to be concrete
+            // This line can never get hit right now since we unnecessarily force
+            // every variable to be concrete
             // for a loop, since we generate all potential phis:
             ASSERT(p.second->getType() == p.second->getConcreteType(), "trying to pass through %s\n",
                    p.second->getType()->debugName().c_str());
@@ -2233,7 +2276,8 @@ private:
             assert(var->getType() != BOXED_FLOAT
                    && "should probably unbox it, but why is it boxed in the first place?");
 
-            // This line can never get hit right now for the same reason that the variables must already be
+            // This line can never get hit right now for the same reason that the
+            // variables must already be
             // concrete,
             // because we're over-generating phis.
             ASSERT(var->isGrabbed(), "%s", p.first.c_str());
@@ -2250,12 +2294,14 @@ private:
                 if (var->getType() == INT || var->getType() == BOOL) {
                     val = emitter.getBuilder()->CreateIntToPtr(val, g.llvm_value_type_ptr);
                 } else if (var->getType() == FLOAT) {
-                    // val = emitter.getBuilder()->CreateBitCast(val, g.llvm_value_type_ptr);
+                    // val = emitter.getBuilder()->CreateBitCast(val,
+                    // g.llvm_value_type_ptr);
                     ptr = emitter.getBuilder()->CreateBitCast(ptr, g.double_->getPointerTo());
                 } else if (var->getType() == GENERATOR) {
                     ptr = emitter.getBuilder()->CreateBitCast(ptr, g.llvm_generator_type_ptr->getPointerTo());
                 } else if (var->getType() == UNDEF) {
-                    // TODO if there are any undef variables, we're in 'unreachable' territory.
+                    // TODO if there are any undef variables, we're in 'unreachable'
+                    // territory.
                     // Do we even need to generate any of this code?
 
                     // Currently we represent 'undef's as 'i16 undef'
@@ -2324,7 +2370,8 @@ private:
     }
 
     void doRaise(AST_Raise* node, const UnwindInfo& unw_info) {
-        // It looks like ommitting the second and third arguments are equivalent to passing None,
+        // It looks like ommitting the second and third arguments are equivalent to
+        // passing None,
         // but ommitting the first argument is *not* the same as passing None.
 
         ExceptionStyle target_exception_style;
@@ -2338,7 +2385,8 @@ private:
             assert(!node->arg1);
             assert(!node->arg2);
 
-            llvm::Value* exc_info = emitter.getBuilder()->CreateConstInBoundsGEP2_32(irstate->getFrameInfoVar(), 0, 0);
+            llvm::Value* exc_info
+                = emitter.getBuilder()->CreateConstInBoundsGEP2_32(nullptr, irstate->getFrameInfoVar(), 0, 0);
             if (target_exception_style == CAPI) {
                 emitter.createCall(unw_info, g.funcs.raise0_capi, exc_info, CAPI);
                 emitter.checkAndPropagateCapiException(unw_info, getNullPtr(g.llvm_value_type_ptr),
@@ -2467,7 +2515,8 @@ private:
     }
 
     bool allowableFakeEndingSymbol(InternedString name) {
-        // TODO this would be a great place to be able to use interned versions of the static names...
+        // TODO this would be a great place to be able to use interned versions of
+        // the static names...
         return isIsDefinedName(name.s()) || name.s() == PASSED_CLOSURE_NAME || name.s() == CREATED_CLOSURE_NAME
                || name.s() == PASSED_GENERATOR_NAME;
     }
@@ -2487,11 +2536,13 @@ private:
             if (allowableFakeEndingSymbol(p.first))
                 continue;
 
-            // ASSERT(p.first[0] != '!' || isIsDefinedName(p.first), "left a fake variable in the real
+            // ASSERT(p.first[0] != '!' || isIsDefinedName(p.first), "left a fake
+            // variable in the real
             // symbol table? '%s'", p.first.c_str());
 
             if (!irstate->getLiveness()->isLiveAtEnd(p.first, myblock)) {
-                // printf("%s dead at end of %d; grabbed = %d, %d vrefs\n", p.first.c_str(), myblock->idx,
+                // printf("%s dead at end of %d; grabbed = %d, %d vrefs\n",
+                // p.first.c_str(), myblock->idx,
                 //        p.second->isGrabbed(), p.second->getVrefs());
 
                 p.second->decvref(emitter);
@@ -2501,18 +2552,22 @@ private:
                 assert(scope_info->getScopeTypeOfName(p.first) != ScopeInfo::VarScopeType::GLOBAL);
                 ConcreteCompilerType* phi_type = types->getTypeAtBlockEnd(p.first, myblock);
                 // printf("Converting %s from %s to %s\n", p.first.c_str(),
-                // p.second->getType()->debugName().c_str(), phi_type->debugName().c_str());
+                // p.second->getType()->debugName().c_str(),
+                // phi_type->debugName().c_str());
                 // printf("have to convert %s from %s to %s\n", p.first.c_str(),
-                // p.second->getType()->debugName().c_str(), phi_type->debugName().c_str());
+                // p.second->getType()->debugName().c_str(),
+                // phi_type->debugName().c_str());
                 ConcreteCompilerVariable* v = p.second->makeConverted(emitter, phi_type);
                 p.second->decvref(emitter);
                 symbol_table[p.first] = v->split(emitter);
             } else {
 #ifndef NDEBUG
                 if (myblock->successors.size()) {
-                    // TODO getTypeAtBlockEnd will automatically convert up to the concrete type, which we don't
+                    // TODO getTypeAtBlockEnd will automatically convert up to the
+                    // concrete type, which we don't
                     // want
-                    // here, but this is just for debugging so I guess let it happen for now:
+                    // here, but this is just for debugging so I guess let it happen for
+                    // now:
                     ConcreteCompilerType* ending_type = types->getTypeAtBlockEnd(p.first, myblock);
                     ASSERT(p.second->canConvertTo(ending_type), "%s is supposed to be %s, but somehow is %s",
                            p.first.c_str(), ending_type->debugName().c_str(), p.second->getType()->debugName().c_str());
@@ -2585,7 +2640,8 @@ public:
         pp->addFrameVar("!current_stmt", INT);
 
         if (ENABLE_FRAME_INTROSPECTION) {
-            // TODO: don't need to use a sorted symbol table if we're explicitly recording the names!
+            // TODO: don't need to use a sorted symbol table if we're explicitly
+            // recording the names!
             // nice for debugging though.
             typedef std::pair<InternedString, CompilerVariable*> Entry;
             std::vector<Entry> sorted_symbol_table(symbol_table.begin(), symbol_table.end());
@@ -2609,14 +2665,16 @@ public:
             str += "|";
         }
         llvm::Constant* frame_info = llvm::ConstantDataArray::getString(g.context, str);
-        stackmap_args.insert(stackmap_args.begin()+initial_args, frame_info);
+        stackmap_args.insert(stackmap_args.begin() + initial_args, frame_info);
     }
 
     EndingState getEndingSymbolTable() override {
         assert(state == FINISHED || state == DEAD);
 
-        // for (SymbolTable::iterator it = symbol_table.begin(); it != symbol_table.end(); ++it) {
-        // printf("%s %p %d\n", it->first.c_str(), it->second, it->second->getVrefs());
+        // for (SymbolTable::iterator it = symbol_table.begin(); it !=
+        // symbol_table.end(); ++it) {
+        // printf("%s %p %d\n", it->first.c_str(), it->second,
+        // it->second->getVrefs());
         //}
 
         SourceInfo* source = irstate->getSourceInfo();
@@ -2635,7 +2693,8 @@ public:
             symbol_table.clear();
             return EndingState(st, phi_st, curblock, outgoing_exc_state);
         } else if (myblock->successors.size() > 1) {
-            // Since there are no critical edges, all successors come directly from this node,
+            // Since there are no critical edges, all successors come directly from
+            // this node,
             // so there won't be any required phis.
             return EndingState(st, phi_st, curblock, outgoing_exc_state);
         }
@@ -2651,7 +2710,8 @@ public:
         }
 
         // We have one successor, but they have more than one predecessor.
-        // We're going to sort out which symbols need to go in phi_st and which belong inst.
+        // We're going to sort out which symbols need to go in phi_st and which
+        // belong inst.
         for (SymbolTable::iterator it = st->begin(); it != st->end();) {
             if (allowableFakeEndingSymbol(it->first) || irstate->getPhis()->isRequiredAfter(it->first, myblock)) {
                 ASSERT(it->second->isGrabbed(), "%s", it->first.c_str());
@@ -2672,8 +2732,10 @@ public:
                 } else {
                     ending_type = types->getTypeAtBlockEnd(it->first, myblock);
                 }
-                //(*phi_st)[it->first] = it->second->makeConverted(emitter, it->second->getConcreteType());
-                // printf("%s %p %d\n", it->first.c_str(), it->second, it->second->getVrefs());
+                //(*phi_st)[it->first] = it->second->makeConverted(emitter,
+                // it->second->getConcreteType());
+                // printf("%s %p %d\n", it->first.c_str(), it->second,
+                // it->second->getVrefs());
                 (*phi_st)[it->first] = it->second->split(emitter)->makeConverted(emitter, ending_type);
                 it = st->erase(it);
             } else {
@@ -2699,9 +2761,11 @@ public:
         assert(st);
         DupCache cache;
         for (SymbolTable::iterator it = st->begin(); it != st->end(); ++it) {
-            // printf("Copying in %s: %p, %d\n", it->first.c_str(), it->second, it->second->getVrefs());
+            // printf("Copying in %s: %p, %d\n", it->first.c_str(), it->second,
+            // it->second->getVrefs());
             symbol_table[it->first] = it->second->dup(cache);
-            // printf("got: %p, %d\n", symbol_table[it->first], symbol_table[it->first]->getVrefs());
+            // printf("got: %p, %d\n", symbol_table[it->first],
+            // symbol_table[it->first]->getVrefs());
         }
     }
 
@@ -2843,15 +2907,20 @@ public:
     }
 
     void doSafePoint(AST_stmt* next_statement) override {
-        // Unwind info is always needed in allowGLReadPreemption if it has any chance of
+        // Unwind info is always needed in allowGLReadPreemption if it has any
+        // chance of
         // running arbitrary code like finalizers.
         emitter.createCall(UnwindInfo(next_statement, NULL), g.funcs.allowGLReadPreemption);
     }
 
-    // Create a (or reuse an existing) block that will catch a CAPI exception, and then forward
-    // it to the "final_dest" block.  ie final_dest is a block corresponding to the IR level
-    // LANDINGPAD, and this function will create a helper block that fetches the exception.
-    // As a special-case, a NULL value for final_dest means that this helper block should
+    // Create a (or reuse an existing) block that will catch a CAPI exception, and
+    // then forward
+    // it to the "final_dest" block.  ie final_dest is a block corresponding to
+    // the IR level
+    // LANDINGPAD, and this function will create a helper block that fetches the
+    // exception.
+    // As a special-case, a NULL value for final_dest means that this helper block
+    // should
     // instead propagate the exception out of the function.
     llvm::BasicBlock* getCAPIExcDest(llvm::BasicBlock* from_block, llvm::BasicBlock* final_dest,
                                      AST_stmt* current_stmt) override {
@@ -2889,7 +2958,8 @@ public:
                     = new llvm::AllocaInst(g.llvm_value_type_ptr, getConstantInt(1, g.i64), "exc_traceback",
                                            irstate->getLLVMFunction()->getEntryBlock().getFirstInsertionPt());
                 emitter.getBuilder()->CreateCall3(g.funcs.PyErr_Fetch, exc_type_ptr, exc_value_ptr, exc_traceback_ptr);
-                // TODO: I think we should be doing this on a python raise() or when we enter a python catch:
+                // TODO: I think we should be doing this on a python raise() or when we
+                // enter a python catch:
                 emitter.getBuilder()->CreateCall3(g.funcs.PyErr_NormalizeException, exc_type_ptr, exc_value_ptr,
                                                   exc_traceback_ptr);
                 llvm::Value* exc_type = emitter.getBuilder()->CreateLoad(exc_type_ptr);
@@ -2909,7 +2979,6 @@ public:
 
         assert(capi_exc_dest);
         assert(phi_node);
-
 
         phi_node->addIncoming(embedRelocatablePtr(current_stmt, g.llvm_aststmt_type_ptr), from_block);
 
@@ -2948,10 +3017,12 @@ public:
             = emitter.getBuilder()->CreateBitCast(excinfo_pointer, g.llvm_excinfo_type->getPointerTo());
 
         auto* builder = emitter.getBuilder();
-        llvm::Value* exc_type = builder->CreateLoad(builder->CreateConstInBoundsGEP2_32(excinfo_pointer_casted, 0, 0));
-        llvm::Value* exc_value = builder->CreateLoad(builder->CreateConstInBoundsGEP2_32(excinfo_pointer_casted, 0, 1));
+        llvm::Value* exc_type
+            = builder->CreateLoad(builder->CreateConstInBoundsGEP2_32(nullptr, excinfo_pointer_casted, 0, 0));
+        llvm::Value* exc_value
+            = builder->CreateLoad(builder->CreateConstInBoundsGEP2_32(nullptr, excinfo_pointer_casted, 0, 1));
         llvm::Value* exc_traceback
-            = builder->CreateLoad(builder->CreateConstInBoundsGEP2_32(excinfo_pointer_casted, 0, 2));
+            = builder->CreateLoad(builder->CreateConstInBoundsGEP2_32(nullptr, excinfo_pointer_casted, 0, 2));
 
         if (final_dest) {
             // Catch the exception and forward to final_dest:
@@ -2963,8 +3034,10 @@ public:
             builder->CreateBr(final_dest);
         } else {
             // Propagate the exception out of the function.
-            // We shouldn't be hitting this case if the current function is CXX-style; then we should have
-            // just not created an Invoke and let the exception machinery propagate it for us.
+            // We shouldn't be hitting this case if the current function is CXX-style;
+            // then we should have
+            // just not created an Invoke and let the exception machinery propagate it
+            // for us.
             assert(irstate->getExceptionStyle() == CAPI);
             builder->CreateCall3(g.funcs.PyErr_Restore, exc_type, exc_value, exc_traceback);
             builder->CreateRet(getNullPtr(g.llvm_value_type_ptr));

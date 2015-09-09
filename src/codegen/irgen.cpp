@@ -20,6 +20,7 @@
 #include <stdint.h>
 
 #include "llvm/Analysis/Passes.h"
+#include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/IR/DIBuilder.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
@@ -61,15 +62,18 @@ namespace pyston {
 
 typedef std::unordered_set<CFGBlock*> BlockSet;
 
-// This is where you can add a hook for any instruction added through the IRBuilder.
-// It's currently not doing any hooking; hopefully there's not too much overhead from this.
+// This is where you can add a hook for any instruction added through the
+// IRBuilder.
+// It's currently not doing any hooking; hopefully there's not too much overhead
+// from this.
 void MyInserter::InsertHelper(llvm::Instruction* I, const llvm::Twine& Name, llvm::BasicBlock* BB,
                               llvm::BasicBlock::iterator InsertPt) const {
     llvm::IRBuilderDefaultInserter<true>::InsertHelper(I, Name, BB, InsertPt);
 }
 
 static void optimizeIR(llvm::Function* f, EffortLevel effort) {
-    // TODO maybe should do some simple passes (ex: gvn?) if effort level isn't maximal?
+    // TODO maybe should do some simple passes (ex: gvn?) if effort level isn't
+    // maximal?
     // In general, this function needs a lot of tuning.
     if (effort < EffortLevel::MAXIMAL)
         return;
@@ -82,11 +86,10 @@ static void optimizeIR(llvm::Function* f, EffortLevel effort) {
     llvm::legacy::FunctionPassManager fpm(g.cur_module);
 #endif
 
-
 #if LLVMREV < 217548
     fpm.add(new llvm::DataLayoutPass(*g.tm->getDataLayout()));
 #else
-    fpm.add(new llvm::DataLayoutPass());
+// fpm.add(new llvm::DataLayoutPass());
 #endif
 
     if (ENABLE_PYSTON_PASSES) {
@@ -129,7 +132,8 @@ static void optimizeIR(llvm::Function* f, EffortLevel effort) {
             fpm.add(createConstClassesPass());
         }
 
-        // copied + slightly modified from llvm/lib/Transforms/IPO/PassManagerBuilder.cpp::populateModulePassManager
+        // copied + slightly modified from
+        // llvm/lib/Transforms/IPO/PassManagerBuilder.cpp::populateModulePassManager
         fpm.add(llvm::createEarlyCSEPass());                   // Catch trivial redundancies
         fpm.add(llvm::createJumpThreadingPass());              // Thread jumps.
         fpm.add(llvm::createCorrelatedValuePropagationPass()); // Propagate conditionals
@@ -161,15 +165,16 @@ static void optimizeIR(llvm::Function* f, EffortLevel effort) {
         fpm.add(llvm::createDeadStoreEliminationPass()); // Delete dead stores
 
         fpm.add(llvm::createLoopRerollPass());
-        // fpm.add(llvm::createSLPVectorizerPass());   // Vectorize parallel scalar chains.
-
+        // fpm.add(llvm::createSLPVectorizerPass());   // Vectorize parallel scalar
+        // chains.
 
         fpm.add(llvm::createAggressiveDCEPass());        // Delete dead instructions
         fpm.add(llvm::createCFGSimplificationPass());    // Merge & remove BBs
         fpm.add(llvm::createInstructionCombiningPass()); // Clean up after everything.
 
         // fpm.add(llvm::createBarrierNoopPass());
-        // fpm.add(llvm::createLoopVectorizePass(DisableUnrollLoops, LoopVectorize));
+        // fpm.add(llvm::createLoopVectorizePass(DisableUnrollLoops,
+        // LoopVectorize));
         fpm.add(llvm::createInstructionCombiningPass());
         fpm.add(llvm::createCFGSimplificationPass());
 
@@ -180,8 +185,10 @@ static void optimizeIR(llvm::Function* f, EffortLevel effort) {
             fpm.add(llvm::createCFGSimplificationPass());
             fpm.add(createConstClassesPass());
             fpm.add(createDeadAllocsPass());
-            // fpm.add(llvm::createSCCPPass());                  // Constant prop with SCCP
-            // fpm.add(llvm::createEarlyCSEPass());              // Catch trivial redundancies
+            // fpm.add(llvm::createSCCPPass());                  // Constant prop with
+            // SCCP
+            // fpm.add(llvm::createEarlyCSEPass());              // Catch trivial
+            // redundancies
             // fpm.add(llvm::createInstructionCombiningPass());
             // fpm.add(llvm::createCFGSimplificationPass());
         }
@@ -231,7 +238,8 @@ static std::vector<std::pair<CFGBlock*, CFGBlock*>> computeBlockTraversalOrder(c
         rtn.push_back(std::make_pair(start, (CFGBlock*)NULL));
     }
 
-    // It's important for debugging purposes that the order is deterministic, but the iteration
+    // It's important for debugging purposes that the order is deterministic, but
+    // the iteration
     // over the BlockSet is not:
     std::sort(rtn.begin(), rtn.end(), compareBlockPairs);
 
@@ -265,7 +273,8 @@ static std::vector<std::pair<CFGBlock*, CFGBlock*>> computeBlockTraversalOrder(c
             if (in_queue.count(b))
                 continue;
 
-            // Avoid picking any blocks where we can't add an epilogue to the predecessors
+            // Avoid picking any blocks where we can't add an epilogue to the
+            // predecessors
             if (b->predecessors.size() == 1 && b->predecessors[0]->successors.size() > 1)
                 continue;
 
@@ -381,7 +390,8 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
 
         osr_syms = new ConcreteSymbolTable();
         SymbolTable* initial_syms = new SymbolTable();
-        // llvm::BranchInst::Create(llvm_entry_blocks[entry_descriptor->backedge->target->idx], entry_block);
+        // llvm::BranchInst::Create(llvm_entry_blocks[entry_descriptor->backedge->target->idx],
+        // entry_block);
 
         llvm::BasicBlock* osr_entry_block_end = osr_entry_block;
         osr_unbox_block_end = osr_unbox_block;
@@ -438,7 +448,8 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
             if (from_arg->getType() == g.llvm_frame_info_type->getPointerTo()) {
                 assert(p.first.s() == FRAME_INFO_PTR_NAME);
                 irstate->setFrameInfoArgument(from_arg);
-                // Don't add the frame info to the symbol table since we will store it separately:
+                // Don't add the frame info to the symbol table since we will store it
+                // separately:
                 continue;
             }
 
@@ -454,8 +465,10 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
             ConcreteCompilerVariable* var = new ConcreteCompilerVariable(p.second, from_arg, true);
             (*initial_syms)[p.first] = var;
 
-            // It's possible to OSR into a version of the function with a higher speculation level;
-            // this means that the types of the OSR variables are potentially higher (more unspecialized)
+            // It's possible to OSR into a version of the function with a higher
+            // speculation level;
+            // this means that the types of the OSR variables are potentially higher
+            // (more unspecialized)
             // than what the optimized code expects.
             // So, we have to re-check the speculations and potentially deopt.
             llvm::Value* v = NULL;
@@ -463,8 +476,10 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
                 // good to go
                 v = from_arg;
             } else if (p.second->canConvertTo(phi_type)) {
-                // not sure if/when this happens, but if there's a type mismatch but one we know
-                // can be handled (such as casting from a subclass to a superclass), handle it:
+                // not sure if/when this happens, but if there's a type mismatch but one
+                // we know
+                // can be handled (such as casting from a subclass to a superclass),
+                // handle it:
                 ConcreteCompilerVariable* converted = var->makeConverted(*unbox_emitter, phi_type);
                 v = converted->getValue();
                 delete converted;
@@ -488,14 +503,17 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
         delete initial_syms;
     }
 
-    // In a similar vein, we need to keep track of the exit blocks for each cfg block,
+    // In a similar vein, we need to keep track of the exit blocks for each cfg
+    // block,
     // so that we can construct phi nodes later.
-    // Originally I preallocated these blocks as well, but we can construct the phi's
+    // Originally I preallocated these blocks as well, but we can construct the
+    // phi's
     // after the fact, so we can just record the exit blocks as we go along.
     std::unordered_map<CFGBlock*, llvm::BasicBlock*> llvm_exit_blocks;
 
     ////
-    // Main ir generation: go through each basic block in the CFG and emit the code
+    // Main ir generation: go through each basic block in the CFG and emit the
+    // code
 
     std::unordered_map<CFGBlock*, SymbolTable*> ending_symbol_tables;
     std::unordered_map<CFGBlock*, ConcreteSymbolTable*> phi_ending_symbol_tables;
@@ -510,13 +528,18 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
         initial_block = source->cfg->getStartingBlock();
     }
 
-    // The rest of this code assumes that for each non-entry block that gets evaluated,
-    // at least one of its predecessors has been evaluated already (from which it will
+    // The rest of this code assumes that for each non-entry block that gets
+    // evaluated,
+    // at least one of its predecessors has been evaluated already (from which it
+    // will
     // get type information).
-    // The cfg generation code will generate a cfg such that each block has a predecessor
-    // with a lower index value, so if the entry block is 0 then we can iterate in index
+    // The cfg generation code will generate a cfg such that each block has a
+    // predecessor
+    // with a lower index value, so if the entry block is 0 then we can iterate in
+    // index
     // order.
-    // The entry block doesn't have to be zero, so we have to calculate an allowable order here:
+    // The entry block doesn't have to be zero, so we have to calculate an
+    // allowable order here:
     std::vector<std::pair<CFGBlock*, CFGBlock*>> traversal_order = computeBlockTraversalOrder(blocks, initial_block);
 
     std::unordered_set<CFGBlock*> into_hax;
@@ -575,7 +598,8 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
                     reopt_test, reopt_bb, llvm_entry_blocks[source->cfg->getStartingBlock()], branch_weights);
 
                 emitter->getBuilder()->SetInsertPoint(reopt_bb);
-                // emitter->getBuilder()->CreateCall(g.funcs.my_assert, getConstantInt(0, g.i1));
+                // emitter->getBuilder()->CreateCall(g.funcs.my_assert,
+                // getConstantInt(0, g.i1));
                 llvm::Value* r = emitter->getBuilder()->CreateCall(g.funcs.reoptCompiledFunc,
                                                                    embedRelocatablePtr(cf, g.i8->getPointerTo()));
                 assert(r);
@@ -609,7 +633,8 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
             assert(phis);
 
             for (const auto& p : entry_descriptor->args) {
-                // Don't add the frame info to the symbol table since we will store it separately
+                // Don't add the frame info to the symbol table since we will store it
+                // separately
                 // (we manually added it during the calculation of osr_syms):
                 if (p.first.s() == FRAME_INFO_PTR_NAME)
                     continue;
@@ -618,7 +643,8 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
 
                 ConcreteCompilerType* analyzed_type = getTypeAtBlockStart(types, p.first, block);
 
-                // printf("For %s, given %s, analyzed for %s\n", p.first.c_str(), p.second->debugName().c_str(),
+                // printf("For %s, given %s, analyzed for %s\n", p.first.c_str(),
+                // p.second->debugName().c_str(),
                 //        analyzed_type->debugName().c_str());
 
                 llvm::PHINode* phi = emitter->getBuilder()->CreatePHI(analyzed_type->llvmType(),
@@ -636,7 +662,6 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
                 assert(ending_symbol_tables.count(b2) == 0);
                 into_hax.insert(b2);
             }
-
 
             std::set<InternedString> names;
             for (const auto& s : phi_analysis->getAllRequiredFor(block)) {
@@ -670,14 +695,19 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
             assert(blocks.count(pred));
 
             if (block->predecessors.size() == 1) {
-                // If this block has only one predecessor, it by definition doesn't need any phi nodes.
-                // Assert that the phi_st is empty, and just create the symbol table from the non-phi st:
+                // If this block has only one predecessor, it by definition doesn't need
+                // any phi nodes.
+                // Assert that the phi_st is empty, and just create the symbol table
+                // from the non-phi st:
                 ASSERT(phi_ending_symbol_tables[pred]->size() == 0, "%d %d", block->idx, pred->idx);
                 assert(ending_symbol_tables.count(pred));
 
-                // Filter out any names set by an invoke statement at the end of the previous block, if we're in the
-                // unwind path. This definitely doesn't seem like the most elegant way to do this, but the rest of the
-                // analysis frameworks can't (yet) support the idea of a block flowing differently to its different
+                // Filter out any names set by an invoke statement at the end of the
+                // previous block, if we're in the
+                // unwind path. This definitely doesn't seem like the most elegant way
+                // to do this, but the rest of the
+                // analysis frameworks can't (yet) support the idea of a block flowing
+                // differently to its different
                 // successors.
                 //
                 // There are four kinds of AST statements which can set a name:
@@ -686,13 +716,17 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
                 // - FunctionDef
                 // - Import, ImportFrom
                 //
-                // However, all of these get translated away into Assigns, so we only need to worry about those. Also,
-                // as an invariant, all assigns that can fail assign to a temporary rather than a python name. This
+                // However, all of these get translated away into Assigns, so we only
+                // need to worry about those. Also,
+                // as an invariant, all assigns that can fail assign to a temporary
+                // rather than a python name. This
                 // ensures that we interoperate properly with definedness analysis.
                 //
-                // We only need to do this in the case that we have exactly one predecessor, because:
+                // We only need to do this in the case that we have exactly one
+                // predecessor, because:
                 // - a block ending in an invoke will have multiple successors
-                // - critical edges (block with multiple successors -> block with multiple predecessors)
+                // - critical edges (block with multiple successors -> block with
+                // multiple predecessors)
                 //   are disallowed
 
                 auto pred = block->predecessors[0];
@@ -703,7 +737,8 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
                 if (last_inst->type == AST_TYPE::Invoke && ast_cast<AST_Invoke>(last_inst)->exc_dest == block) {
                     AST_stmt* stmt = ast_cast<AST_Invoke>(last_inst)->stmt;
 
-                    // The CFG pass translates away these statements, so we should never encounter them.
+                    // The CFG pass translates away these statements, so we should never
+                    // encounter them.
                     // If we did, we'd need to remove a name here.
                     assert(stmt->type != AST_TYPE::ClassDef);
                     assert(stmt->type != AST_TYPE::FunctionDef);
@@ -716,9 +751,12 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
                         if (asgn->targets[0]->type == AST_TYPE::Name) {
                             InternedString name = ast_cast<AST_Name>(asgn->targets[0])->id;
                             assert(name.c_str()[0] == '#'); // it must be a temporary
-                            // You might think I need to check whether `name' is being assigned globally or locally,
-                            // since a global assign doesn't affect the symbol table. However, the CFG pass only
-                            // generates invoke-assigns to temporary variables. Just to be sure, we assert:
+                            // You might think I need to check whether `name' is being
+                            // assigned globally or locally,
+                            // since a global assign doesn't affect the symbol table. However,
+                            // the CFG pass only
+                            // generates invoke-assigns to temporary variables. Just to be
+                            // sure, we assert:
                             assert(source->getScopeInfo()->getScopeTypeOfName(name) != ScopeInfo::VarScopeType::GLOBAL);
 
                             // TODO: inefficient
@@ -734,11 +772,13 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
                 if (created_new_sym_table)
                     delete sym_table;
             } else {
-                // With multiple predecessors, the symbol tables at the end of each predecessor should be *exactly* the
+                // With multiple predecessors, the symbol tables at the end of each
+                // predecessor should be *exactly* the
                 // same.
                 // (this should be satisfied by the post-run() code in this function)
 
-                // With multiple predecessors, we have to combine the non-phi and phi symbol tables.
+                // With multiple predecessors, we have to combine the non-phi and phi
+                // symbol tables.
                 // Start off with the non-phi ones:
                 generator->copySymbolsFrom(ending_symbol_tables[pred]);
 
@@ -746,7 +786,8 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
                 // And go through and add phi nodes:
                 ConcreteSymbolTable* pred_st = phi_ending_symbol_tables[pred];
 
-                // We have to sort the phi table by name in order to a get a deterministic ordering for the JIT object
+                // We have to sort the phi table by name in order to a get a
+                // deterministic ordering for the JIT object
                 // cache.
                 typedef std::pair<InternedString, ConcreteCompilerVariable*> Entry;
                 std::vector<Entry> sorted_pred_st(pred_st->begin(), pred_st->end());
@@ -756,7 +797,8 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
                 for (auto& entry : sorted_pred_st) {
                     InternedString name = entry.first;
                     ConcreteCompilerVariable* cv = entry.second; // incoming CCV from predecessor block
-                    // printf("block %d: adding phi for %s from pred %d\n", block->idx, name.c_str(), pred->idx);
+                    // printf("block %d: adding phi for %s from pred %d\n", block->idx,
+                    // name.c_str(), pred->idx);
                     llvm::PHINode* phi = emitter->getBuilder()->CreatePHI(cv->getType()->llvmType(),
                                                                           block->predecessors.size(), name.s());
                     // emitter->getBuilder()->CreateCall(g.funcs.dump, phi);
@@ -806,9 +848,12 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
 
     ////
     // Phi population.
-    // We don't know the exact ssa values to back-propagate to the phi nodes until we've generated
-    // the relevant IR, so after we have done all of it, go back through and populate the phi nodes.
-    // Also, do some checking to make sure that the phi analysis stuff worked out, and that all blocks
+    // We don't know the exact ssa values to back-propagate to the phi nodes until
+    // we've generated
+    // the relevant IR, so after we have done all of it, go back through and
+    // populate the phi nodes.
+    // Also, do some checking to make sure that the phi analysis stuff worked out,
+    // and that all blocks
     // agreed on what symbols + types they should be propagating for the phis.
     for (CFGBlock* b : source->cfg->blocks) {
         PHITable* phis = created_phis[b];
@@ -818,13 +863,15 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
         bool this_is_osr_entry = (entry_descriptor && b == entry_descriptor->backedge->target);
 
 #ifndef NDEBUG
-        // Check to see that all blocks agree on what symbols + types they should be propagating for phis.
+        // Check to see that all blocks agree on what symbols + types they should be
+        // propagating for phis.
         for (int j = 0; j < b->predecessors.size(); j++) {
             CFGBlock* bpred = b->predecessors[j];
             if (blocks.count(bpred) == 0)
                 continue;
 
-            // printf("(%d %ld) -> (%d %ld)\n", bpred->idx, phi_ending_symbol_tables[bpred]->size(), b->idx,
+            // printf("(%d %ld) -> (%d %ld)\n", bpred->idx,
+            // phi_ending_symbol_tables[bpred]->size(), b->idx,
             // phis->size());
             ASSERT(sameKeyset(phi_ending_symbol_tables[bpred], phis), "%d->%d", bpred->idx, b->idx);
             assert(phi_ending_symbol_tables[bpred]->size() == phis->size());
@@ -835,9 +882,11 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
         }
 #endif // end checking phi agreement.
 
-        // Can't always add the phi incoming value right away, since we may have to create more
+        // Can't always add the phi incoming value right away, since we may have to
+        // create more
         // basic blocks as part of type coercion.
-        // Intsead, just make a record of the phi node, value, and the location of the from-BB,
+        // Intsead, just make a record of the phi node, value, and the location of
+        // the from-BB,
         // which we won't read until after all new BBs have been added.
         std::vector<std::tuple<llvm::PHINode*, llvm::Value*, llvm::BasicBlock*&>> phi_args;
 
@@ -946,14 +995,13 @@ static llvm::MDNode* setupDebugInfo(SourceInfo* source, llvm::Function* f, std::
     std::string dir = "";
     std::string producer = "pyston; git rev " STRINGIFY(GITREV);
 
-    llvm::DIFile file = builder.createFile(fn->s(), dir);
-    llvm::DITypeArray param_types = builder.getOrCreateTypeArray(llvm::None);
-    llvm::DICompositeType func_type = builder.createSubroutineType(file, param_types);
-    llvm::DISubprogram func_info = builder.createFunction(file, f->getName(), f->getName(), file, lineno, func_type,
-                                                          false, true, lineno + 1, 0, true, f);
+    llvm::MDFile* file = builder.createFile(fn->s(), dir);
+    llvm::MDTypeRefArray param_types = builder.getOrCreateTypeArray(llvm::None);
+    llvm::MDSubroutineType* func_type = builder.createSubroutineType(file, param_types);
+    llvm::MDSubprogram* func_info = builder.createFunction(file, f->getName(), f->getName(), file, lineno, func_type,
+                                                           false, true, lineno + 1, 0, true, f);
 
-    llvm::DICompileUnit compile_unit
-        = builder.createCompileUnit(llvm::dwarf::DW_LANG_Python, fn->s(), dir, producer, true, "", 0);
+    builder.createCompileUnit(llvm::dwarf::DW_LANG_Python, fn->s(), dir, producer, true, "", 0);
 
     builder.finalize();
     return func_info;
@@ -967,7 +1015,8 @@ static std::string getUniqueFunctionName(std::string nameprefix, EffortLevel eff
     os << "_e" << (int)effort;
     if (entry)
         os << "_osr" << entry->backedge->target->idx;
-    // in order to generate a unique id add the number of times we encountered this name to end of the string.
+    // in order to generate a unique id add the number of times we encountered
+    // this name to end of the string.
     auto& times = used_module_names[os.str()];
     os << '_' << ++times;
     return os.str();
@@ -996,13 +1045,12 @@ CompiledFunction* doCompile(CLFunction* clfunc, SourceInfo* source, ParamNames* 
 #elif LLVMREV < 227113
     g.cur_module->setDataLayout(g.tm->getSubtargetImpl()->getDataLayout());
 #else
-    g.cur_module->setDataLayout(g.tm->getDataLayout());
+// g.cur_module->setDataLayout(g.tm->getDataLayout());
 #endif
     // g.engine->addModule(g.cur_module);
 
     ////
     // Initializing the llvm-level structures:
-
 
     std::vector<llvm::Type*> llvm_arg_types;
     if (entry_descriptor == NULL) {
@@ -1031,7 +1079,8 @@ CompiledFunction* doCompile(CLFunction* clfunc, SourceInfo* source, ParamNames* 
         int arg_num = -1;
         for (const auto& p : entry_descriptor->args) {
             arg_num++;
-            // printf("Loading %s: %s\n", p.first.c_str(), p.second->debugName().c_str());
+            // printf("Loading %s: %s\n", p.first.c_str(),
+            // p.second->debugName().c_str());
             if (arg_num < 3)
                 llvm_arg_types.push_back(p.second->llvmType());
             else {
@@ -1046,7 +1095,8 @@ CompiledFunction* doCompile(CLFunction* clfunc, SourceInfo* source, ParamNames* 
 
     // Make sure that the instruction memory keeps the module object alive.
     // TODO: implement this for real
-    gc::registerPermanentRoot(source->parent_module, /* allow_duplicates= */ true);
+    gc::registerPermanentRoot(source->parent_module,
+                              /* allow_duplicates= */ true);
 
     llvm::FunctionType* ft = llvm::FunctionType::get(cf->getReturnType()->llvmType(), llvm_arg_types, false /*vararg*/);
 
@@ -1070,7 +1120,6 @@ CompiledFunction* doCompile(CLFunction* clfunc, SourceInfo* source, ParamNames* 
     else
         types = doTypeAnalysis(source->cfg, *param_names, spec->arg_types, effort, speculation_level,
                                source->getScopeInfo());
-
 
     _t2.split();
 
@@ -1127,7 +1176,5 @@ CompiledFunction* doCompile(CLFunction* clfunc, SourceInfo* source, ParamNames* 
 
     return cf;
 }
-
-
 
 } // namespace pyston

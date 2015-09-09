@@ -83,7 +83,6 @@ private:
                 continue;
             }
 
-
             // Can't call canBeRead after this point:
             chain.seen.insert(cast<Instruction>(user));
 
@@ -161,7 +160,8 @@ private:
 
             Value* new_parent = deriveSimilarly(gep->getPointerOperand(), ancestor, new_ancestor, insert_before, added);
 
-            Instruction* rtn = GetElementPtrInst::Create(new_parent, indices, "t", insert_before);
+            Instruction* rtn
+                = GetElementPtrInst::Create(new_parent->getType(), new_parent, indices, "t", insert_before);
             if (VERBOSITY() >= 2)
                 errs() << "Added: " << *rtn << '\n';
             added.push_back(rtn);
@@ -177,25 +177,29 @@ private:
             return rtn;
         }
 
-
         derived->dump();
         RELEASE_ASSERT(0, "");
     }
 
-    // Given a pointer that we're interested in, and an instruction that could potentially change the value of
-    // that pointer, return a Value that represents what was stored to the pointer.
+    // Given a pointer that we're interested in, and an instruction that could
+    // potentially change the value of
+    // that pointer, return a Value that represents what was stored to the
+    // pointer.
     // If the instruction has no effect on the pointer, returns NULL.
     //
-    // TODO maybe this should take an AliasAnalysis::Location instead of the bare ptr?
+    // TODO maybe this should take an AliasAnalysis::Location instead of the bare
+    // ptr?
     Value* extractLoadValue(Value* ptr, Instruction* inst, ChainInfo& chain) {
-        // We've already determined all of the instructions that are related to this memory access,
-        // so we can just check to see if this instruction is potentially-related to our pointer:
+        // We've already determined all of the instructions that are related to this
+        // memory access,
+        // so we can just check to see if this instruction is potentially-related to
+        // our pointer:
         if (chain.seen.count(inst) == 0)
             return NULL;
 
         AliasAnalysis* aa = &getAnalysis<AliasAnalysis>();
         assert(aa);
-        const DataLayout* dl = &getAnalysis<DataLayoutPass>().getDataLayout();
+        const DataLayout* dl = &inst->getParent()->getModule()->getDataLayout();
         assert(dl);
 
         Type* elt_type = cast<PointerType>(ptr->getType())->getElementType();
@@ -228,7 +232,8 @@ private:
         }
 
         if (LoadInst* li = dyn_cast<LoadInst>(inst)) {
-            // TODO: could optimize this by just returning this load, which would (hopefully)
+            // TODO: could optimize this by just returning this load, which would
+            // (hopefully)
             // just end up doing the scanning once):
             // if (li->getPointerOperand() == ptr) {
             // return li;
@@ -249,10 +254,12 @@ private:
                 assert(0 && "unimplemented");
             }
 
-            // Right now we only handle the case that `ptr` is directly derived from phi.
+            // Right now we only handle the case that `ptr` is directly derived from
+            // phi.
             // In this case, push the derivation up into the previous blocks, and then
             // get a phi of the resolved loads.
-            // Note that it's possible that some of the incoming branches don't come from the
+            // Note that it's possible that some of the incoming branches don't come
+            // from the
             // allocation that we're trying to get rid of; in this case, just leave
             // those branches as unresolved loads.
             assert(isDerivedFrom(ptr, phi));
@@ -286,7 +293,8 @@ private:
                         added[i]->eraseFromParent();
                     }
                 }
-                // errs() << "Got " << *prev_resolved << " for " << *prev_derived << '\n';
+                // errs() << "Got " << *prev_resolved << " for " << *prev_derived <<
+                // '\n';
                 load_phi->addIncoming(prev_resolved, prev_bb);
             }
             return load_phi;
@@ -308,7 +316,8 @@ private:
         RELEASE_ASSERT(0, "");
     }
 
-    // Extract a Value corresponding to the value of this pointer, potentially traversing the CFG.
+    // Extract a Value corresponding to the value of this pointer, potentially
+    // traversing the CFG.
     // Starts looking a the end of this BB and working backwards.
     Value* getLoadValFrom(Value* ptr, BasicBlock* bb, std::unordered_map<BasicBlock*, Value*>& seen, ChainInfo& chain) {
         // No range version of this for now:
@@ -322,7 +331,8 @@ private:
         return getLoadValFromPrevious(ptr, bb, seen, chain);
     }
 
-    // Extract a Value corresponding to the value of this pointer, potentially traversing the CFG.
+    // Extract a Value corresponding to the value of this pointer, potentially
+    // traversing the CFG.
     // Starts looking a the beginning of this BB, ie at its predecessors
     Value* getLoadValFromPrevious(Value* ptr, BasicBlock* bb, std::unordered_map<BasicBlock*, Value*>& seen,
                                   ChainInfo& chain) {
@@ -372,7 +382,8 @@ private:
     //
     // Maybe this could be implemented in terms of AA + GVN?
     // This is pretty similar, but with slightly different assumptions about the
-    // memory model so I'm not sure it's a natural fit (not saying it can't be done)>
+    // memory model so I'm not sure it's a natural fit (not saying it can't be
+    // done)>
     void remapLoad(LoadInst* li, ChainInfo& chain) {
         if (VERBOSITY("opt")) {
             // li->getParent()->getParent()->dump();
@@ -418,7 +429,7 @@ public:
     virtual void getAnalysisUsage(AnalysisUsage& info) const {
         info.setPreservesCFG();
         info.addRequiredTransitive<AliasAnalysis>();
-        info.addRequiredTransitive<DataLayoutPass>();
+        // info.addRequiredTransitive<DataLayoutPass>();
     }
 
     virtual bool runOnFunction(Function& F) {

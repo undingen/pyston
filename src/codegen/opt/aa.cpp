@@ -44,6 +44,7 @@ namespace pyston {
 class PystonAA : public ImmutablePass, public AliasAnalysis {
 private:
     int depth;
+    const DataLayout* DL = 0;
 
     void indent() {
         for (int i = 0; i < depth - 1; i++) {
@@ -55,7 +56,11 @@ public:
     static char ID; // Class identification, replacement for typeinfo
     PystonAA() : ImmutablePass(ID), depth(0) { initializePystonAAPass(*PassRegistry::getPassRegistry()); }
 
-    void initializePass() override { AliasAnalysis::InitializeAliasAnalysis(this); }
+    bool doInitialization(Module& M) override {
+        DL = &M.getDataLayout();
+        InitializeAliasAnalysis(this, DL);
+        return true;
+    }
 
     void getAnalysisUsage(AnalysisUsage& AU) const override {
         AliasAnalysis::getAnalysisUsage(AU);
@@ -112,11 +117,11 @@ public:
         }
 
         {
-            const GetElementPtrInst* GIa, *GIb;
+            const GetElementPtrInst *GIa, *GIb;
             GIa = dyn_cast<GetElementPtrInst>(LocA.Ptr);
             GIb = dyn_cast<GetElementPtrInst>(LocB.Ptr);
             if (GIa && GIb) {
-                const Value* baseA, *baseB;
+                const Value *baseA, *baseB;
                 baseA = GIa->getPointerOperand();
                 baseB = GIb->getPointerOperand();
                 assert(baseA);
@@ -141,7 +146,6 @@ public:
 
                 if (bases_alias == MustAlias) {
                     APInt offsetA(64, 0, true), offsetB(64, 0, true);
-                    const DataLayout* DL = getDataLayout();
                     assert(DL);
                     bool accumA = GIa->accumulateConstantOffset(*DL, offsetA);
                     bool accumB = GIb->accumulateConstantOffset(*DL, offsetB);
@@ -242,7 +246,8 @@ public:
         return rtn;
     }
 
-    // There are multiple (overloaded) "getModRefInfo" functions in AliasAnalysis, and apparently
+    // There are multiple (overloaded) "getModRefInfo" functions in AliasAnalysis,
+    // and apparently
     // this means you need to add this line:
     using AliasAnalysis::getModRefInfo;
     ModRefResult getModRefInfo(ImmutableCallSite CS, const Location& Loc) override {
@@ -275,35 +280,40 @@ public:
             return NoModRef;
         }
 
-        /*if (name == "printf" || name == "my_realloc" || name == "print_space_if_necessary" || name == "write") {
-            mask = Ref;
-            bool found_alias = false;
-            for (User::const_op_iterator op_it = CS.arg_begin(), op_end = CS.arg_end(); op_it != op_end; ++op_it) {
-                if (alias(Loc, Location(op_it->get())) != NoAlias) {
-                    found_alias = true;
-                    break;
-                }
+        /*if (name == "printf" || name == "my_realloc" || name ==
+    "print_space_if_necessary" || name == "write") {
+        mask = Ref;
+        bool found_alias = false;
+        for (User::const_op_iterator op_it = CS.arg_begin(), op_end =
+    CS.arg_end(); op_it != op_end; ++op_it) {
+            if (alias(Loc, Location(op_it->get())) != NoAlias) {
+                found_alias = true;
+                break;
             }
-            if (!found_alias)
-                mask = NoModRef;
-        } else if (name == "snprintf" || name == "str_decref" || name == "read" || name == "file_write") {
-            mask = ModRef;
-            bool found_alias = false;
-            for (User::const_op_iterator op_it = CS.arg_begin(), op_end = CS.arg_end(); op_it != op_end; ++op_it) {
-                if (alias(Loc, Location(op_it->get())) != NoAlias) {
-                    //errs() << '\n';
-                    //errs() << *CS.getInstruction() << '\n';
-                    //errs() << **op_it << '\n';
-                    found_alias = true;
-                    break;
-                }
-            }
-            if (!found_alias) {
-                mask = NoModRef;
-            }
-        } else if (name == "my_free" || name == "my_malloc" || name == "close" || name == "int_repr") {
+        }
+        if (!found_alias)
             mask = NoModRef;
-        }*/
+    } else if (name == "snprintf" || name == "str_decref" || name == "read" ||
+    name == "file_write") {
+        mask = ModRef;
+        bool found_alias = false;
+        for (User::const_op_iterator op_it = CS.arg_begin(), op_end =
+    CS.arg_end(); op_it != op_end; ++op_it) {
+            if (alias(Loc, Location(op_it->get())) != NoAlias) {
+                //errs() << '\n';
+                //errs() << *CS.getInstruction() << '\n';
+                //errs() << **op_it << '\n';
+                found_alias = true;
+                break;
+            }
+        }
+        if (!found_alias) {
+            mask = NoModRef;
+        }
+    } else if (name == "my_free" || name == "my_malloc" || name == "close" ||
+    name == "int_repr") {
+        mask = NoModRef;
+    }*/
 
         return ModRefResult(mask & base);
     }

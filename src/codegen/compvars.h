@@ -146,7 +146,8 @@ public:
     virtual CompilerVariable* getitem(IREmitter& emitter, const OpInfo& info, VAR* var, CompilerVariable* v) {
         // Can almost do this, except for error messages + types:
         // static const std::string attr("__getitem__");
-        // return callattr(emitter, info, var, &attr, true, ArgPassSpec(1, 0, 0, 0), {v}, NULL);
+        // return callattr(emitter, info, var, &attr, true, ArgPassSpec(1, 0, 0, 0),
+        // {v}, NULL);
         printf("getitem not defined for %s\n", debugName().c_str());
         abort();
     }
@@ -229,7 +230,8 @@ public:
     }
     void decvrefNodrop() {
         assert(vrefs > 0 && vrefs < (1 << 20));
-        // It'd be nice to print out the type of the variable, but this is all happening
+        // It'd be nice to print out the type of the variable, but this is all
+        // happening
         // after the object got deleted so it's pretty precarious, and the getType()
         // debugging call will probably segfault:
         // ASSERT(vrefs, "%s", getType()->debugName().c_str());
@@ -399,7 +401,8 @@ public:
 };
 
 // template <>
-// inline ConcreteCompilerVariable::ValuedCompilerVariable(ConcreteCompilerType *type, llvm::Value* value, bool grabbed)
+// inline ConcreteCompilerVariable::ValuedCompilerVariable(ConcreteCompilerType
+// *type, llvm::Value* value, bool grabbed)
 // : CompilerVariable(grabbed), type(type), value(value) {
 // assert(value->getType() == type->llvmType());
 //}

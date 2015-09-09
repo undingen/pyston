@@ -72,6 +72,7 @@ void AssemblyLogger::append_comments(llvm::raw_string_ostream& stream, size_t po
 }
 
 std::string AssemblyLogger::finalize_log(uint8_t const* start_addr, uint8_t const* end_addr) const {
+#if 0
     static __thread llvm::MCDisassembler* DisAsm = NULL;
     static __thread llvm::MCInstPrinter* IP = NULL;
 
@@ -91,7 +92,8 @@ std::string AssemblyLogger::finalize_log(uint8_t const* start_addr, uint8_t cons
         const llvm::MCSubtargetInfo* STI = target->createMCSubtargetInfo(triple, CPU, FeaturesStr);
         assert(STI);
         int AsmPrinterVariant = MAI->getAssemblerDialect(); // 0 is ATT, 1 is Intel
-        IP = target->createMCInstPrinter(AsmPrinterVariant, *MAI, *MII, *MRI, *STI);
+        //IP = target->createMCInstPrinter(AsmPrinterVariant, *MAI, *MII, *MRI, *STI);
+        IP = target->createMCInstPrinter(triple, AsmPrinterVariant, *MAI, *MII, *MRI);
         assert(IP);
         llvm::MCObjectFileInfo* MOFI = new llvm::MCObjectFileInfo();
         assert(MOFI);
@@ -99,6 +101,7 @@ std::string AssemblyLogger::finalize_log(uint8_t const* start_addr, uint8_t cons
         assert(Ctx);
         DisAsm = target->createMCDisassembler(*STI, *Ctx);
         assert(DisAsm);
+
     }
 
     std::string result = "";
@@ -123,6 +126,9 @@ std::string AssemblyLogger::finalize_log(uint8_t const* start_addr, uint8_t cons
     }
 
     return stream.str();
+#else
+    RELEASE_ASSERT(0, "not implmented");
+#endif
 }
 }
 }

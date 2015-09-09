@@ -68,7 +68,8 @@ public:
     enum EscapeResult {
         // This pointer has already escaped, so arbitrary code could be modifying it
         Escaped,
-        // This point has not escaped, but will escape later; non-local code can't modify it,
+        // This point has not escaped, but will escape later; non-local code can't
+        // modify it,
         // but might read it later
         WillEscape,
         // This pointer never escapes.
@@ -78,6 +79,5 @@ public:
     EscapeResult escapes(const llvm::Value* ptr, const llvm::Instruction* at_instruction);
 };
 }
-
 
 #endif

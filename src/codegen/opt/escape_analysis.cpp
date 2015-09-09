@@ -49,7 +49,7 @@ EscapeAnalysis::~EscapeAnalysis() {
 
 void EscapeAnalysis::getAnalysisUsage(llvm::AnalysisUsage& info) const {
     info.setPreservesCFG();
-    info.addRequiredTransitive<DataLayoutPass>();
+    // info.addRequiredTransitive<DataLayoutPass>();
 }
 
 bool EscapeAnalysis::runOnFunction(Function& F) {
@@ -121,8 +121,6 @@ bool EscapeAnalysis::runOnFunction(Function& F) {
                         continue;
                     }
 
-
-
                     if (StoreInst* si = dyn_cast<StoreInst>(user)) {
                         if (si->getPointerOperand() == next) {
                         } else {
@@ -140,8 +138,6 @@ bool EscapeAnalysis::runOnFunction(Function& F) {
                         chain->escape_points.insert(dyn_cast<Instruction>(user));
                         continue;
                     }
-
-
 
                     user->dump();
                     RELEASE_ASSERT(0, "");
@@ -178,7 +174,6 @@ bool EscapeAnalysis::runOnFunction(Function& F) {
         }
     }
 
-
     return false;
 }
 
@@ -193,7 +188,8 @@ void EscapeAnalysis::ChainInfo::dump() {
 }
 
 EscapeAnalysis::EscapeResult EscapeAnalysis::escapes(const Value* ptr, const Instruction* at_instruction) {
-    // FIXME the escape analysis either needs to get rerun as appropriate, or not store any
+    // FIXME the escape analysis either needs to get rerun as appropriate, or not
+    // store any
     // data between queries.
     // Disabled for now.
     return Escaped;
@@ -219,7 +215,8 @@ EscapeAnalysis::EscapeResult EscapeAnalysis::escapes(const Value* ptr, const Ins
         return Escaped;
 
     // This pointer escapes at some point in this bb.
-    // If the at_instruction occurs before any of the escape points, then we're fine.
+    // If the at_instruction occurs before any of the escape points, then we're
+    // fine.
     assert(bb_escape == BBPartialEscape);
     for (const Instruction& I : *at_instruction->getParent()) {
         if (chain->escape_points.count(&I))
@@ -230,8 +227,6 @@ EscapeAnalysis::EscapeResult EscapeAnalysis::escapes(const Value* ptr, const Ins
 
     RELEASE_ASSERT(0, "");
 }
-
-
 
 char EscapeAnalysis::ID = 0;
 static RegisterPass<EscapeAnalysis> X("escape_analysis", "Escape analysis", false, true);
