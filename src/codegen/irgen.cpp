@@ -22,6 +22,7 @@
 #include "llvm/Analysis/Passes.h"
 #include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/IR/DIBuilder.h"
+#include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
 #if LLVMREV < 229094
@@ -578,8 +579,11 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
 
                 emitter->getBuilder()->SetInsertPoint(reopt_bb);
                 // emitter->getBuilder()->CreateCall(g.funcs.my_assert, getConstantInt(0, g.i1));
+
+                auto* reopt = irstate->getLLVMFunction()->getParent()->getOrInsertFunction(g.funcs.reoptCompiledFunc->getName(), ((llvm::Function*)g.funcs.reoptCompiledFunc)->getFunctionType());
+
                 llvm::Value* r = emitter->getBuilder()->CreateCall(
-                    g.funcs.reoptCompiledFunc, embedRelocatablePtr(cf, g.i8->getPointerTo(), "cCF"));
+                    reopt, embedRelocatablePtr(cf, g.llvm_cffunction_type_ptr, "cCF"));
                 assert(r);
                 assert(r->getType() == g.i8->getPointerTo());
 

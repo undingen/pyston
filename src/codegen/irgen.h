@@ -102,6 +102,8 @@ public:
 
     virtual Box* getIntConstant(int64_t n) = 0;
     virtual Box* getFloatConstant(double d) = 0;
+
+    virtual llvm::Value* new_func(llvm::Value* f) = 0;
 };
 
 extern const std::string CREATED_CLOSURE_NAME;

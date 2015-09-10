@@ -264,7 +264,7 @@ public:
                             ii->setArgOperand(i, module->getOrInsertGlobal(name, g.i8));
                         }
 #else
-                        assert(0);
+                        //assert(0);
 #endif
                     }
                 }

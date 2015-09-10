@@ -64,7 +64,7 @@ static llvm::Value* getFunc(void* func, const char* name) {
     llvm::Function* f = lookupFunction(name);
     ASSERT(f, "%s", name);
     g.func_addr_registry.registerFunction(name, func, 0, f);
-    return embedConstantPtr(func, f->getType());
+    return f;//embedConstantPtr(func, f->getType());
 }
 
 static llvm::Value* addFunc(void* func, llvm::Type* rtn_type, llvm::ArrayRef<llvm::Type*> arg_types,
@@ -123,6 +123,7 @@ void initGlobalFuncs(GlobalState& g) {
     g.llvm_opaque_type = llvm::StructType::create(g.context, "opaque");
 
     g.llvm_clfunction_type_ptr = lookupFunction("boxCLFunction")->arg_begin()->getType();
+    g.llvm_cffunction_type_ptr = lookupFunction("reoptCompiledFunc")->arg_begin()->getType();
     g.llvm_module_type_ptr = g.stdlib_module->getTypeByName("class.pyston::BoxedModule")->getPointerTo();
     assert(g.llvm_module_type_ptr);
     g.llvm_bool_type_ptr = lookupFunction("boxBool")->getReturnType();
@@ -307,7 +308,7 @@ void initGlobalFuncs(GlobalState& g) {
         (void*)callattrCapi, g.llvm_value_type_ptr, g.llvm_value_type_ptr, g.llvm_boxedstring_type_ptr, g.i64,
         g.llvm_value_type_ptr, g.llvm_value_type_ptr, g.llvm_value_type_ptr, g.llvm_value_type_ptr->getPointerTo());
 
-    g.funcs.reoptCompiledFunc = addFunc((void*)reoptCompiledFunc, g.i8_ptr, g.i8_ptr);
+    g.funcs.reoptCompiledFunc = lookupFunction("reoptCompiledFunc");//getFunc((void*)reoptCompiledFunc, "reoptCompiledFunc");//addFunc((void*)reoptCompiledFunc, g.i8_ptr, g.i8_ptr);
     g.funcs.compilePartialFunc = addFunc((void*)compilePartialFunc, g.i8_ptr, g.i8_ptr);
 
     g.funcs.__cxa_end_catch = addFunc((void*)__cxa_end_catch, g.void_);

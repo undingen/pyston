@@ -18,6 +18,7 @@
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/IR/Verifier.h"
 
 #include "analysis/function_analysis.h"
 #include "analysis/scoping_analysis.h"
@@ -153,6 +154,9 @@ static void compileIR(CompiledFunction* cf, EffortLevel effort) {
 
     {
         Timer _t("to jit the IR");
+
+        assert(!llvm::verifyModule(*cf->func->getParent(), &llvm::outs()));
+
 #if LLVMREV < 215967
         g.engine->addModule(cf->func->getParent());
 #else
@@ -279,7 +283,7 @@ CompiledFunction* compileFunction(CLFunction* f, FunctionSpecialization* spec, E
         printf("cache hit\n");
         auto f = llvm::MemoryBuffer::getFile(cache_file.str());
         llvm::ErrorOr<llvm::Module*> e = llvm::parseBitcodeFile((*f)->getMemBufferRef(), g.context);
-        (*e)->dump();
+        //(*e)->dump();
 
         g.cur_module = *e;
         llvm::Function* func = NULL;
@@ -302,6 +306,7 @@ CompiledFunction* compileFunction(CLFunction* f, FunctionSpecialization* spec, E
         setRelocatableSym("cCF", cf);
         setRelocatableSym("cParentModule", source->parent_module);
         setRelocatableSym("cNone", None);
+        g.cur_module = NULL;
     } else {
         cf = doCompile(f, source, &f->param_names, entry_descriptor, effort, exception_style, spec, name->s());
     }

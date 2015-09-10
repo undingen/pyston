@@ -17,6 +17,8 @@
 #include <memory>
 #include <unordered_map>
 
+#include "llvm/ADT/StringSwitch.h"
+
 #include "asm_writing/icinfo.h"
 #include "asm_writing/rewriter.h"
 #include "codegen/compvars.h"
@@ -41,8 +43,6 @@ int ICSetupInfo::totalSize() const {
     }
     return num_slots * slot_size + call_size;
 }
-
-static std::vector<std::pair<PatchpointInfo*, void* /* addr of func to call */>> new_patchpoints;
 
 ICSetupInfo* ICSetupInfo::initialize(bool has_return_value, int num_slots, int slot_size, ICType type,
                                      TypeRecorder* type_recorder) {
@@ -103,8 +103,9 @@ void PatchpointInfo::parseLocationMap(StackMap::Record* r, LocationMap* map) {
                                                        .locations = std::move(locations) }));
 
         cur_arg += num_args;
+
     }
-    assert(cur_arg - frameStackmapArgsStart() == numFrameStackmapArgs());
+    assert(cur_arg - frameStackmapArgsStart() == numFrameStackmapArgs() -1);
 }
 
 static int extractScratchOffset(PatchpointInfo* pp, StackMap::Record* r) {
@@ -158,8 +159,12 @@ void processStackmap(CompiledFunction* cf, StackMap* stackmap) {
         int stack_size = stack_size_record.stack_size;
 
 
-        RELEASE_ASSERT(new_patchpoints.size() > r->id, "");
-        PatchpointInfo* pp = new_patchpoints[r->id].first;
+        std::vector<StackMap::Record::Location> locations(r->locations.begin(), r->locations.end());
+
+        auto& f = r->locations[r->locations.size()-1];
+        assert(f.type == StackMap::Record::Location::ConstIndex);
+        char* c = (char*)stackmap->constants[f.offset];
+        PatchpointInfo* pp = PatchpointInfo::create(cf, c);
         assert(pp);
 
         if (VERBOSITY() >= 2) {
@@ -264,15 +269,6 @@ void processStackmap(CompiledFunction* cf, StackMap* stackmap) {
         // TODO: unsafe.  hard to use a unique_ptr here though.
         cf->ics.push_back(icinfo.release());
     }
-
-    for (auto& e : new_patchpoints) {
-        PatchpointInfo* pp = e.first;
-        const ICSetupInfo* ic = pp->getICInfo();
-        if (ic)
-            delete ic;
-        delete pp;
-    }
-    new_patchpoints.clear();
 }
 
 PatchpointInfo* PatchpointInfo::create(CompiledFunction* parent_cf, const ICSetupInfo* icinfo, int num_ic_stackmap_args,
@@ -281,14 +277,32 @@ PatchpointInfo* PatchpointInfo::create(CompiledFunction* parent_cf, const ICSetu
         assert(num_ic_stackmap_args == 0);
 
     auto* r = new PatchpointInfo(parent_cf, icinfo, num_ic_stackmap_args);
-    r->id = new_patchpoints.size();
-    new_patchpoints.push_back(std::make_pair(r, func_addr));
+    //r->id = new_patchpoints.size();
+    //new_patchpoints.push_back(std::make_pair(r, func_addr));
     return r;
 }
 
-void* PatchpointInfo::getSlowpathAddr(unsigned int pp_id) {
-    RELEASE_ASSERT(pp_id < new_patchpoints.size(), "");
-    return new_patchpoints[pp_id].second;
+PatchpointInfo* PatchpointInfo::create(CompiledFunction* parent_cf, llvm::StringRef frame_str) {
+    llvm::SmallVector<llvm::StringRef, 16> v;
+    frame_str.split(v, "|", -1, false);
+
+    auto* r = new PatchpointInfo(parent_cf, 0, 0);
+    for (llvm::StringRef s : v) {
+        llvm::SmallVector<llvm::StringRef, 2> v2;
+        s.split(v2, ":", -1, false);
+        assert(v2.size() == 2);
+        printf("%s %s\n", v2[0].str().c_str(), v2[1].str().c_str());
+
+        CompilerType* type = llvm::StringSwitch<CompilerType*>(v2[1])
+                .Case("i64", INT)
+                .Case("AnyBox", UNKNOWN)
+                .Case("bool", BOOL)
+                .Default(0);
+        assert(type);
+        r->addFrameVar(v2[0], type);
+    }
+    r->setNumFrameArgs(v.size() + 2);
+    return r;
 }
 
 ICSetupInfo* createGenericIC(TypeRecorder* type_recorder, bool has_return_value, int size) {

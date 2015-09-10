@@ -797,7 +797,7 @@ ConcreteCompilerVariable* UnknownType::hasnext(IREmitter& emitter, const OpInfo&
         llvm::Value* uncasted = emitter.createIC(pp, (void*)pyston::hasnext, llvm_args, info.unw_info);
         rtn_val = emitter.getBuilder()->CreateTrunc(uncasted, g.i1);
     } else {
-        rtn_val = emitter.createCall(info.unw_info, g.funcs.hasnext, var->getValue());
+        rtn_val = emitter.createCall(info.unw_info, emitter.new_func(g.funcs.hasnext), var->getValue());
     }
     return boolFromI1(emitter, rtn_val);
 }
@@ -1053,7 +1053,7 @@ public:
                 boxed = emitter.getBuilder()->CreateCall(g.funcs.boxInt, var->getValue());
             }
             */
-            boxed = emitter.getBuilder()->CreateCall(g.funcs.boxInt, var->getValue());
+            boxed = emitter.getBuilder()->CreateCall(emitter.new_func(g.funcs.boxInt), var->getValue());
             return new ConcreteCompilerVariable(other_type, boxed, true);
         } else {
             printf("Don't know how to convert i64 to %s\n", other_type->debugName().c_str());

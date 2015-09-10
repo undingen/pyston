@@ -123,6 +123,7 @@ void force() {
     FORCE(runtimeCallCapi);
     FORCE(callattr);
     FORCE(callattrCapi);
+    FORCE(reoptCompiledFunc);
 
     FORCE(raise0);
     FORCE(raise0_capi);

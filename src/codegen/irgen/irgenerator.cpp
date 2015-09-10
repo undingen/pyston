@@ -327,7 +327,7 @@ private:
                     func_addr = (void*)llvm::cast<llvm::ConstantInt>(operand)->getZExtValue();
             }
         }
-        assert(func_addr);
+        //assert(func_addr);
 
         PatchpointInfo* info = PatchpointInfo::create(currentFunction(), pp, ic_stackmap_args.size(), func_addr);
 
@@ -385,6 +385,10 @@ public:
 
         builder->setEmitter(this);
         builder->SetInsertPoint(curblock);
+    }
+
+    llvm::Value* new_func(llvm::Value* f) {
+        return irstate->getLLVMFunction()->getParent()->getOrInsertFunction(f->getName(), ((llvm::Function*)f)->getFunctionType());
     }
 
     IRBuilder* getBuilder() override { return &*builder; }
@@ -1521,17 +1525,17 @@ private:
 
     ConcreteCompilerVariable* unboxVar(ConcreteCompilerType* t, llvm::Value* v, bool grabbed) {
         if (t == BOXED_INT) {
-            llvm::Value* unboxed = emitter.getBuilder()->CreateCall(g.funcs.unboxInt, v);
+            llvm::Value* unboxed = emitter.getBuilder()->CreateCall(new_func(g.funcs.unboxInt), v);
             ConcreteCompilerVariable* rtn = new ConcreteCompilerVariable(INT, unboxed, true);
             return rtn;
         }
         if (t == BOXED_FLOAT) {
-            llvm::Value* unboxed = emitter.getBuilder()->CreateCall(g.funcs.unboxFloat, v);
+            llvm::Value* unboxed = emitter.getBuilder()->CreateCall(new_func(g.funcs.unboxFloat), v);
             ConcreteCompilerVariable* rtn = new ConcreteCompilerVariable(FLOAT, unboxed, true);
             return rtn;
         }
         if (t == BOXED_BOOL) {
-            llvm::Value* unboxed = emitter.getBuilder()->CreateCall(g.funcs.unboxBool, v);
+            llvm::Value* unboxed = emitter.getBuilder()->CreateCall(new_func(g.funcs.unboxBool), v);
             return boolFromI1(emitter, unboxed);
         }
         return new ConcreteCompilerVariable(t, v, grabbed);
@@ -2608,6 +2612,18 @@ public:
 
         int num_frame_args = stackmap_args.size() - initial_args;
         pp->setNumFrameArgs(num_frame_args);
+
+        std::string str;
+        for (auto&& v : pp->getFrameVars()) {
+            str += v.name;
+            str += ":";
+            str += v.type->debugName();
+            str += "|";
+        }
+        llvm::Constant* frame_info = llvm::ConstantDataArray::getString(g.context, str);
+        llvm::Type* var_type = frame_info->getType();
+        llvm::GlobalVariable* gv = new llvm::GlobalVariable(*g.cur_module, var_type, true, llvm::GlobalVariable::PrivateLinkage, frame_info);
+        stackmap_args.push_back(gv);
     }
 
     EndingState getEndingSymbolTable() override {
@@ -2840,10 +2856,15 @@ public:
         }
     }
 
+
+    llvm::Value* new_func(llvm::Value* f) {
+        return irstate->getLLVMFunction()->getParent()->getOrInsertFunction(f->getName(), ((llvm::Function*)f)->getFunctionType());
+    }
+
     void doSafePoint(AST_stmt* next_statement) override {
         // Unwind info is always needed in allowGLReadPreemption if it has any chance of
         // running arbitrary code like finalizers.
-        emitter.createCall(UnwindInfo(next_statement, NULL), g.funcs.allowGLReadPreemption);
+        emitter.createCall(UnwindInfo(next_statement, NULL), new_func(g.funcs.allowGLReadPreemption));
     }
 
     // Create a (or reuse an existing) block that will catch a CAPI exception, and then forward
