@@ -435,6 +435,9 @@ public:
         }
 #endif
 
+        callee = new_func(callee);
+
+
         if (ENABLE_FRAME_INTROSPECTION) {
             llvm::Type* rtn_type = llvm::cast<llvm::FunctionType>(llvm::cast<llvm::PointerType>(callee->getType())
                                                                       ->getElementType())->getReturnType();

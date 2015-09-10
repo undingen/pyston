@@ -283,7 +283,7 @@ CompiledFunction* compileFunction(CLFunction* f, FunctionSpecialization* spec, E
         printf("cache hit\n");
         auto f = llvm::MemoryBuffer::getFile(cache_file.str());
         llvm::ErrorOr<llvm::Module*> e = llvm::parseBitcodeFile((*f)->getMemBufferRef(), g.context);
-        //(*e)->dump();
+        (*e)->dump();
 
         g.cur_module = *e;
         llvm::Function* func = NULL;

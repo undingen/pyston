@@ -452,13 +452,13 @@ public:
         llvm::Value* rt_func;
         void* rt_func_addr;
         if (exp_type == BinOp) {
-            rt_func = g.funcs.binop;
+            rt_func = emitter.new_func(g.funcs.binop);
             rt_func_addr = (void*)binop;
         } else if (exp_type == AugBinOp) {
-            rt_func = g.funcs.augbinop;
+            rt_func = emitter.new_func(g.funcs.augbinop);
             rt_func_addr = (void*)augbinop;
         } else {
-            rt_func = g.funcs.compare;
+            rt_func = emitter.new_func(g.funcs.compare);
             rt_func_addr = (void*)compare;
         }
 
@@ -498,7 +498,7 @@ public:
     }
 
     std::vector<CompilerVariable*> unpack(IREmitter& emitter, const OpInfo& info, VAR* var, int num_into) override {
-        llvm::Value* unpacked = emitter.createCall2(info.unw_info, g.funcs.unpackIntoArray, var->getValue(),
+        llvm::Value* unpacked = emitter.createCall2(info.unw_info, emitter.new_func(g.funcs.unpackIntoArray), var->getValue(),
                                                     getConstantInt(num_into, g.i64));
         assert(unpacked->getType() == g.llvm_value_type_ptr->getPointerTo());
 
@@ -754,7 +754,7 @@ ConcreteCompilerVariable* UnknownType::nonzero(IREmitter& emitter, const OpInfo&
         llvm::Value* uncasted = emitter.createIC(pp, (void*)pyston::nonzero, llvm_args, info.unw_info);
         rtn_val = emitter.getBuilder()->CreateTrunc(uncasted, g.i1);
     } else {
-        rtn_val = emitter.createCall(info.unw_info, g.funcs.nonzero, var->getValue());
+        rtn_val = emitter.createCall(info.unw_info, emitter.new_func(g.funcs.nonzero), var->getValue());
     }
     return boolFromI1(emitter, rtn_val);
 }
