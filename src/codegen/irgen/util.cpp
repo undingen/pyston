@@ -242,6 +242,7 @@ public:
                         ii->setArgOperand(i, llvm::MapValue(op, VMap, flags, type_remapper, this));
                         continue;
                     } else {
+#if LLVMREV < 235483
                         assert(pp_id != -1);
                         void* addr = PatchpointInfo::getSlowpathAddr(pp_id);
 
@@ -262,6 +263,9 @@ public:
                         } else {
                             ii->setArgOperand(i, module->getOrInsertGlobal(name, g.i8));
                         }
+#else
+                        assert(0);
+#endif
                     }
                 }
                 return ii;
