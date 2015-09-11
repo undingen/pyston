@@ -326,7 +326,7 @@ RewriterVar* JitFragmentWriter::emitGetItem(RewriterVar* value, RewriterVar* sli
 RewriterVar* JitFragmentWriter::emitGetLocal(InternedString s, int vreg) {
     assert(vreg >= 0);
     RewriterVar* val_var = vregs_array->getAttr(vreg * 8);
-    addAction([=]() { _emitGetLocal(val_var, s.c_str()); }, { val_var }, ActionType::NORMAL);
+    addAction([=]() { _emitGetLocal(val_var, s.getBox()); }, { val_var }, ActionType::NORMAL);
     return val_var;
 }
 
@@ -700,7 +700,7 @@ RewriterVar* JitFragmentWriter::emitPPCall(void* func_addr, llvm::ArrayRef<Rewri
 #endif
 }
 
-void JitFragmentWriter::assertNameDefinedHelper(const char* id) {
+void JitFragmentWriter::assertNameDefinedHelper(BoxedString* id) {
     assertNameDefined(0, id, UnboundLocalError, true);
 }
 
@@ -768,7 +768,7 @@ Box* JitFragmentWriter::runtimeCallHelper(Box* obj, ArgPassSpec argspec, TypeRec
     return recordType(type_recorder, r);
 }
 
-void JitFragmentWriter::_emitGetLocal(RewriterVar* val_var, const char* name) {
+void JitFragmentWriter::_emitGetLocal(RewriterVar* val_var, BoxedString* name) {
     assembler::Register var_reg = val_var->getInReg();
     assembler->test(var_reg, var_reg);
     val_var->bumpUse();

@@ -172,6 +172,9 @@ void processStackmap(CompiledFunction* cf, StackMap* stackmap) {
                    r->offset + pp->patchpointSize());
         }
 
+        if (!(r->locations.size() == pp->totalStackmapArgs())){
+            printf("%zu %d\n", r->locations.size(), pp->totalStackmapArgs());
+        }
         assert(r->locations.size() == pp->totalStackmapArgs());
 
         int scratch_rbp_offset = extractScratchOffset(pp, r);
@@ -282,27 +285,60 @@ PatchpointInfo* PatchpointInfo::create(CompiledFunction* parent_cf, const ICSetu
     return r;
 }
 
+CompilerType* getTypeFromString(llvm::StringRef type_str, int& num_parsed) {
+    CompilerType* type = llvm::StringSwitch<CompilerType*>(type_str)
+            .Case("i64", INT)
+            .Case("AnyBox", UNKNOWN)
+            .Case("bool", BOOL)
+            .Case("double", FLOAT)
+            .Case("generator", GENERATOR)
+            .Case("NormalType(dict)", DICT)
+            .Case("NormalType(list)", LIST)
+            .Case("NormalType(str)", STR)
+            .Case("NormalType(tuple)", BOXED_TUPLE)
+            .Case("NormalType(function)", typeFromClass(function_cls))
+            .Case("closure", CLOSURE)
+            .Default(0);
+    if (type == 0 && type_str.startswith("tuple(")) {
+        llvm::StringRef vars_str = type_str.substr(strlen("tuple("));
+        vars_str = vars_str.substr(0, vars_str.size()-1);
+        //printf("vars: %s\n", vars_str.str().c_str());
+        llvm::SmallVector<llvm::StringRef, 8> vars;
+        vars_str.split(vars, ",", -1, false);
+
+        std::vector<CompilerType*> types;
+        for (llvm::StringRef tuple_var : vars) {
+            types.push_back(getTypeFromString(tuple_var.trim(), num_parsed));
+        }
+        type = makeTupleType(types);
+    } else if (type == 0 && type_str.startswith("NormalType(")) {
+        type = UNKNOWN;
+        ++num_parsed;
+    } else
+        ++num_parsed;
+    assert(type);
+
+    return type;
+}
+
 PatchpointInfo* PatchpointInfo::create(CompiledFunction* parent_cf, llvm::StringRef frame_str) {
     llvm::SmallVector<llvm::StringRef, 16> v;
     frame_str.split(v, "|", -1, false);
+    int frame_args = 0;
 
     auto* r = new PatchpointInfo(parent_cf, 0, 0);
     for (llvm::StringRef s : v) {
         llvm::SmallVector<llvm::StringRef, 2> v2;
         s.split(v2, ":", -1, false);
         assert(v2.size() == 2);
-        printf("%s %s\n", v2[0].str().c_str(), v2[1].str().c_str());
+        //printf("%s %s\n", v2[0].str().c_str(), v2[1].str().c_str());
 
-        CompilerType* type = llvm::StringSwitch<CompilerType*>(v2[1])
-                .Case("i64", INT)
-                .Case("AnyBox", UNKNOWN)
-                .Case("bool", BOOL)
-                .Case("generator", GENERATOR)
-                .Default(0);
-        assert(type);
+        int num_parsed = 0;
+        CompilerType* type = getTypeFromString(v2[1], num_parsed);
+        frame_args += num_parsed;
         r->addFrameVar(v2[0], type);
     }
-    r->setNumFrameArgs(v.size() + 2);
+    r->setNumFrameArgs(frame_args + 2);
     return r;
 }
 

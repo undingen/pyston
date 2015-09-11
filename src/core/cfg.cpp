@@ -2526,11 +2526,13 @@ void CFG::print(llvm::raw_ostream& stream) {
         blocks[i]->print(stream);
 }
 
-std::string CFG::getHash(int effort) {
+std::string CFG::getHash(int effort, llvm::StringRef name) {
     HashOStream stream;
     print(stream);
     stream << constants.size();
+    stream << ptrconstants_map.size();
     stream << effort;
+    stream << name;
     return stream.getHash();
 }
 
@@ -2629,6 +2631,7 @@ public:
     }
 
     bool visit_classdef(AST_ClassDef* node) override {
+        add(node);
         for (auto e : node->bases)
             e->accept(this);
         for (auto e : node->decorator_list)
@@ -2637,12 +2640,14 @@ public:
     }
 
     bool visit_functiondef(AST_FunctionDef* node) override {
+        add(node);
         for (auto* d : node->decorator_list)
             d->accept(this);
         return false;
     }
 
     bool visit_lambda(AST_Lambda* node) override {
+        add(node);
         node->args->accept(this);
         return false;
     }
@@ -2663,6 +2668,11 @@ public:
         add(node->attr.getBox());
         return false;
     }
+
+    //bool visit_makefunction(AST_MakeFunction* node) override {
+    //    add(node);
+    //    return false;
+    //}
 
     bool visit_str(AST_Str* node) override {
         addAST(node);

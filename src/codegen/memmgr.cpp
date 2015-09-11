@@ -21,6 +21,7 @@
 #include "llvm/Support/Memory.h"
 
 #include "codegen/codegen.h"
+#include "codegen/irgen/irgenerator.h"
 #include "codegen/irgen/util.h"
 #include "core/cfg.h"
 #include "core/common.h"
@@ -238,6 +239,22 @@ uint64_t PystonMemoryManager::getSymbolAddress(const std::string& name) {
         llvm::StringRef real_name = name_str.substr(strlen("str_"));
         assert(g.cur_cfg);
         return (uint64_t)internStringImmortal(real_name);
+    } else if (name_str.startswith("f_")) {
+        llvm::StringRef num = name_str.substr(strlen("f_"));
+        int n = -1;
+        assert(!num.getAsInteger(10, n));
+        assert(g.cur_cfg);
+        void* p = 0;
+        for (auto&& e : g.cur_cfg->ptrconstants_map) {
+            if (e.second == n)
+                p = e.first;
+        }
+        assert(p);
+        AST* node = (AST*)p;
+        if (node->type == AST_TYPE::FunctionDef) {
+            return (uint64_t)wrapFunction(node, NULL, {}, 0);
+        } else
+            RELEASE_ASSERT(0, "unknown type");
     }
 
     base = RTDyldMemoryManager::getSymbolAddress(name);

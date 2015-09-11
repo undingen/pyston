@@ -276,7 +276,7 @@ private:
     RewriterVar* emitPPCall(void* func_addr, llvm::ArrayRef<RewriterVar*> args, int num_slots, int slot_size,
                             TypeRecorder* type_recorder = NULL);
 
-    static void assertNameDefinedHelper(const char* id);
+    static void assertNameDefinedHelper(BoxedString* id);
     static Box* callattrHelper(Box* obj, BoxedString* attr, CallattrFlags flags, TypeRecorder* type_recorder,
                                Box** args, std::vector<BoxedString*>* keyword_names);
     static Box* createDictHelper(uint64_t num, Box** keys, Box** values);
@@ -290,7 +290,7 @@ private:
     static Box* runtimeCallHelper(Box* obj, ArgPassSpec argspec, TypeRecorder* type_recorder, Box** args,
                                   std::vector<BoxedString*>* keyword_names);
 
-    void _emitGetLocal(RewriterVar* val_var, const char* name);
+    void _emitGetLocal(RewriterVar* val_var, BoxedString* name);
     void _emitJump(CFGBlock* b, RewriterVar* block_next, int& size_of_exit_to_interp);
     void _emitOSRPoint(RewriterVar* result, RewriterVar* node_var);
     void _emitPPCall(RewriterVar* result, void* func_addr, llvm::ArrayRef<RewriterVar*> args, int num_slots,

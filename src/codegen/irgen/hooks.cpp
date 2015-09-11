@@ -191,6 +191,20 @@ static void compileIR(CompiledFunction* cf, EffortLevel effort) {
     delete stackmap;
 }
 
+static std::string getUniqueFunctionName(std::string nameprefix, EffortLevel effort, const OSREntryDescriptor* entry = NULL) {
+    static llvm::StringMap<int> used_module_names;
+    std::string name;
+    llvm::raw_string_ostream os(name);
+    os << nameprefix;
+    os << "_e" << (int)effort;
+    if (entry)
+        os << "_osr" << entry->backedge->target->idx;
+    // in order to generate a unique id add the number of times we encountered this name to end of the string.
+    auto& times = used_module_names[os.str()];
+    os << '_' << ++times;
+    return os.str();
+}
+
 // Compiles a new version of the function with the given signature and adds it to the list;
 // should only be called after checking to see if the other versions would work.
 // The codegen_lock needs to be held in W mode before calling this function:
@@ -275,12 +289,12 @@ CompiledFunction* compileFunction(CLFunction* f, FunctionSpecialization* spec, E
 
     CompiledFunction* cf = NULL;
 
-    std::string hash = source->cfg->getHash((int)effort);
+    std::string hash = source->cfg->getHash((int)effort, getUniqueFunctionName(name->s(), effort));
     llvm::SmallString<128> cache_file = cache_dir;
     llvm::sys::path::append(cache_file, hash);
     bool found_it = llvm::sys::fs::exists(cache_file.str());
     if (found_it) {
-        printf("cache hit\n");
+        printf("cache hit %s\n", hash.c_str());
         auto f = llvm::MemoryBuffer::getFile(cache_file.str());
         llvm::ErrorOr<llvm::Module*> e = llvm::parseBitcodeFile((*f)->getMemBufferRef(), g.context);
         (*e)->dump();
@@ -306,6 +320,7 @@ CompiledFunction* compileFunction(CLFunction* f, FunctionSpecialization* spec, E
         setRelocatableSym("cCF", cf);
         setRelocatableSym("cParentModule", source->parent_module);
         setRelocatableSym("cNone", None);
+        setRelocatableSym("cUnboundLocalError", UnboundLocalError);
         g.cur_cfg = source->cfg;
         g.cur_module = NULL;
     } else {

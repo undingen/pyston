@@ -191,7 +191,7 @@ llvm::Constant* embedRelocatableStr(llvm::StringRef str, llvm::Type* type) {
 }
 
 llvm::Constant* embedConstantPtr(const void* addr, llvm::Type* type) {
-    RELEASE_ASSERT(0, "don't call this!");
+    //RELEASE_ASSERT(0, "don't call this!");
     assert(type);
     llvm::Constant* int_val = llvm::ConstantInt::get(g.i64, reinterpret_cast<uintptr_t>(addr), false);
     llvm::Constant* ptr_val = llvm::ConstantExpr::getIntToPtr(int_val, type);
