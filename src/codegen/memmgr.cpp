@@ -20,10 +20,13 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/Memory.h"
 
+#include "codegen/codegen.h"
 #include "codegen/irgen/util.h"
+#include "core/cfg.h"
 #include "core/common.h"
 #include "core/stats.h"
 #include "core/util.h"
+#include "runtime/types.h"
 
 // This code was copy-pasted from SectionMemoryManager.cpp;
 // TODO eventually I should remove this using directive
@@ -210,6 +213,32 @@ uint64_t PystonMemoryManager::getSymbolAddress(const std::string& name) {
     uint64_t base = (uint64_t)getValueOfRelocatableSym(name);
     if (base)
         return base;
+
+    llvm::StringRef name_str(name);
+    if (name_str.startswith("const_")) {
+        llvm::StringRef num = name_str.substr(strlen("const_"));
+        int n = -1;
+        assert(!num.getAsInteger(10, n));
+        assert(g.cur_cfg);
+        assert(g.cur_cfg->constants.size() > n);
+        AST* node = g.cur_cfg->constants[n];
+        BoxedModule* parent_module = (BoxedModule*)getValueOfRelocatableSym("cParentModule");
+        assert(parent_module);
+        if (node->type == AST_TYPE::Str) {
+            AST_Str* str_node = (AST_Str*)node;
+            if (str_node->str_type == AST_Str::STR)
+                return (uint64_t)parent_module->getStringConstant(str_node->str_data, true);
+            else if (str_node->str_type == AST_Str::UNICODE)
+                return (uint64_t)parent_module->getUnicodeConstant(str_node->str_data);
+            else
+                RELEASE_ASSERT(0, "unknown str type");
+        } else
+            RELEASE_ASSERT(0, "unknown type");
+    } else if (name_str.startswith("str_")) {
+        llvm::StringRef real_name = name_str.substr(strlen("str_"));
+        assert(g.cur_cfg);
+        return (uint64_t)internStringImmortal(real_name);
+    }
 
     base = RTDyldMemoryManager::getSymbolAddress(name);
     if (base)

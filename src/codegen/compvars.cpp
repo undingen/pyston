@@ -251,7 +251,7 @@ public:
 
     void setattr(IREmitter& emitter, const OpInfo& info, ConcreteCompilerVariable* var, BoxedString* attr,
                  CompilerVariable* v) override {
-        llvm::Constant* ptr = embedRelocatablePtr(attr, g.llvm_boxedstring_type_ptr);
+        llvm::Constant* ptr = embedRelocatableStr(attr->s(), g.llvm_boxedstring_type_ptr);
         ConcreteCompilerVariable* converted = v->makeConverted(emitter, UNKNOWN);
         // g.funcs.setattr->dump();
         // var->getValue()->dump(); llvm::errs() << '\n';
@@ -274,7 +274,7 @@ public:
     }
 
     void delattr(IREmitter& emitter, const OpInfo& info, ConcreteCompilerVariable* var, BoxedString* attr) override {
-        llvm::Constant* ptr = embedRelocatablePtr(attr, g.llvm_boxedstring_type_ptr);
+        llvm::Constant* ptr = embedRelocatableStr(attr->s(), g.llvm_boxedstring_type_ptr);
 
         // TODO
         // bool do_patchpoint = ENABLE_ICDELATTRS;
@@ -522,7 +522,7 @@ ConcreteCompilerType* UNKNOWN = new UnknownType();
 
 CompilerVariable* UnknownType::getattr(IREmitter& emitter, const OpInfo& info, ConcreteCompilerVariable* var,
                                        BoxedString* attr, bool cls_only) {
-    llvm::Constant* ptr = embedRelocatablePtr(attr, g.llvm_boxedstring_type_ptr);
+    llvm::Constant* ptr = embedRelocatableStr(attr->s(), g.llvm_boxedstring_type_ptr);
 
     llvm::Value* rtn_val = NULL;
 
@@ -736,7 +736,7 @@ CompilerVariable* UnknownType::callattr(IREmitter& emitter, const OpInfo& info, 
 
     std::vector<llvm::Value*> other_args;
     other_args.push_back(var->getValue());
-    other_args.push_back(embedRelocatablePtr(attr, g.llvm_boxedstring_type_ptr));
+    other_args.push_back(embedRelocatableStr(attr->s(), g.llvm_boxedstring_type_ptr));
     other_args.push_back(getConstantInt(flags.asInt(), g.i64));
     return _call(emitter, info, func, exception_style, func_ptr, other_args, flags.argspec, args, keyword_names,
                  UNKNOWN);
@@ -1310,6 +1310,7 @@ public:
         } else if (other_type == UNKNOWN || other_type == BOXED_FLOAT) {
             llvm::Value* unboxed = var->getValue();
             llvm::Value* boxed;
+            /*
             if (llvm::ConstantFP* llvm_val = llvm::dyn_cast<llvm::ConstantFP>(unboxed)) {
                 // Will this ever hit the cache?
                 boxed = embedRelocatablePtr(emitter.getFloatConstant(llvm_val->getValueAPF().convertToDouble()),
@@ -1317,6 +1318,8 @@ public:
             } else {
                 boxed = emitter.getBuilder()->CreateCall(g.funcs.boxFloat, var->getValue());
             }
+            */
+            boxed = emitter.getBuilder()->CreateCall(g.funcs.boxFloat, var->getValue());
             return new ConcreteCompilerVariable(other_type, boxed, true);
         } else {
             printf("Don't know how to convert float to %s\n", other_type->debugName().c_str());

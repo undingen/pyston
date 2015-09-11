@@ -297,6 +297,7 @@ PatchpointInfo* PatchpointInfo::create(CompiledFunction* parent_cf, llvm::String
                 .Case("i64", INT)
                 .Case("AnyBox", UNKNOWN)
                 .Case("bool", BOOL)
+                .Case("generator", GENERATOR)
                 .Default(0);
         assert(type);
         r->addFrameVar(v2[0], type);

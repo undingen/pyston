@@ -995,6 +995,8 @@ CompiledFunction* doCompile(CLFunction* clfunc, SourceInfo* source, ParamNames* 
     clearRelocatableSymsMap();
     g.cur_cfg = source->cfg;
 
+    setRelocatableSym("cParentModule", source->parent_module);
+
     std::string name = getUniqueFunctionName(nameprefix, effort, entry_descriptor);
     g.cur_module = new llvm::Module(name, g.context);
 #if LLVMREV < 217070 // not sure if this is the right rev

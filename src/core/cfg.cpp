@@ -2526,10 +2526,11 @@ void CFG::print(llvm::raw_ostream& stream) {
         blocks[i]->print(stream);
 }
 
-std::string CFG::getHash() {
+std::string CFG::getHash(int effort) {
     HashOStream stream;
     print(stream);
     stream << constants.size();
+    stream << effort;
     return stream.getHash();
 }
 
@@ -2616,9 +2617,10 @@ void CFG::assignVRegs(const ParamNames& param_names, ScopeInfo* scope_info) {
 
 class AssignConstantVisitor : public NoopASTVisitor {
 public:
-    std::vector<void*>& constants;
-    llvm::DenseMap<void*, int>& constants_map;
-    AssignConstantVisitor(std::vector<void*>& constants, llvm::DenseMap<void*, int>& constants_map) : constants(constants), constants_map(constants_map) {}
+    std::vector<AST*>& constants;
+    llvm::DenseMap<AST*, int>& constants_map;
+    llvm::DenseMap<void*, int>& ptrconstants_map;
+    AssignConstantVisitor(std::vector<AST*>& constants, llvm::DenseMap<AST*, int>& constants_map, llvm::DenseMap<void*, int>& ptrconstants_map) : constants(constants), constants_map(constants_map), ptrconstants_map(ptrconstants_map) {}
 
     bool visit_arguments(AST_arguments* node) override {
         for (AST_expr* d : node->defaults)
@@ -2662,10 +2664,26 @@ public:
         return false;
     }
 
-    void add(void* p) {
+    bool visit_str(AST_Str* node) override {
+        addAST(node);
+        return NoopASTVisitor::visit_str(node);
+    }
+
+    bool visit_num(AST_Num* node) override {
+        addAST(node);
+        return NoopASTVisitor::visit_num(node);
+    }
+
+    void addAST(AST* p) {
         if (!constants_map.count(p)) {
-            constants_map[p] = constants.size();
+            constants_map[p] = constants_map.size();
             constants.push_back(p);
+        }
+    }
+
+    void add(void* p) {
+        if (!ptrconstants_map.count(p)) {
+            ptrconstants_map[p] = ptrconstants_map.size();
         }
     }
 };
@@ -2912,7 +2930,7 @@ CFG* computeCFG(SourceInfo* source, std::vector<AST_stmt*> body) {
     }
 
 
-    AssignConstantVisitor c_visitor(rtn->constants, rtn->constants_map);
+    AssignConstantVisitor c_visitor(rtn->constants, rtn->constants_map, rtn->ptrconstants_map);
     for (CFGBlock* b : rtn->blocks) {
         for (AST_stmt* stmt : b->body) {
             c_visitor.add(stmt);

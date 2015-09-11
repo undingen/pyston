@@ -275,7 +275,7 @@ CompiledFunction* compileFunction(CLFunction* f, FunctionSpecialization* spec, E
 
     CompiledFunction* cf = NULL;
 
-    std::string hash = source->cfg->getHash();
+    std::string hash = source->cfg->getHash((int)effort);
     llvm::SmallString<128> cache_file = cache_dir;
     llvm::sys::path::append(cache_file, hash);
     bool found_it = llvm::sys::fs::exists(cache_file.str());
@@ -298,14 +298,15 @@ CompiledFunction* compileFunction(CLFunction* f, FunctionSpecialization* spec, E
 
         clearRelocatableSymsMap();
 
-        for (auto&& e : source->cfg->constants_map) {
-            setRelocatableSym(("const_" + llvm::Twine(e.second)).str(), e.first);
+        for (auto&& e : source->cfg->ptrconstants_map) {
+            setRelocatableSym(("ptr_" + llvm::Twine(e.second)).str(), e.first);
         }
         setRelocatableSym("cSourceInfo", source);
         setRelocatableSym("cTimesCalled", &cf->times_called);
         setRelocatableSym("cCF", cf);
         setRelocatableSym("cParentModule", source->parent_module);
         setRelocatableSym("cNone", None);
+        g.cur_cfg = source->cfg;
         g.cur_module = NULL;
     } else {
         cf = doCompile(f, source, &f->param_names, entry_descriptor, effort, exception_style, spec, name->s());

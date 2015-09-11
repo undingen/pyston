@@ -484,9 +484,27 @@ public:
     llvm::Value* createIC(const ICSetupInfo* pp, void* func_addr, const std::vector<llvm::Value*>& args,
                           const UnwindInfo& unw_info, ExceptionStyle target_exception_style = CXX) override {
         std::vector<llvm::Value*> stackmap_args;
-
+        /*
         llvm::CallSite rtn = emitPatchpoint(pp->hasReturnValue() ? g.i64 : g.void_, pp,
                                             embedConstantPtr(func_addr, g.i8->getPointerTo()), args, stackmap_args,
+                                            unw_info, target_exception_style);
+        */
+        bool lookup_success = false;
+        std::string name = g.func_addr_registry.getFuncNameAtAddress(func_addr, true, &lookup_success);
+        assert(lookup_success);
+
+
+        llvm::Value* func = NULL;
+        llvm::Type* var_type = g.i8;
+        if (g.cur_module->getFunction(name)) {
+            func = getBuilder()->CreateBitCast(g.cur_module->getFunction(name), g.i8->getPointerTo());
+        } else
+            func = g.cur_module->getOrInsertGlobal(name, var_type);
+
+
+        //llvm::Value* func = embedConstantPtr(func_addr, g.i8->getPointerTo());
+        llvm::CallSite rtn = emitPatchpoint(pp->hasReturnValue() ? g.i64 : g.void_, pp,
+                                            func, args, stackmap_args,
                                             unw_info, target_exception_style);
 
         rtn.setCallingConv(pp->getCallingConvention());
@@ -510,9 +528,9 @@ public:
         setCurrentBasicBlock(normal_dest);
     }
 
-    Box* getIntConstant(int64_t n) override { return irstate->getSourceInfo()->parent_module->getIntConstant(n); }
+    Box* getIntConstant(int64_t n) override { assert(0); return irstate->getSourceInfo()->parent_module->getIntConstant(n); }
 
-    Box* getFloatConstant(double d) override { return irstate->getSourceInfo()->parent_module->getFloatConstant(d); }
+    Box* getFloatConstant(double d) override { assert(0); return irstate->getSourceInfo()->parent_module->getFloatConstant(d); }
 };
 
 IREmitter* createIREmitter(IRGenState* irstate, llvm::BasicBlock*& curblock, IRGenerator* irgenerator) {
@@ -1314,15 +1332,21 @@ private:
 
     CompilerVariable* evalStr(AST_Str* node, const UnwindInfo& unw_info) {
         if (node->str_type == AST_Str::STR) {
+            /*
             llvm::Value* rtn
                 = embedRelocatablePtr(irstate->getSourceInfo()->parent_module->getStringConstant(node->str_data, true),
                                       g.llvm_value_type_ptr);
-
+            */
+            llvm::Value* rtn
+                = embedRelocatablePtr(node,
+                                      g.llvm_value_type_ptr, std::string(), true);
             return new ConcreteCompilerVariable(STR, rtn, true);
         } else if (node->str_type == AST_Str::UNICODE) {
+            /*
             llvm::Value* rtn = embedRelocatablePtr(
                 irstate->getSourceInfo()->parent_module->getUnicodeConstant(node->str_data), g.llvm_value_type_ptr);
-
+            */
+            llvm::Value* rtn = embedRelocatablePtr(node, g.llvm_value_type_ptr, std::string(), true);
             return new ConcreteCompilerVariable(typeFromClass(unicode_cls), rtn, true);
         } else {
             RELEASE_ASSERT(0, "%d", node->str_type);
@@ -2330,7 +2354,7 @@ private:
 
         llvm::BasicBlock* target = entry_blocks[node->target];
 
-        if (ENABLE_OSR && node->target->idx < myblock->idx && irstate->getEffortLevel() < EffortLevel::MAXIMAL) {
+        if (0 && ENABLE_OSR && node->target->idx < myblock->idx && irstate->getEffortLevel() < EffortLevel::MAXIMAL) {
             assert(node->target->predecessors.size() > 1);
             doOSRExit(target, node);
         } else {
