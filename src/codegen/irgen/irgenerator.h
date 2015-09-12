@@ -79,6 +79,8 @@ public:
                ParamNames* param_names, GCBuilder* gc, llvm::MDNode* func_dbg_info);
     ~IRGenState();
 
+    llvm::Value* new_func(llvm::Value* f);
+
     CompiledFunction* getCurFunction() { return cf; }
     CLFunction* getCL() { return clfunc; }
 

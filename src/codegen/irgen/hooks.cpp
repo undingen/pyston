@@ -293,19 +293,21 @@ CompiledFunction* compileFunction(CLFunction* f, FunctionSpecialization* spec, E
     llvm::SmallString<128> cache_file = cache_dir;
     llvm::sys::path::append(cache_file, hash);
     bool found_it = llvm::sys::fs::exists(cache_file.str());
-    if (found_it) {
+    if (1 && found_it) {
         printf("cache hit %s\n", hash.c_str());
         auto f = llvm::MemoryBuffer::getFile(cache_file.str());
         llvm::ErrorOr<llvm::Module*> e = llvm::parseBitcodeFile((*f)->getMemBufferRef(), g.context);
-        (*e)->dump();
+        //(*e)->dump();
 
         g.cur_module = *e;
         llvm::Function* func = NULL;
         for (auto&& ff : g.cur_module->functions()) {
             if (ff.isDeclaration())
                 continue;
+            assert(!func);
             func = &ff;
         }
+        assert(func);
 
         cf = new CompiledFunction(func, spec, NULL, effort, exception_style, entry_descriptor);
         gc::registerPermanentRoot(source->parent_module, /* allow_duplicates= */ true);
@@ -331,7 +333,6 @@ CompiledFunction* compileFunction(CLFunction* f, FunctionSpecialization* spec, E
     if (!found_it) {
         if (!llvm::sys::fs::exists(cache_dir.str()))
             llvm::sys::fs::create_directories(cache_dir.str());
-
 
         std::error_code error_code;
         llvm::raw_fd_ostream file(cache_file.str(), error_code, llvm::sys::fs::F_RW);

@@ -282,12 +282,13 @@ public:
 
         // Generate a hash for the module
         HashOStream hash_stream;
-        llvm::WriteBitcodeToFile(M, hash_stream);
+        M->print(hash_stream, NULL);
+        //llvm::WriteBitcodeToFile(M, hash_stream, true);
         hash_before_codegen = hash_stream.getHash();
 
         llvm::SmallString<128> cache_file = cache_dir;
         llvm::sys::path::append(cache_file, hash_before_codegen);
-        if (1 || !llvm::sys::fs::exists(cache_file.str())) {
+        if (!llvm::sys::fs::exists(cache_file.str())) {
 #if 0
             // This code helps with identifying why we got a cache miss for a file.
             // - clear the cache directory

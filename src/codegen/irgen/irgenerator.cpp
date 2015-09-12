@@ -778,8 +778,8 @@ private:
                 assert(name.size());
 
                 llvm::Value* name_arg
-                    = embedRelocatablePtr(irstate->getSourceInfo()->parent_module->getStringConstant(name, true),
-                                          g.llvm_boxedstring_type_ptr);
+                    = embedRelocatablePtr(ast_str,
+                                          g.llvm_boxedstring_type_ptr, std::string(), true);
                 llvm::Value* r
                     = emitter.createCall2(unw_info, new_func(g.funcs.importFrom), converted_module->getValue(), name_arg);
 
@@ -1253,7 +1253,8 @@ private:
         } else if (node->num_type == AST_Num::COMPLEX) {
             return makePureImaginary(irstate->getSourceInfo()->parent_module->getPureImaginaryConstant(node->n_float));
         } else {
-            return makeLong(irstate->getSourceInfo()->parent_module->getLongConstant(node->n_long));
+            return new ConcreteCompilerVariable(LONG, embedRelocatablePtr(node, g.llvm_value_type_ptr, "", true), true);
+            //return makeLong(irstate->getSourceInfo()->parent_module->getLongConstant(node->n_long));
         }
     }
 

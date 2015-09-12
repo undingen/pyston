@@ -233,6 +233,12 @@ uint64_t PystonMemoryManager::getSymbolAddress(const std::string& name) {
                 return (uint64_t)parent_module->getUnicodeConstant(str_node->str_data);
             else
                 RELEASE_ASSERT(0, "unknown str type");
+        } else if (node->type == AST_TYPE::Num) {
+            AST_Num* num_node = (AST_Num*)node;
+            if (num_node->num_type == AST_Num::LONG)
+                return (uint64_t)parent_module->getLongConstant(num_node->n_long);
+            else
+                RELEASE_ASSERT(0, "unknown num type");
         } else
             RELEASE_ASSERT(0, "unknown type");
     } else if (name_str.startswith("str_")) {
@@ -251,8 +257,9 @@ uint64_t PystonMemoryManager::getSymbolAddress(const std::string& name) {
         }
         assert(p);
         AST* node = (AST*)p;
-        if (node->type == AST_TYPE::FunctionDef) {
-            return (uint64_t)wrapFunction(node, NULL, {}, 0);
+        if (node->type == AST_TYPE::FunctionDef || node->type == AST_TYPE::ClassDef || node->type == AST_TYPE::Lambda) {
+            SourceInfo* source_info = (SourceInfo*)getValueOfRelocatableSym("cSourceInfo");
+            return (uint64_t)wrapFunction(node, NULL, {}, source_info);
         } else
             RELEASE_ASSERT(0, "unknown type");
     }

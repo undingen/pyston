@@ -23,6 +23,7 @@
 
 #include "analysis/scoping_analysis.h"
 #include "codegen/entry.h"
+#include "codegen/irgen/irgenerator.h"
 #include "core/ast.h"
 #include "core/options.h"
 #include "core/types.h"
@@ -2533,6 +2534,9 @@ std::string CFG::getHash(int effort, llvm::StringRef name) {
     stream << ptrconstants_map.size();
     stream << effort;
     stream << name;
+#ifndef NDEBUG
+    stream << "debug";
+#endif
     return stream.getHash();
 }
 
@@ -2619,10 +2623,11 @@ void CFG::assignVRegs(const ParamNames& param_names, ScopeInfo* scope_info) {
 
 class AssignConstantVisitor : public NoopASTVisitor {
 public:
+    SourceInfo* source_info;
     std::vector<AST*>& constants;
     llvm::DenseMap<AST*, int>& constants_map;
     llvm::DenseMap<void*, int>& ptrconstants_map;
-    AssignConstantVisitor(std::vector<AST*>& constants, llvm::DenseMap<AST*, int>& constants_map, llvm::DenseMap<void*, int>& ptrconstants_map) : constants(constants), constants_map(constants_map), ptrconstants_map(ptrconstants_map) {}
+    AssignConstantVisitor(SourceInfo* source_info, std::vector<AST*>& constants, llvm::DenseMap<AST*, int>& constants_map, llvm::DenseMap<void*, int>& ptrconstants_map) : source_info(source_info), constants(constants), constants_map(constants_map), ptrconstants_map(ptrconstants_map) {}
 
     bool visit_arguments(AST_arguments* node) override {
         for (AST_expr* d : node->defaults)
@@ -2669,10 +2674,13 @@ public:
         return false;
     }
 
-    //bool visit_makefunction(AST_MakeFunction* node) override {
-    //    add(node);
-    //    return false;
-    //}
+    bool visit_langprimitive(AST_LangPrimitive* node) override {
+        if (node->opcode == AST_LangPrimitive::IMPORT_FROM) {
+            //source_info->parent_module->getStringConstant(name, true);
+            addAST(ast_cast<AST_Str>(node->args[1]));
+        }
+        return false;
+    }
 
     bool visit_str(AST_Str* node) override {
         addAST(node);
@@ -2682,6 +2690,12 @@ public:
     bool visit_num(AST_Num* node) override {
         addAST(node);
         return NoopASTVisitor::visit_num(node);
+    }
+
+    bool visit_call(AST_Call* node) override {
+        if (node->keywords.size())
+            add(getKeywordNameStorage(node));
+        return NoopASTVisitor::visit_call(node);
     }
 
     void addAST(AST* p) {
@@ -2940,7 +2954,7 @@ CFG* computeCFG(SourceInfo* source, std::vector<AST_stmt*> body) {
     }
 
 
-    AssignConstantVisitor c_visitor(rtn->constants, rtn->constants_map, rtn->ptrconstants_map);
+    AssignConstantVisitor c_visitor(source, rtn->constants, rtn->constants_map, rtn->ptrconstants_map);
     for (CFGBlock* b : rtn->blocks) {
         for (AST_stmt* stmt : b->body) {
             c_visitor.add(stmt);

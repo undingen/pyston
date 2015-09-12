@@ -1576,7 +1576,7 @@ public:
     }
 
     bool canStaticallyResolveGetattrs() {
-        return (cls->is_constant && !cls->instancesHaveHCAttrs() && !cls->instancesHaveDictAttrs()
+        return 0 && (cls->is_constant && !cls->instancesHaveHCAttrs() && !cls->instancesHaveDictAttrs()
                 && cls->hasGenericGetattr());
     }
 
@@ -2088,7 +2088,7 @@ public:
 
     ConcreteCompilerVariable* makeConverted(IREmitter& emitter, VAR* var, ConcreteCompilerType* other_type) override {
         assert(other_type == STR || other_type == UNKNOWN);
-        llvm::Value* boxed = embedRelocatablePtr(var->getValue(), g.llvm_value_type_ptr);
+        llvm::Value* boxed = embedRelocatableStr(var->getValue()->s(), g.llvm_value_type_ptr);
         return new ConcreteCompilerVariable(other_type, boxed, true);
     }
 
