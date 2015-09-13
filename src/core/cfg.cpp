@@ -2528,6 +2528,7 @@ void CFG::print(llvm::raw_ostream& stream) {
 }
 
 std::string CFG::getHash(int effort, llvm::StringRef name) {
+    UNAVOIDABLE_STAT_TIMER(t0, "us_timer_get_cfg_hash");
     HashOStream stream;
     print(stream);
     stream << constants.size();

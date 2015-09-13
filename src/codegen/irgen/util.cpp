@@ -169,6 +169,10 @@ llvm::Constant* embedRelocatablePtr(const void* addr, llvm::Type* type, llvm::St
 }
 
 llvm::Constant* embedRelocatableStr(llvm::StringRef str, llvm::Type* type) {
+    for (char c : str) {
+        assert(isalnum(c) || c == '_');
+    }
+
     std::string name = (llvm::Twine("str_") + str).str();
     llvm::GlobalVariable* gv = g.cur_module->getGlobalVariable(name, true);
     if (gv) {

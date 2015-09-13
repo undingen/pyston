@@ -219,9 +219,9 @@ uint64_t PystonMemoryManager::getSymbolAddress(const std::string& name) {
     if (name_str.startswith("const_")) {
         llvm::StringRef num = name_str.substr(strlen("const_"));
         int n = -1;
-        assert(!num.getAsInteger(10, n));
+        num.getAsInteger(10, n);
         assert(g.cur_cfg);
-        assert(g.cur_cfg->constants.size() > n);
+        RELEASE_ASSERT(g.cur_cfg->constants.size() > n && n >= 0, "");
         AST* node = g.cur_cfg->constants[n];
         BoxedModule* parent_module = (BoxedModule*)getValueOfRelocatableSym("cParentModule");
         assert(parent_module);
@@ -248,7 +248,7 @@ uint64_t PystonMemoryManager::getSymbolAddress(const std::string& name) {
     } else if (name_str.startswith("f_")) {
         llvm::StringRef num = name_str.substr(strlen("f_"));
         int n = -1;
-        assert(!num.getAsInteger(10, n));
+        num.getAsInteger(10, n);
         assert(g.cur_cfg);
         void* p = 0;
         for (auto&& e : g.cur_cfg->ptrconstants_map) {

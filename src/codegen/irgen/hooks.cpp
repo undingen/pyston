@@ -288,13 +288,15 @@ CompiledFunction* compileFunction(CLFunction* f, FunctionSpecialization* spec, E
 
 
     CompiledFunction* cf = NULL;
-
-    std::string hash = source->cfg->getHash((int)effort, getUniqueFunctionName(name->s(), effort));
+    std::string uname = getUniqueFunctionName(name->s(), effort);
+    std::string hash = source->cfg->getHash((int)effort, uname);
     llvm::SmallString<128> cache_file = cache_dir;
     llvm::sys::path::append(cache_file, hash);
     bool found_it = llvm::sys::fs::exists(cache_file.str());
     if (1 && found_it) {
-        printf("cache hit %s\n", hash.c_str());
+        //printf("cache hit %s\n", hash.c_str());
+        UNAVOIDABLE_STAT_TIMER(t1, "us_timer_found_it");
+
         auto f = llvm::MemoryBuffer::getFile(cache_file.str());
         llvm::ErrorOr<llvm::Module*> e = llvm::parseBitcodeFile((*f)->getMemBufferRef(), g.context);
         //(*e)->dump();
@@ -326,7 +328,7 @@ CompiledFunction* compileFunction(CLFunction* f, FunctionSpecialization* spec, E
         g.cur_cfg = source->cfg;
         g.cur_module = NULL;
     } else {
-        cf = doCompile(f, source, &f->param_names, entry_descriptor, effort, exception_style, spec, name->s());
+        cf = doCompile(uname, f, source, &f->param_names, entry_descriptor, effort, exception_style, spec, name->s());
     }
     compileIR(cf, effort);
 

@@ -823,9 +823,13 @@ private:
                 assert(ast_str->str_type == AST_Str::STR);
                 const std::string& module_name = ast_str->str_data;
 
+                llvm::Value* name_arg
+                    = embedRelocatablePtr(ast_str,
+                                          g.llvm_boxedstring_type_ptr, std::string(), true);
+
                 llvm::Value* imported = emitter.createCall(unw_info, new_func(g.funcs.import),
                                                            { getConstantInt(level, g.i32), converted_froms->getValue(),
-                                                             embedRelocatableStr(module_name, g.llvm_boxedstring_type_ptr) });
+                                                             name_arg });
                 ConcreteCompilerVariable* v = new ConcreteCompilerVariable(UNKNOWN, imported, true);
 
                 converted_froms->decvref(emitter);
