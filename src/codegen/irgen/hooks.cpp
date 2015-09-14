@@ -296,16 +296,17 @@ CompiledFunction* compileFunction(CLFunction* f, FunctionSpecialization* spec, E
     std::string hash = source->cfg->getHash((int)effort, uname);
     g.cur_cfg_hash = hash;
     llvm::SmallString<128> cache_file = cache_dir;
-    llvm::sys::path::append(cache_file, hash);
+    llvm::sys::path::append(cache_file, hash + ".o");
     bool found_it = llvm::sys::fs::exists(cache_file.str());
     if (1 && found_it) {
         //printf("cache hit %s\n", hash.c_str());
         UNAVOIDABLE_STAT_TIMER(t1, "us_timer_found_it");
 
-        auto f = llvm::MemoryBuffer::getFile(cache_file.str());
-        llvm::ErrorOr<llvm::Module*> e = llvm::parseBitcodeFile((*f)->getMemBufferRef(), g.context);
+        //auto f = llvm::MemoryBuffer::getFile(cache_file.str());
+        //llvm::ErrorOr<llvm::Module*> e = llvm::parseBitcodeFile((*f)->getMemBufferRef(), g.context);
         //(*e)->dump();
 
+        /*
         g.cur_module = *e;
         llvm::Function* func = NULL;
         for (auto&& ff : g.cur_module->functions()) {
@@ -315,9 +316,72 @@ CompiledFunction* compileFunction(CLFunction* f, FunctionSpecialization* spec, E
             func = &ff;
         }
         assert(func);
+        */
 
-        cf = new CompiledFunction(func, spec, NULL, effort, exception_style, entry_descriptor);
+        g.cur_module = new llvm::Module(uname, g.context);
+    #if LLVMREV < 217070 // not sure if this is the right rev
+        g.cur_module->setDataLayout(g.tm->getDataLayout()->getStringRepresentation());
+    #elif LLVMREV < 227113
+        g.cur_module->setDataLayout(g.tm->getSubtargetImpl()->getDataLayout());
+    #elif LLVMREV < 231270
+        g.cur_module->setDataLayout(g.tm->getDataLayout());
+    #endif
+        // g.engine->addModule(g.cur_module);
+
+        ////
+        // Initializing the llvm-level structures:
+
+
+        std::vector<llvm::Type*> llvm_arg_types;
+        if (entry_descriptor == NULL) {
+            assert(spec);
+            auto param_names = &f->param_names;
+
+            int nargs = param_names->totalParameters();
+            ASSERT(nargs == spec->arg_types.size(), "%d %ld", nargs, spec->arg_types.size());
+
+            if (source->getScopeInfo()->takesClosure())
+                llvm_arg_types.push_back(g.llvm_closure_type_ptr);
+
+            if (source->is_generator)
+                llvm_arg_types.push_back(g.llvm_generator_type_ptr);
+
+            if (!source->scoping->areGlobalsFromModule())
+                llvm_arg_types.push_back(g.llvm_value_type_ptr);
+
+            for (int i = 0; i < nargs; i++) {
+                if (i == 3) {
+                    llvm_arg_types.push_back(g.llvm_value_type_ptr->getPointerTo());
+                    break;
+                }
+                llvm_arg_types.push_back(spec->arg_types[i]->llvmType());
+            }
+        } else {
+            int arg_num = -1;
+            for (const auto& p : entry_descriptor->args) {
+                arg_num++;
+                // printf("Loading %s: %s\n", p.first.c_str(), p.second->debugName().c_str());
+                if (arg_num < 3)
+                    llvm_arg_types.push_back(p.second->llvmType());
+                else {
+                    llvm_arg_types.push_back(g.llvm_value_type_ptr->getPointerTo());
+                    break;
+                }
+            }
+        }
+
+
+        // Make sure that the instruction memory keeps the module object alive.
+        // TODO: implement this for real
         gc::registerPermanentRoot(source->parent_module, /* allow_duplicates= */ true);
+
+        cf = new CompiledFunction(NULL, spec, NULL, effort, exception_style, entry_descriptor);
+
+        llvm::FunctionType* ft = llvm::FunctionType::get(cf->getReturnType()->llvmType(), llvm_arg_types, false /*vararg*/);
+
+        llvm::Function* f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, uname, g.cur_module);
+        cf->func = f;
+
 
         clearRelocatableSymsMap();
 
@@ -359,7 +423,7 @@ CompiledFunction* compileFunction(CLFunction* f, FunctionSpecialization* spec, E
         g.cur_cfg = NULL;
 #else
         g.cur_cf = cf;
-        g.engine->addObjectFile(std::move(*llvm::object::ObjectFile::createObjectFile((cache_file.str() + ".o").str())));
+        g.engine->addObjectFile(std::move(*llvm::object::ObjectFile::createObjectFile(cache_file.str())));
 
         void* compiled = (void*)g.engine->getFunctionAddress(uname);
         assert(compiled);
@@ -378,7 +442,7 @@ CompiledFunction* compileFunction(CLFunction* f, FunctionSpecialization* spec, E
     }
 
 
-    if (!found_it) {
+    if (0 && !found_it) {
         if (!llvm::sys::fs::exists(cache_dir.str()))
             llvm::sys::fs::create_directories(cache_dir.str());
 

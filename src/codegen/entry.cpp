@@ -258,14 +258,16 @@ public:
     virtual void notifyObjectCompiled(const llvm::Module* M, llvm::MemoryBufferRef Obj)
 #endif
     {
+        /*
         RELEASE_ASSERT(module_identifier == M->getModuleIdentifier(), "");
         RELEASE_ASSERT(!hash_before_codegen.empty(), "");
+
 
         llvm::SmallString<128> cache_file = cache_dir;
         llvm::sys::path::append(cache_file, hash_before_codegen);
         if (!llvm::sys::fs::exists(cache_dir.str()) && llvm::sys::fs::create_directories(cache_dir.str()))
             return;
-
+        */
         {
             llvm::SmallString<128> file;
             llvm::sys::path::home_directory(file);
@@ -284,7 +286,7 @@ public:
         }
 
 
-        CompressedFile::writeFile(cache_file, Obj.getBuffer());
+        //CompressedFile::writeFile(cache_file, Obj.getBuffer());
     }
 
 #if LLVMREV < 215566
@@ -295,6 +297,9 @@ public:
     {
         static StatCounter jit_objectcache_hits("num_jit_objectcache_hits");
         static StatCounter jit_objectcache_misses("num_jit_objectcache_misses");
+
+        jit_objectcache_misses.log();
+        return NULL;
 
         module_identifier = M->getModuleIdentifier();
 
