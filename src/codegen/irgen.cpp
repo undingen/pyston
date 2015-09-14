@@ -941,7 +941,7 @@ static void computeBlockSetClosure(BlockSet& blocks) {
     }
 }
 // returns a pointer to the function-info mdnode
-static llvm::MDNode* setupDebugInfo(SourceInfo* source, llvm::Function* f, std::string origname) {
+static llvm::MDNode* setupDebugInfo(SourceInfo* source, llvm::Function* f) {
     int lineno = 0;
     if (source->ast)
         lineno = source->ast->lineno;
@@ -978,39 +978,9 @@ static std::string getUniqueFunctionName(std::string nameprefix, EffortLevel eff
     return os.str();
 }
 
-CompiledFunction* doCompile(std::string name, CLFunction* clfunc, SourceInfo* source, ParamNames* param_names,
-                            const OSREntryDescriptor* entry_descriptor, EffortLevel effort,
-                            ExceptionStyle exception_style, FunctionSpecialization* spec, llvm::StringRef nameprefix) {
-    Timer _t("in doCompile");
-    Timer _t2;
-    long irgen_us = 0;
-
-    assert((entry_descriptor != NULL) + (spec != NULL) == 1);
-
-    if (VERBOSITY("irgen") >= 2)
-        source->cfg->print();
-
-    assert(g.cur_module == NULL);
-
-    clearRelocatableSymsMap();
-    g.cur_cfg = source->cfg;
-
-    setRelocatableSym("cParentModule", source->parent_module);
-
-    g.cur_module = new llvm::Module(name, g.context);
-#if LLVMREV < 217070 // not sure if this is the right rev
-    g.cur_module->setDataLayout(g.tm->getDataLayout()->getStringRepresentation());
-#elif LLVMREV < 227113
-    g.cur_module->setDataLayout(g.tm->getSubtargetImpl()->getDataLayout());
-#elif LLVMREV < 231270
-    g.cur_module->setDataLayout(g.tm->getDataLayout());
-#endif
-    // g.engine->addModule(g.cur_module);
-
-    ////
-    // Initializing the llvm-level structures:
-
-
+CompiledFunction* createCF(llvm::StringRef name, SourceInfo* source, ParamNames* param_names,
+                           const OSREntryDescriptor* entry_descriptor, EffortLevel effort,
+                           ExceptionStyle exception_style, FunctionSpecialization* spec) {
     std::vector<llvm::Type*> llvm_arg_types;
     if (entry_descriptor == NULL) {
         assert(spec);
@@ -1060,10 +1030,46 @@ CompiledFunction* doCompile(std::string name, CLFunction* clfunc, SourceInfo* so
     llvm::Function* f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, name, g.cur_module);
 
     cf->func = f;
+    return cf;
+}
+
+CompiledFunction* doCompile(CLFunction* clfunc, SourceInfo* source, ParamNames* param_names,
+                            const OSREntryDescriptor* entry_descriptor, EffortLevel effort,
+                            ExceptionStyle exception_style, FunctionSpecialization* spec, llvm::StringRef name) {
+    Timer _t("in doCompile");
+    Timer _t2;
+    long irgen_us = 0;
+
+    assert((entry_descriptor != NULL) + (spec != NULL) == 1);
+
+    if (VERBOSITY("irgen") >= 2)
+        source->cfg->print();
+
+    assert(g.cur_module == NULL);
+
+    clearRelocatableSymsMap();
+    g.cur_cfg = source->cfg;
+
+    setRelocatableSym("cParentModule", source->parent_module);
+
+    g.cur_module = new llvm::Module(name, g.context);
+#if LLVMREV < 217070 // not sure if this is the right rev
+    g.cur_module->setDataLayout(g.tm->getDataLayout()->getStringRepresentation());
+#elif LLVMREV < 227113
+    g.cur_module->setDataLayout(g.tm->getSubtargetImpl()->getDataLayout());
+#elif LLVMREV < 231270
+    g.cur_module->setDataLayout(g.tm->getDataLayout());
+#endif
+    // g.engine->addModule(g.cur_module);
+
+
+
+    CompiledFunction* cf = createCF(name, source, param_names, entry_descriptor, effort, exception_style, spec);
+    llvm::Function* f = cf->func;
 
     // g.func_registry.registerFunction(f, g.cur_module);
 
-    llvm::MDNode* dbg_funcinfo = setupDebugInfo(source, f, nameprefix);
+    llvm::MDNode* dbg_funcinfo = setupDebugInfo(source, f);
 
     irgen_us += _t2.split();
 

@@ -304,51 +304,9 @@ CompiledFunction* compileFunction(CLFunction* f, FunctionSpecialization* spec, E
 
         UNAVOIDABLE_STAT_TIMER(t1, "us_timer_found_it");
         g.cur_module = new llvm::Module(uname, g.context);
-        std::vector<llvm::Type*> llvm_arg_types;
-        if (entry_descriptor == NULL) {
-            assert(spec);
-            auto param_names = &f->param_names;
 
-            int nargs = param_names->totalParameters();
-            ASSERT(nargs == spec->arg_types.size(), "%d %ld", nargs, spec->arg_types.size());
+        cf = createCF(uname, source, &f->param_names, entry_descriptor, effort, exception_style, spec);
 
-            if (source->getScopeInfo()->takesClosure())
-                llvm_arg_types.push_back(g.llvm_closure_type_ptr);
-
-            if (source->is_generator)
-                llvm_arg_types.push_back(g.llvm_generator_type_ptr);
-
-            if (!source->scoping->areGlobalsFromModule())
-                llvm_arg_types.push_back(g.llvm_value_type_ptr);
-
-            for (int i = 0; i < nargs; i++) {
-                if (i == 3) {
-                    llvm_arg_types.push_back(g.llvm_value_type_ptr->getPointerTo());
-                    break;
-                }
-                llvm_arg_types.push_back(spec->arg_types[i]->llvmType());
-            }
-        } else {
-            int arg_num = -1;
-            for (const auto& p : entry_descriptor->args) {
-                arg_num++;
-                // printf("Loading %s: %s\n", p.first.c_str(), p.second->debugName().c_str());
-                if (arg_num < 3)
-                    llvm_arg_types.push_back(p.second->llvmType());
-                else {
-                    llvm_arg_types.push_back(g.llvm_value_type_ptr->getPointerTo());
-                    break;
-                }
-            }
-        }
-        // Make sure that the instruction memory keeps the module object alive.
-        // TODO: implement this for real
-        gc::registerPermanentRoot(source->parent_module, /* allow_duplicates= */ true);
-
-        cf = new CompiledFunction(NULL, spec, NULL, effort, exception_style, entry_descriptor);
-        llvm::FunctionType* ft = llvm::FunctionType::get(cf->getReturnType()->llvmType(), llvm_arg_types, false /*vararg*/);
-        llvm::Function* f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, uname, g.cur_module);
-        cf->func = f;
         clearRelocatableSymsMap();
 
         for (auto&& e : source->cfg->ptrconstants_map) {
@@ -370,12 +328,13 @@ CompiledFunction* compileFunction(CLFunction* f, FunctionSpecialization* spec, E
         assert(compiled);
         g.cur_cf = NULL;
         g.cur_cfg = NULL;
+        g.cur_cfg_hash.clear();
 
         StackMap* stackmap = parseStackMap();
         processStackmap(cf, stackmap);
         delete stackmap;
     } else {
-        cf = doCompile(uname, f, source, &f->param_names, entry_descriptor, effort, exception_style, spec, name->s());
+        cf = doCompile(f, source, &f->param_names, entry_descriptor, effort, exception_style, spec, uname);
         compileIR(cf, effort);
     }
 
