@@ -266,6 +266,24 @@ public:
         if (!llvm::sys::fs::exists(cache_dir.str()) && llvm::sys::fs::create_directories(cache_dir.str()))
             return;
 
+        {
+            llvm::SmallString<128> file;
+            llvm::sys::path::home_directory(file);
+            llvm::sys::path::append(file, ".cache");
+            llvm::sys::path::append(file, "pyston");
+            llvm::sys::path::append(file, "cache");
+            if (!llvm::sys::fs::exists(file.str()) && llvm::sys::fs::create_directories(file.str()))
+                return;
+
+            llvm::sys::path::append(file, g.cur_cfg_hash + ".o");
+
+            FILE* f = fopen(file.str().str().c_str(), "wb");
+            llvm::StringRef ref = Obj.getBuffer();
+            fwrite(ref.data(), 1, ref.size(), f);
+            fclose(f);
+        }
+
+
         CompressedFile::writeFile(cache_file, Obj.getBuffer());
     }
 

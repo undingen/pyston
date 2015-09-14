@@ -16,6 +16,9 @@
 
 #include "llvm/Bitcode/ReaderWriter.h"
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
+#include "llvm/ExecutionEngine/JITEventListener.h"
+#include "llvm/ExecutionEngine/RTDyldMemoryManager.h"
+#include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/IR/Verifier.h"
@@ -30,6 +33,7 @@
 #include "codegen/irgen.h"
 #include "codegen/irgen/future.h"
 #include "codegen/irgen/util.h"
+#include "codegen/memmgr.h"
 #include "codegen/osrentry.h"
 #include "codegen/parser.h"
 #include "codegen/patchpoints.h"
@@ -290,10 +294,11 @@ CompiledFunction* compileFunction(CLFunction* f, FunctionSpecialization* spec, E
     CompiledFunction* cf = NULL;
     std::string uname = getUniqueFunctionName(name->s(), effort);
     std::string hash = source->cfg->getHash((int)effort, uname);
+    g.cur_cfg_hash = hash;
     llvm::SmallString<128> cache_file = cache_dir;
     llvm::sys::path::append(cache_file, hash);
     bool found_it = llvm::sys::fs::exists(cache_file.str());
-    if (0 && found_it) {
+    if (1 && found_it) {
         //printf("cache hit %s\n", hash.c_str());
         UNAVOIDABLE_STAT_TIMER(t1, "us_timer_found_it");
 
@@ -327,10 +332,51 @@ CompiledFunction* compileFunction(CLFunction* f, FunctionSpecialization* spec, E
         setRelocatableSym("cUnboundLocalError", UnboundLocalError);
         g.cur_cfg = source->cfg;
         g.cur_module = NULL;
+
+
+
+
+#if 0
+        auto mem = createMemoryManager();
+        llvm::RuntimeDyld run(*mem, *mem);
+
+        auto obj = llvm::object::ObjectFile::createObjectFile((cache_file.str() + ".o").str());
+        auto& bin = *obj->getBinary();
+        std::unique_ptr<RuntimeDyld::LoadedObjectInfo> L = run.loadObject(bin);
+        run.resolveRelocations();
+
+        for (auto&& e : g.jit_listeners) {
+            if (!e)
+                continue;
+            e->NotifyObjectEmitted(bin, *L);
+        }
+
+
+        g.cur_cf = cf;
+        void* compiled = (void*)run.getSymbolLocalAddress(uname);
+        assert(compiled);
+        g.cur_cf = NULL;
+        g.cur_cfg = NULL;
+#else
+        g.cur_cf = cf;
+        g.engine->addObjectFile(std::move(*llvm::object::ObjectFile::createObjectFile((cache_file.str() + ".o").str())));
+
+        void* compiled = (void*)g.engine->getFunctionAddress(uname);
+        assert(compiled);
+        g.cur_cf = NULL;
+        g.cur_cfg = NULL;
+#endif
+
+
+        StackMap* stackmap = parseStackMap();
+        processStackmap(cf, stackmap);
+        delete stackmap;
+
     } else {
         cf = doCompile(uname, f, source, &f->param_names, entry_descriptor, effort, exception_style, spec, name->s());
+        compileIR(cf, effort);
     }
-    compileIR(cf, effort);
+
 
     if (!found_it) {
         if (!llvm::sys::fs::exists(cache_dir.str()))

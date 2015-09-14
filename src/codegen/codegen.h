@@ -61,6 +61,7 @@ struct GlobalState {
     llvm::Module* cur_module;
     CompiledFunction* cur_cf;
     CFG* cur_cfg;
+    std::string cur_cfg_hash;
     llvm::TargetMachine* tm;
     llvm::ExecutionEngine* engine;
 
