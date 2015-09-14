@@ -2214,10 +2214,7 @@ private:
 
         // Emitting the actual OSR:
         emitter.getBuilder()->SetInsertPoint(onramp);
-        OSREntryDescriptor* entry = OSREntryDescriptor::create(irstate->getCL(), osr_key, irstate->getExceptionStyle());
-        OSRExit* exit = new OSRExit(entry);
-        llvm::Value* partial_func = emitter.getBuilder()->CreateCall(g.funcs.compilePartialFunc,
-                                                                     embedRelocatablePtr(exit, g.i8->getPointerTo()));
+
 
         std::vector<llvm::Value*> llvm_args;
         std::vector<llvm::Type*> llvm_arg_types;
@@ -2265,6 +2262,8 @@ private:
             }
         }
 
+        std::string osr_params;
+        OSREntryDescriptor::ArgMap args;
         int arg_num = -1;
         for (const auto& p : sorted_symbol_table) {
             arg_num++;
@@ -2320,17 +2319,28 @@ private:
                 emitter.getBuilder()->CreateStore(val, ptr);
             }
 
-            ConcreteCompilerType*& t = entry->args[p.first];
-            if (t == NULL)
+            ConcreteCompilerType*& t = args[p.first];
+            if (t == NULL) {
+                osr_params += (p.first.s() + ":" + var->getType()->debugName() + "|").str();
                 t = var->getType();
-            else
+            } else
                 ASSERT(t == var->getType(), "%s %s\n", t->debugName().c_str(), var->getType()->debugName().c_str());
         }
+
 
         if (sorted_symbol_table.size() > 3) {
             llvm_args.push_back(arg_array);
             llvm_arg_types.push_back(arg_array->getType());
         }
+
+        auto* s = llvm::StructType::get(g.context, { g.i8_ptr }, false);
+        auto* osr_exit_type = ((llvm::Function*)g.funcs.compilePartialFunc)->arg_begin()->getType();
+        auto* ast_jump_type = (++(++((llvm::Function*)g.funcs.compilePartialFunc)->arg_begin()))->getType();
+        auto* osr_exit = new llvm::GlobalVariable(*g.cur_module, s, false, llvm::GlobalValue::InternalLinkage, llvm::ConstantAggregateZero::get(s));
+        auto* osr_exit_converted = emitter.getBuilder()->CreateBitCast(osr_exit, osr_exit_type);
+        auto* osr_exit_str_coverted = emitter.getBuilder()->CreateGlobalStringPtr(osr_params);
+        auto* clfunc = embedRelocatablePtr(irstate->getCL(), g.llvm_clfunction_type_ptr, "cCL");;
+        llvm::Value* partial_func = emitter.getBuilder()->CreateCall(new_func(g.funcs.compilePartialFunc), { osr_exit_converted, osr_exit_str_coverted, embedRelocatablePtr(osr_key, ast_jump_type), clfunc, getConstantInt(irstate->getExceptionStyle(), g.i64) });
 
         llvm::FunctionType* ft
             = llvm::FunctionType::get(irstate->getReturnType()->llvmType(), llvm_arg_types, false /*vararg*/);
@@ -2363,7 +2373,7 @@ private:
 
         llvm::BasicBlock* target = entry_blocks[node->target];
 
-        if (0 && ENABLE_OSR && node->target->idx < myblock->idx && irstate->getEffortLevel() < EffortLevel::MAXIMAL) {
+        if (ENABLE_OSR && node->target->idx < myblock->idx && irstate->getEffortLevel() < EffortLevel::MAXIMAL) {
             assert(node->target->predecessors.size() > 1);
             doOSRExit(target, node);
         } else {

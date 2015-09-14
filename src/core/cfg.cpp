@@ -2699,6 +2699,11 @@ public:
         return NoopASTVisitor::visit_call(node);
     }
 
+    bool visit_jump(AST_Jump* node) override {
+        add(node);
+        return false;
+    }
+
     void addAST(AST* p) {
         if (!constants_map.count(p)) {
             constants_map[p] = constants_map.size();

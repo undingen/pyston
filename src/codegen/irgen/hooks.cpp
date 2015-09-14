@@ -315,6 +315,7 @@ CompiledFunction* compileFunction(CLFunction* f, FunctionSpecialization* spec, E
         setRelocatableSym("cSourceInfo", source);
         setRelocatableSym("cTimesCalled", &cf->times_called);
         setRelocatableSym("cCF", cf);
+        setRelocatableSym("cCL", f);
         setRelocatableSym("cParentModule", source->parent_module);
         setRelocatableSym("cNone", None);
         setRelocatableSym("cUnboundLocalError", UnboundLocalError);
@@ -935,7 +936,24 @@ CompiledFunction* compilePartialFuncInternal(OSRExit* exit) {
     return new_cf;
 }
 
-void* compilePartialFunc(OSRExit* exit) {
+extern "C" void* compilePartialFunc(OSRExit* exit, const char* types, AST_Jump* backedge, CLFunction* cl, long flags) {
+    if (!exit->entry) {
+        OSREntryDescriptor* entry = OSREntryDescriptor::create(cl, backedge, (ExceptionStyle)flags);
+        exit->entry = entry;
+        llvm::SmallVector<llvm::StringRef, 16> v;
+        llvm::StringRef(types).split(v, "|", -1, false);
+        for (llvm::StringRef s : v) {
+            llvm::SmallVector<llvm::StringRef, 2> v2;
+            s.split(v2, ":", -1, false);
+            assert(v2.size() == 2);
+
+            int num_parsed = 0;
+            CompilerType* type = getTypeFromString(v2[1], num_parsed);
+            entry->args[cl->source->getInternedStrings().get(v2[0])] = type->getConcreteType();
+        }
+    }
+
+
     CompiledFunction* new_cf = compilePartialFuncInternal(exit);
     assert(new_cf->exception_style == exit->entry->exception_style);
     return new_cf->code;

@@ -310,7 +310,7 @@ void initGlobalFuncs(GlobalState& g) {
         g.llvm_value_type_ptr, g.llvm_value_type_ptr, g.llvm_value_type_ptr, g.llvm_value_type_ptr->getPointerTo());
 
     g.funcs.reoptCompiledFunc = lookupFunction("reoptCompiledFunc");//getFunc((void*)reoptCompiledFunc, "reoptCompiledFunc");//addFunc((void*)reoptCompiledFunc, g.i8_ptr, g.i8_ptr);
-    g.funcs.compilePartialFunc = addFunc("compilePartialFunc", (void*)compilePartialFunc, g.i8_ptr, g.i8_ptr);
+    GET(compilePartialFunc);
 
     g.funcs.__cxa_end_catch = addFunc("__cxa_end_catch", (void*)__cxa_end_catch, g.void_);
     GET(raise0);

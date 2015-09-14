@@ -166,6 +166,8 @@ ICSetupInfo* createBinexpIC(TypeRecorder* type_recorder);
 ICSetupInfo* createNonzeroIC(TypeRecorder* type_recorder);
 ICSetupInfo* createHasnextIC(TypeRecorder* type_recorder);
 
+CompilerType* getTypeFromString(llvm::StringRef type_str, int& num_parsed);
+
 } // namespace pyston
 
 #endif

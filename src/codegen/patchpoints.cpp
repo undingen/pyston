@@ -297,6 +297,7 @@ CompilerType* getTypeFromString(llvm::StringRef type_str, int& num_parsed) {
             .Case("NormalType(tuple)", BOXED_TUPLE)
             .Case("NormalType(function)", typeFromClass(function_cls))
             .Case("closure", CLOSURE)
+            .Case("FrameInfo", FRAME_INFO)
             .Default(0);
     if (type == 0 && type_str.startswith("tuple(")) {
         llvm::StringRef vars_str = type_str.substr(strlen("tuple("));
