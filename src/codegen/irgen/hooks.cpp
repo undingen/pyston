@@ -293,7 +293,7 @@ CompiledFunction* compileFunction(CLFunction* f, FunctionSpecialization* spec, E
     llvm::SmallString<128> cache_file = cache_dir;
     llvm::sys::path::append(cache_file, hash);
     bool found_it = llvm::sys::fs::exists(cache_file.str());
-    if (1 && found_it) {
+    if (0 && found_it) {
         //printf("cache hit %s\n", hash.c_str());
         UNAVOIDABLE_STAT_TIMER(t1, "us_timer_found_it");
 
