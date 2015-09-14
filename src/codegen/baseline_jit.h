@@ -226,7 +226,7 @@ public:
     RewriterVar* emitGetPystonIter(RewriterVar* v);
     RewriterVar* emitHasnext(RewriterVar* v);
     RewriterVar* emitImportFrom(RewriterVar* module, BoxedString* name);
-    RewriterVar* emitImportName(int level, RewriterVar* from_imports, llvm::StringRef module_name);
+    RewriterVar* emitImportName(int level, RewriterVar* from_imports, BoxedString* module_name);
     RewriterVar* emitImportStar(RewriterVar* module);
     RewriterVar* emitLandingpad();
     RewriterVar* emitNonzero(RewriterVar* v);

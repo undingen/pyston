@@ -848,7 +848,7 @@ Value ASTInterpreter::visit_langPrimitive(AST_LangPrimitive* node) {
         assert(ast_str->str_type == AST_Str::STR);
         const std::string& module_name = ast_str->str_data;
         if (jit)
-            v.var = jit->emitImportName(level, froms, module_name);
+            v.var = jit->emitImportName(level, froms, internStringImmortal(module_name));
         v.o = import(level, froms.o, boxString(module_name));
     } else if (node->opcode == AST_LangPrimitive::IMPORT_STAR) {
         assert(node->args.size() == 1);

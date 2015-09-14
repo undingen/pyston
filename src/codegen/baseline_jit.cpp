@@ -342,9 +342,8 @@ RewriterVar* JitFragmentWriter::emitImportFrom(RewriterVar* module, BoxedString*
     return call(false, (void*)importFrom, module, imm(name));
 }
 
-RewriterVar* JitFragmentWriter::emitImportName(int level, RewriterVar* from_imports, llvm::StringRef module_name) {
-    return call(false, (void*)import, imm(level), from_imports, imm(const_cast<char*>(module_name.data())),
-                imm(module_name.size()));
+RewriterVar* JitFragmentWriter::emitImportName(int level, RewriterVar* from_imports, BoxedString* module_name) {
+    return call(false, (void*)import, imm(level), from_imports, imm(module_name));
 }
 
 RewriterVar* JitFragmentWriter::emitImportStar(RewriterVar* module) {
