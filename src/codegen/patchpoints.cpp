@@ -159,8 +159,6 @@ void processStackmap(CompiledFunction* cf, StackMap* stackmap) {
         int stack_size = stack_size_record.stack_size;
 
 
-        std::vector<StackMap::Record::Location> locations(r->locations.begin(), r->locations.end());
-
         auto& f = r->locations[r->locations.size()-1];
         assert(f.type == StackMap::Record::Location::ConstIndex);
         char* c = (char*)stackmap->constants[f.offset];
@@ -226,6 +224,7 @@ void processStackmap(CompiledFunction* cf, StackMap* stackmap) {
             // or save them across the call.
             initializePatchpoint3(slowpath_func, start_addr, end_addr, scratch_rbp_offset, scratch_size, LiveOutSet(),
                                   frame_remapped);
+
             continue;
         }
 
@@ -325,9 +324,17 @@ PatchpointInfo* PatchpointInfo::create(CompiledFunction* parent_cf, llvm::String
     llvm::SmallVector<llvm::StringRef, 16> v;
     frame_str.split(v, "|", -1, false);
     int frame_args = 0;
+    assert(v.size() >= 3);
+    int num_slots = 0;
+    int slot_size = 0;
+    v[1].getAsInteger(10, num_slots);
+    v[2].getAsInteger(10, slot_size);
+    ICSetupInfo* icinfo = NULL;
+    if (num_slots && slot_size)
+        icinfo = ICSetupInfo::initialize(v[0] == "1", num_slots, slot_size, ICSetupInfo::Generic, NULL);
+    auto* r = new PatchpointInfo(parent_cf, icinfo, 0);
 
-    auto* r = new PatchpointInfo(parent_cf, 0, 0);
-    for (llvm::StringRef s : v) {
+    for (llvm::StringRef s : llvm::ArrayRef<llvm::StringRef>(v).slice(3)) {
         llvm::SmallVector<llvm::StringRef, 2> v2;
         s.split(v2, ":", -1, false);
         assert(v2.size() == 2);

@@ -194,6 +194,11 @@ llvm::Constant* embedRelocatableStr(llvm::StringRef str, llvm::Type* type) {
     return new llvm::GlobalVariable(*g.cur_module, var_type, true, llvm::GlobalVariable::ExternalLinkage, 0, name);
 }
 
+llvm::Constant* embedRelocatableOsr(AST_Jump* jmp, int exc) {
+    std::string name = (llvm::Twine("osr_") + llvm::Twine(exc) + llvm::Twine(g.cur_cfg->getIndexForAST(jmp))).str();
+    return new llvm::GlobalVariable(*g.cur_module, g.i8_ptr, true, llvm::GlobalVariable::ExternalLinkage, 0, name);
+}
+
 llvm::Constant* embedConstantPtr(const void* addr, llvm::Type* type) {
     //RELEASE_ASSERT(0, "don't call this!");
     assert(type);

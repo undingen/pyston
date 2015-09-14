@@ -31,9 +31,11 @@ class GCVisitor;
 }
 
 namespace pyston {
+class AST_Jump;
 
 llvm::Constant* embedRelocatablePtr(const void* addr, llvm::Type*, llvm::StringRef shared_name = llvm::StringRef(), bool materialize = false);
 llvm::Constant* embedRelocatableStr(llvm::StringRef str, llvm::Type*);
+llvm::Constant* embedRelocatableOsr(AST_Jump* jmp, int exc);
 llvm::Constant* embedConstantPtr(const void* addr, llvm::Type*);
 llvm::Constant* getConstantInt(int64_t val);
 llvm::Constant* getConstantDouble(double val);

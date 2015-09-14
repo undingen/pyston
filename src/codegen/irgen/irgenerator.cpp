@@ -2650,6 +2650,10 @@ public:
         pp->setNumFrameArgs(num_frame_args);
 
         std::string str;
+        if (pp->getICInfo())
+            str = std::to_string((int)pp->getICInfo()->hasReturnValue()) + "|" + std::to_string((int)pp->getICInfo()->num_slots) + "|" + std::to_string((int)pp->getICInfo()->slot_size) + "|";
+        else
+            str = "0|0|0|";
         for (auto&& v : pp->getFrameVars()) {
             str += v.name;
             str += ":";

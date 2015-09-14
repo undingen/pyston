@@ -292,46 +292,15 @@ CompiledFunction* compileFunction(CLFunction* f, FunctionSpecialization* spec, E
 
 
     CompiledFunction* cf = NULL;
-    std::string uname = getUniqueFunctionName(name->s(), effort);
+    std::string uname = getUniqueFunctionName(name->s(), effort, entry_descriptor);
     std::string hash = source->cfg->getHash((int)effort, uname);
     g.cur_cfg_hash = hash;
     llvm::SmallString<128> cache_file = cache_dir;
     llvm::sys::path::append(cache_file, hash + ".o");
     bool found_it = llvm::sys::fs::exists(cache_file.str());
     if (1 && found_it) {
-        //printf("cache hit %s\n", hash.c_str());
         UNAVOIDABLE_STAT_TIMER(t1, "us_timer_found_it");
-
-        //auto f = llvm::MemoryBuffer::getFile(cache_file.str());
-        //llvm::ErrorOr<llvm::Module*> e = llvm::parseBitcodeFile((*f)->getMemBufferRef(), g.context);
-        //(*e)->dump();
-
-        /*
-        g.cur_module = *e;
-        llvm::Function* func = NULL;
-        for (auto&& ff : g.cur_module->functions()) {
-            if (ff.isDeclaration())
-                continue;
-            assert(!func);
-            func = &ff;
-        }
-        assert(func);
-        */
-
         g.cur_module = new llvm::Module(uname, g.context);
-    #if LLVMREV < 217070 // not sure if this is the right rev
-        g.cur_module->setDataLayout(g.tm->getDataLayout()->getStringRepresentation());
-    #elif LLVMREV < 227113
-        g.cur_module->setDataLayout(g.tm->getSubtargetImpl()->getDataLayout());
-    #elif LLVMREV < 231270
-        g.cur_module->setDataLayout(g.tm->getDataLayout());
-    #endif
-        // g.engine->addModule(g.cur_module);
-
-        ////
-        // Initializing the llvm-level structures:
-
-
         std::vector<llvm::Type*> llvm_arg_types;
         if (entry_descriptor == NULL) {
             assert(spec);
@@ -369,20 +338,14 @@ CompiledFunction* compileFunction(CLFunction* f, FunctionSpecialization* spec, E
                 }
             }
         }
-
-
         // Make sure that the instruction memory keeps the module object alive.
         // TODO: implement this for real
         gc::registerPermanentRoot(source->parent_module, /* allow_duplicates= */ true);
 
         cf = new CompiledFunction(NULL, spec, NULL, effort, exception_style, entry_descriptor);
-
         llvm::FunctionType* ft = llvm::FunctionType::get(cf->getReturnType()->llvmType(), llvm_arg_types, false /*vararg*/);
-
         llvm::Function* f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, uname, g.cur_module);
         cf->func = f;
-
-
         clearRelocatableSymsMap();
 
         for (auto&& e : source->cfg->ptrconstants_map) {
@@ -397,31 +360,6 @@ CompiledFunction* compileFunction(CLFunction* f, FunctionSpecialization* spec, E
         g.cur_cfg = source->cfg;
         g.cur_module = NULL;
 
-
-
-
-#if 0
-        auto mem = createMemoryManager();
-        llvm::RuntimeDyld run(*mem, *mem);
-
-        auto obj = llvm::object::ObjectFile::createObjectFile((cache_file.str() + ".o").str());
-        auto& bin = *obj->getBinary();
-        std::unique_ptr<RuntimeDyld::LoadedObjectInfo> L = run.loadObject(bin);
-        run.resolveRelocations();
-
-        for (auto&& e : g.jit_listeners) {
-            if (!e)
-                continue;
-            e->NotifyObjectEmitted(bin, *L);
-        }
-
-
-        g.cur_cf = cf;
-        void* compiled = (void*)run.getSymbolLocalAddress(uname);
-        assert(compiled);
-        g.cur_cf = NULL;
-        g.cur_cfg = NULL;
-#else
         g.cur_cf = cf;
         g.engine->addObjectFile(std::move(*llvm::object::ObjectFile::createObjectFile(cache_file.str())));
 
@@ -429,27 +367,13 @@ CompiledFunction* compileFunction(CLFunction* f, FunctionSpecialization* spec, E
         assert(compiled);
         g.cur_cf = NULL;
         g.cur_cfg = NULL;
-#endif
-
 
         StackMap* stackmap = parseStackMap();
         processStackmap(cf, stackmap);
         delete stackmap;
-
     } else {
         cf = doCompile(uname, f, source, &f->param_names, entry_descriptor, effort, exception_style, spec, name->s());
         compileIR(cf, effort);
-    }
-
-
-    if (0 && !found_it) {
-        if (!llvm::sys::fs::exists(cache_dir.str()))
-            llvm::sys::fs::create_directories(cache_dir.str());
-
-        std::error_code error_code;
-        llvm::raw_fd_ostream file(cache_file.str(), error_code, llvm::sys::fs::F_RW);
-        if (!error_code)
-            llvm::WriteBitcodeToFile(cf->func->getParent(), file);
     }
 
     f->addVersion(cf);
