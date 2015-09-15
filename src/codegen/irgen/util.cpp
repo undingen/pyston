@@ -212,7 +212,7 @@ llvm::Constant* embedConstantPtr(const void* addr, llvm::Type* type) {
 
 llvm::Constant* embedConstantStr(llvm::StringRef str) {
     llvm::Constant* const_data = llvm::ConstantDataArray::getString(g.context, str);
-    return new llvm::GlobalVariable(*g.cur_module, g.i8_ptr, true, llvm::GlobalVariable::PrivateLinkage, const_data);
+    return new llvm::GlobalVariable(*g.cur_module, const_data->getType(), true, llvm::GlobalVariable::PrivateLinkage, const_data);
 }
 
 llvm::Constant* getNullPtr(llvm::Type* t) {
@@ -279,31 +279,6 @@ public:
                         }
                         ii->setArgOperand(i, llvm::MapValue(op, VMap, flags, type_remapper, this));
                         continue;
-                    } else {
-#if LLVMREV < 235483
-                        assert(pp_id != -1);
-                        void* addr = PatchpointInfo::getSlowpathAddr(pp_id);
-
-                        bool lookup_success = true;
-                        std::string name;
-                        if (addr == (void*)None) {
-                            name = "None";
-                        } else {
-                            name = g.func_addr_registry.getFuncNameAtAddress(addr, true, &lookup_success);
-                        }
-
-                        if (!lookup_success) {
-                            llvm::Constant* int_val
-                                = llvm::ConstantInt::get(g.i64, reinterpret_cast<uintptr_t>(addr), false);
-                            llvm::Constant* ptr_val = llvm::ConstantExpr::getIntToPtr(int_val, g.i8);
-                            ii->setArgOperand(i, ptr_val);
-                            continue;
-                        } else {
-                            ii->setArgOperand(i, module->getOrInsertGlobal(name, g.i8));
-                        }
-#else
-                        //assert(0);
-#endif
                     }
                 }
                 return ii;

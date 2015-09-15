@@ -54,6 +54,22 @@ ICSetupInfo* ICSetupInfo::initialize(bool has_return_value, int num_slots, int s
     return rtn;
 }
 
+ICSetupInfo* ICSetupInfo::initialize(llvm::StringRef str) {
+    llvm::SmallVector<llvm::StringRef, 16> v;
+    str.split(v, "|", -1, false);
+    assert(v.size() >= 4);
+    int type_as_int = 0;
+    int num_slots = 0;
+    int slot_size = 0;
+    if (v[0].getAsInteger(10, type_as_int) && v[2].getAsInteger(10, num_slots) && v[3].getAsInteger(10, slot_size) && num_slots && slot_size)
+        return initialize(v[1] == "1", num_slots, slot_size, (ICType)type_as_int, NULL);
+    return NULL;
+}
+
+std::string ICSetupInfo::toString() const {
+    return (llvm::Twine((int)type) + "|" + llvm::Twine(hasReturnValue()) + "|" + llvm::Twine(num_slots) + "|" + llvm::Twine(slot_size)).str();
+}
+
 int PatchpointInfo::patchpointSize() {
     if (icinfo) {
         int r = icinfo->totalSize();
@@ -273,15 +289,10 @@ void processStackmap(CompiledFunction* cf, StackMap* stackmap) {
     }
 }
 
-PatchpointInfo* PatchpointInfo::create(CompiledFunction* parent_cf, const ICSetupInfo* icinfo, int num_ic_stackmap_args,
-                                       void* func_addr) {
+PatchpointInfo* PatchpointInfo::create(CompiledFunction* parent_cf, const ICSetupInfo* icinfo, int num_ic_stackmap_args) {
     if (icinfo == NULL)
         assert(num_ic_stackmap_args == 0);
-
-    auto* r = new PatchpointInfo(parent_cf, icinfo, num_ic_stackmap_args);
-    //r->id = new_patchpoints.size();
-    //new_patchpoints.push_back(std::make_pair(r, func_addr));
-    return r;
+    return new PatchpointInfo(parent_cf, icinfo, num_ic_stackmap_args);
 }
 
 CompilerType* getTypeFromString(llvm::StringRef type_str, int& num_parsed) {
@@ -298,56 +309,67 @@ CompilerType* getTypeFromString(llvm::StringRef type_str, int& num_parsed) {
             .Case("NormalType(function)", typeFromClass(function_cls))
             .Case("closure", CLOSURE)
             .Case("FrameInfo", FRAME_INFO)
-            .Default(0);
-    if (type == 0 && type_str.startswith("tuple(")) {
-        llvm::StringRef vars_str = type_str.substr(strlen("tuple("));
-        vars_str = vars_str.substr(0, vars_str.size()-1);
-        //printf("vars: %s\n", vars_str.str().c_str());
-        llvm::SmallVector<llvm::StringRef, 8> vars;
-        vars_str.split(vars, ",", -1, false);
+            .Default(nullptr);
 
-        std::vector<CompilerType*> types;
-        for (llvm::StringRef tuple_var : vars) {
-            types.push_back(getTypeFromString(tuple_var.trim(), num_parsed));
-        }
-        type = makeTupleType(types);
-    } else if (type == 0 && type_str.startswith("NormalType(")) {
-        type = UNKNOWN;
-        ++num_parsed;
-    } else
-        ++num_parsed;
-    assert(type);
+    if (!type) {
+        if (type_str.startswith("tuple(")) {
+            llvm::StringRef vars_str = type_str.substr(strlen("tuple("));
+            vars_str = vars_str.rtrim(")");
+            llvm::SmallVector<llvm::StringRef, 8> vars;
+            vars_str.split(vars, ",", -1, false);
+            std::vector<CompilerType*> types;
+            for (llvm::StringRef tuple_var : vars) {
+                types.push_back(getTypeFromString(tuple_var.trim(), num_parsed));
+            }
+            type = makeTupleType(types);
+            --num_parsed; // "tuple(" doen't count
+        } else if (type == 0 && type_str.startswith("NormalType("))
+            type = UNKNOWN;
 
+        RELEASE_ASSERT(type, "unknown type %s", type_str.str().c_str());
+    }
+    ++num_parsed;
     return type;
 }
 
-PatchpointInfo* PatchpointInfo::create(CompiledFunction* parent_cf, llvm::StringRef frame_str) {
-    llvm::SmallVector<llvm::StringRef, 16> v;
-    frame_str.split(v, "|", -1, false);
-    int frame_args = 0;
-    assert(v.size() >= 3);
-    int num_slots = 0;
-    int slot_size = 0;
-    v[1].getAsInteger(10, num_slots);
-    v[2].getAsInteger(10, slot_size);
-    ICSetupInfo* icinfo = NULL;
-    if (num_slots && slot_size)
-        icinfo = ICSetupInfo::initialize(v[0] == "1", num_slots, slot_size, ICSetupInfo::Generic, NULL);
-    auto* r = new PatchpointInfo(parent_cf, icinfo, 0);
-
-    for (llvm::StringRef s : llvm::ArrayRef<llvm::StringRef>(v).slice(3)) {
-        llvm::SmallVector<llvm::StringRef, 2> v2;
-        s.split(v2, ":", -1, false);
-        assert(v2.size() == 2);
-        //printf("%s %s\n", v2[0].str().c_str(), v2[1].str().c_str());
-
-        int num_parsed = 0;
-        CompilerType* type = getTypeFromString(v2[1], num_parsed);
-        frame_args += num_parsed;
-        r->addFrameVar(v2[0], type);
+std::string PatchpointInfo::toString() {
+    std::string str;
+    llvm::raw_string_ostream stream(str);
+    if (getICInfo())
+        stream << getICInfo()->toString();
+    stream << "^";
+    for (auto&& v : getFrameVars()) {
+        stream << v.name;
+        stream << ":";
+        stream << v.type->debugName();
+        stream << "|";
     }
-    r->setNumFrameArgs(frame_args + 2);
-    return r;
+    return stream.str();
+}
+
+PatchpointInfo* PatchpointInfo::create(CompiledFunction* parent_cf, llvm::StringRef frame_str) {
+    llvm::SmallVector<llvm::StringRef, 2> v;
+    frame_str.split(v, "^", -1, true);
+    assert(v.size() == 2);
+    llvm::StringRef icinfo_str = v[0];
+    llvm::StringRef frame_vars_str = v[1];
+
+    ICSetupInfo* icinfo = icinfo_str.empty() ? NULL : ICSetupInfo::initialize(icinfo_str);
+    llvm::SmallVector<llvm::StringRef, 16> frame_vars;
+    frame_vars_str.split(frame_vars, "|", -1, false);
+    int num_frame_args = 0;
+    auto* pp = new PatchpointInfo(parent_cf, icinfo, 0);
+    for (llvm::StringRef name_type_str : frame_vars) {
+        llvm::SmallVector<llvm::StringRef, 2> name_type;
+        name_type_str.split(name_type, ":", -1, false);
+        assert(name_type.size() == 2);
+        int num_parsed = 0;
+        CompilerType* type = getTypeFromString(name_type[1], num_parsed);
+        num_frame_args += num_parsed;
+        pp->addFrameVar(name_type[0], type);
+    }
+    pp->setNumFrameArgs(num_frame_args + icStackmapArgsStart() + 1);
+    return pp;
 }
 
 ICSetupInfo* createGenericIC(TypeRecorder* type_recorder, bool has_return_value, int size) {

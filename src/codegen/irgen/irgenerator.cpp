@@ -152,8 +152,9 @@ static llvm::Value* getFrameObjGep(llvm::IRBuilder<true>& builder, llvm::Value* 
     // gep->accumulateConstantOffset(g.tm->getDataLayout(), ap_offset)
 }
 
-llvm::Value* IRGenState::new_func(llvm::Value* f) {
-    return getLLVMFunction()->getParent()->getOrInsertFunction(f->getName(), ((llvm::Function*)f)->getFunctionType());
+llvm::Value* IRGenState::new_func(llvm::Value* v) {
+    llvm::Function* f = llvm::cast<llvm::Function>(v);
+    return getLLVMFunction()->getParent()->getOrInsertFunction(f->getName(), f->getFunctionType());
 }
 
 llvm::Value* IRGenState::getFrameInfoVar() {
@@ -319,21 +320,7 @@ private:
         if (pp == NULL)
             assert(ic_stackmap_args.size() == 0);
 
-        // Retrieve address of called function, currently handles the IR
-        // embedConstantPtr() and embedRelocatablePtr() create.
-        void* func_addr = nullptr;
-        if (llvm::isa<llvm::ConstantExpr>(func)) {
-            llvm::ConstantExpr* cast = llvm::cast<llvm::ConstantExpr>(func);
-            auto opcode = cast->getOpcode();
-            if (opcode == llvm::Instruction::IntToPtr) {
-                auto operand = cast->getOperand(0);
-                if (llvm::isa<llvm::ConstantInt>(operand))
-                    func_addr = (void*)llvm::cast<llvm::ConstantInt>(operand)->getZExtValue();
-            }
-        }
-        //assert(func_addr);
-
-        PatchpointInfo* info = PatchpointInfo::create(currentFunction(), pp, ic_stackmap_args.size(), func_addr);
+        PatchpointInfo* info = PatchpointInfo::create(currentFunction(), pp, ic_stackmap_args.size());
 
         int64_t pp_id = info->getId();
         int pp_size = pp ? pp->totalSize() : CALL_ONLY_SIZE;
@@ -2635,21 +2622,7 @@ public:
         int num_frame_args = stackmap_args.size() - initial_args;
         pp->setNumFrameArgs(num_frame_args);
 
-        std::string str;
-        if (pp->getICInfo())
-            str = std::to_string((int)pp->getICInfo()->hasReturnValue()) + "|" + std::to_string((int)pp->getICInfo()->num_slots) + "|" + std::to_string((int)pp->getICInfo()->slot_size) + "|";
-        else
-            str = "0|0|0|";
-        for (auto&& v : pp->getFrameVars()) {
-            str += v.name;
-            str += ":";
-            str += v.type->debugName();
-            str += "|";
-        }
-        llvm::Constant* frame_info = llvm::ConstantDataArray::getString(g.context, str);
-        llvm::Type* var_type = frame_info->getType();
-        llvm::GlobalVariable* gv = new llvm::GlobalVariable(*g.cur_module, var_type, true, llvm::GlobalVariable::PrivateLinkage, frame_info);
-        stackmap_args.push_back(gv);
+        stackmap_args.push_back(embedConstantStr(pp->toString()));
     }
 
     EndingState getEndingSymbolTable() override {

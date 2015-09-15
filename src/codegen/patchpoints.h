@@ -80,7 +80,7 @@ public:
         num_frame_stackmap_args = num_frame_args;
     }
 
-    int icStackmapArgsStart() { return 1; }
+    static int icStackmapArgsStart() { return 1; }
     int numICStackmapArgs() { return num_ic_stackmap_args; }
 
     int frameStackmapArgsStart() { return icStackmapArgsStart() + numICStackmapArgs(); }
@@ -95,10 +95,9 @@ public:
 
     int totalStackmapArgs() { return frameStackmapArgsStart() + numFrameStackmapArgs(); }
 
-    static PatchpointInfo* create(CompiledFunction* parent_cf, const ICSetupInfo* icinfo, int num_ic_stackmap_args,
-                                  void* func_addr);
+    static PatchpointInfo* create(CompiledFunction* parent_cf, const ICSetupInfo* icinfo, int num_ic_stackmap_args);
     static PatchpointInfo* create(CompiledFunction* parent_cf, llvm::StringRef frame_str);
-    static void* getSlowpathAddr(unsigned int pp_id);
+    std::string toString();
 };
 
 class ICSetupInfo {
@@ -151,6 +150,8 @@ public:
 
     static ICSetupInfo* initialize(bool has_return_value, int num_slots, int slot_size, ICType type,
                                    TypeRecorder* type_recorder);
+    static ICSetupInfo* initialize(llvm::StringRef str);
+    std::string toString() const;
 };
 
 ICSetupInfo* createGenericIC(TypeRecorder* type_recorder, bool has_return_value, int size);
