@@ -81,6 +81,7 @@ public:
     llvm::DenseMap<InternedString, int> sym_vreg_map;
 
     std::vector<AST*> constants;
+    std::vector<void*> ptrconstants;
     llvm::DenseMap<AST*, int> constants_map;
     llvm::DenseMap<void*, int> ptrconstants_map;
 

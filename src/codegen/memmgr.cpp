@@ -239,22 +239,27 @@ uint64_t PystonMemoryManager::getSymbolAddress(const std::string& name) {
                 return (uint64_t)parent_module->getLongConstant(num_node->n_long);
             else
                 RELEASE_ASSERT(0, "unknown num type");
+        } else if (node->type == AST_TYPE::Name) {
+            AST_Name* name_node = (AST_Name*)node;
+            return (uint64_t)name_node->id.getBox();
         } else
             RELEASE_ASSERT(0, "unknown type");
     } else if (name_str.startswith("str_")) {
         llvm::StringRef real_name = name_str.substr(strlen("str_"));
         assert(g.cur_cfg);
         return (uint64_t)internStringImmortal(real_name);
+    } else if (name_str.startswith("ptr_")) {
+        llvm::StringRef num = name_str.substr(strlen("ptr_"));
+        int n = -1;
+        num.getAsInteger(10, n);
+        assert(g.cur_cfg);
+        return (uint64_t)g.cur_cfg->ptrconstants[n];
     } else if (name_str.startswith("f_")) {
         llvm::StringRef num = name_str.substr(strlen("f_"));
         int n = -1;
         num.getAsInteger(10, n);
         assert(g.cur_cfg);
-        void* p = 0;
-        for (auto&& e : g.cur_cfg->ptrconstants_map) {
-            if (e.second == n)
-                p = e.first;
-        }
+        void* p = g.cur_cfg->ptrconstants[n];
         assert(p);
         AST* node = (AST*)p;
         if (node->type == AST_TYPE::FunctionDef || node->type == AST_TYPE::ClassDef || node->type == AST_TYPE::Lambda) {

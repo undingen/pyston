@@ -308,16 +308,14 @@ CompiledFunction* compileFunction(CLFunction* f, FunctionSpecialization* spec, E
         cf = createCF(uname, source, &f->param_names, entry_descriptor, effort, exception_style, spec);
 
         clearRelocatableSymsMap();
-
-        for (auto&& e : source->cfg->ptrconstants_map) {
-            setRelocatableSym(("ptr_" + llvm::Twine(e.second)).str(), e.first);
-        }
         setRelocatableSym("cSourceInfo", source);
         setRelocatableSym("cTimesCalled", &cf->times_called);
         setRelocatableSym("cCF", cf);
         setRelocatableSym("cCL", f);
         setRelocatableSym("cParentModule", source->parent_module);
         setRelocatableSym("cNone", None);
+        setRelocatableSym("cTrue", True);
+        setRelocatableSym("cFalse", False);
         setRelocatableSym("cUnboundLocalError", UnboundLocalError);
         g.cur_cfg = source->cfg;
         g.cur_module = NULL;

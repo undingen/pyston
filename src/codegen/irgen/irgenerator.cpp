@@ -1134,7 +1134,7 @@ private:
 
             std::vector<llvm::Value*> llvm_args;
             llvm_args.push_back(irstate->getGlobals());
-            llvm_args.push_back(embedRelocatablePtr(node->id.getBox(), g.llvm_boxedstring_type_ptr));
+            llvm_args.push_back(embedRelocatablePtr(node, g.llvm_boxedstring_type_ptr, std::string(), true));
 
             llvm::Value* uncasted = emitter.createIC(pp, (void*)pyston::getGlobal, llvm_args, unw_info);
             llvm::Value* r = emitter.getBuilder()->CreateIntToPtr(uncasted, g.llvm_value_type_ptr);
@@ -1207,7 +1207,7 @@ private:
             return new ConcreteCompilerVariable(UNKNOWN, lookupResult, true);
         } else if (vst == ScopeInfo::VarScopeType::NAME) {
             llvm::Value* boxedLocals = irstate->getBoxedLocalsVar();
-            llvm::Value* attr = embedRelocatablePtr(node->id.getBox(), g.llvm_boxedstring_type_ptr);
+            llvm::Value* attr = embedRelocatablePtr(node, g.llvm_boxedstring_type_ptr, std::string(), true);
             llvm::Value* module = irstate->getGlobals();
             llvm::Value* r = emitter.createCall3(unw_info, new_func(g.funcs.boxedLocalsGet), boxedLocals, attr, module);
             return new ConcreteCompilerVariable(UNKNOWN, r, true);
@@ -1218,7 +1218,7 @@ private:
                 // state = DEAD;
                 llvm::CallSite call(emitter.createCall(
                     unw_info, new_func(g.funcs.assertNameDefined),
-                    { getConstantInt(0, g.i1), embedRelocatableStr(node->id, g.llvm_boxedstring_type_ptr),
+                    { getConstantInt(0, g.i1), embedRelocatablePtr(node, g.llvm_boxedstring_type_ptr, std::string(), true),
                       embedRelocatablePtr(UnboundLocalError, g.llvm_class_type_ptr, "cUnboundLocalError"), getConstantInt(true, g.i1) }));
                 call.setDoesNotReturn();
                 return undefVariable();
@@ -1231,7 +1231,7 @@ private:
             if (is_defined_var) {
                 emitter.createCall(
                     unw_info, new_func(g.funcs.assertNameDefined),
-                    { i1FromBool(emitter, is_defined_var), embedRelocatableStr(node->id, g.llvm_boxedstring_type_ptr),
+                    { i1FromBool(emitter, is_defined_var), embedRelocatablePtr(node, g.llvm_boxedstring_type_ptr, std::string(), true),
                       embedRelocatablePtr(UnboundLocalError, g.llvm_class_type_ptr, "cUnboundLocalError"), getConstantInt(true, g.i1) });
 
                 // At this point we know the name must be defined (otherwise the assert would have fired):
@@ -2241,25 +2241,13 @@ private:
         // prevent us from having two OSR exits point to the same OSR entry; not something that
         // we're doing right now but something that would be nice in the future.
 
-        llvm::Value* arg_array = NULL, * malloc_save = NULL;
+        llvm::Value* arg_array = NULL;
         if (sorted_symbol_table.size() > 3) {
-            // Leave in the ability to use malloc but I guess don't use it.
-            // Maybe if there are a ton of live variables it'd be nice to have them be
-            // heap-allocated, or if we don't immediately return the result of the OSR?
-            bool use_malloc = false;
-            if (use_malloc) {
-                llvm::Value* n_bytes = getConstantInt((sorted_symbol_table.size() - 3) * sizeof(Box*), g.i64);
-                llvm::Value* l_malloc = embedConstantPtr(
-                    (void*)malloc, llvm::FunctionType::get(g.i8->getPointerTo(), g.i64, false)->getPointerTo());
-                malloc_save = emitter.getBuilder()->CreateCall(l_malloc, n_bytes);
-                arg_array = emitter.getBuilder()->CreateBitCast(malloc_save, g.llvm_value_type_ptr->getPointerTo());
-            } else {
-                llvm::Value* n_varargs = llvm::ConstantInt::get(g.i64, sorted_symbol_table.size() - 3, false);
-                // TODO we have a number of allocas with non-overlapping lifetimes, that end up
-                // being redundant.
-                arg_array = new llvm::AllocaInst(g.llvm_value_type_ptr, n_varargs, "",
-                                                 irstate->getLLVMFunction()->getEntryBlock().getFirstInsertionPt());
-            }
+            llvm::Value* n_varargs = llvm::ConstantInt::get(g.i64, sorted_symbol_table.size() - 3, false);
+            // TODO we have a number of allocas with non-overlapping lifetimes, that end up
+            // being redundant.
+            arg_array = new llvm::AllocaInst(g.llvm_value_type_ptr, n_varargs, "",
+                                             irstate->getLLVMFunction()->getEntryBlock().getFirstInsertionPt());
         }
 
         std::string osr_params;
@@ -2347,18 +2335,6 @@ private:
         partial_func = emitter.getBuilder()->CreateBitCast(partial_func, ft->getPointerTo());
 
         llvm::CallInst* rtn = emitter.getBuilder()->CreateCall(partial_func, llvm_args);
-
-        // If we alloca'd the arg array, we can't make this into a tail call:
-        if (arg_array == NULL && malloc_save != NULL) {
-            rtn->setTailCall(true);
-        }
-
-        if (malloc_save != NULL) {
-            llvm::Value* l_free = embedConstantPtr(
-                (void*)free, llvm::FunctionType::get(g.void_, g.i8->getPointerTo(), false)->getPointerTo());
-            emitter.getBuilder()->CreateCall(l_free, malloc_save);
-        }
-
         for (int i = 0; i < converted_args.size(); i++) {
             converted_args[i]->decvref(emitter);
         }

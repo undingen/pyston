@@ -2627,39 +2627,28 @@ public:
     SourceInfo* source_info;
     std::vector<AST*>& constants;
     llvm::DenseMap<AST*, int>& constants_map;
+    std::vector<void*>& ptrconstants;
     llvm::DenseMap<void*, int>& ptrconstants_map;
-    AssignConstantVisitor(SourceInfo* source_info, std::vector<AST*>& constants, llvm::DenseMap<AST*, int>& constants_map, llvm::DenseMap<void*, int>& ptrconstants_map) : source_info(source_info), constants(constants), constants_map(constants_map), ptrconstants_map(ptrconstants_map) {}
-
-    bool visit_arguments(AST_arguments* node) override {
-        for (AST_expr* d : node->defaults)
-            d->accept(this);
-        return false;
-    }
+    AssignConstantVisitor(SourceInfo* source_info, std::vector<AST*>& constants, llvm::DenseMap<AST*, int>& constants_map, std::vector<void*>& ptrconstants, llvm::DenseMap<void*, int>& ptrconstants_map) : source_info(source_info), constants(constants), constants_map(constants_map), ptrconstants(ptrconstants), ptrconstants_map(ptrconstants_map) {}
 
     bool visit_classdef(AST_ClassDef* node) override {
         add(node);
-        for (auto e : node->bases)
-            e->accept(this);
-        for (auto e : node->decorator_list)
-            e->accept(this);
         return false;
     }
 
     bool visit_functiondef(AST_FunctionDef* node) override {
         add(node);
-        for (auto* d : node->decorator_list)
-            d->accept(this);
         return false;
     }
 
     bool visit_lambda(AST_Lambda* node) override {
         add(node);
-        node->args->accept(this);
         return false;
     }
 
     bool visit_name(AST_Name* node) override {
         add(node->id.getBox());
+        addAST(node);
         return false;
     }
 
@@ -2675,14 +2664,6 @@ public:
         return false;
     }
 
-    bool visit_langprimitive(AST_LangPrimitive* node) override {
-        if (node->opcode == AST_LangPrimitive::IMPORT_FROM) {
-            //source_info->parent_module->getStringConstant(name, true);
-            addAST(ast_cast<AST_Str>(node->args[1]));
-        }
-        return false;
-    }
-
     bool visit_str(AST_Str* node) override {
         addAST(node);
         return NoopASTVisitor::visit_str(node);
@@ -2690,13 +2671,13 @@ public:
 
     bool visit_num(AST_Num* node) override {
         addAST(node);
-        return NoopASTVisitor::visit_num(node);
+        return false;
     }
 
     bool visit_call(AST_Call* node) override {
         if (node->keywords.size())
             add(getKeywordNameStorage(node));
-        return NoopASTVisitor::visit_call(node);
+        return false;
     }
 
     bool visit_jump(AST_Jump* node) override {
@@ -2714,6 +2695,7 @@ public:
     void add(void* p) {
         if (!ptrconstants_map.count(p)) {
             ptrconstants_map[p] = ptrconstants_map.size();
+            ptrconstants.push_back(p);
         }
     }
 };
@@ -2960,7 +2942,7 @@ CFG* computeCFG(SourceInfo* source, std::vector<AST_stmt*> body) {
     }
 
 
-    AssignConstantVisitor c_visitor(source, rtn->constants, rtn->constants_map, rtn->ptrconstants_map);
+    AssignConstantVisitor c_visitor(source, rtn->constants, rtn->constants_map, rtn->ptrconstants, rtn->ptrconstants_map);
     for (CFGBlock* b : rtn->blocks) {
         for (AST_stmt* stmt : b->body) {
             c_visitor.add(stmt);
