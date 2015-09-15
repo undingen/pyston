@@ -61,7 +61,7 @@ ICSetupInfo* ICSetupInfo::initialize(llvm::StringRef str) {
     int type_as_int = 0;
     int num_slots = 0;
     int slot_size = 0;
-    if (v[0].getAsInteger(10, type_as_int) && v[2].getAsInteger(10, num_slots) && v[3].getAsInteger(10, slot_size) && num_slots && slot_size)
+    if (!v[0].getAsInteger(10, type_as_int) && !v[2].getAsInteger(10, num_slots) && !v[3].getAsInteger(10, slot_size) && num_slots && slot_size)
         return initialize(v[1] == "1", num_slots, slot_size, (ICType)type_as_int, NULL);
     return NULL;
 }
