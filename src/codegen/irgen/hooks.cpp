@@ -316,6 +316,8 @@ CompiledFunction* compileFunction(CLFunction* f, FunctionSpecialization* spec, E
         setRelocatableSym("cNone", None);
         setRelocatableSym("cTrue", True);
         setRelocatableSym("cFalse", False);
+        setRelocatableSym("cNewLine", internStringImmortal("\n"));
+        setRelocatableSym("cSpace", internStringImmortal(" "));
         setRelocatableSym("cUnboundLocalError", UnboundLocalError);
         g.cur_cfg = source->cfg;
         g.cur_module = NULL;

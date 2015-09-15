@@ -253,7 +253,7 @@ public:
 
     void setattr(IREmitter& emitter, const OpInfo& info, ConcreteCompilerVariable* var, BoxedString* attr,
                  CompilerVariable* v) override {
-        llvm::Constant* ptr = embedRelocatableStr(attr->s(), g.llvm_boxedstring_type_ptr);
+        llvm::Constant* ptr = embedRelocatableStr(attr, g.llvm_boxedstring_type_ptr);
         ConcreteCompilerVariable* converted = v->makeConverted(emitter, UNKNOWN);
         // g.funcs.setattr->dump();
         // var->getValue()->dump(); llvm::errs() << '\n';
@@ -276,7 +276,7 @@ public:
     }
 
     void delattr(IREmitter& emitter, const OpInfo& info, ConcreteCompilerVariable* var, BoxedString* attr) override {
-        llvm::Constant* ptr = embedRelocatableStr(attr->s(), g.llvm_boxedstring_type_ptr);
+        llvm::Constant* ptr = embedRelocatableStr(attr, g.llvm_boxedstring_type_ptr);
 
         // TODO
         // bool do_patchpoint = ENABLE_ICDELATTRS;
@@ -524,7 +524,7 @@ ConcreteCompilerType* UNKNOWN = new UnknownType();
 
 CompilerVariable* UnknownType::getattr(IREmitter& emitter, const OpInfo& info, ConcreteCompilerVariable* var,
                                        BoxedString* attr, bool cls_only) {
-    llvm::Constant* ptr = embedRelocatableStr(attr->s(), g.llvm_boxedstring_type_ptr);
+    llvm::Constant* ptr = embedRelocatableStr(attr, g.llvm_boxedstring_type_ptr);
 
     llvm::Value* rtn_val = NULL;
 
@@ -738,7 +738,7 @@ CompilerVariable* UnknownType::callattr(IREmitter& emitter, const OpInfo& info, 
 
     std::vector<llvm::Value*> other_args;
     other_args.push_back(var->getValue());
-    other_args.push_back(embedRelocatableStr(attr->s(), g.llvm_boxedstring_type_ptr));
+    other_args.push_back(embedRelocatableStr(attr, g.llvm_boxedstring_type_ptr));
     other_args.push_back(getConstantInt(flags.asInt(), g.i64));
     return _call(emitter, info, func, exception_style, func_ptr, other_args, flags.argspec, args, keyword_names,
                  UNKNOWN);
@@ -2088,7 +2088,9 @@ public:
 
     ConcreteCompilerVariable* makeConverted(IREmitter& emitter, VAR* var, ConcreteCompilerType* other_type) override {
         assert(other_type == STR || other_type == UNKNOWN);
-        llvm::Value* boxed = embedRelocatableStr(var->getValue()->s(), g.llvm_value_type_ptr);
+        //llvm::Value* boxed = embedRelocatableStr(var->getValue()->s(), g.llvm_value_type_ptr);
+        RELEASE_ASSERT(0, "this is currently broken");
+        llvm::Value* boxed = NULL;
         return new ConcreteCompilerVariable(other_type, boxed, true);
     }
 

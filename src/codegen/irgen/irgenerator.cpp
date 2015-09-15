@@ -379,8 +379,7 @@ public:
     }
 
     llvm::Value* new_func(llvm::Value* f) {
-        assert(isa<llvm::Function>(f));
-        return irstate->getLLVMFunction()->getParent()->getOrInsertFunction(f->getName(), ((llvm::Function*)f)->getFunctionType());
+        return irstate->new_func(f);
     }
 
     IRBuilder* getBuilder() override { return &*builder; }
@@ -426,9 +425,6 @@ public:
             }
         }
 #endif
-
-        //callee = new_func(callee);
-
 
         if (ENABLE_FRAME_INTROSPECTION) {
             llvm::Type* rtn_type = llvm::cast<llvm::FunctionType>(llvm::cast<llvm::PointerType>(callee->getType())
@@ -1120,7 +1116,7 @@ private:
             return new ConcreteCompilerVariable(UNKNOWN, r, true);
         } else {
             llvm::Value* r = emitter.createCall2(unw_info, irstate->new_func(g.funcs.getGlobal), irstate->getGlobals(),
-                                                 embedRelocatableStr(node->id.s(), g.llvm_boxedstring_type_ptr));
+                                                 embedRelocatablePtr(node, g.llvm_boxedstring_type_ptr, std::string(), true));
             return new ConcreteCompilerVariable(UNKNOWN, r, true);
         }
     }
@@ -1175,7 +1171,7 @@ private:
             emitter.getBuilder()->SetInsertPoint(curblock);
 
             llvm::CallSite call(emitter.createCall(unw_info, irstate->new_func(g.funcs.assertFailDerefNameDefined),
-                                                     embedRelocatableStr(node->id.s(), g.llvm_boxedstring_type_ptr)));
+                                                     embedRelocatablePtr(node->id, g.llvm_boxedstring_type_ptr, std::string(), true)));
             call.setDoesNotReturn();
             emitter.getBuilder()->CreateUnreachable();
 
@@ -1459,7 +1455,7 @@ private:
         attr_dict->decvref(emitter);
 
         llvm::Value* classobj = emitter.createCall3(
-            unw_info, irstate->new_func(g.funcs.createUserClass), embedRelocatableStr(node->name.s(), g.llvm_boxedstring_type_ptr),
+            unw_info, irstate->new_func(g.funcs.createUserClass), embedRelocatableStr(node->name, g.llvm_boxedstring_type_ptr),
             bases_tuple->getValue(), converted_attr_dict->getValue());
 
         // Note: createuserClass is free to manufacture non-class objects
@@ -1748,14 +1744,14 @@ private:
             } else {
                 auto converted = val->makeConverted(emitter, val->getBoxType());
                 emitter.createCall3(unw_info, irstate->new_func(g.funcs.setGlobal), irstate->getGlobals(),
-                                    embedRelocatableStr(name.s(), g.llvm_boxedstring_type_ptr),
+                                    embedRelocatableStr(name, g.llvm_boxedstring_type_ptr),
                                     converted->getValue());
                 converted->decvref(emitter);
             }
         } else if (vst == ScopeInfo::VarScopeType::NAME) {
             // TODO inefficient
             llvm::Value* boxedLocals = irstate->getBoxedLocalsVar();
-            llvm::Value* attr = embedRelocatableStr(name.s(), g.llvm_boxedstring_type_ptr);
+            llvm::Value* attr = embedRelocatableStr(name, g.llvm_boxedstring_type_ptr);
             emitter.createCall3(unw_info, irstate->new_func(g.funcs.boxedLocalsSet), boxedLocals, attr,
                                 val->makeConverted(emitter, UNKNOWN)->getValue());
         } else {
@@ -1879,7 +1875,7 @@ private:
         // happen when the assertion is actually thrown so I don't think it will be necessary.
         static BoxedString* AssertionError_str = internStringImmortal("AssertionError");
         llvm_args.push_back(emitter.createCall2(unw_info, irstate->new_func(g.funcs.getGlobal), irstate->getGlobals(),
-                                                embedRelocatableStr(AssertionError_str->s(), g.llvm_boxedstring_type_ptr)));
+                                                embedRelocatableStr(AssertionError_str, g.llvm_boxedstring_type_ptr)));
 
         ConcreteCompilerVariable* converted_msg = NULL;
         if (node->msg) {
@@ -1960,7 +1956,7 @@ private:
         if (vst == ScopeInfo::VarScopeType::GLOBAL) {
             // Can't use delattr since the errors are different:
             emitter.createCall2(unw_info, irstate->new_func(g.funcs.delGlobal), irstate->getGlobals(),
-                                embedRelocatableStr(target->id.s(), g.llvm_boxedstring_type_ptr));
+                                embedRelocatablePtr(target, g.llvm_boxedstring_type_ptr, std::string(), true));
             return;
         }
 
@@ -1977,7 +1973,7 @@ private:
 
         if (symbol_table.count(target->id) == 0) {
             llvm::CallSite call(emitter.createCall(unw_info, irstate->new_func(g.funcs.assertNameDefined),
-                                     { getConstantInt(0, g.i1), embedRelocatableStr(target->id.s(), g.llvm_boxedstring_type_ptr),
+                                     { getConstantInt(0, g.i1), embedRelocatablePtr(target, g.llvm_boxedstring_type_ptr, std::string(), true),
                                        embedRelocatablePtr(NameError, g.llvm_class_type_ptr, "cNameError"),
                                        getConstantInt(true /*local_error_msg*/, g.i1) }));
             call.setDoesNotReturn();
@@ -1989,7 +1985,7 @@ private:
 
         if (is_defined_var) {
             emitter.createCall(unw_info, irstate->new_func(g.funcs.assertNameDefined),
-                               { i1FromBool(emitter, is_defined_var), embedRelocatableStr(target->id.s(), g.llvm_boxedstring_type_ptr),
+                               { i1FromBool(emitter, is_defined_var), embedRelocatablePtr(target->id, g.llvm_boxedstring_type_ptr, std::string(), true),
                                  embedRelocatablePtr(NameError, g.llvm_class_type_ptr, "cNameError"),
                                  getConstantInt(true /*local_error_msg*/, g.i1) });
             _popFake(defined_name);
@@ -2065,7 +2061,8 @@ private:
             curblock = ss_block;
             emitter.getBuilder()->SetInsertPoint(ss_block);
             CallattrFlags flags = {.cls_only = false, .null_on_nonexistent = false, .argspec = ArgPassSpec(1) };
-            auto r = dest->callattr(emitter, getOpInfoForNode(node, unw_info), write_str, flags, { makeStr(space_str) },
+            auto space_str_ = new ConcreteCompilerVariable(STR, embedRelocatablePtr(space_str, g.llvm_value_type_ptr, "cSpace"), true);
+            auto r = dest->callattr(emitter, getOpInfoForNode(node, unw_info), write_str, flags, { space_str_ },
                                     NULL);
             r->decvref(emitter);
 
@@ -2086,8 +2083,9 @@ private:
 
         if (node->nl) {
             CallattrFlags flags = {.cls_only = false, .null_on_nonexistent = false, .argspec = ArgPassSpec(1) };
+            auto newline_str_ = new ConcreteCompilerVariable(STR, embedRelocatablePtr(newline_str, g.llvm_value_type_ptr, "cNewLine"), true);
             auto r = dest->callattr(emitter, getOpInfoForNode(node, unw_info), write_str, flags,
-                                    { makeStr(newline_str) }, NULL);
+                                    { newline_str_ }, NULL);
             r->decvref(emitter);
 
             if (nvals == 0) {

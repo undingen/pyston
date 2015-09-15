@@ -165,7 +165,12 @@ llvm::Constant* embedRelocatablePtr(const void* addr, llvm::Type* type, llvm::St
     return new llvm::GlobalVariable(*g.cur_module, var_type, true, llvm::GlobalVariable::ExternalLinkage, 0, name);
 }
 
-llvm::Constant* embedRelocatableStr(llvm::StringRef str, llvm::Type* type) {
+llvm::Constant* embedRelocatableStr(BoxedString* boxed_str, llvm::Type* type) {
+    if (g.cur_cfg->ptrconstants_map.count(boxed_str)) {
+        return embedRelocatablePtr(boxed_str, type);
+    }
+
+    llvm::StringRef str = boxed_str->s();
     for (char c : str) {
         assert(isalnum(c) || c == '_');
     }
