@@ -19,6 +19,8 @@
 #include <cstdio>
 #include <cstdlib>
 
+#include "llvm/Support/FileSystem.h"
+
 #include "Python.h"
 
 #include "analysis/scoping_analysis.h"
@@ -2528,6 +2530,24 @@ void CFG::print(llvm::raw_ostream& stream) {
 }
 
 std::string CFG::getHash(int effort, llvm::StringRef name) {
+    static std::string executable_hash;
+    if (executable_hash.empty()) {
+        std::string pyston_path = llvm::sys::fs::getMainExecutable(NULL, NULL);
+        llvm::sys::fs::file_status result;
+        auto rtn = llvm::sys::fs::status(pyston_path, result);
+        assert(!rtn);
+
+        HashOStream hash_exe;
+        hash_exe << pyston_path;
+        hash_exe << result.getSize();
+        auto&& last_mod = result.getLastModificationTime();
+        hash_exe << last_mod.toEpochTime();
+        hash_exe << last_mod.usec();
+        hash_exe << last_mod.msec();
+        hash_exe << last_mod.str();
+        executable_hash = hash_exe.getHash();
+    }
+
     UNAVOIDABLE_STAT_TIMER(t0, "us_timer_get_cfg_hash");
     HashOStream stream;
     print(stream);
@@ -2535,9 +2555,7 @@ std::string CFG::getHash(int effort, llvm::StringRef name) {
     stream << ptrconstants_map.size();
     stream << effort;
     stream << name;
-#ifndef NDEBUG
-    stream << "debug";
-#endif
+    stream << executable_hash;
     return stream.getHash();
 }
 
