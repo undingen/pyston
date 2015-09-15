@@ -64,13 +64,12 @@ static llvm::Value* getFunc(void* func, const char* name) {
     llvm::Function* f = lookupFunction(name);
     ASSERT(f, "%s", name);
     g.func_addr_registry.registerFunction(name, func, 0, f);
-    return f;//embedConstantPtr(func, f->getType());
+    return f;
 }
 
 static llvm::Value* addFunc(llvm::StringRef name, void* func, llvm::Type* rtn_type, llvm::ArrayRef<llvm::Type*> arg_types,
                             bool varargs = false) {
     llvm::FunctionType* ft = llvm::FunctionType::get(rtn_type, arg_types, varargs);
-    //return embedConstantPtr(func, ft->getPointerTo());
     return g.stdlib_module->getOrInsertFunction(name, ft);
 }
 

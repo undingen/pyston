@@ -35,7 +35,6 @@ class AST_Jump;
 
 llvm::Constant* embedRelocatablePtr(const void* addr, llvm::Type*, llvm::StringRef shared_name = llvm::StringRef(), bool materialize = false);
 llvm::Constant* embedRelocatableStr(llvm::StringRef str, llvm::Type*);
-llvm::Constant* embedConstantPtr(const void* addr, llvm::Type* type);
 llvm::Constant* embedConstantStr(llvm::StringRef str);
 llvm::Constant* getConstantInt(int64_t val);
 llvm::Constant* getConstantDouble(double val);

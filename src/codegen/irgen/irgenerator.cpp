@@ -475,26 +475,18 @@ public:
 
     llvm::Value* createIC(const ICSetupInfo* pp, void* func_addr, const std::vector<llvm::Value*>& args,
                           const UnwindInfo& unw_info, ExceptionStyle target_exception_style = CXX) override {
-        std::vector<llvm::Value*> stackmap_args;
-        /*
-        llvm::CallSite rtn = emitPatchpoint(pp->hasReturnValue() ? g.i64 : g.void_, pp,
-                                            embedConstantPtr(func_addr, g.i8->getPointerTo()), args, stackmap_args,
-                                            unw_info, target_exception_style);
-        */
         bool lookup_success = false;
         std::string name = g.func_addr_registry.getFuncNameAtAddress(func_addr, true, &lookup_success);
         assert(lookup_success);
 
-
         llvm::Value* func = NULL;
         llvm::Type* var_type = g.i8;
-        if (g.cur_module->getFunction(name)) {
+        if (g.cur_module->getFunction(name))
             func = getBuilder()->CreateBitCast(g.cur_module->getFunction(name), g.i8->getPointerTo());
-        } else
+        else
             func = g.cur_module->getOrInsertGlobal(name, var_type);
 
-
-        //llvm::Value* func = embedConstantPtr(func_addr, g.i8->getPointerTo());
+        std::vector<llvm::Value*> stackmap_args;
         llvm::CallSite rtn = emitPatchpoint(pp->hasReturnValue() ? g.i64 : g.void_, pp,
                                             func, args, stackmap_args,
                                             unw_info, target_exception_style);

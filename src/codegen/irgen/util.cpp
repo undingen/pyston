@@ -127,9 +127,6 @@ const void* getValueOfRelocatableSym(const std::string& str) {
 llvm::Constant* embedRelocatablePtr(const void* addr, llvm::Type* type, llvm::StringRef shared_name, bool materialize) {
     assert(addr);
 
-    if (!ENABLE_JIT_OBJECT_CACHE)
-        return embedConstantPtr(addr, type);
-
     std::string name;
     if (!shared_name.empty()) {
         assert(!materialize);
@@ -192,22 +189,6 @@ llvm::Constant* embedRelocatableStr(llvm::StringRef str, llvm::Type* type) {
 
     llvm::Type* var_type = type->getPointerElementType();
     return new llvm::GlobalVariable(*g.cur_module, var_type, true, llvm::GlobalVariable::ExternalLinkage, 0, name);
-}
-
-llvm::Constant* embedConstantPtr(const void* addr, llvm::Type* type) {
-    //RELEASE_ASSERT(0, "don't call this!");
-    assert(type);
-    llvm::Constant* int_val = llvm::ConstantInt::get(g.i64, reinterpret_cast<uintptr_t>(addr), false);
-    llvm::Constant* ptr_val = llvm::ConstantExpr::getIntToPtr(int_val, type);
-
-#if MOVING_GC
-    gc::GCAllocation* al = gc::global_heap.getAllocationFromInteriorPointer(const_cast<void*>(addr));
-    if (al) {
-        pointers_in_code->push_back(al->user_data);
-    }
-#endif
-
-    return ptr_val;
 }
 
 llvm::Constant* embedConstantStr(llvm::StringRef str) {

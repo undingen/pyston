@@ -1033,13 +1033,13 @@ public:
 
     void setattr(IREmitter& emitter, const OpInfo& info, VAR* var, BoxedString* attr, CompilerVariable* v) override {
         llvm::CallSite call(emitter.createCall3(info.unw_info, emitter.new_func(g.funcs.raiseAttributeErrorStr), embedConstantStr("int"),
-                                  embedConstantPtr(attr->data(), g.i8_ptr), getConstantInt(attr->size(), g.i64)));
+                                  embedConstantStr(attr->s()), getConstantInt(attr->size(), g.i64)));
         call.setDoesNotReturn();
     }
 
     void delattr(IREmitter& emitter, const OpInfo& info, VAR* var, BoxedString* attr) override {
         llvm::CallSite call(emitter.createCall3(info.unw_info, emitter.new_func(g.funcs.raiseAttributeErrorStr), embedConstantStr("int"),
-                                  embedConstantPtr(attr->data(), g.i8_ptr), getConstantInt(attr->size(), g.i64)));
+                                  embedConstantStr(attr->s()), getConstantInt(attr->size(), g.i64)));
         call.setDoesNotReturn();
     }
 
@@ -1297,13 +1297,13 @@ public:
 
     void setattr(IREmitter& emitter, const OpInfo& info, VAR* var, BoxedString* attr, CompilerVariable* v) override {
         llvm::CallSite call(emitter.createCall3(info.unw_info, emitter.new_func(g.funcs.raiseAttributeErrorStr), embedConstantStr("float"),
-                                  embedConstantPtr(attr->data(), g.i8_ptr), getConstantInt(attr->size(), g.i64)));
+                                  embedConstantStr(attr->s()), getConstantInt(attr->size(), g.i64)));
         call.setDoesNotReturn();
     }
 
     void delattr(IREmitter& emitter, const OpInfo& info, VAR* var, BoxedString* attr) override {
         llvm::CallSite call(emitter.createCall3(info.unw_info, emitter.new_func(g.funcs.raiseAttributeErrorStr), embedConstantStr("float"),
-                                  embedConstantPtr(attr->data(), g.i8_ptr), getConstantInt(attr->size(), g.i64)));
+                                  embedConstantStr(attr->s()), getConstantInt(attr->size(), g.i64)));
         call.setDoesNotReturn();
     }
 
