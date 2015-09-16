@@ -309,14 +309,14 @@ CompilerType* getTypeFromString(llvm::StringRef type_str, int& num_parsed) {
             .Case("NormalType(function)", typeFromClass(function_cls))
             .Case("closure", CLOSURE)
             .Case("FrameInfo", FRAME_INFO)
+            .Case("undefType", UNDEF)
             .Default(nullptr);
 
     if (!type) {
         if (type_str.startswith("tuple(")) {
             llvm::StringRef vars_str = type_str.substr(strlen("tuple("));
-            vars_str = vars_str.rtrim(")");
             llvm::SmallVector<llvm::StringRef, 8> vars;
-            vars_str.split(vars, ",", -1, false);
+            vars_str.rtrim(")").split(vars, ",", -1, false);
             std::vector<CompilerType*> types;
             for (llvm::StringRef tuple_var : vars) {
                 types.push_back(getTypeFromString(tuple_var.trim(), num_parsed));
