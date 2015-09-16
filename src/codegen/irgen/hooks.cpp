@@ -324,6 +324,7 @@ CompiledFunction* compileFunction(CLFunction* f, FunctionSpecialization* spec, E
     setRelocatableSym("cNewLine", internStringImmortal("\n"));
     setRelocatableSym("cSpace", internStringImmortal(" "));
     setRelocatableSym("cUnboundLocalError", UnboundLocalError);
+    setRelocatableSym("cNameError", NameError);
     g.cur_cfg = source->cfg;
 
     if (1 && found_it) {
