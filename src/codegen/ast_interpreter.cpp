@@ -984,7 +984,7 @@ Value ASTInterpreter::visit_return(AST_Return* node) {
 }
 
 Value ASTInterpreter::createFunction(AST* node, AST_arguments* args, const std::vector<AST_stmt*>& body) {
-    CLFunction* cl = wrapFunction(node, args, body, source_info);
+    CLFunction* cl = getWrappedFunction(node);
 
     std::vector<Box*, StlCompatAllocator<Box*>> defaults;
 
@@ -1108,7 +1108,7 @@ Value ASTInterpreter::visit_makeClass(AST_MakeClass* mkclass) {
             closure = created_closure;
         assert(closure);
     }
-    CLFunction* cl = wrapFunction(node, nullptr, node->body, source_info);
+    CLFunction* cl = getWrappedFunction(node);
 
     Box* passed_globals = NULL;
     if (!getCL()->source->scoping->areGlobalsFromModule())
