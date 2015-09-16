@@ -319,6 +319,7 @@ CompilerType* getTypeFromString(llvm::StringRef type_str, int& num_parsed) {
             vars_str.rtrim(")").split(vars, ",", -1, false);
             std::vector<CompilerType*> types;
             for (llvm::StringRef tuple_var : vars) {
+                RELEASE_ASSERT(!tuple_var.trim().startswith("tuple"), "parser cant't currently handled nested tuples");
                 types.push_back(getTypeFromString(tuple_var.trim(), num_parsed));
             }
             type = makeTupleType(types);
