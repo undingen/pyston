@@ -216,8 +216,9 @@ llvm::Constant* embedRelocatableStr(BoxedString* boxed_str, llvm::Type* type) {
 
 llvm::Constant* embedConstantStr(llvm::StringRef str) {
     llvm::Constant* const_data = llvm::ConstantDataArray::getString(g.context, str);
-    auto* gv = new llvm::GlobalVariable(*g.cur_module, const_data->getType(), true, llvm::GlobalVariable::PrivateLinkage, const_data);
-    return llvm::ConstantExpr::getBitCast(gv, g.i8_ptr);
+    //auto* gv = new llvm::GlobalVariable(*g.cur_module, const_data->getType(), true, llvm::GlobalVariable::PrivateLinkage, const_data);
+    //return llvm::ConstantExpr::getBitCast(gv, g.i8_ptr);
+    return new llvm::GlobalVariable(*g.cur_module, const_data->getType(), true, llvm::GlobalVariable::PrivateLinkage, const_data);
 }
 
 llvm::Constant* getNullPtr(llvm::Type* t) {
