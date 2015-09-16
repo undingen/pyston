@@ -265,8 +265,7 @@ uint64_t PystonMemoryManager::getSymbolAddress(const std::string& name) {
         assert(p);
         AST* node = (AST*)p;
         if (node->type == AST_TYPE::FunctionDef || node->type == AST_TYPE::ClassDef || node->type == AST_TYPE::Lambda) {
-            SourceInfo* source_info = (SourceInfo*)getValueOfRelocatableSym("cSourceInfo");
-            return (uint64_t)wrapFunction(node, NULL, {}, source_info);
+            return (uint64_t)getWrappedFunction(node);
         } else
             RELEASE_ASSERT(0, "unknown type");
     }
