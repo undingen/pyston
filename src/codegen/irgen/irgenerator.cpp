@@ -1169,7 +1169,7 @@ private:
             emitter.getBuilder()->SetInsertPoint(curblock);
 
             llvm::CallSite call(emitter.createCall(unw_info, irstate->new_func(g.funcs.assertFailDerefNameDefined),
-                                                     embedMaterializePtr(node->id, g.llvm_boxedstring_type_ptr)));
+                                                     embedMaterializePtr(node, g.llvm_boxedstring_type_ptr)));
             call.setDoesNotReturn();
             emitter.getBuilder()->CreateUnreachable();
 

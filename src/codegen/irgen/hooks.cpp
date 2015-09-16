@@ -197,7 +197,7 @@ static void compileIR(CompiledFunction* cf, EffortLevel effort) {
     delete stackmap;
 }
 
-static std::string getUniqueFunctionName(std::string nameprefix, EffortLevel effort, const OSREntryDescriptor* entry, llvm::StringRef hash) {
+static std::string getFunctionName(std::string nameprefix, EffortLevel effort, const OSREntryDescriptor* entry) {
     static llvm::StringMap<int> used_module_names;
     std::string name;
     llvm::raw_string_ostream os(name);
@@ -205,6 +205,17 @@ static std::string getUniqueFunctionName(std::string nameprefix, EffortLevel eff
     os << "_e" << (int)effort;
     if (entry)
         os << "_osr" << entry->backedge->target->idx;
+    // in order to generate a unique id add the number of times we encountered this name to end of the string.
+    auto& times = used_module_names[os.str()];
+    os << '_' << ++times;
+    return os.str();
+}
+
+static std::string getUniqueFunctionName(std::string nameprefix, EffortLevel effort, const OSREntryDescriptor* entry, llvm::StringRef hash) {
+    static llvm::StringMap<int> used_module_names;
+    std::string name;
+    llvm::raw_string_ostream os(name);
+    os << getFunctionName(nameprefix, effort, entry);
     os << "_" << hash;
     // in order to generate a unique id add the number of times we encountered this name to end of the string.
     auto& times = used_module_names[os.str()];
@@ -295,8 +306,9 @@ CompiledFunction* compileFunction(CLFunction* f, FunctionSpecialization* spec, E
 
 
     CompiledFunction* cf = NULL;
-    std::string hash = source->cfg->getHash((int)effort, name->s());
-    std::string uname = getUniqueFunctionName(name->s(), effort, entry_descriptor, hash);
+    std::string uname = getFunctionName(name->s(), effort, entry_descriptor);
+    std::string hash = source->cfg->getHash((int)effort, uname);
+    uname += "_" + hash;
     g.cur_cfg_hash = hash;
     llvm::SmallString<128> cache_file = cache_dir;
     llvm::sys::path::append(cache_file, hash + ".o");

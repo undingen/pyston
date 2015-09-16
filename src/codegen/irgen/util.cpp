@@ -159,10 +159,10 @@ llvm::Constant* embedRelocatablePtr(const void* addr, llvm::Type* type, llvm::St
     return new llvm::GlobalVariable(*g.cur_module, var_type, true, llvm::GlobalVariable::ExternalLinkage, 0, name);
 }
 
-llvm::Constant* embedMaterializePtr(const void* addr, llvm::Type* type) {
+llvm::Constant* embedMaterializePtr(AST* addr, llvm::Type* type) {
     assert(addr);
 
-    std::string name = (llvm::Twine("const_") + llvm::Twine(g.cur_cfg->getIndexForAST((AST*)addr))).str();
+    std::string name = (llvm::Twine("const_") + llvm::Twine(g.cur_cfg->getIndexForAST(addr))).str();
 
     llvm::GlobalVariable* gv = g.cur_module->getGlobalVariable(name, true);
     if (gv) {
