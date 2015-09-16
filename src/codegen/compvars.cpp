@@ -1668,6 +1668,8 @@ public:
         if (!canStaticallyResolveGetattrs())
             return NULL;
 
+        RELEASE_ASSERT(0, "nor working yet");
+
         Box* rtattr = cls->getattr(attr);
         if (rtattr == NULL) {
             if (no_attribute) {
@@ -1678,7 +1680,7 @@ public:
 
                 llvm::CallSite call(emitter.createCall3(
                     info.unw_info, raise_func, embedRelocatablePtr(cls->tp_name, g.i8_ptr),
-                    embedRelocatablePtr(attr->data(), g.i8_ptr), getConstantInt(attr->size(), g.i64), exception_style));
+                    embedRelocatableStr(attr, g.llvm_boxedstring_type_ptr), getConstantInt(attr->size(), g.i64), exception_style));
                 if (exception_style == CAPI) {
                     emitter.checkAndPropagateCapiException(info.unw_info, getNullPtr(g.llvm_value_type_ptr),
                                                            getNullPtr(g.llvm_value_type_ptr));

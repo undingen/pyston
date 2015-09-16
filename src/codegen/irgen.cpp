@@ -964,20 +964,6 @@ static llvm::MDNode* setupDebugInfo(SourceInfo* source, llvm::Function* f) {
     return func_info;
 }
 
-static std::string getUniqueFunctionName(std::string nameprefix, EffortLevel effort, const OSREntryDescriptor* entry) {
-    static llvm::StringMap<int> used_module_names;
-    std::string name;
-    llvm::raw_string_ostream os(name);
-    os << nameprefix;
-    os << "_e" << (int)effort;
-    if (entry)
-        os << "_osr" << entry->backedge->target->idx;
-    // in order to generate a unique id add the number of times we encountered this name to end of the string.
-    auto& times = used_module_names[os.str()];
-    os << '_' << ++times;
-    return os.str();
-}
-
 CompiledFunction* createCF(llvm::StringRef name, SourceInfo* source, ParamNames* param_names,
                            const OSREntryDescriptor* entry_descriptor, EffortLevel effort,
                            ExceptionStyle exception_style, FunctionSpecialization* spec) {
@@ -1047,7 +1033,7 @@ CompiledFunction* doCompile(CLFunction* clfunc, SourceInfo* source, ParamNames* 
 
     assert(g.cur_module == NULL);
 
-    clearRelocatableSymsMap();
+    //clearRelocatableSymsMap();
     g.cur_cfg = source->cfg;
 
     setRelocatableSym("cParentModule", source->parent_module);
@@ -1067,6 +1053,8 @@ CompiledFunction* doCompile(CLFunction* clfunc, SourceInfo* source, ParamNames* 
     CompiledFunction* cf = createCF(name, source, param_names, entry_descriptor, effort, exception_style, spec);
     llvm::Function* f = cf->func;
 
+    setRelocatableSym("cCF", cf);
+    setRelocatableSym("cTimesCalled", &cf->times_called);
     // g.func_registry.registerFunction(f, g.cur_module);
 
     llvm::MDNode* dbg_funcinfo = setupDebugInfo(source, f);

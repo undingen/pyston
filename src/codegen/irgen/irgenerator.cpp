@@ -753,8 +753,7 @@ private:
                 assert(name.size());
 
                 llvm::Value* name_arg
-                    = embedRelocatablePtr(ast_str,
-                                          g.llvm_boxedstring_type_ptr, std::string(), true);
+                    = embedMaterializePtr(ast_str, g.llvm_boxedstring_type_ptr);
                 llvm::Value* r
                     = emitter.createCall2(unw_info, irstate->new_func(g.funcs.importFrom), converted_module->getValue(), name_arg);
 
@@ -799,8 +798,7 @@ private:
                 const std::string& module_name = ast_str->str_data;
 
                 llvm::Value* name_arg
-                    = embedRelocatablePtr(ast_str,
-                                          g.llvm_boxedstring_type_ptr, std::string(), true);
+                    = embedMaterializePtr(ast_str, g.llvm_boxedstring_type_ptr);
 
                 llvm::Value* imported = emitter.createCall(unw_info, irstate->new_func(g.funcs.import),
                                                            { getConstantInt(level, g.i32), converted_froms->getValue(),
@@ -1109,14 +1107,14 @@ private:
 
             std::vector<llvm::Value*> llvm_args;
             llvm_args.push_back(irstate->getGlobals());
-            llvm_args.push_back(embedRelocatablePtr(node, g.llvm_boxedstring_type_ptr, std::string(), true));
+            llvm_args.push_back(embedMaterializePtr(node, g.llvm_boxedstring_type_ptr));
 
             llvm::Value* uncasted = emitter.createIC(pp, (void*)pyston::getGlobal, llvm_args, unw_info);
             llvm::Value* r = emitter.getBuilder()->CreateIntToPtr(uncasted, g.llvm_value_type_ptr);
             return new ConcreteCompilerVariable(UNKNOWN, r, true);
         } else {
             llvm::Value* r = emitter.createCall2(unw_info, irstate->new_func(g.funcs.getGlobal), irstate->getGlobals(),
-                                                 embedRelocatablePtr(node, g.llvm_boxedstring_type_ptr, std::string(), true));
+                                                 embedMaterializePtr(node, g.llvm_boxedstring_type_ptr));
             return new ConcreteCompilerVariable(UNKNOWN, r, true);
         }
     }
@@ -1171,7 +1169,7 @@ private:
             emitter.getBuilder()->SetInsertPoint(curblock);
 
             llvm::CallSite call(emitter.createCall(unw_info, irstate->new_func(g.funcs.assertFailDerefNameDefined),
-                                                     embedRelocatablePtr(node->id, g.llvm_boxedstring_type_ptr, std::string(), true)));
+                                                     embedMaterializePtr(node->id, g.llvm_boxedstring_type_ptr)));
             call.setDoesNotReturn();
             emitter.getBuilder()->CreateUnreachable();
 
@@ -1182,7 +1180,7 @@ private:
             return new ConcreteCompilerVariable(UNKNOWN, lookupResult, true);
         } else if (vst == ScopeInfo::VarScopeType::NAME) {
             llvm::Value* boxedLocals = irstate->getBoxedLocalsVar();
-            llvm::Value* attr = embedRelocatablePtr(node, g.llvm_boxedstring_type_ptr, std::string(), true);
+            llvm::Value* attr = embedMaterializePtr(node, g.llvm_boxedstring_type_ptr);
             llvm::Value* module = irstate->getGlobals();
             llvm::Value* r = emitter.createCall3(unw_info, irstate->new_func(g.funcs.boxedLocalsGet), boxedLocals, attr, module);
             return new ConcreteCompilerVariable(UNKNOWN, r, true);
@@ -1193,7 +1191,7 @@ private:
                 // state = DEAD;
                 llvm::CallSite call(emitter.createCall(
                     unw_info, irstate->new_func(g.funcs.assertNameDefined),
-                    { getConstantInt(0, g.i1), embedRelocatablePtr(node, g.llvm_boxedstring_type_ptr, std::string(), true),
+                    { getConstantInt(0, g.i1), embedMaterializePtr(node, g.llvm_boxedstring_type_ptr),
                       embedRelocatablePtr(UnboundLocalError, g.llvm_class_type_ptr, "cUnboundLocalError"), getConstantInt(true, g.i1) }));
                 call.setDoesNotReturn();
                 return undefVariable();
@@ -1206,7 +1204,7 @@ private:
             if (is_defined_var) {
                 emitter.createCall(
                     unw_info, irstate->new_func(g.funcs.assertNameDefined),
-                    { i1FromBool(emitter, is_defined_var), embedRelocatablePtr(node, g.llvm_boxedstring_type_ptr, std::string(), true),
+                    { i1FromBool(emitter, is_defined_var), embedMaterializePtr(node, g.llvm_boxedstring_type_ptr),
                       embedRelocatablePtr(UnboundLocalError, g.llvm_class_type_ptr, "cUnboundLocalError"), getConstantInt(true, g.i1) });
 
                 // At this point we know the name must be defined (otherwise the assert would have fired):
@@ -1232,7 +1230,7 @@ private:
         } else if (node->num_type == AST_Num::COMPLEX) {
             return makePureImaginary(irstate->getSourceInfo()->parent_module->getPureImaginaryConstant(node->n_float));
         } else {
-            return new ConcreteCompilerVariable(LONG, embedRelocatablePtr(node, g.llvm_value_type_ptr, "", true), true);
+            return new ConcreteCompilerVariable(LONG, embedMaterializePtr(node, g.llvm_value_type_ptr), true);
             //return makeLong(irstate->getSourceInfo()->parent_module->getLongConstant(node->n_long));
         }
     }
@@ -1322,15 +1320,15 @@ private:
                                       g.llvm_value_type_ptr);
             */
             llvm::Value* rtn
-                = embedRelocatablePtr(node,
-                                      g.llvm_value_type_ptr, std::string(), true);
+                = embedMaterializePtr(node,
+                                      g.llvm_value_type_ptr);
             return new ConcreteCompilerVariable(STR, rtn, true);
         } else if (node->str_type == AST_Str::UNICODE) {
             /*
             llvm::Value* rtn = embedRelocatablePtr(
                 irstate->getSourceInfo()->parent_module->getUnicodeConstant(node->str_data), g.llvm_value_type_ptr);
             */
-            llvm::Value* rtn = embedRelocatablePtr(node, g.llvm_value_type_ptr, std::string(), true);
+            llvm::Value* rtn = embedMaterializePtr(node, g.llvm_value_type_ptr);
             return new ConcreteCompilerVariable(typeFromClass(unicode_cls), rtn, true);
         } else {
             RELEASE_ASSERT(0, "%d", node->str_type);
@@ -1956,13 +1954,13 @@ private:
         if (vst == ScopeInfo::VarScopeType::GLOBAL) {
             // Can't use delattr since the errors are different:
             emitter.createCall2(unw_info, irstate->new_func(g.funcs.delGlobal), irstate->getGlobals(),
-                                embedRelocatablePtr(target, g.llvm_boxedstring_type_ptr, std::string(), true));
+                                embedMaterializePtr(target, g.llvm_boxedstring_type_ptr));
             return;
         }
 
         if (vst == ScopeInfo::VarScopeType::NAME) {
             llvm::Value* boxedLocals = irstate->getBoxedLocalsVar();
-            llvm::Value* attr = embedRelocatablePtr(target->id.getBox(), g.llvm_boxedstring_type_ptr);
+            llvm::Value* attr = embedMaterializePtr(target, g.llvm_boxedstring_type_ptr);
             emitter.createCall2(unw_info, irstate->new_func(g.funcs.boxedLocalsDel), boxedLocals, attr);
             return;
         }
@@ -1973,7 +1971,7 @@ private:
 
         if (symbol_table.count(target->id) == 0) {
             llvm::CallSite call(emitter.createCall(unw_info, irstate->new_func(g.funcs.assertNameDefined),
-                                     { getConstantInt(0, g.i1), embedRelocatablePtr(target, g.llvm_boxedstring_type_ptr, std::string(), true),
+                                     { getConstantInt(0, g.i1), embedMaterializePtr(target, g.llvm_boxedstring_type_ptr),
                                        embedRelocatablePtr(NameError, g.llvm_class_type_ptr, "cNameError"),
                                        getConstantInt(true /*local_error_msg*/, g.i1) }));
             call.setDoesNotReturn();
@@ -1985,7 +1983,7 @@ private:
 
         if (is_defined_var) {
             emitter.createCall(unw_info, irstate->new_func(g.funcs.assertNameDefined),
-                               { i1FromBool(emitter, is_defined_var), embedRelocatablePtr(target->id, g.llvm_boxedstring_type_ptr, std::string(), true),
+                               { i1FromBool(emitter, is_defined_var), embedMaterializePtr(target, g.llvm_boxedstring_type_ptr),
                                  embedRelocatablePtr(NameError, g.llvm_class_type_ptr, "cNameError"),
                                  getConstantInt(true /*local_error_msg*/, g.i1) });
             _popFake(defined_name);

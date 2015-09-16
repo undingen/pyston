@@ -34,7 +34,8 @@ namespace pyston {
 class AST_Jump;
 class BoxedString;
 
-llvm::Constant* embedRelocatablePtr(const void* addr, llvm::Type*, llvm::StringRef shared_name = llvm::StringRef(), bool materialize = false);
+llvm::Constant* embedRelocatablePtr(const void* addr, llvm::Type*, llvm::StringRef shared_name = llvm::StringRef());
+llvm::Constant* embedMaterializePtr(const void* addr, llvm::Type*);
 llvm::Constant* embedRelocatableStr(BoxedString* boxed_str, llvm::Type*);
 llvm::Constant* embedConstantStr(llvm::StringRef str);
 llvm::Constant* getConstantInt(int64_t val);

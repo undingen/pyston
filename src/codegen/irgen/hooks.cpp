@@ -161,6 +161,8 @@ static void compileIR(CompiledFunction* cf, EffortLevel effort) {
 
         assert(!llvm::verifyModule(*cf->func->getParent(), &llvm::outs()));
 
+        cf->func->getParent()->dump();
+
 #if LLVMREV < 215967
         g.engine->addModule(cf->func->getParent());
 #else
@@ -195,7 +197,7 @@ static void compileIR(CompiledFunction* cf, EffortLevel effort) {
     delete stackmap;
 }
 
-static std::string getUniqueFunctionName(std::string nameprefix, EffortLevel effort, const OSREntryDescriptor* entry = NULL) {
+static std::string getUniqueFunctionName(std::string nameprefix, EffortLevel effort, const OSREntryDescriptor* entry, llvm::StringRef hash) {
     static llvm::StringMap<int> used_module_names;
     std::string name;
     llvm::raw_string_ostream os(name);
@@ -203,6 +205,7 @@ static std::string getUniqueFunctionName(std::string nameprefix, EffortLevel eff
     os << "_e" << (int)effort;
     if (entry)
         os << "_osr" << entry->backedge->target->idx;
+    os << "_" << hash;
     // in order to generate a unique id add the number of times we encountered this name to end of the string.
     auto& times = used_module_names[os.str()];
     os << '_' << ++times;
@@ -292,13 +295,27 @@ CompiledFunction* compileFunction(CLFunction* f, FunctionSpecialization* spec, E
 
 
     CompiledFunction* cf = NULL;
-    std::string uname = getUniqueFunctionName(name->s(), effort, entry_descriptor);
-    std::string hash = source->cfg->getHash((int)effort, uname);
+    std::string hash = source->cfg->getHash((int)effort, name->s());
+    std::string uname = getUniqueFunctionName(name->s(), effort, entry_descriptor, hash);
     g.cur_cfg_hash = hash;
     llvm::SmallString<128> cache_file = cache_dir;
     llvm::sys::path::append(cache_file, hash + ".o");
     bool found_it = llvm::sys::fs::exists(cache_file.str());
+
+    clearRelocatableSymsMap();
+    setRelocatableSym("cSourceInfo", source);
+    setRelocatableSym("cCL", f);
+    setRelocatableSym("cParentModule", source->parent_module);
+    setRelocatableSym("cNone", None);
+    setRelocatableSym("cTrue", True);
+    setRelocatableSym("cFalse", False);
+    setRelocatableSym("cNewLine", internStringImmortal("\n"));
+    setRelocatableSym("cSpace", internStringImmortal(" "));
+    setRelocatableSym("cUnboundLocalError", UnboundLocalError);
+    g.cur_cfg = source->cfg;
+
     if (1 && found_it) {
+        printf("%s %s\n", hash.c_str(), uname.c_str());
         static StatCounter jit_objectcache_hits("num_jit_objectcache_hits");
         jit_objectcache_hits.log();
 
@@ -307,21 +324,10 @@ CompiledFunction* compileFunction(CLFunction* f, FunctionSpecialization* spec, E
 
         cf = createCF(uname, source, &f->param_names, entry_descriptor, effort, exception_style, spec);
 
-        clearRelocatableSymsMap();
-        setRelocatableSym("cSourceInfo", source);
-        setRelocatableSym("cTimesCalled", &cf->times_called);
-        setRelocatableSym("cCF", cf);
-        setRelocatableSym("cCL", f);
-        setRelocatableSym("cParentModule", source->parent_module);
-        setRelocatableSym("cNone", None);
-        setRelocatableSym("cTrue", True);
-        setRelocatableSym("cFalse", False);
-        setRelocatableSym("cNewLine", internStringImmortal("\n"));
-        setRelocatableSym("cSpace", internStringImmortal(" "));
-        setRelocatableSym("cUnboundLocalError", UnboundLocalError);
-        g.cur_cfg = source->cfg;
-        g.cur_module = NULL;
 
+        g.cur_module = NULL;
+        setRelocatableSym("cCF", cf);
+        setRelocatableSym("cTimesCalled", &cf->times_called);
         g.cur_cf = cf;
         g.engine->addObjectFile(std::move(*llvm::object::ObjectFile::createObjectFile(cache_file.str())));
 

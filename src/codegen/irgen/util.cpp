@@ -124,22 +124,17 @@ const void* getValueOfRelocatableSym(const std::string& str) {
     return NULL;
 }
 
-llvm::Constant* embedRelocatablePtr(const void* addr, llvm::Type* type, llvm::StringRef shared_name, bool materialize) {
+llvm::Constant* embedRelocatablePtr(const void* addr, llvm::Type* type, llvm::StringRef shared_name) {
     assert(addr);
-
     std::string name;
     if (!shared_name.empty()) {
-        assert(!materialize);
         llvm::GlobalVariable* gv = g.cur_module->getGlobalVariable(shared_name, true);
         if (gv)
             return gv;
         assert(!relocatable_syms.count(name));
         name = shared_name;
     } else {
-        if (materialize)
-            name = (llvm::Twine("const_") + llvm::Twine(g.cur_cfg->getIndexForAST((AST*)addr))).str();
-        else
-            name = (llvm::Twine("ptr_") + llvm::Twine(g.cur_cfg->getIndexForPtr((void*)addr))).str();
+        name = (llvm::Twine("ptr_") + llvm::Twine(g.cur_cfg->getIndexForPtr((void*)addr))).str();
 
         llvm::GlobalVariable* gv = g.cur_module->getGlobalVariable(name, true);
         if (gv) {
@@ -151,8 +146,31 @@ llvm::Constant* embedRelocatablePtr(const void* addr, llvm::Type* type, llvm::St
         // name = (llvm::Twine("c") + llvm::Twine(relocatable_syms.size())).str();
     }
 
-    if (!materialize)
-        relocatable_syms[name] = addr;
+    //relocatable_syms[name] = addr;
+
+#if MOVING_GC
+    gc::GCAllocation* al = gc::global_heap.getAllocationFromInteriorPointer(const_cast<void*>(addr));
+    if (al) {
+        pointers_in_code->push_back(al->user_data);
+    }
+#endif
+
+    llvm::Type* var_type = type->getPointerElementType();
+    return new llvm::GlobalVariable(*g.cur_module, var_type, true, llvm::GlobalVariable::ExternalLinkage, 0, name);
+}
+
+llvm::Constant* embedMaterializePtr(const void* addr, llvm::Type* type) {
+    assert(addr);
+
+    std::string name = (llvm::Twine("const_") + llvm::Twine(g.cur_cfg->getIndexForAST((AST*)addr))).str();
+
+    llvm::GlobalVariable* gv = g.cur_module->getGlobalVariable(name, true);
+    if (gv) {
+        if (gv->getType() != type)
+            return llvm::ConstantExpr::getBitCast(gv, type);
+        return gv;
+    }
+    assert(!relocatable_syms.count(name));
 
 #if MOVING_GC
     gc::GCAllocation* al = gc::global_heap.getAllocationFromInteriorPointer(const_cast<void*>(addr));
