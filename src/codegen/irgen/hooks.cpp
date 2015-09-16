@@ -159,9 +159,9 @@ static void compileIR(CompiledFunction* cf, EffortLevel effort) {
     {
         Timer _t("to jit the IR");
 
-        assert(!llvm::verifyModule(*cf->func->getParent(), &llvm::outs()));
+        // assert(!llvm::verifyModule(*cf->func->getParent(), &llvm::outs()));
 
-        cf->func->getParent()->dump();
+        // cf->func->getParent()->dump();
 
 #if LLVMREV < 215967
         g.engine->addModule(cf->func->getParent());
@@ -315,7 +315,7 @@ CompiledFunction* compileFunction(CLFunction* f, FunctionSpecialization* spec, E
     g.cur_cfg = source->cfg;
 
     if (1 && found_it) {
-        printf("%s %s\n", hash.c_str(), uname.c_str());
+        //printf("%s %s\n", hash.c_str(), uname.c_str());
         static StatCounter jit_objectcache_hits("num_jit_objectcache_hits");
         jit_objectcache_hits.log();
 
