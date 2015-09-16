@@ -1228,7 +1228,8 @@ private:
         } else if (node->num_type == AST_Num::FLOAT) {
             return makeFloat(node->n_float);
         } else if (node->num_type == AST_Num::COMPLEX) {
-            return makePureImaginary(irstate->getSourceInfo()->parent_module->getPureImaginaryConstant(node->n_float));
+            //return makePureImaginary(embedMaterializePtr(node, g.llvm_value_type_ptr));
+            return new ConcreteCompilerVariable(BOXED_COMPLEX, embedMaterializePtr(node, g.llvm_value_type_ptr), true);
         } else {
             return new ConcreteCompilerVariable(LONG, embedMaterializePtr(node, g.llvm_value_type_ptr), true);
             //return makeLong(irstate->getSourceInfo()->parent_module->getLongConstant(node->n_long));

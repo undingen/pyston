@@ -237,6 +237,8 @@ uint64_t PystonMemoryManager::getSymbolAddress(const std::string& name) {
             AST_Num* num_node = (AST_Num*)node;
             if (num_node->num_type == AST_Num::LONG)
                 return (uint64_t)parent_module->getLongConstant(num_node->n_long);
+            else if (num_node->num_type == AST_Num::COMPLEX)
+                return (uint64_t)parent_module->getPureImaginaryConstant(num_node->n_float);
             else
                 RELEASE_ASSERT(0, "unknown num type");
         } else if (node->type == AST_TYPE::Name) {
