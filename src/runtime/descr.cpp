@@ -259,7 +259,7 @@ Box* BoxedMethodDescriptor::tppCall(Box* _self, CallRewriteArgs* rewrite_args, A
     BoxedMethodDescriptor* self = static_cast<BoxedMethodDescriptor*>(_self);
 
     int ml_flags = self->method->ml_flags;
-    int call_flags = ml_flags & (~METH_CLASS);
+    int call_flags = ml_flags & ~(METH_CLASS | METH_COEXIST);
 
     if (rewrite_args && !rewrite_args->func_guarded) {
         rewrite_args->obj->addAttrGuard(offsetof(BoxedMethodDescriptor, method), (intptr_t)self->method);

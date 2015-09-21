@@ -3266,7 +3266,7 @@ extern "C" int PyType_Ready(PyTypeObject* cls) noexcept {
 
     // unhandled fields:
     int ALLOWABLE_FLAGS = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HAVE_GC | Py_TPFLAGS_CHECKTYPES
-                          | Py_TPFLAGS_HAVE_NEWBUFFER;
+                          | Py_TPFLAGS_HAVE_NEWBUFFER | Py_TPFLAGS_HAVE_VERSION_TAG;
     ALLOWABLE_FLAGS |= Py_TPFLAGS_INT_SUBCLASS | Py_TPFLAGS_LONG_SUBCLASS | Py_TPFLAGS_LIST_SUBCLASS
                        | Py_TPFLAGS_TUPLE_SUBCLASS | Py_TPFLAGS_STRING_SUBCLASS | Py_TPFLAGS_UNICODE_SUBCLASS
                        | Py_TPFLAGS_DICT_SUBCLASS | Py_TPFLAGS_BASE_EXC_SUBCLASS | Py_TPFLAGS_TYPE_SUBCLASS;
@@ -3277,7 +3277,6 @@ extern "C" int PyType_Ready(PyTypeObject* cls) noexcept {
     RELEASE_ASSERT(cls->tp_cache == NULL, "");
     RELEASE_ASSERT(cls->tp_subclasses == NULL, "");
     RELEASE_ASSERT(cls->tp_weaklist == NULL, "");
-    RELEASE_ASSERT(cls->tp_del == NULL, "");
     RELEASE_ASSERT(cls->tp_version_tag == 0, "");
 
     // I think it is safe to ignore these for for now:
