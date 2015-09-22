@@ -867,9 +867,9 @@ extern "C" void PyErr_GetExcInfo(PyObject** ptype, PyObject** pvalue, PyObject**
 
 extern "C" void PyErr_SetExcInfo(PyObject* type, PyObject* value, PyObject* traceback) noexcept {
     ExcInfo* exc = getFrameExcInfo();
-    exc->type = type;
-    exc->value = value;
-    exc->traceback = traceback;
+    exc->type = type ? type : None;
+    exc->value = value ? value : None;
+    exc->traceback = traceback ? traceback : None;
 }
 
 extern "C" void PyErr_SetString(PyObject* exception, const char* string) noexcept {
@@ -1388,6 +1388,10 @@ extern "C" PyObject* PyCFunction_Call(PyObject* func, PyObject* arg, PyObject* k
     return BoxedCApiFunction::tppCall<CAPI>(func, NULL, ArgPassSpec(0, 0, true, true), arg, kw, NULL, NULL, NULL);
 }
 
+extern "C" PyObject* PyWeakref_LockObject(PyObject* op) noexcept {
+    Py_FatalError("Unimplemented");
+}
+
 extern "C" int _PyEval_SliceIndex(PyObject* v, Py_ssize_t* pi) noexcept {
     if (v != NULL) {
         Py_ssize_t x;
@@ -1432,11 +1436,13 @@ extern "C" PyThreadState* PyThreadState_Get(void) noexcept {
 }
 
 extern "C" PyThreadState* PyEval_SaveThread(void) noexcept {
-    Py_FatalError("Unimplemented");
+    beginAllowThreads();
+    return PyThreadState_GET();
 }
 
 extern "C" void PyEval_RestoreThread(PyThreadState* tstate) noexcept {
-    Py_FatalError("Unimplemented");
+    RELEASE_ASSERT(tstate == PyThreadState_GET(), "");
+    endAllowThreads();
 }
 
 extern "C" char* PyModule_GetName(PyObject* m) noexcept {

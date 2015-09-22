@@ -1,0 +1,66 @@
+From 7b1a31121e00c685580306f347269d9ffe1742ad Mon Sep 17 00:00:00 2001
+From: Marius Wachtler <undingen@gmail.com>
+Date: Tue, 22 Sep 2015 21:21:22 +0100
+Subject: [PATCH] WIP: changes to make lxml work with pyston
+
+---
+ src/lxml/includes/etree_defs.h | 4 ++++
+ src/lxml/includes/tree.pxd     | 4 +++-
+ src/lxml/serializer.pxi        | 4 ++--
+ 3 files changed, 9 insertions(+), 3 deletions(-)
+
+diff --git a/src/lxml/includes/etree_defs.h b/src/lxml/includes/etree_defs.h
+index ff596ce..27f0c60 100644
+--- a/src/lxml/includes/etree_defs.h
++++ b/src/lxml/includes/etree_defs.h
+@@ -20,11 +20,15 @@
+ #define va_int(ap)     va_arg(ap, int)
+ #define va_charptr(ap) va_arg(ap, char *)
+ 
++/*
++Pyston change:
+ #ifdef PYPY_VERSION
+ #    define IS_PYPY 1
+ #else
+ #    define IS_PYPY 0
+ #endif
++*/
++#define IS_PYPY 0
+ 
+ #if PY_VERSION_HEX >= 0x03000000
+ #  define IS_PYTHON3 1
+diff --git a/src/lxml/includes/tree.pxd b/src/lxml/includes/tree.pxd
+index afd49ba..b5fd0e5 100644
+--- a/src/lxml/includes/tree.pxd
++++ b/src/lxml/includes/tree.pxd
+@@ -362,7 +362,9 @@ cdef extern from "libxml/tree.h":
+     cdef const_xmlChar* xmlBufferContent(xmlBuffer* buf) nogil
+     cdef int xmlBufferLength(xmlBuffer* buf) nogil
+     cdef const_xmlChar* xmlBufContent(xmlBuf* buf) nogil # new in libxml2 2.9
+-    cdef size_t xmlBufLength(xmlBuf* buf) nogil # new in libxml2 2.9
++    # Pyston change: support different libxml version
++    # cdef size_t xmlBufLength(xmlBuf* buf) nogil # new in libxml2 2.9
++    cdef size_t xmlBufUse(xmlBuf* buf) nogil # new in libxml2 2.9
+     cdef int xmlKeepBlanksDefault(int val) nogil
+     cdef xmlChar* xmlNodeGetBase(xmlDoc* doc, xmlNode* node) nogil
+     cdef void xmlNodeSetBase(xmlNode* node, const_xmlChar* uri) nogil
+diff --git a/src/lxml/serializer.pxi b/src/lxml/serializer.pxi
+index f62887d..3426908 100644
+--- a/src/lxml/serializer.pxi
++++ b/src/lxml/serializer.pxi
+@@ -134,10 +134,10 @@ cdef _tostring(_Element element, encoding, doctype, method,
+     try:
+         if encoding is _unicode:
+             result = (<unsigned char*>tree.xmlBufContent(
+-                c_result_buffer))[:tree.xmlBufLength(c_result_buffer)].decode('UTF-8')
++                c_result_buffer))[:tree.xmlBufUse(c_result_buffer)].decode('UTF-8')
+         else:
+             result = <bytes>(<unsigned char*>tree.xmlBufContent(
+-                c_result_buffer))[:tree.xmlBufLength(c_result_buffer)]
++                c_result_buffer))[:tree.xmlBufUse(c_result_buffer)]
+     finally:
+         error_result = tree.xmlOutputBufferClose(c_buffer)
+     if error_result < 0:
+-- 
+1.9.1
+

@@ -1546,10 +1546,6 @@ private:
                 printf("\n");
             }
 
-            // That's not really a speculation.... could potentially handle this here, but
-            // I think it's better to just not generate bad speculations:
-            assert(!rtn->canConvertTo(speculated_type));
-
             ConcreteCompilerVariable* old_rtn = rtn->makeConverted(emitter, UNKNOWN);
             rtn->decvref(emitter);
 
