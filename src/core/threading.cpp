@@ -366,6 +366,54 @@ static void* _thread_start(void* _arg) {
     return rtn;
 }
 
+extern "C" void _PyThreadState_Init(PyThreadState *) noexcept {
+    pthread_t current_thread = pthread_self();
+
+    {
+        LOCK_REGION(&threading_lock);
+
+        pthread_attr_t thread_attrs;
+        int code = pthread_getattr_np(current_thread, &thread_attrs);
+        if (code)
+            err(1, NULL);
+
+        void* stack_start;
+        size_t stack_size;
+        code = pthread_attr_getstack(&thread_attrs, &stack_start, &stack_size);
+        RELEASE_ASSERT(code == 0, "");
+
+        pthread_attr_destroy(&thread_attrs);
+
+#if STACK_GROWS_DOWN
+        void* stack_bottom = static_cast<char*>(stack_start) + stack_size;
+#else
+        void* stack_bottom = stack_start;
+#endif
+        current_internal_thread_state = new ThreadStateInternal(stack_bottom, current_thread, &cur_thread_state);
+        current_threads[current_thread] = current_internal_thread_state;
+
+        //num_starting_threads--;
+
+        if (VERBOSITY() >= 2)
+            printf("child initialized; tid=%ld\n", current_thread);
+    }
+    acquireGLRead();
+
+}
+extern "C" void PyThreadState_DeleteCurrent(void) noexcept {
+    pthread_t current_thread = pthread_self();
+    {
+        LOCK_REGION(&threading_lock);
+
+        current_threads.erase(current_thread);
+        if (VERBOSITY() >= 2)
+            printf("thread tid=%ld exited\n", current_thread);
+    }
+    current_internal_thread_state = 0;
+
+    releaseGLWrite();
+}
+
 static bool thread_was_started = false;
 bool threadWasStarted() {
     return thread_was_started;

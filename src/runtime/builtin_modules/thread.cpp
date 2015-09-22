@@ -30,6 +30,7 @@ extern "C" void initthread();
 
 
 static int initialized;
+static long nb_threads;
 static void PyThread__init_thread(void); /* Forward */
 
 extern "C" void PyThread_init_thread(void) noexcept {
@@ -56,6 +57,18 @@ static size_t _pythread_stacksize = 0;
 
 #include "thread_pthread.h"
 
+extern "C" size_t PyThread_get_stacksize(void) noexcept {
+    return _pythread_stacksize;
+}
+
+extern "C" int PyThread_set_stacksize(size_t size) noexcept {
+#if defined(THREAD_SET_STACKSIZE)
+    return THREAD_SET_STACKSIZE(size);
+#else
+    return -2;
+#endif
+}
+
 namespace pyston {
 
 static void* thread_start(Box* target, Box* varargs, Box* kwargs) {
@@ -68,6 +81,7 @@ static void* thread_start(Box* target, Box* varargs, Box* kwargs) {
     StatTimer timer(timer_counter, 0, true);
     timer.pushTopLevel(getCPUTicks());
 #endif
+    ++nb_threads;
 
     try {
         runtimeCall(target, ArgPassSpec(0, 0, true, kwargs != NULL), varargs, kwargs, NULL, NULL, NULL);
@@ -75,6 +89,7 @@ static void* thread_start(Box* target, Box* varargs, Box* kwargs) {
         e.printExcAndTraceback();
     }
 
+    --nb_threads;
 #if STAT_TIMERS
     timer.popTopLevel(getCPUTicks());
 #endif
@@ -190,12 +205,18 @@ Box* stackSize() {
     Py_FatalError("unimplemented");
 }
 
+Box* threadCount() {
+    return boxInt(nb_threads);
+    // Py_FatalError("unimplemented");
+}
+
 void setupThread() {
     // Hacky: we want to use some of CPython's implementation of the thread module (the threading local stuff),
     // and some of ours (thread handling).  Start off by calling a cut-down version of initthread, and then
     // add our own attributes to the module it creates.
     initthread();
     RELEASE_ASSERT(!PyErr_Occurred(), "");
+    return;
 
     Box* thread_module = getSysModulesDict()->getOrNull(boxString("thread"));
     assert(thread_module);
@@ -209,6 +230,8 @@ void setupThread() {
         "get_ident", new BoxedBuiltinFunctionOrMethod(boxRTFunction((void*)getIdent, BOXED_INT, 0), "get_ident"));
     thread_module->giveAttr(
         "stack_size", new BoxedBuiltinFunctionOrMethod(boxRTFunction((void*)stackSize, BOXED_INT, 0), "stack_size"));
+    thread_module->giveAttr(
+        "_count", new BoxedBuiltinFunctionOrMethod(boxRTFunction((void*)threadCount, BOXED_INT, 0), "_count"));
 
     thread_lock_cls = BoxedClass::create(type_cls, object_cls, NULL, 0, 0, sizeof(BoxedThreadLock), false, "lock");
     thread_lock_cls->tp_dealloc = BoxedThreadLock::threadLockDestructor;

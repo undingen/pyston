@@ -15,7 +15,7 @@
 
 // Pyston change: we're only using part of this file
 static PyObject *str_dict;
-#if 0
+#if 1
 static PyObject *ThreadError;
 static long nb_threads = 0;
 
@@ -128,7 +128,7 @@ static PyMethodDef lock_methods[] = {
 };
 
 static PyTypeObject Locktype = {
-    PyVarObject_HEAD_INIT(&PyType_Type, 0)
+    PyVarObject_HEAD_INIT(NULL, 0)
     "thread.lock",                      /*tp_name*/
     sizeof(lockobject),                 /*tp_size*/
     0,                                  /*tp_itemsize*/
@@ -598,7 +598,7 @@ _localdummy_destroyed(PyObject *localweakref, PyObject *dummyweakref)
 }
 
 // Pyston change:
-#if 0
+#if 1
 /* Module functions */
 
 struct bootstate {
@@ -613,14 +613,16 @@ static void
 t_bootstrap(void *boot_raw)
 {
     struct bootstate *boot = (struct bootstate *) boot_raw;
-    PyThreadState *tstate;
+    PyThreadState *tstate = NULL;
     PyObject *res;
 
-    tstate = boot->tstate;
-    tstate->thread_id = PyThread_get_thread_ident();
+    //tstate = boot->tstate;
+    //tstate->thread_id = PyThread_get_thread_ident();
     _PyThreadState_Init(tstate);
-    PyEval_AcquireThread(tstate);
+    //PyEval_AcquireThread(tstate);
     nb_threads++;
+
+
     res = PyEval_CallObjectWithKeywords(
         boot->func, boot->args, boot->keyw);
     if (res == NULL) {
@@ -649,7 +651,7 @@ t_bootstrap(void *boot_raw)
     Py_XDECREF(boot->keyw);
     PyMem_DEL(boot_raw);
     nb_threads--;
-    PyThreadState_Clear(tstate);
+    //PyThreadState_Clear(tstate);
     PyThreadState_DeleteCurrent();
     PyThread_exit_thread();
 }
@@ -682,15 +684,15 @@ thread_PyThread_start_new_thread(PyObject *self, PyObject *fargs)
     boot = PyMem_NEW(struct bootstate, 1);
     if (boot == NULL)
         return PyErr_NoMemory();
-    boot->interp = PyThreadState_GET()->interp;
+    //boot->interp = PyThreadState_GET()->interp;
     boot->func = func;
     boot->args = args;
     boot->keyw = keyw;
-    boot->tstate = _PyThreadState_Prealloc(boot->interp);
-    if (boot->tstate == NULL) {
-        PyMem_DEL(boot);
-        return PyErr_NoMemory();
-    }
+    //boot->tstate = _PyThreadState_Prealloc(boot->interp);
+    //if (boot->tstate == NULL) {
+    //    PyMem_DEL(boot);
+    //    return PyErr_NoMemory();
+    //}
     Py_INCREF(func);
     Py_INCREF(args);
     Py_XINCREF(keyw);
@@ -701,7 +703,7 @@ thread_PyThread_start_new_thread(PyObject *self, PyObject *fargs)
         Py_DECREF(func);
         Py_DECREF(args);
         Py_XDECREF(keyw);
-        PyThreadState_Clear(boot->tstate);
+        //PyThreadState_Clear(boot->tstate);
         PyMem_DEL(boot);
         return NULL;
     }
@@ -860,7 +862,7 @@ the suggested approach in the absence of more specific information).");
 
 static PyMethodDef thread_methods[] = {
 // Pyston change:
-#if 0
+#if 1
     {"start_new_thread",        (PyCFunction)thread_PyThread_start_new_thread,
                             METH_VARARGS,
                             start_new_doc},
@@ -924,7 +926,7 @@ initthread(void)
         return;
 
     // Pyston change:
-#if 0
+#if 1
     /* Add a symbolic constant */
     d = PyModule_GetDict(m);
     ThreadError = PyGC_AddRoot(PyErr_NewException("thread.error", NULL, NULL));
