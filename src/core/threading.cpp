@@ -87,7 +87,7 @@ public:
         : saved(false), stack_start(stack_start), pthread_id(pthread_id), public_thread_state(public_thread_state) {}
 
     void saveCurrent() {
-        assert(!saved);
+        //assert(!saved);
         getcontext(&ucontext);
         saved = true;
     }
@@ -226,6 +226,53 @@ static void visitLocalStack(gc::GCVisitor* v) {
     GC_TRACE_LOG("Visiting current thread's threadstate + generator stacks\n");
     current_internal_thread_state->accept(v);
 }
+
+extern "C" PyGILState_STATE PyGILState_Ensure(void) noexcept {
+    pthread_t current_thread = pthread_self();
+    PyThreadState *tcur = current_internal_thread_state ? current_internal_thread_state->public_thread_state : NULL;
+    if (!tcur) {
+        {
+            LOCK_REGION(&threading_lock);
+
+            pthread_attr_t thread_attrs;
+            int code = pthread_getattr_np(current_thread, &thread_attrs);
+            if (code)
+                err(1, NULL);
+
+            void* stack_start;
+            size_t stack_size;
+            code = pthread_attr_getstack(&thread_attrs, &stack_start, &stack_size);
+            RELEASE_ASSERT(code == 0, "");
+
+            pthread_attr_destroy(&thread_attrs);
+
+#if STACK_GROWS_DOWN
+            void* stack_bottom = static_cast<char*>(stack_start) + stack_size;
+#else
+            void* stack_bottom = stack_start;
+#endif
+            current_internal_thread_state = new ThreadStateInternal(stack_bottom, current_thread, &cur_thread_state);
+            current_threads[current_thread] = current_internal_thread_state;
+        }
+
+        /* Create a new thread state for this thread */
+        tcur = current_internal_thread_state->public_thread_state;
+        if (tcur == NULL)
+            Py_FatalError("Couldn't create thread-state for new thread");
+
+    }
+
+    return PyGILState_LOCKED;
+}
+
+extern "C" void PyGILState_Release(PyGILState_STATE oldstate) noexcept {
+    current_internal_thread_state->saveCurrent();
+}
+
+extern "C" PyThreadState* PyGILState_GetThisThreadState(void) noexcept {
+    Py_FatalError("unimplemented");
+}
+
 
 void visitAllStacks(gc::GCVisitor* v) {
     visitLocalStack(v);
@@ -462,6 +509,7 @@ void finishMainThread() {
 
     // TODO maybe this is the place to wait for non-daemon threads?
 }
+
 
 
 // For the "AllowThreads" regions, let's save the thread state at the beginning of the region.

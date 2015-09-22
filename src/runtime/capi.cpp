@@ -767,18 +767,6 @@ finally:
     --tstate->recursion_depth;
 }
 
-extern "C" PyGILState_STATE PyGILState_Ensure(void) noexcept {
-    Py_FatalError("unimplemented");
-}
-
-extern "C" void PyGILState_Release(PyGILState_STATE) noexcept {
-    Py_FatalError("unimplemented");
-}
-
-extern "C" PyThreadState* PyGILState_GetThisThreadState(void) noexcept {
-    Py_FatalError("unimplemented");
-}
-
 void setCAPIException(const ExcInfo& e) {
     cur_thread_state.curexc_type = e.type;
     cur_thread_state.curexc_value = e.value;
