@@ -1,16 +1,42 @@
-From 4eb4211146ba307318b765a02afcd3294633d494 Mon Sep 17 00:00:00 2001
+From 27b69179b90851da187d698a0817b0b8190a0449 Mon Sep 17 00:00:00 2001
 From: Marius Wachtler <undingen@gmail.com>
 Date: Tue, 9 Jun 2015 19:26:44 +0200
 Subject: [PATCH] Pyston change: we don't support custom traceback entries yet
 
 ---
- Cython/Compiler/ModuleNode.py    |  8 ++++++--
- Cython/Utility/CythonFunction.c  |  4 +++-
- Cython/Utility/Exceptions.c      |  7 ++++++-
- Cython/Utility/Generator.c       | 31 +++++++++++++++++++++----------
- Cython/Utility/ModuleSetupCode.c |  9 ++++++---
- 5 files changed, 42 insertions(+), 17 deletions(-)
+ Cython/Compiler/ExprNodes.py    |  9 +++++++++
+ Cython/Compiler/ModuleNode.py   |  8 ++++++--
+ Cython/Utility/CythonFunction.c |  4 +++-
+ Cython/Utility/Exceptions.c     |  7 ++++++-
+ Cython/Utility/Generator.c      | 41 +++++++++++++++++++++++++++++------------
+ 5 files changed, 53 insertions(+), 16 deletions(-)
 
+diff --git a/Cython/Compiler/ExprNodes.py b/Cython/Compiler/ExprNodes.py
+index f99ec6e..7ab41f3 100644
+--- a/Cython/Compiler/ExprNodes.py
++++ b/Cython/Compiler/ExprNodes.py
+@@ -7784,12 +7784,21 @@ class PyCFunctionNode(ExprNode, ModuleNameMixin):
+ 
+     @classmethod
+     def from_defnode(cls, node, binding):
++        """
++        # Pyston change: dont't generate custom code objects because we don't support them currently
+         return cls(node.pos,
+                    def_node=node,
+                    pymethdef_cname=node.entry.pymethdef_cname,
+                    binding=binding or node.specialized_cpdefs,
+                    specialized_cpdefs=node.specialized_cpdefs,
+                    code_object=CodeObjectNode(node))
++        """
++        return cls(node.pos,
++                   def_node=node,
++                   pymethdef_cname=node.entry.pymethdef_cname,
++                   binding=binding or node.specialized_cpdefs,
++                   specialized_cpdefs=node.specialized_cpdefs,
++                   code_object=None)
+ 
+     def analyse_types(self, env):
+         if self.binding:
 diff --git a/Cython/Compiler/ModuleNode.py b/Cython/Compiler/ModuleNode.py
 index 4785858..699cd15 100644
 --- a/Cython/Compiler/ModuleNode.py
@@ -69,7 +95,7 @@ index 354a776..8af3cb7 100644
 +}
 +#endif
 diff --git a/Cython/Utility/Generator.c b/Cython/Utility/Generator.c
-index 0310570..bcd0eb2 100644
+index 0310570..70e550c 100644
 --- a/Cython/Utility/Generator.c
 +++ b/Cython/Utility/Generator.c
 @@ -43,7 +43,9 @@ static void __Pyx_Generator_Replace_StopIteration(void) {
@@ -83,17 +109,30 @@ index 0310570..bcd0eb2 100644
  
  typedef PyObject *(*__pyx_generator_body_t)(PyObject *, PyObject *);
  
-@@ -487,7 +489,8 @@ static void __Pyx_Generator_dealloc(PyObject *self) {
+@@ -473,6 +475,9 @@ static int __Pyx_Generator_clear(PyObject *self) {
+     return 0;
+ }
+ 
++// Pyston change: add forward decl
++static void __Pyx_Generator_del(PyObject *self);
++
+ static void __Pyx_Generator_dealloc(PyObject *self) {
+     __pyx_GeneratorObject *gen = (__pyx_GeneratorObject *) self;
+ 
+@@ -486,8 +491,10 @@ static void __Pyx_Generator_dealloc(PyObject *self) {
+ #if PY_VERSION_HEX >= 0x030400a1
          if (PyObject_CallFinalizerFromDealloc(self))
  #else
-         Py_TYPE(gen)->tp_del(self);
+-        Py_TYPE(gen)->tp_del(self);
 -        if (self->ob_refcnt > 0)
-+        // Pyston change:
++        // Pyston change: call __Pyx_Generator_del directly and assume obj resurrected
++        // Py_TYPE(gen)->tp_del(self);
 +        // if (self->ob_refcnt > 0)
++        __Pyx_Generator_del(self);
  #endif
          {
              // resurrected.  :(
-@@ -509,9 +512,10 @@ static void __Pyx_Generator_del(PyObject *self) {
+@@ -509,9 +516,10 @@ static void __Pyx_Generator_del(PyObject *self) {
          return ;
  
  #if PY_VERSION_HEX < 0x030400a1
@@ -107,7 +146,7 @@ index 0310570..bcd0eb2 100644
  #endif
  
      // Save the current exception, if any.
-@@ -530,18 +534,25 @@ static void __Pyx_Generator_del(PyObject *self) {
+@@ -530,18 +538,25 @@ static void __Pyx_Generator_del(PyObject *self) {
  #if PY_VERSION_HEX < 0x030400a1
      // Undo the temporary resurrection; can't use DECREF here, it would
      // cause a recursive call.
@@ -138,30 +177,17 @@ index 0310570..bcd0eb2 100644
      }
  #if CYTHON_COMPILING_IN_CPYTHON
      assert(PyType_IS_GC(self->ob_type) &&
-diff --git a/Cython/Utility/ModuleSetupCode.c b/Cython/Utility/ModuleSetupCode.c
-index 6477fb2..a30334c 100644
---- a/Cython/Utility/ModuleSetupCode.c
-+++ b/Cython/Utility/ModuleSetupCode.c
-@@ -49,13 +49,16 @@
- 
- #if PY_MAJOR_VERSION < 3
-   #define __Pyx_BUILTIN_MODULE_NAME "__builtin__"
--  #define __Pyx_PyCode_New(a, k, l, s, f, code, c, n, v, fv, cell, fn, name, fline, lnos) \
--          PyCode_New(a+k, l, s, f, code, c, n, v, fv, cell, fn, name, fline, lnos)
-+  // Pyston change: we don't support this yet
-+  // #define __Pyx_PyCode_New(a, k, l, s, f, code, c, n, v, fv, cell, fn, name, fline, lnos) \
-+  //         PyCode_New(a+k, l, s, f, code, c, n, v, fv, cell, fn, name, fline, lnos)
-+  #define __Pyx_PyCode_New(a, k, l, s, f, code, c, n, v, fv, cell, fn, name, fline, lnos) None
-+
-   #define __Pyx_DefaultClassType PyClass_Type
+@@ -692,7 +707,9 @@ static PyTypeObject __pyx_GeneratorType_type = {
+ #if PY_VERSION_HEX >= 0x030400a1
+     0,                                  /*tp_del*/
  #else
-   #define __Pyx_BUILTIN_MODULE_NAME "builtins"
-   #define __Pyx_PyCode_New(a, k, l, s, f, code, c, n, v, fv, cell, fn, name, fline, lnos) \
--          PyCode_New(a, k, l, s, f, code, c, n, v, fv, cell, fn, name, fline, lnos)
-+           PyCode_New(a, k, l, s, f, code, c, n, v, fv, cell, fn, name, fline, lnos)
-   #define __Pyx_DefaultClassType PyType_Type
+-    __Pyx_Generator_del,                /*tp_del*/
++    // Pyston change: we don't currently support types which set a tp_dealloc and tp_del
++    // __Pyx_Generator_del,                /*tp_del*/
++    0,
  #endif
- 
+     0,                                  /*tp_version_tag*/
+ #if PY_VERSION_HEX >= 0x030400a1
 -- 
 1.9.1
 

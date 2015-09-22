@@ -1684,6 +1684,13 @@ static void functionSetCode(Box* self, Box* v, void*) {
 
     BoxedFunction* func = static_cast<BoxedFunction*>(self);
     BoxedCode* code = static_cast<BoxedCode*>(v);
+
+    if (!func->f->source || !code->f->source)
+        raiseExcHelper(TypeError, "__code__ can only be set on python functions");
+
+    RELEASE_ASSERT(!func->f->internal_callable.get<CXX>() && !func->f->internal_callable.get<CAPI>(),
+                   "this could cause invalidation issues");
+
     func->f = code->f;
     func->dependent_ics.invalidateAll();
 }
