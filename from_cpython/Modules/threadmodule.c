@@ -13,9 +13,7 @@
 
 #include "pythread.h"
 
-// Pyston change: we're only using part of this file
 static PyObject *str_dict;
-#if 1
 static PyObject *ThreadError;
 static long nb_threads = 0;
 
@@ -175,7 +173,6 @@ newlockobject(void)
     }
     return self;
 }
-#endif
 
 /* Thread-local objects */
 
@@ -597,8 +594,6 @@ _localdummy_destroyed(PyObject *localweakref, PyObject *dummyweakref)
     Py_RETURN_NONE;
 }
 
-// Pyston change:
-#if 1
 /* Module functions */
 
 struct bootstate {
@@ -858,11 +853,8 @@ requiring allocation in multiples of the system memory page size\n\
 - platform documentation should be referred to for more information\n\
 (4kB pages are common; using multiples of 4096 for the stack size is\n\
 the suggested approach in the absence of more specific information).");
-#endif
 
 static PyMethodDef thread_methods[] = {
-// Pyston change:
-#if 1
     {"start_new_thread",        (PyCFunction)thread_PyThread_start_new_thread,
                             METH_VARARGS,
                             start_new_doc},
@@ -886,7 +878,6 @@ static PyMethodDef thread_methods[] = {
     {"stack_size",              (PyCFunction)thread_stack_size,
                             METH_VARARGS,
                             stack_size_doc},
-#endif
     {NULL,                      NULL}           /* sentinel */
 };
 
@@ -925,8 +916,6 @@ initthread(void)
     if (m == NULL)
         return;
 
-    // Pyston change:
-#if 1
     /* Add a symbolic constant */
     d = PyModule_GetDict(m);
     ThreadError = PyGC_AddRoot(PyErr_NewException("thread.error", NULL, NULL));
@@ -936,7 +925,6 @@ initthread(void)
         return;
     Py_INCREF(&Locktype);
     PyDict_SetItemString(d, "LockType", (PyObject *)&Locktype);
-#endif
 
     Py_INCREF(&localtype);
     if (PyModule_AddObject(m, "_local", (PyObject *)&localtype) < 0)
