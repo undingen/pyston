@@ -87,7 +87,7 @@ public:
         : saved(false), stack_start(stack_start), pthread_id(pthread_id), public_thread_state(public_thread_state) {}
 
     void saveCurrent() {
-        //assert(!saved);
+        assert(!saved);
         getcontext(&ucontext);
         saved = true;
     }
@@ -98,6 +98,16 @@ public:
     }
 
     bool isValid() { return saved; }
+
+    // This is a quick and dirty way to determine if the current thread holds the gil:
+    // the only way it can't (at least for now) is if it had saved its threadstate.
+    // This only works when looking at a thread that is not actively acquiring or releasing
+    // the GIL, so for now just guard on it only being called for the current thread.
+    // TODO It's pretty brittle to reuse the saved flag like this.
+    bool holdsGil() {
+        assert(pthread_self() == this->pthread_id);
+        return !saved;
+    }
 
     ucontext_t* getContext() { return &ucontext; }
 
@@ -260,13 +270,22 @@ extern "C" PyGILState_STATE PyGILState_Ensure(void) noexcept {
         if (tcur == NULL)
             Py_FatalError("Couldn't create thread-state for new thread");
 
+        acquireGLRead();
+        return PyGILState_UNLOCKED;
+    } else {
+        if (current_internal_thread_state->holdsGil()) {
+            return PyGILState_LOCKED;
+        } else {
+            endAllowThreads();
+            return PyGILState_UNLOCKED;
+        }
     }
-
-    return PyGILState_LOCKED;
 }
 
 extern "C" void PyGILState_Release(PyGILState_STATE oldstate) noexcept {
-    current_internal_thread_state->saveCurrent();
+    if (oldstate == PyGILState_UNLOCKED) {
+        beginAllowThreads();
+    }
 }
 
 extern "C" PyThreadState* PyGILState_GetThisThreadState(void) noexcept {
