@@ -15,6 +15,7 @@
 #include "runtime/import.h"
 
 #include <dlfcn.h>
+#include <fstream>
 #include <limits.h>
 
 #include "llvm/Support/FileSystem.h"
@@ -783,6 +784,39 @@ Box* impLoadDynamic(Box* _name, Box* _pathname, Box* _file) {
     return importCExtension(name, shortname, pathname->s());
 }
 
+static void registerDataSegment(llvm::StringRef lib_path) {
+    std::ifstream mapmap("/proc/self/maps");
+    std::string line;
+    while (std::getline(mapmap, line)) {
+        // format is:
+        // address perms offset dev inode pathname
+        llvm::SmallVector<llvm::StringRef, 6> line_split;
+        llvm::StringRef(line).split(line_split, " ", 5, false);
+        RELEASE_ASSERT(line_split.size() >= 5, "%zu", line_split.size());
+        if (line_split.size() < 6)
+            continue; // pathname is missing
+
+        llvm::StringRef permissions = line_split[1].trim();
+        llvm::StringRef pathname = line_split[5].trim();
+
+        if (permissions == "rwxp" && pathname == lib_path) {
+            llvm::StringRef mem_range = line_split[0].trim();
+            auto mem_range_split = mem_range.split('-');
+            uint64_t lower_addr = 0;
+            bool error = mem_range_split.first.getAsInteger(16, lower_addr);
+            RELEASE_ASSERT(!error, "");
+            uint64_t upper_addr = 0;
+            error = mem_range_split.second.getAsInteger(16, upper_addr);
+            RELEASE_ASSERT(!error, "");
+
+            RELEASE_ASSERT(upper_addr - lower_addr < 1000000,
+                           "Large data section detected - there maybe something wrong");
+
+            gc::registerPotentialRootRange((void*)lower_addr, (void*)upper_addr);
+        }
+    }
+}
+
 BoxedModule* importCExtension(BoxedString* full_name, const std::string& last_name, const std::string& path) {
     void* handle = dlopen(path.c_str(), RTLD_NOW);
     if (!handle) {
@@ -805,13 +839,7 @@ BoxedModule* importCExtension(BoxedString* full_name, const std::string& last_na
     assert(init);
 
     // Let the GC know about the static variables.
-    uintptr_t bss_start = (uintptr_t)dlsym(handle, "__bss_start");
-    uintptr_t bss_end = (uintptr_t)dlsym(handle, "_end");
-    RELEASE_ASSERT(bss_end - bss_start < 1000000, "Large BSS section detected - there maybe something wrong");
-    // only track void* aligned memory
-    bss_start = (bss_start + (sizeof(void*) - 1)) & ~(sizeof(void*) - 1);
-    bss_end -= bss_end % sizeof(void*);
-    gc::registerPotentialRootRange((void*)bss_start, (void*)bss_end);
+    registerDataSegment(path);
 
     char* packagecontext = strdup(full_name->c_str());
     char* oldcontext = _Py_PackageContext;
