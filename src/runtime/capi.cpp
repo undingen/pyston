@@ -1648,11 +1648,13 @@ extern "C" void PyEval_InitThreads(void) noexcept {
 }
 
 extern "C" void PyEval_AcquireThread(PyThreadState* tstate) noexcept {
-    Py_FatalError("Unimplemented");
+    RELEASE_ASSERT(tstate == PyThreadState_Get(), "");
+    threading::endAllowThreads();
 }
 
 extern "C" void PyEval_ReleaseThread(PyThreadState* tstate) noexcept {
-    Py_FatalError("Unimplemented");
+    RELEASE_ASSERT(tstate == PyThreadState_Get(), "");
+    threading::beginAllowThreads();
 }
 
 extern "C" PyThreadState* PyThreadState_Get(void) noexcept {
