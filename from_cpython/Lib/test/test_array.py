@@ -1,4 +1,3 @@
-# expected: fail
 """Test the arraymodule.
    Roger E. Masse
 """
@@ -766,6 +765,7 @@ class BaseTest(unittest.TestCase):
             b = buffer(a)
         self.assertEqual(b[0], a.tostring()[0])
 
+    @unittest.skip("Pyston" in sys.version)
     def test_weakref(self):
         s = array.array(self.typecode, self.example)
         p = proxy(s)
