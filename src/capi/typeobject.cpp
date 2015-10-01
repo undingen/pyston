@@ -508,19 +508,14 @@ static PyObject* lookup_method(PyObject* self, const char* attrstr, PyObject** a
     return res;
 }
 
-// Copied from CPython:
+// Copied from CPython but includes pyston changes:
 static PyObject* call_method(PyObject* o, const char* name, PyObject** nameobj, const char* format, ...) noexcept {
+    if (!*nameobj)
+        *nameobj = internStringImmortal(name);
+
     va_list va;
     PyObject* args, * func = 0, *retval;
     va_start(va, format);
-
-    func = lookup_maybe(o, name, nameobj);
-    if (func == NULL) {
-        va_end(va);
-        if (!PyErr_Occurred())
-            PyErr_SetObject(PyExc_AttributeError, *nameobj);
-        return NULL;
-    }
 
     if (format && *format)
         args = Py_VaBuildValue(format, va);
@@ -533,7 +528,11 @@ static PyObject* call_method(PyObject* o, const char* name, PyObject** nameobj, 
         return NULL;
 
     assert(PyTuple_Check(args));
-    retval = PyObject_Call(func, args, NULL);
+
+    retval = callattrInternal<ExceptionStyle::CAPI>(o, (BoxedString*)*nameobj, CLASS_ONLY, NULL,
+                                                    ArgPassSpec(0, 0, true, false), args, NULL, NULL, NULL, NULL);
+    if (!retval && !PyErr_Occurred())
+        PyErr_SetObject(PyExc_AttributeError, *nameobj);
 
     Py_DECREF(args);
     Py_DECREF(func);
@@ -544,19 +543,12 @@ static PyObject* call_method(PyObject* o, const char* name, PyObject** nameobj, 
 /* Clone of call_method() that returns NotImplemented when the lookup fails. */
 
 static PyObject* call_maybe(PyObject* o, const char* name, PyObject** nameobj, const char* format, ...) noexcept {
+    if (!*nameobj)
+        *nameobj = internStringImmortal(name);
+
     va_list va;
     PyObject* args, * func = 0, *retval;
     va_start(va, format);
-
-    func = lookup_maybe(o, name, nameobj);
-    if (func == NULL) {
-        va_end(va);
-        if (!PyErr_Occurred()) {
-            Py_INCREF(Py_NotImplemented);
-            return Py_NotImplemented;
-        }
-        return NULL;
-    }
 
     if (format && *format)
         args = Py_VaBuildValue(format, va);
@@ -569,7 +561,10 @@ static PyObject* call_maybe(PyObject* o, const char* name, PyObject** nameobj, c
         return NULL;
 
     assert(PyTuple_Check(args));
-    retval = PyObject_Call(func, args, NULL);
+    retval = callattrInternal<ExceptionStyle::CAPI>(o, (BoxedString*)*nameobj, CLASS_ONLY, NULL,
+                                                    ArgPassSpec(0, 0, true, false), args, NULL, NULL, NULL, NULL);
+    if (!retval && !PyErr_Occurred())
+        return Py_NotImplemented;
 
     Py_DECREF(args);
     Py_DECREF(func);
@@ -693,15 +688,12 @@ static long slot_tp_hash(PyObject* self) noexcept {
 PyObject* slot_tp_call(PyObject* self, PyObject* args, PyObject* kwds) noexcept {
     STAT_TIMER(t0, "us_timer_slot_tpcall", SLOT_AVOIDABILITY(self));
 
-    try {
-        Py_FatalError("this function is untested");
-
-        // TODO: runtime ICs?
-        return runtimeCall(self, ArgPassSpec(0, 0, true, true), args, kwds, NULL, NULL, NULL);
-    } catch (ExcInfo e) {
-        setCAPIException(e);
-        return NULL;
-    }
+    if (kwds)
+        return runtimeCallInternal<ExceptionStyle::CAPI>(self, NULL, ArgPassSpec(0, 0, true, true), args, kwds, NULL,
+                                                         NULL, NULL);
+    else
+        return runtimeCallInternal<ExceptionStyle::CAPI>(self, NULL, ArgPassSpec(0, 0, true, false), args, NULL, NULL,
+                                                         NULL, NULL);
 }
 
 static const char* name_op[] = {
@@ -1132,14 +1124,9 @@ static PyObject* slot_tp_del(PyObject* self) noexcept {
 /* Pyston change: static */ int slot_tp_init(PyObject* self, PyObject* args, PyObject* kwds) noexcept {
     STAT_TIMER(t0, "us_timer_slot_tpinit", SLOT_AVOIDABILITY(self));
 
-    static PyObject* init_str;
-    PyObject* meth = lookup_method(self, "__init__", &init_str);
-    PyObject* res;
-
-    if (meth == NULL)
-        return -1;
-    res = PyObject_Call(meth, args, kwds);
-    Py_DECREF(meth);
+    static BoxedString* init_str = internStringImmortal("__init__");
+    Box* res = callattrInternal<ExceptionStyle::CAPI>(self, init_str, CLASS_ONLY, NULL, ArgPassSpec(0, 0, true, true),
+                                                      args, kwds, NULL, NULL, NULL);
     if (res == NULL)
         return -1;
     if (res != Py_None) {

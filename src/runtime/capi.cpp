@@ -578,13 +578,21 @@ extern "C" int PyObject_Not(PyObject* o) noexcept {
     return -1;
 }
 
-extern "C" PyObject* PyObject_Call(PyObject* callable_object, PyObject* args, PyObject* kw) noexcept {
-    if (kw)
-        return runtimeCallInternal<ExceptionStyle::CAPI>(callable_object, NULL, ArgPassSpec(0, 0, true, true), args, kw,
-                                                         NULL, NULL, NULL);
-    else
-        return runtimeCallInternal<ExceptionStyle::CAPI>(callable_object, NULL, ArgPassSpec(0, 0, true, false), args,
-                                                         NULL, NULL, NULL, NULL);
+extern "C" PyObject* PyObject_Call(PyObject* func, PyObject* arg, PyObject* kw) noexcept {
+    ternaryfunc call;
+
+    if ((call = func->cls->tp_call) != NULL) {
+        PyObject* result;
+        if (Py_EnterRecursiveCall(" while calling a Python object"))
+            return NULL;
+        result = (*call)(func, arg, kw);
+        Py_LeaveRecursiveCall();
+        if (result == NULL && !PyErr_Occurred())
+            PyErr_SetString(PyExc_SystemError, "NULL result without error in PyObject_Call");
+        return result;
+    }
+    PyErr_Format(PyExc_TypeError, "'%.200s' object is not callable", func->cls->tp_name);
+    return NULL;
 }
 
 extern "C" int PyObject_GetBuffer(PyObject* obj, Py_buffer* view, int flags) noexcept {

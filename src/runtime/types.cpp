@@ -3856,6 +3856,7 @@ void setupRuntime() {
     add_operators(type_cls);
     type_cls->freeze();
     type_cls->tp_new = type_new;
+    type_cls->tp_call = (ternaryfunc)cpython_type_call;
     type_cls->tpp_call.capi_val = &typeTppCall<CAPI>;
     type_cls->tpp_call.cxx_val = &typeTppCall<CXX>;
 
