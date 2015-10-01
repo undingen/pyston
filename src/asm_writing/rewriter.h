@@ -587,6 +587,18 @@ public:
     // This emits `if (r == exc_val) throwCAPIException()`
     void checkAndThrowCAPIException(RewriterVar* r, int64_t exc_val = 0);
 
+    struct Guard {
+        RewriterVar* var;
+        int offset;
+        uint64_t val;
+
+        bool operator == (const Guard& rhs) {
+            return std::make_tuple(var, offset, val) == std::make_tuple(rhs.var, rhs.offset, rhs.val);
+        }
+    };
+    llvm::SmallVector<Guard, 4> unneded_guards;
+    void removeGuard(RewriterVar* var, int offset, uint64_t val) { unneded_guards.push_back({var, offset, val}); }
+
     void abort();
     void commit();
     void commitReturning(RewriterVar* rtn);

@@ -2850,7 +2850,7 @@ Box* callattrInternal(Box* obj, BoxedString* attr, LookupScope scope, CallRewrit
 
     int npassed_args = argspec.totalPassed();
 
-    if (rewrite_args && !rewrite_args->args_guarded) {
+    if (0 && rewrite_args && !rewrite_args->args_guarded) {
         // TODO duplication with runtime_call
         // TODO should know which args don't need to be guarded, ex if we're guaranteed that they
         // already fit, either since the type inferencer could determine that,
@@ -2874,6 +2874,7 @@ Box* callattrInternal(Box* obj, BoxedString* attr, LookupScope scope, CallRewrit
 
         rewrite_args->args_guarded = true;
     }
+    if (rewrite_args) rewrite_args->args_guarded = true;
 
     // right now I don't think this is ever called with INST_ONLY?
     assert(scope != INST_ONLY);
@@ -2962,6 +2963,14 @@ Box* callattrInternal(Box* obj, BoxedString* attr, LookupScope scope, CallRewrit
 
         rewrite_args->out_rtn = rewrite_args->rewriter->call(true, (void*)Helper::call, arg_vec);
         rewrite_args->out_success = true;
+
+
+        if (npassed_args >= 1)
+            rewrite_args->rewriter->removeGuard(rewrite_args->arg1, offsetof(Box, cls), (intptr_t)arg1->cls);
+        if (npassed_args >= 2)
+            rewrite_args->rewriter->removeGuard(rewrite_args->arg2, offsetof(Box, cls), (intptr_t)arg2->cls);
+        if (npassed_args >= 3)
+            rewrite_args->rewriter->removeGuard(rewrite_args->arg3, offsetof(Box, cls), (intptr_t)arg3->cls);
 
         void* _args[2] = { args, const_cast<std::vector<BoxedString*>*>(keyword_names) };
         return Helper::call(val, argspec, arg1, arg2, arg3, _args);
@@ -4053,7 +4062,7 @@ Box* runtimeCallInternal(Box* obj, CallRewriteArgs* rewrite_args, ArgPassSpec ar
                     }
                 } else {
                     assert(v);
-                    getArg(i, rewrite_args)->addAttrGuard(offsetof(Box, cls), (intptr_t)v->cls);
+                    //getArg(i, rewrite_args)->addAttrGuard(offsetof(Box, cls), (intptr_t)v->cls);
                 }
             }
             rewrite_args->args_guarded = true;

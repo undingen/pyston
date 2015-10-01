@@ -358,6 +358,16 @@ void RewriterVar::addAttrGuard(int offset, uint64_t val, bool negate) {
 }
 
 void Rewriter::_addAttrGuard(RewriterVar* var, int offset, RewriterVar* val_constant, bool negate) {
+    for (auto&& e : unneded_guards) {
+        if (!negate && Guard{var, offset, val_constant->constant_value} == e) {
+            restoreArgs(); // can only do movs, doesn't affect flags, so it's safe
+            assertArgsInPlace();
+            var->bumpUse();
+            val_constant->bumpUse();
+            return;
+        }
+    }
+
     assembler->comment("_addAttrGuard");
 
     assert(val_constant->is_constant);
