@@ -29,12 +29,15 @@ extern "C" {
 BoxedClass* classobj_cls, *instance_cls;
 }
 
+template <bool support_rewriter>
+static Box* classLookup(BoxedClassobj* cls, BoxedString* attr, GetattrRewriteArgs* rewrite_args) {
+    if (!support_rewriter)
+        rewrite_args = NULL;
 
-static Box* classLookup(BoxedClassobj* cls, BoxedString* attr, GetattrRewriteArgs* rewrite_args = NULL) {
     if (rewrite_args)
         assert(!rewrite_args->out_success);
 
-    Box* r = cls->getattr(attr, rewrite_args);
+    Box* r = cls->getattr<support_rewriter>(attr, rewrite_args);
     if (r)
         return r;
 
@@ -46,12 +49,16 @@ static Box* classLookup(BoxedClassobj* cls, BoxedString* attr, GetattrRewriteArg
 
     for (auto b : *cls->bases) {
         RELEASE_ASSERT(b->cls == classobj_cls, "");
-        Box* r = classLookup(static_cast<BoxedClassobj*>(b), attr, rewrite_args);
+        Box* r = classLookup<false>(static_cast<BoxedClassobj*>(b), attr, rewrite_args);
         if (r)
             return r;
     }
 
     return NULL;
+}
+
+static Box* classLookup(BoxedClassobj* cls, BoxedString* attr) {
+    return classLookup<false>(cls, attr, NULL);
 }
 
 extern "C" PyObject* _PyInstance_Lookup(PyObject* pinst, PyObject* pname) noexcept {
@@ -63,7 +70,7 @@ extern "C" PyObject* _PyInstance_Lookup(PyObject* pinst, PyObject* pname) noexce
 
     try {
         internStringMortalInplace(name);
-        Box* v = inst->getattr(name, NULL);
+        Box* v = inst->getattr(name);
         if (v == NULL)
             v = classLookup(inst->inst_cls, name);
         return v;
@@ -321,9 +328,13 @@ Box* classobjRepr(Box* _obj) {
 }
 
 // Analogous to CPython's instance_getattr2
+template <bool support_rewriter>
 static Box* instanceGetattributeSimple(BoxedInstance* inst, BoxedString* attr_str,
                                        GetattrRewriteArgs* rewriter_args = NULL) {
-    Box* r = inst->getattr(attr_str, rewriter_args);
+    if (!support_rewriter)
+        rewriter_args = NULL;
+
+    Box* r = inst->getattr<support_rewriter>(attr_str, rewriter_args);
     if (r)
         return r;
 
@@ -341,7 +352,7 @@ static Box* instanceGetattributeSimple(BoxedInstance* inst, BoxedString* attr_st
     GetattrRewriteArgs grewriter_inst_args(rewriter_args ? rewriter_args->rewriter : NULL, r_inst_cls,
                                            rewriter_args ? rewriter_args->rewriter->getReturnDestination()
                                                          : Location());
-    r = classLookup(inst->inst_cls, attr_str, rewriter_args ? &grewriter_inst_args : NULL);
+    r = classLookup<support_rewriter>(inst->inst_cls, attr_str, rewriter_args ? &grewriter_inst_args : NULL);
     if (!grewriter_inst_args.out_success)
         rewriter_args = NULL;
     else
@@ -362,9 +373,13 @@ static Box* instanceGetattributeSimple(BoxedInstance* inst, BoxedString* attr_st
     return NULL;
 }
 
+template <bool support_rewriter>
 static Box* instanceGetattributeWithFallback(BoxedInstance* inst, BoxedString* attr_str,
-                                             GetattrRewriteArgs* rewriter_args = NULL) {
-    Box* attr_obj = instanceGetattributeSimple(inst, attr_str, rewriter_args);
+                                             GetattrRewriteArgs* rewriter_args) {
+    if (!support_rewriter)
+        rewriter_args = NULL;
+
+    Box* attr_obj = instanceGetattributeSimple<support_rewriter>(inst, attr_str, rewriter_args);
 
     if (attr_obj) {
         return attr_obj;
@@ -385,14 +400,18 @@ static Box* instanceGetattributeWithFallback(BoxedInstance* inst, BoxedString* a
 
     if (getattr) {
         getattr = processDescriptor(getattr, inst, inst->inst_cls);
-        return runtimeCallInternal<CXX>(getattr, NULL, ArgPassSpec(1), attr_str, NULL, NULL, NULL, NULL);
+        return runtimeCallInternal<CXX, false>(getattr, NULL, ArgPassSpec(1), attr_str, NULL, NULL, NULL, NULL);
     }
 
     return NULL;
 }
 
+template <bool support_rewriter>
 static Box* _instanceGetattribute(Box* _inst, BoxedString* attr_str, bool raise_on_missing,
-                                  GetattrRewriteArgs* rewriter_args = NULL) {
+                                  GetattrRewriteArgs* rewriter_args) {
+    if (!support_rewriter)
+        rewriter_args = NULL;
+
     RELEASE_ASSERT(_inst->cls == instance_cls, "");
     BoxedInstance* inst = static_cast<BoxedInstance*>(_inst);
 
@@ -405,7 +424,7 @@ static Box* _instanceGetattribute(Box* _inst, BoxedString* attr_str, bool raise_
             return inst->inst_cls;
     }
 
-    Box* attr = instanceGetattributeWithFallback(inst, attr_str, rewriter_args);
+    Box* attr = instanceGetattributeWithFallback<support_rewriter>(inst, attr_str, rewriter_args);
     if (attr) {
         return attr;
     } else if (!raise_on_missing) {
@@ -414,6 +433,9 @@ static Box* _instanceGetattribute(Box* _inst, BoxedString* attr_str, bool raise_
         raiseExcHelper(AttributeError, "%s instance has no attribute '%s'", inst->inst_cls->name->data(),
                        attr_str->data());
     }
+}
+static Box* _instanceGetattribute(Box* _inst, BoxedString* attr_str, bool raise_on_missing) {
+    return _instanceGetattribute<false>(_inst, attr_str, raise_on_missing, NULL);
 }
 
 // Analogous to CPython's instance_getattr
@@ -430,13 +452,13 @@ Box* instanceGetattroInternal(Box* cls, Box* _attr, GetattrRewriteArgs* rewrite_
 
     if (S == CAPI) {
         try {
-            return _instanceGetattribute(cls, attr, true, rewrite_args);
+            return _instanceGetattribute<true>(cls, attr, true, rewrite_args);
         } catch (ExcInfo e) {
             setCAPIException(e);
             return NULL;
         }
     } else {
-        return _instanceGetattribute(cls, attr, true, rewrite_args);
+        return _instanceGetattribute<true>(cls, attr, true, rewrite_args);
     }
 }
 
@@ -1123,7 +1145,7 @@ static void instance_dealloc(Box* _inst) noexcept {
     static BoxedString* del_str = internStringImmortal("__del__");
 
     // TODO: any exceptions here should get caught + printed, instead of causing a std::terminate:
-    Box* func = instanceGetattributeSimple(inst, del_str);
+    Box* func = instanceGetattributeSimple<false>(inst, del_str, NULL);
     if (func)
         runtimeCall(func, ArgPassSpec(0), NULL, NULL, NULL, NULL, NULL);
 }

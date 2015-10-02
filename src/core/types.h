@@ -545,8 +545,9 @@ public:
 
     // getattr() does the equivalent of PyDict_GetItem(obj->dict, attr): it looks up the attribute's value on the
     // object's attribute storage. it doesn't look at other objects or do any descriptor logic.
+    template <bool support_rewriter>
     Box* getattr(BoxedString* attr, GetattrRewriteArgs* rewrite_args);
-    Box* getattr(BoxedString* attr) { return getattr(attr, NULL); }
+    Box* getattr(BoxedString* attr) { return getattr<false>(attr, NULL); }
     bool hasattr(BoxedString* attr) { return getattr(attr) != NULL; }
     void delattr(BoxedString* attr, DelattrRewriteArgs* rewrite_args);
 

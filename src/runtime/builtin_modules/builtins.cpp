@@ -83,7 +83,7 @@ extern "C" Box* vars(Box* obj) {
         return fastLocalsToBoxedLocals();
 
     static BoxedString* dict_str = internStringImmortal("__dict__");
-    Box* rtn = getattrInternal<ExceptionStyle::CAPI>(obj, dict_str, NULL);
+    Box* rtn = getattrInternal<ExceptionStyle::CAPI, false>(obj, dict_str, NULL);
     if (!rtn)
         raiseExcHelper(TypeError, "vars() argument must have __dict__ attribute");
     return rtn;
@@ -567,7 +567,7 @@ Box* getattrFuncInternal(BoxedFunctionBase* func, CallRewriteArgs* rewrite_args,
     RewriterVar* r_rtn;
     if (rewrite_args) {
         GetattrRewriteArgs grewrite_args(rewrite_args->rewriter, rewrite_args->arg1, rewrite_args->destination);
-        rtn = getattrInternal<CAPI>(obj, str, &grewrite_args);
+        rtn = getattrInternal<CAPI, true>(obj, str, &grewrite_args);
         // TODO could make the return valid in the NOEXC_POSSIBLE case via a helper
         if (!grewrite_args.out_success || grewrite_args.out_return_convention == GetattrRewriteArgs::NOEXC_POSSIBLE)
             rewrite_args = NULL;
@@ -581,7 +581,7 @@ Box* getattrFuncInternal(BoxedFunctionBase* func, CallRewriteArgs* rewrite_args,
             }
         }
     } else {
-        rtn = getattrInternal<CAPI>(obj, str, NULL);
+        rtn = getattrInternal<CAPI, false>(obj, str, NULL);
     }
 
     if (rewrite_args) {
@@ -680,7 +680,7 @@ Box* hasattrFuncInternal(BoxedFunctionBase* func, CallRewriteArgs* rewrite_args,
     RewriterVar* r_rtn;
     if (rewrite_args) {
         GetattrRewriteArgs grewrite_args(rewrite_args->rewriter, rewrite_args->arg1, rewrite_args->destination);
-        rtn = getattrInternal<CAPI>(obj, str, &grewrite_args);
+        rtn = getattrInternal<CAPI, true>(obj, str, &grewrite_args);
         if (!grewrite_args.out_success || grewrite_args.out_return_convention == GetattrRewriteArgs::NOEXC_POSSIBLE)
             rewrite_args = NULL;
         else {
@@ -693,7 +693,7 @@ Box* hasattrFuncInternal(BoxedFunctionBase* func, CallRewriteArgs* rewrite_args,
             }
         }
     } else {
-        rtn = getattrInternal<CAPI>(obj, str, NULL);
+        rtn = getattrInternal<CAPI, false>(obj, str, NULL);
     }
 
     if (rewrite_args) {
@@ -1254,7 +1254,7 @@ Box* ellipsisRepr(Box* self) {
     return boxString("Ellipsis");
 }
 Box* divmod(Box* lhs, Box* rhs) {
-    return binopInternal(lhs, rhs, AST_TYPE::DivMod, false, NULL);
+    return binopInternal<false>(lhs, rhs, AST_TYPE::DivMod, false, NULL);
 }
 
 Box* powFunc(Box* x, Box* y, Box* z) {
@@ -1328,7 +1328,7 @@ Box* getreversed(Box* o) {
         return r;
 
     static BoxedString* getitem_str = internStringImmortal("__getitem__");
-    if (!typeLookup(o->cls, getitem_str, NULL)) {
+    if (!typeLookup(o->cls, getitem_str)) {
         raiseExcHelper(TypeError, "'%s' object is not iterable", getTypeName(o));
     }
     int64_t len = unboxedLen(o); // this will throw an exception if __len__ isn't there

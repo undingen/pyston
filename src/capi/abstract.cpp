@@ -659,8 +659,8 @@ extern "C" PyObject* PyObject_CallMethod(PyObject* o, const char* name, const ch
             argspec = ArgPassSpec(1);
     } else
         argspec = ArgPassSpec(0);
-    retval = callattrInternal<ExceptionStyle::CAPI>(o, internStringMortal(name), CLASS_OR_INST, NULL, argspec, args,
-                                                    NULL, NULL, NULL, NULL);
+    retval = callattrInternal<ExceptionStyle::CAPI, false>(o, internStringMortal(name), CLASS_OR_INST, NULL, argspec,
+                                                           args, NULL, NULL, NULL, NULL);
     if (!retval && !PyErr_Occurred())
         PyErr_SetString(PyExc_AttributeError, name);
 
@@ -698,8 +698,8 @@ extern "C" PyObject* PyObject_CallMethodObjArgs(PyObject* callable, PyObject* na
     BoxedString* s = static_cast<BoxedString*>(attr);
     internStringMortalInplace(s);
 
-    tmp = callattrInternal<ExceptionStyle::CAPI>(callable, (BoxedString*)name, CLASS_OR_INST, NULL,
-                                                 ArgPassSpec(0, 0, true, false), args, NULL, NULL, NULL, NULL);
+    tmp = callattrInternal<ExceptionStyle::CAPI, false>(callable, (BoxedString*)name, CLASS_OR_INST, NULL,
+                                                        ArgPassSpec(0, 0, true, false), args, NULL, NULL, NULL, NULL);
     if (!tmp && !PyErr_Occurred())
         PyErr_Format(PyExc_AttributeError, "'%.50s' object has no attribute '%.400s'", callable->cls->tp_name,
                      PyString_AS_STRING(attr));
@@ -732,8 +732,8 @@ extern "C" PyObject* _PyObject_CallMethod_SizeT(PyObject* o, const char* name, c
     } else
         argspec = ArgPassSpec(0);
 
-    tmp = callattrInternal<ExceptionStyle::CAPI>(o, internStringMortal(name), CLASS_OR_INST, NULL, argspec, args, NULL,
-                                                 NULL, NULL, NULL);
+    tmp = callattrInternal<ExceptionStyle::CAPI, false>(o, internStringMortal(name), CLASS_OR_INST, NULL, argspec, args,
+                                                        NULL, NULL, NULL, NULL);
     if (!tmp && !PyErr_Occurred())
         PyErr_Format(PyExc_AttributeError, "'%.50s' object has no attribute '%.400s'", o->cls->tp_name, name);
 
@@ -745,7 +745,7 @@ extern "C" PyObject* _PyObject_CallMethod_SizeT(PyObject* o, const char* name, c
 }
 
 extern "C" Py_ssize_t PyObject_Size(PyObject* o) noexcept {
-    BoxedInt* r = lenInternal<ExceptionStyle::CAPI>(o, NULL);
+    BoxedInt* r = lenInternal<ExceptionStyle::CAPI, false>(o, NULL);
     if (!r)
         return -1;
     return r->n;
@@ -2239,7 +2239,7 @@ extern "C" PyObject* PyNumber_Int(PyObject* o) noexcept {
     // Pyston change: this should be an optimization
     // PyObject* trunc_func = PyObject_GetAttrString(o, "__trunc__");
     static BoxedString* trunc_str = internStringImmortal("__trunc__");
-    PyObject* trunc_func = getattrInternal<ExceptionStyle::CAPI>(o, trunc_str, NULL);
+    PyObject* trunc_func = getattrInternal<ExceptionStyle::CAPI, false>(o, trunc_str, NULL);
 
     if (trunc_func) {
         PyObject* truncated = PyEval_CallObject(trunc_func, NULL);

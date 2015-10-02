@@ -770,8 +770,8 @@ static Box* objectNewNoArgs(BoxedClass* cls) noexcept {
 #ifndef NDEBUG
     static BoxedString* new_str = internStringImmortal("__new__");
     static BoxedString* init_str = internStringImmortal("__init__");
-    assert(typeLookup(cls, new_str, NULL) == typeLookup(object_cls, new_str, NULL)
-           && typeLookup(cls, init_str, NULL) != typeLookup(object_cls, init_str, NULL));
+    assert(typeLookup(cls, new_str) == typeLookup(object_cls, new_str)
+           && typeLookup(cls, init_str) != typeLookup(object_cls, init_str));
 #endif
     return new (cls) Box();
 }
@@ -907,7 +907,7 @@ static Box* typeCallInner(CallRewriteArgs* rewrite_args, ArgPassSpec argspec, Bo
     if (rewrite_args) {
         GetattrRewriteArgs grewrite_args(rewrite_args->rewriter, r_ccls, rewrite_args->destination);
         // TODO: if tp_new != Py_CallPythonNew, call that instead?
-        new_attr = typeLookup(cls, new_str, &grewrite_args);
+        new_attr = typeLookup<true>(cls, new_str, &grewrite_args);
 
         if (!grewrite_args.out_success)
             rewrite_args = NULL;
@@ -935,7 +935,7 @@ static Box* typeCallInner(CallRewriteArgs* rewrite_args, ArgPassSpec argspec, Bo
             }
         }
     } else {
-        new_attr = typeLookup(cls, new_str, NULL);
+        new_attr = typeLookup(cls, new_str);
         try {
             if (new_attr->cls != function_cls) // optimization
                 new_attr = processDescriptor(new_attr, None, cls);
@@ -983,7 +983,7 @@ static Box* typeCallInner(CallRewriteArgs* rewrite_args, ArgPassSpec argspec, Bo
     static std::vector<Box*> class_making_news;
     if (class_making_news.empty()) {
         for (BoxedClass* allowed_cls : { object_cls, enumerate_cls, xrange_cls, tuple_cls, list_cls, dict_cls }) {
-            auto new_obj = typeLookup(allowed_cls, new_str, NULL);
+            auto new_obj = typeLookup(allowed_cls, new_str);
             gc::registerPermanentRoot(new_obj, /* allow_duplicates= */ true);
             class_making_news.push_back(new_obj);
         }
@@ -1050,7 +1050,7 @@ static Box* typeCallInner(CallRewriteArgs* rewrite_args, ArgPassSpec argspec, Bo
         // tp_init if we can manage to rewrite it.
         if (rewrite_args && which_init != UNKNOWN) {
             GetattrRewriteArgs grewrite_args(rewrite_args->rewriter, r_ccls, rewrite_args->destination);
-            init_attr = typeLookup(cls, init_str, &grewrite_args);
+            init_attr = typeLookup<true>(cls, init_str, &grewrite_args);
 
             if (!grewrite_args.out_success)
                 rewrite_args = NULL;
@@ -1064,7 +1064,7 @@ static Box* typeCallInner(CallRewriteArgs* rewrite_args, ArgPassSpec argspec, Bo
                 }
             }
         } else {
-            init_attr = typeLookup(cls, init_str, NULL);
+            init_attr = typeLookup(cls, init_str);
         }
     }
 
@@ -1114,7 +1114,8 @@ static Box* typeCallInner(CallRewriteArgs* rewrite_args, ArgPassSpec argspec, Bo
             if (new_npassed_args >= 4)
                 srewrite_args.args = rewrite_args->args;
 
-            made = runtimeCallInternal<S>(new_attr, &srewrite_args, new_argspec, cls, arg2, arg3, args, keyword_names);
+            made = runtimeCallInternal<S, true>(new_attr, &srewrite_args, new_argspec, cls, arg2, arg3, args,
+                                                keyword_names);
             if (!made) {
                 assert(S == CAPI);
 
@@ -1137,7 +1138,7 @@ static Box* typeCallInner(CallRewriteArgs* rewrite_args, ArgPassSpec argspec, Bo
             made = objectNewNoArgs(cls);
             assert(made);
         } else
-            made = runtimeCallInternal<S>(new_attr, NULL, new_argspec, cls, arg2, arg3, args, keyword_names);
+            made = runtimeCallInternal<S, false>(new_attr, NULL, new_argspec, cls, arg2, arg3, args, keyword_names);
 
         if (!made) {
             assert(S == CAPI);
@@ -1250,8 +1251,8 @@ static Box* typeCallInner(CallRewriteArgs* rewrite_args, ArgPassSpec argspec, Bo
                 srewrite_args.args_guarded = rewrite_args->args_guarded;
                 srewrite_args.func_guarded = true;
 
-                initrtn
-                    = runtimeCallInternal<S>(init_attr, &srewrite_args, argspec, made, arg2, arg3, args, keyword_names);
+                initrtn = runtimeCallInternal<S, true>(init_attr, &srewrite_args, argspec, made, arg2, arg3, args,
+                                                       keyword_names);
 
                 if (!srewrite_args.out_success) {
                     rewrite_args = NULL;
@@ -1260,7 +1261,8 @@ static Box* typeCallInner(CallRewriteArgs* rewrite_args, ArgPassSpec argspec, Bo
                     rewrite_args->rewriter->call(true, (void*)assertInitNone, srewrite_args.out_rtn);
                 }
             } else {
-                initrtn = runtimeCallInternal<S>(init_attr, NULL, argspec, made, arg2, arg3, args, keyword_names);
+                initrtn
+                    = runtimeCallInternal<S, false>(init_attr, NULL, argspec, made, arg2, arg3, args, keyword_names);
             }
 
             if (!initrtn) {
@@ -1825,7 +1827,7 @@ extern "C" Box* sliceNew(Box* cls, Box* start, Box* stop, Box** args) {
 
 static Box* instancemethodCall(BoxedInstanceMethod* self, Box* args, Box* kwargs) {
     // Not the most effficient, but it works:
-    return runtimeCallInternal<CXX>(self, NULL, ArgPassSpec(0, 0, true, true), args, kwargs, NULL, NULL, NULL);
+    return runtimeCallInternal<CXX, false>(self, NULL, ArgPassSpec(0, 0, true, true), args, kwargs, NULL, NULL, NULL);
     // TODO add a tpp_call
 }
 
@@ -1874,7 +1876,7 @@ static Box* instancemethodRepr(Box* b) {
     const char* sfuncname = "?", * sklassname = "?";
 
     static BoxedString* name_str = internStringImmortal("__name__");
-    funcname = getattrInternal<CXX>(func, name_str, NULL);
+    funcname = getattrInternal<CXX, false>(func, name_str, NULL);
 
     if (funcname != NULL) {
         if (!PyString_Check(funcname)) {
@@ -1886,7 +1888,7 @@ static Box* instancemethodRepr(Box* b) {
     if (klass == NULL) {
         klassname = NULL;
     } else {
-        klassname = getattrInternal<CXX>(klass, name_str, NULL);
+        klassname = getattrInternal<CXX, false>(klass, name_str, NULL);
         if (klassname != NULL) {
             if (!PyString_Check(klassname)) {
                 klassname = NULL;
@@ -1918,7 +1920,7 @@ Box* instancemethodEq(BoxedInstanceMethod* self, Box* rhs) {
             return boxBool(true);
         } else {
             if (self->obj != NULL && rhs_im->obj != NULL) {
-                return compareInternal(self->obj, rhs_im->obj, AST_TYPE::Eq, NULL);
+                return compareInternal<false>(self->obj, rhs_im->obj, AST_TYPE::Eq, NULL);
             } else {
                 return boxBool(false);
             }
@@ -2327,8 +2329,8 @@ public:
 
         if (self->isDictBacked()) {
             static BoxedString* setitem_str = internStringImmortal("__setitem__");
-            return callattrInternal<CXX>(self->getDictBacking(), setitem_str, LookupScope::CLASS_ONLY, NULL,
-                                         ArgPassSpec(2), _key, value, NULL, NULL, NULL);
+            return callattrInternal<CXX, false>(self->getDictBacking(), setitem_str, LookupScope::CLASS_ONLY, NULL,
+                                                ArgPassSpec(2), _key, value, NULL, NULL, NULL);
         }
 
         assert(_key->cls == str_cls);
@@ -2364,8 +2366,8 @@ public:
 
         if (self->isDictBacked()) {
             static BoxedString* setdefault_str = internStringImmortal("setdefault");
-            return callattrInternal<CXX>(self->getDictBacking(), setdefault_str, LookupScope::CLASS_ONLY, NULL,
-                                         ArgPassSpec(2), _key, value, NULL, NULL, NULL);
+            return callattrInternal<CXX, false>(self->getDictBacking(), setdefault_str, LookupScope::CLASS_ONLY, NULL,
+                                                ArgPassSpec(2), _key, value, NULL, NULL, NULL);
         }
 
         assert(_key->cls == str_cls);
@@ -2651,8 +2653,8 @@ public:
 
         if (self->isDictBacked()) {
             static BoxedString* iter_str = internStringImmortal("__iter__");
-            return callattrInternal<CXX>(self->getDictBacking(), iter_str, LookupScope::CLASS_ONLY, NULL,
-                                         ArgPassSpec(0), NULL, NULL, NULL, NULL, NULL);
+            return callattrInternal<CXX, false>(self->getDictBacking(), iter_str, LookupScope::CLASS_ONLY, NULL,
+                                                ArgPassSpec(0), NULL, NULL, NULL, NULL, NULL);
         }
 
         return new AttrWrapperIter(self);
@@ -2666,8 +2668,8 @@ public:
         BoxedDict* dict = (BoxedDict*)AttrWrapper::copy(_self);
         assert(dict->cls == dict_cls);
         static BoxedString* eq_str = internStringImmortal("__eq__");
-        return callattrInternal<CXX>(dict, eq_str, LookupScope::CLASS_ONLY, NULL, ArgPassSpec(1), _other, NULL, NULL,
-                                     NULL, NULL);
+        return callattrInternal<CXX, false>(dict, eq_str, LookupScope::CLASS_ONLY, NULL, ArgPassSpec(1), _other, NULL,
+                                            NULL, NULL, NULL);
     }
 
     static Box* ne(Box* _self, Box* _other) { return eq(_self, _other) == True ? False : True; }
@@ -2842,7 +2844,7 @@ Box* objectSetattr(Box* obj, Box* attr, Box* value) {
     }
 
     BoxedString* attr_str = static_cast<BoxedString*>(attr);
-    setattrGeneric(obj, attr_str, value, NULL);
+    setattrGeneric<false>(obj, attr_str, value, NULL);
     return None;
 }
 

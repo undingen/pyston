@@ -72,23 +72,23 @@ void REWRITE_ABORTED(const char* reason) {
 #define REWRITE_ABORTED(reason) ((void)(reason))
 #endif
 
-template <ExceptionStyle S>
+template <ExceptionStyle S, bool support_rewriter>
 static inline Box* runtimeCallInternal0(Box* obj, CallRewriteArgs* rewrite_args, ArgPassSpec argspec) {
-    return runtimeCallInternal<S>(obj, rewrite_args, argspec, NULL, NULL, NULL, NULL, NULL);
+    return runtimeCallInternal<S, support_rewriter>(obj, rewrite_args, argspec, NULL, NULL, NULL, NULL, NULL);
 }
-template <ExceptionStyle S>
+template <ExceptionStyle S, bool support_rewriter>
 static inline Box* runtimeCallInternal1(Box* obj, CallRewriteArgs* rewrite_args, ArgPassSpec argspec, Box* arg1) {
-    return runtimeCallInternal<S>(obj, rewrite_args, argspec, arg1, NULL, NULL, NULL, NULL);
+    return runtimeCallInternal<S, support_rewriter>(obj, rewrite_args, argspec, arg1, NULL, NULL, NULL, NULL);
 }
-template <ExceptionStyle S>
+template <ExceptionStyle S, bool support_rewriter>
 static inline Box* runtimeCallInternal2(Box* obj, CallRewriteArgs* rewrite_args, ArgPassSpec argspec, Box* arg1,
                                         Box* arg2) {
-    return runtimeCallInternal<S>(obj, rewrite_args, argspec, arg1, arg2, NULL, NULL, NULL);
+    return runtimeCallInternal<S, support_rewriter>(obj, rewrite_args, argspec, arg1, arg2, NULL, NULL, NULL);
 }
-template <ExceptionStyle S>
+template <ExceptionStyle S, bool support_rewriter>
 static inline Box* runtimeCallInternal3(Box* obj, CallRewriteArgs* rewrite_args, ArgPassSpec argspec, Box* arg1,
                                         Box* arg2, Box* arg3) {
-    return runtimeCallInternal<S>(obj, rewrite_args, argspec, arg1, arg2, arg3, NULL, NULL);
+    return runtimeCallInternal<S, support_rewriter>(obj, rewrite_args, argspec, arg1, arg2, arg3, NULL, NULL);
 }
 
 bool checkClass(LookupScope scope) {
@@ -98,25 +98,25 @@ bool checkInst(LookupScope scope) {
     return (scope & INST_ONLY) != 0;
 }
 
-template <ExceptionStyle S>
+template <ExceptionStyle S, bool support_rewriter>
 static inline Box* callattrInternal0(Box* obj, BoxedString* attr, LookupScope scope, CallRewriteArgs* rewrite_args,
                                      ArgPassSpec argspec) noexcept(S == CAPI) {
-    return callattrInternal<S>(obj, attr, scope, rewrite_args, argspec, NULL, NULL, NULL, NULL, NULL);
+    return callattrInternal<S, support_rewriter>(obj, attr, scope, rewrite_args, argspec, NULL, NULL, NULL, NULL, NULL);
 }
-template <ExceptionStyle S>
+template <ExceptionStyle S, bool support_rewriter>
 static inline Box* callattrInternal1(Box* obj, BoxedString* attr, LookupScope scope, CallRewriteArgs* rewrite_args,
                                      ArgPassSpec argspec, Box* arg1) noexcept(S == CAPI) {
-    return callattrInternal<S>(obj, attr, scope, rewrite_args, argspec, arg1, NULL, NULL, NULL, NULL);
+    return callattrInternal<S, support_rewriter>(obj, attr, scope, rewrite_args, argspec, arg1, NULL, NULL, NULL, NULL);
 }
-template <ExceptionStyle S>
+template <ExceptionStyle S, bool support_rewriter>
 static inline Box* callattrInternal2(Box* obj, BoxedString* attr, LookupScope scope, CallRewriteArgs* rewrite_args,
                                      ArgPassSpec argspec, Box* arg1, Box* arg2) noexcept(S == CAPI) {
-    return callattrInternal<S>(obj, attr, scope, rewrite_args, argspec, arg1, arg2, NULL, NULL, NULL);
+    return callattrInternal<S, support_rewriter>(obj, attr, scope, rewrite_args, argspec, arg1, arg2, NULL, NULL, NULL);
 }
-template <ExceptionStyle S>
+template <ExceptionStyle S, bool support_rewriter>
 static inline Box* callattrInternal3(Box* obj, BoxedString* attr, LookupScope scope, CallRewriteArgs* rewrite_args,
                                      ArgPassSpec argspec, Box* arg1, Box* arg2, Box* arg3) noexcept(S == CAPI) {
-    return callattrInternal<S>(obj, attr, scope, rewrite_args, argspec, arg1, arg2, arg3, NULL, NULL);
+    return callattrInternal<S, support_rewriter>(obj, attr, scope, rewrite_args, argspec, arg1, arg2, arg3, NULL, NULL);
 }
 
 #if STAT_TIMERS
@@ -198,7 +198,7 @@ extern "C" bool softspace(Box* b, bool newval) {
     bool r;
     Box* gotten = NULL;
     try {
-        Box* gotten = getattrInternal<CXX>(b, softspace_str, NULL);
+        Box* gotten = getattrInternal<CXX, false>(b, softspace_str, NULL);
         if (!gotten) {
             r = 0;
         } else {
@@ -229,18 +229,18 @@ extern "C" void printHelper(Box* dest, Box* var, bool nl) {
         // begin code for handling of softspace
         bool new_softspace = !nl;
         if (softspace(dest, new_softspace))
-            callattrInternal<CXX>(dest, write_str, CLASS_OR_INST, 0, ArgPassSpec(1), space_str, 0, 0, 0, 0);
+            callattrInternal<CXX, false>(dest, write_str, CLASS_OR_INST, 0, ArgPassSpec(1), space_str, 0, 0, 0, 0);
 
         Box* str_or_unicode_var = (var->cls == unicode_cls) ? var : str(var);
-        Box* write_rtn
-            = callattrInternal<CXX>(dest, write_str, CLASS_OR_INST, 0, ArgPassSpec(1), str_or_unicode_var, 0, 0, 0, 0);
+        Box* write_rtn = callattrInternal<CXX, false>(dest, write_str, CLASS_OR_INST, 0, ArgPassSpec(1),
+                                                      str_or_unicode_var, 0, 0, 0, 0);
         if (!write_rtn)
             raiseAttributeError(dest, write_str->s());
     }
 
     if (nl) {
         Box* write_rtn
-            = callattrInternal<CXX>(dest, write_str, CLASS_OR_INST, 0, ArgPassSpec(1), newline_str, 0, 0, 0, 0);
+            = callattrInternal<CXX, false>(dest, write_str, CLASS_OR_INST, 0, ArgPassSpec(1), newline_str, 0, 0, 0, 0);
         if (!write_rtn)
             raiseAttributeError(dest, write_str->s());
         if (!var)
@@ -313,7 +313,7 @@ extern "C" PyObject* type_getattro(PyObject* o, PyObject* name) noexcept {
     assert(PyString_CHECK_INTERNED(name));
 
     try {
-        Box* r = getattrInternalGeneric<true>(o, s, NULL, false, false, NULL, NULL);
+        Box* r = getattrInternalGeneric<true, false>(o, s, NULL, false, false, NULL, NULL);
         if (!r && !PyErr_Occurred())
             PyErr_Format(PyExc_AttributeError, "type object '%.50s' has no attribute '%.400s'",
                          static_cast<BoxedClass*>(o)->tp_name, PyString_AS_STRING(name));
@@ -439,7 +439,7 @@ void BoxedClass::freeze() {
 
     if (instancesHaveDictAttrs() || instancesHaveHCAttrs())
         ASSERT(this == closure_cls || this == classobj_cls || this == instance_cls
-                   || typeLookup(this, internStringMortal("__dict__"), NULL),
+                   || typeLookup(this, internStringMortal("__dict__")),
                "%s", tp_name);
 
     is_constant = true;
@@ -697,7 +697,10 @@ BoxedDict* Box::getDict() {
 }
 
 static StatCounter box_getattr_slowpath("slowpath_box_getattr");
-Box* Box::getattr(BoxedString* attr, GetattrRewriteArgs* rewrite_args) {
+
+template <bool support_rewriter> Box* Box::getattr(BoxedString* attr, GetattrRewriteArgs* rewrite_args) {
+    if (!support_rewriter)
+        rewrite_args = NULL;
     assert(attr->interned_state != SSTATE_NOT_INTERNED);
 
     // We have to guard on the class in order to know the object's layout,
@@ -980,14 +983,17 @@ void Box::setattr(BoxedString* attr, Box* val, SetattrRewriteArgs* rewrite_args)
 extern "C" PyObject* _PyType_Lookup(PyTypeObject* type, PyObject* name) noexcept {
     RELEASE_ASSERT(name->cls == str_cls, "");
     try {
-        return typeLookup(type, static_cast<BoxedString*>(name), NULL);
+        return typeLookup(type, static_cast<BoxedString*>(name));
     } catch (ExcInfo e) {
         setCAPIException(e);
         return NULL;
     }
 }
 
-Box* typeLookup(BoxedClass* cls, BoxedString* attr, GetattrRewriteArgs* rewrite_args) {
+template <bool support_rewriter> Box* typeLookup(BoxedClass* cls, BoxedString* attr, GetattrRewriteArgs* rewrite_args) {
+    if (!support_rewriter)
+        rewrite_args = NULL;
+
     Box* val;
 
     if (rewrite_args) {
@@ -1023,7 +1029,7 @@ Box* typeLookup(BoxedClass* cls, BoxedString* attr, GetattrRewriteArgs* rewrite_
                     rewrite_args->obj_shape_guarded = true;
                 }
             }
-            val = base->getattr(attr, rewrite_args);
+            val = base->getattr<support_rewriter>(attr, rewrite_args);
 
             if (rewrite_args && !rewrite_args->out_success)
                 rewrite_args = NULL;
@@ -1047,26 +1053,32 @@ Box* typeLookup(BoxedClass* cls, BoxedString* attr, GetattrRewriteArgs* rewrite_
             // has attributes that start with an underscore.
             if (b == object_cls) {
                 if (attr->data()[0] != '_') {
-                    assert(!b->getattr(attr, NULL));
+                    assert(!b->getattr<false>(attr, NULL));
                     continue;
                 }
             }
 
-            val = b->getattr(attr, NULL);
+            val = b->getattr<false>(attr, NULL);
             if (val)
                 return val;
         }
         return NULL;
     }
 }
+template Box* typeLookup<true>(BoxedClass*, BoxedString*, GetattrRewriteArgs*);
+template Box* typeLookup<false>(BoxedClass*, BoxedString*, GetattrRewriteArgs*);
 
 bool isNondataDescriptorInstanceSpecialCase(Box* descr) {
     return descr->cls == function_cls || descr->cls == instancemethod_cls || descr->cls == staticmethod_cls
            || descr->cls == classmethod_cls || descr->cls == wrapperdescr_cls;
 }
 
+template <bool support_rewriter>
 Box* nondataDescriptorInstanceSpecialCases(GetattrRewriteArgs* rewrite_args, Box* obj, Box* descr, RewriterVar* r_descr,
                                            bool for_call, Box** bind_obj_out, RewriterVar** r_bind_obj_out) {
+    if (!support_rewriter)
+        rewrite_args = NULL;
+
     // Special case: non-data descriptor: function, instancemethod or classmethod
     // Returns a bound instancemethod
     if (descr->cls == function_cls || descr->cls == instancemethod_cls || descr->cls == classmethod_cls
@@ -1199,8 +1211,12 @@ Box* nondataDescriptorInstanceSpecialCases(GetattrRewriteArgs* rewrite_args, Box
     return NULL;
 }
 
+template <bool support_rewriter>
 Box* descriptorClsSpecialCases(GetattrRewriteArgs* rewrite_args, BoxedClass* cls, Box* descr, RewriterVar* r_descr,
                                bool for_call, Box** bind_obj_out, RewriterVar** r_bind_obj_out) {
+    if (!support_rewriter)
+        rewrite_args = NULL;
+
     // Special case: functions
     if (descr->cls == function_cls || descr->cls == instancemethod_cls) {
         if (rewrite_args)
@@ -1249,9 +1265,13 @@ Box* boxChar(char c) {
     return boxString(llvm::StringRef(d, 1));
 }
 
+template <bool support_rewriter>
 Box* dataDescriptorInstanceSpecialCases(GetattrRewriteArgs* rewrite_args, BoxedString* attr_name, Box* obj, Box* descr,
                                         RewriterVar* r_descr, bool for_call, Box** bind_obj_out,
                                         RewriterVar** r_bind_obj_out) {
+    if (!support_rewriter)
+        rewrite_args = NULL;
+
     // Special case: data descriptor: member descriptor
     if (descr->cls == member_descriptor_cls) {
         static StatCounter slowpath("slowpath_member_descriptor_get");
@@ -1403,7 +1423,7 @@ Box* dataDescriptorInstanceSpecialCases(GetattrRewriteArgs* rewrite_args, BoxedS
             CallRewriteArgs crewrite_args(rewrite_args->rewriter, r_prop_get, rewrite_args->destination);
             crewrite_args.arg1 = rewrite_args->obj;
 
-            Box* rtn = runtimeCallInternal1<CXX>(prop->prop_get, &crewrite_args, ArgPassSpec(1), obj);
+            Box* rtn = runtimeCallInternal1<CXX, support_rewriter>(prop->prop_get, &crewrite_args, ArgPassSpec(1), obj);
             if (!crewrite_args.out_success) {
                 rewrite_args = NULL;
             } else {
@@ -1414,7 +1434,7 @@ Box* dataDescriptorInstanceSpecialCases(GetattrRewriteArgs* rewrite_args, BoxedS
             return rtn;
         }
 
-        return runtimeCallInternal1<CXX>(prop->prop_get, NULL, ArgPassSpec(1), obj);
+        return runtimeCallInternal1<CXX, false>(prop->prop_get, NULL, ArgPassSpec(1), obj);
     }
 
     // Special case: data descriptor: getset descriptor
@@ -1466,9 +1486,11 @@ static void ensureValidCapiReturn(Box* r) {
         ensureCAPIExceptionSet();
 }
 
-template <ExceptionStyle S>
+template <ExceptionStyle S, bool support_rewriter>
 Box* getattrInternalEx(Box* obj, BoxedString* attr, GetattrRewriteArgs* rewrite_args, bool cls_only, bool for_call,
                        Box** bind_obj_out, RewriterVar** r_bind_obj_out) noexcept(S == CAPI) {
+    if (!support_rewriter)
+        rewrite_args = NULL;
     assert(gc::isValidGCObject(attr));
 
     if (!cls_only) {
@@ -1483,13 +1505,13 @@ Box* getattrInternalEx(Box* obj, BoxedString* attr, GetattrRewriteArgs* rewrite_
             STAT_TIMER(t0, "us_timer_slowpath_tpgetattro", 10);
 
             if (obj->cls->tp_getattro == slot_tp_getattr_hook) {
-                return slotTpGetattrHookInternal<S>(obj, attr, rewrite_args);
+                return slotTpGetattrHookInternal<S, support_rewriter>(obj, attr, rewrite_args);
             } else if (obj->cls->tp_getattro == instance_getattro) {
                 return instanceGetattroInternal<S>(obj, attr, rewrite_args);
             } else if (obj->cls->tp_getattro == type_getattro) {
                 try {
-                    Box* r = getattrInternalGeneric<true>(obj, attr, rewrite_args, cls_only, for_call, bind_obj_out,
-                                                          r_bind_obj_out);
+                    Box* r = getattrInternalGeneric<true, support_rewriter>(obj, attr, rewrite_args, cls_only, for_call,
+                                                                            bind_obj_out, r_bind_obj_out);
                     return r;
                 } catch (ExcInfo e) {
                     if (S == CAPI) {
@@ -1561,8 +1583,8 @@ Box* getattrInternalEx(Box* obj, BoxedString* attr, GetattrRewriteArgs* rewrite_
     if (S == CAPI) {
         try {
             assert(!PyType_Check(obj) || cls_only); // There would be a tp_getattro
-            return getattrInternalGeneric<false>(obj, attr, rewrite_args, cls_only, for_call, bind_obj_out,
-                                                 r_bind_obj_out);
+            return getattrInternalGeneric<false, support_rewriter>(obj, attr, rewrite_args, cls_only, for_call,
+                                                                   bind_obj_out, r_bind_obj_out);
         } catch (ExcInfo e) {
             setCAPIException(e);
             return NULL;
@@ -1573,7 +1595,7 @@ Box* getattrInternalEx(Box* obj, BoxedString* attr, GetattrRewriteArgs* rewrite_
             public:
                 static Box* call(Box* obj, BoxedString* attr, bool cls_only) {
                     assert(!PyType_Check(obj) || cls_only); // There would be a tp_getattro
-                    return getattrInternalGeneric<false>(obj, attr, NULL, cls_only, false, NULL, NULL);
+                    return getattrInternalGeneric<false, false>(obj, attr, NULL, cls_only, false, NULL, NULL);
                 }
             };
 
@@ -1587,14 +1609,16 @@ Box* getattrInternalEx(Box* obj, BoxedString* attr, GetattrRewriteArgs* rewrite_
         }
 
         assert(!PyType_Check(obj) || cls_only); // There would be a tp_getattro
-        return getattrInternalGeneric<false>(obj, attr, rewrite_args, cls_only, for_call, bind_obj_out, r_bind_obj_out);
+        return getattrInternalGeneric<false, support_rewriter>(obj, attr, rewrite_args, cls_only, for_call,
+                                                               bind_obj_out, r_bind_obj_out);
     }
 }
 
+template <bool support_rewriter>
 inline Box* getclsattrInternal(Box* obj, BoxedString* attr, GetattrRewriteArgs* rewrite_args) {
-    return getattrInternalEx<CXX>(obj, attr, rewrite_args,
-                                  /* cls_only */ true,
-                                  /* for_call */ false, NULL, NULL);
+    return getattrInternalEx<CXX, support_rewriter>(obj, attr, rewrite_args,
+                                                    /* cls_only */ true,
+                                                    /* for_call */ false, NULL, NULL);
 }
 
 extern "C" Box* getclsattr(Box* obj, BoxedString* attr) {
@@ -1631,7 +1655,7 @@ extern "C" Box* getclsattr(Box* obj, BoxedString* attr) {
     if (rewriter.get()) {
         // rewriter->trap();
         GetattrRewriteArgs rewrite_args(rewriter.get(), rewriter->getArg(0), rewriter->getReturnDestination());
-        gotten = getclsattrInternal(obj, attr, &rewrite_args);
+        gotten = getclsattrInternal<true>(obj, attr, &rewrite_args);
 
         if (rewrite_args.out_success && gotten) {
             assert(rewrite_args.out_return_convention == GetattrRewriteArgs::VALID_RETURN);
@@ -1640,7 +1664,7 @@ extern "C" Box* getclsattr(Box* obj, BoxedString* attr) {
 #endif
 }
 else {
-    gotten = getclsattrInternal(obj, attr, NULL);
+    gotten = getclsattrInternal<false>(obj, attr, NULL);
 }
 RELEASE_ASSERT(gotten, "%s:%s", getTypeName(obj), attr->data());
 
@@ -1654,7 +1678,7 @@ return gotten;
 Box* processDescriptorOrNull(Box* obj, Box* inst, Box* owner) {
     if (DEBUG >= 2) {
         static BoxedString* get_str = internStringImmortal("__get__");
-        assert((obj->cls->tp_descr_get == NULL) == (typeLookup(obj->cls, get_str, NULL) == NULL));
+        assert((obj->cls->tp_descr_get == NULL) == (typeLookup(obj->cls, get_str) == NULL));
     }
     if (obj->cls->tp_descr_get) {
         Box* r = obj->cls->tp_descr_get(obj, inst, owner);
@@ -1673,9 +1697,12 @@ Box* processDescriptor(Box* obj, Box* inst, Box* owner) {
 }
 
 
-template <bool IsType>
+template <bool IsType, bool support_rewriter>
 Box* getattrInternalGeneric(Box* obj, BoxedString* attr, GetattrRewriteArgs* rewrite_args, bool cls_only, bool for_call,
                             Box** bind_obj_out, RewriterVar** r_bind_obj_out) {
+    if (!support_rewriter)
+        rewrite_args = NULL;
+
     if (for_call) {
         *bind_obj_out = NULL;
     }
@@ -1712,7 +1739,7 @@ Box* getattrInternalGeneric(Box* obj, BoxedString* attr, GetattrRewriteArgs* rew
     if (rewrite_args) {
         RewriterVar* r_obj_cls = rewrite_args->obj->getAttr(offsetof(Box, cls), Location::any());
         GetattrRewriteArgs grewrite_args(rewrite_args->rewriter, r_obj_cls, rewrite_args->destination);
-        descr = typeLookup(obj->cls, attr, &grewrite_args);
+        descr = typeLookup<support_rewriter>(obj->cls, attr, &grewrite_args);
 
         if (!grewrite_args.out_success) {
             rewrite_args = NULL;
@@ -1723,7 +1750,7 @@ Box* getattrInternalGeneric(Box* obj, BoxedString* attr, GetattrRewriteArgs* rew
             assert(grewrite_args.out_return_convention == GetattrRewriteArgs::NO_RETURN);
         }
     } else {
-        descr = typeLookup(obj->cls, attr, NULL);
+        descr = typeLookup<support_rewriter>(obj->cls, attr, NULL);
     }
 
     // Check if it's a data descriptor
@@ -1739,8 +1766,8 @@ Box* getattrInternalGeneric(Box* obj, BoxedString* attr, GetattrRewriteArgs* rew
             r_descr->addAttrGuard(offsetof(Box, cls), (uint64_t)descr->cls);
 
         // Special-case data descriptors (e.g., member descriptors)
-        Box* res = dataDescriptorInstanceSpecialCases(rewrite_args, attr, obj, descr, r_descr, for_call, bind_obj_out,
-                                                      r_bind_obj_out);
+        Box* res = dataDescriptorInstanceSpecialCases<support_rewriter>(rewrite_args, attr, obj, descr, r_descr,
+                                                                        for_call, bind_obj_out, r_bind_obj_out);
         if (res) {
             return res;
         }
@@ -1760,7 +1787,7 @@ Box* getattrInternalGeneric(Box* obj, BoxedString* attr, GetattrRewriteArgs* rew
                 if (rewrite_args) {
                     RewriterVar* r_descr_cls = r_descr->getAttr(offsetof(Box, cls), Location::any());
                     GetattrRewriteArgs grewrite_args(rewrite_args->rewriter, r_descr_cls, Location::any());
-                    _get_ = typeLookup(descr->cls, get_str, &grewrite_args);
+                    _get_ = typeLookup<support_rewriter>(descr->cls, get_str, &grewrite_args);
                     assert(_get_);
                     if (!grewrite_args.out_success) {
                         rewrite_args = NULL;
@@ -1771,11 +1798,11 @@ Box* getattrInternalGeneric(Box* obj, BoxedString* attr, GetattrRewriteArgs* rew
                 } else {
                     // Don't look up __get__ if we can't rewrite under the assumption that it will
                     // usually be faster to just call tp_descr_get:
-                    //_get_ = typeLookup(descr->cls, get_str, NULL);
+                    //_get_ = typeLookup(descr->cls, get_str);
                 }
             } else {
                 if (DEBUG >= 2)
-                    assert(typeLookup(descr->cls, get_str, NULL) == NULL);
+                    assert(typeLookup<support_rewriter>(descr->cls, get_str, NULL) == NULL);
             }
 
             // As an optimization, don't check for __set__ if we're in cls_only mode, since it won't matter.
@@ -1785,7 +1812,7 @@ Box* getattrInternalGeneric(Box* obj, BoxedString* attr, GetattrRewriteArgs* rew
                 if (rewrite_args) {
                     RewriterVar* r_descr_cls = r_descr->getAttr(offsetof(Box, cls), Location::any());
                     GetattrRewriteArgs grewrite_args(rewrite_args->rewriter, r_descr_cls, Location::any());
-                    _set_ = typeLookup(descr->cls, set_str, &grewrite_args);
+                    _set_ = typeLookup<support_rewriter>(descr->cls, set_str, &grewrite_args);
                     if (!grewrite_args.out_success) {
                         rewrite_args = NULL;
                     } else {
@@ -1793,7 +1820,7 @@ Box* getattrInternalGeneric(Box* obj, BoxedString* attr, GetattrRewriteArgs* rew
                                == (_set_ ? GetattrRewriteArgs::VALID_RETURN : GetattrRewriteArgs::NO_RETURN));
                     }
                 } else {
-                    _set_ = typeLookup(descr->cls, set_str, NULL);
+                    _set_ = typeLookup<support_rewriter>(descr->cls, set_str, NULL);
                 }
 
                 // Call __get__(descr, obj, obj->cls)
@@ -1819,8 +1846,8 @@ Box* getattrInternalGeneric(Box* obj, BoxedString* attr, GetattrRewriteArgs* rew
                         crewrite_args.arg1 = r_descr;
                         crewrite_args.arg2 = rewrite_args->obj;
                         crewrite_args.arg3 = rewrite_args->obj->getAttr(offsetof(Box, cls), Location::any());
-                        res = runtimeCallInternal<CXX>(_get_, &crewrite_args, ArgPassSpec(3), descr, obj, obj->cls,
-                                                       NULL, NULL);
+                        res = runtimeCallInternal<CXX, true>(_get_, &crewrite_args, ArgPassSpec(3), descr, obj,
+                                                             obj->cls, NULL, NULL);
                         if (!crewrite_args.out_success) {
                             rewrite_args = NULL;
                         } else {
@@ -1863,7 +1890,7 @@ Box* getattrInternalGeneric(Box* obj, BoxedString* attr, GetattrRewriteArgs* rew
             RewriterVar* r_val = NULL;
             if (rewrite_args) {
                 GetattrRewriteArgs hrewrite_args(rewrite_args->rewriter, rewrite_args->obj, rewrite_args->destination);
-                val = obj->getattr(attr, &hrewrite_args);
+                val = obj->getattr<true>(attr, &hrewrite_args);
 
                 if (!hrewrite_args.out_success) {
                     rewrite_args = NULL;
@@ -1874,7 +1901,7 @@ Box* getattrInternalGeneric(Box* obj, BoxedString* attr, GetattrRewriteArgs* rew
                     assert(hrewrite_args.out_return_convention == GetattrRewriteArgs::NO_RETURN);
                 }
             } else {
-                val = obj->getattr(attr, NULL);
+                val = obj->getattr(attr);
             }
 
             if (val) {
@@ -1897,7 +1924,7 @@ Box* getattrInternalGeneric(Box* obj, BoxedString* attr, GetattrRewriteArgs* rew
             if (rewrite_args) {
                 GetattrRewriteArgs grewrite_args(rewrite_args->rewriter, rewrite_args->obj, rewrite_args->destination);
 
-                val = typeLookup(static_cast<BoxedClass*>(obj), attr, &grewrite_args);
+                val = typeLookup<support_rewriter>(static_cast<BoxedClass*>(obj), attr, &grewrite_args);
                 if (!grewrite_args.out_success) {
                     rewrite_args = NULL;
                 } else if (val) {
@@ -1905,12 +1932,12 @@ Box* getattrInternalGeneric(Box* obj, BoxedString* attr, GetattrRewriteArgs* rew
                     r_val = grewrite_args.out_rtn;
                 }
             } else {
-                val = typeLookup(static_cast<BoxedClass*>(obj), attr, NULL);
+                val = typeLookup<support_rewriter>(static_cast<BoxedClass*>(obj), attr, NULL);
             }
 
             if (val) {
-                Box* res = descriptorClsSpecialCases(rewrite_args, static_cast<BoxedClass*>(obj), val, r_val, for_call,
-                                                     bind_obj_out, r_bind_obj_out);
+                Box* res = descriptorClsSpecialCases<support_rewriter>(rewrite_args, static_cast<BoxedClass*>(obj), val,
+                                                                       r_val, for_call, bind_obj_out, r_bind_obj_out);
                 if (res) {
                     return res;
                 }
@@ -1953,8 +1980,8 @@ Box* getattrInternalGeneric(Box* obj, BoxedString* attr, GetattrRewriteArgs* rew
     // If descr and __get__ exist, then call __get__
     if (descr) {
         // Special cases first
-        Box* res = nondataDescriptorInstanceSpecialCases(rewrite_args, obj, descr, r_descr, for_call, bind_obj_out,
-                                                         r_bind_obj_out);
+        Box* res = nondataDescriptorInstanceSpecialCases<support_rewriter>(rewrite_args, obj, descr, r_descr, for_call,
+                                                                           bind_obj_out, r_bind_obj_out);
         if (res) {
             return res;
         }
@@ -1983,7 +2010,8 @@ Box* getattrInternalGeneric(Box* obj, BoxedString* attr, GetattrRewriteArgs* rew
                 crewrite_args.arg1 = r_descr;
                 crewrite_args.arg2 = rewrite_args->obj;
                 crewrite_args.arg3 = rewrite_args->obj->getAttr(offsetof(Box, cls), Location::any());
-                res = runtimeCallInternal<CXX>(_get_, &crewrite_args, ArgPassSpec(3), descr, obj, obj->cls, NULL, NULL);
+                res = runtimeCallInternal<CXX, support_rewriter>(_get_, &crewrite_args, ArgPassSpec(3), descr, obj,
+                                                                 obj->cls, NULL, NULL);
                 if (!crewrite_args.out_success) {
                     rewrite_args = NULL;
                 } else {
@@ -2011,8 +2039,8 @@ Box* getattrInternalGeneric(Box* obj, BoxedString* attr, GetattrRewriteArgs* rew
     // TODO this shouldn't go here; it should be in instancemethod_cls->tp_getattr[o]
     if (obj->cls == instancemethod_cls) {
         assert(!rewrite_args || !rewrite_args->out_success);
-        return getattrInternalEx<CXX>(static_cast<BoxedInstanceMethod*>(obj)->func, attr, NULL, cls_only, for_call,
-                                      bind_obj_out, NULL);
+        return getattrInternalEx<CXX, false>(static_cast<BoxedInstanceMethod*>(obj)->func, attr, NULL, cls_only,
+                                             for_call, bind_obj_out, NULL);
     }
 
     if (rewrite_args) {
@@ -2022,16 +2050,18 @@ Box* getattrInternalGeneric(Box* obj, BoxedString* attr, GetattrRewriteArgs* rew
     return NULL;
 }
 
-template <ExceptionStyle S>
+template <ExceptionStyle S, bool support_rewriter>
 Box* getattrInternal(Box* obj, BoxedString* attr, GetattrRewriteArgs* rewrite_args) noexcept(S == CAPI) {
-    return getattrInternalEx<S>(obj, attr, rewrite_args,
-                                /* cls_only */ false,
-                                /* for_call */ false, NULL, NULL);
+    return getattrInternalEx<S, support_rewriter>(obj, attr, rewrite_args,
+                                                  /* cls_only */ false,
+                                                  /* for_call */ false, NULL, NULL);
 }
 
 // Force instantiation of the template
-template Box* getattrInternal<CAPI>(Box*, BoxedString*, GetattrRewriteArgs*);
-template Box* getattrInternal<CXX>(Box*, BoxedString*, GetattrRewriteArgs*);
+template Box* getattrInternal<CAPI, false>(Box*, BoxedString*, GetattrRewriteArgs*);
+template Box* getattrInternal<CXX, false>(Box*, BoxedString*, GetattrRewriteArgs*);
+template Box* getattrInternal<CAPI, true>(Box*, BoxedString*, GetattrRewriteArgs*);
+template Box* getattrInternal<CXX, true>(Box*, BoxedString*, GetattrRewriteArgs*);
 
 Box* getattrMaybeNonstring(Box* obj, Box* attr) {
     if (!PyString_Check(attr)) {
@@ -2047,7 +2077,7 @@ Box* getattrMaybeNonstring(Box* obj, Box* attr) {
     BoxedString* s = static_cast<BoxedString*>(attr);
     internStringMortalInplace(s);
 
-    Box* r = getattrInternal<CXX>(obj, s, NULL);
+    Box* r = getattrInternal<CXX, false>(obj, s, NULL);
     if (!r)
         raiseAttributeError(obj, s->s());
     return r;
@@ -2126,7 +2156,7 @@ template <ExceptionStyle S> Box* _getattrEntry(Box* obj, BoxedString* attr, void
         else
             dest = rewriter->getReturnDestination();
         GetattrRewriteArgs rewrite_args(rewriter.get(), rewriter->getArg(0), dest);
-        val = getattrInternal<S>(obj, attr, &rewrite_args);
+        val = getattrInternal<S, true>(obj, attr, &rewrite_args);
 
         if (rewrite_args.out_success) {
             assert(rewrite_args.out_return_convention != GetattrRewriteArgs::UNSPECIFIED);
@@ -2155,7 +2185,7 @@ template <ExceptionStyle S> Box* _getattrEntry(Box* obj, BoxedString* attr, void
             }
         }
     } else {
-        val = getattrInternal<S>(obj, attr, NULL);
+        val = getattrInternal<S, false>(obj, attr, NULL);
     }
 
     NoexcHelper::call(val, obj, attr);
@@ -2223,7 +2253,10 @@ bool dataDescriptorSetSpecialCases(Box* obj, Box* val, Box* descr, SetattrRewrit
     return false;
 }
 
+template <bool support_rewriter>
 void setattrGeneric(Box* obj, BoxedString* attr, Box* val, SetattrRewriteArgs* rewrite_args) {
+    if (!support_rewriter)
+        rewrite_args = NULL;
     assert(val);
     assert(gc::isValidGCObject(val));
 
@@ -2246,7 +2279,7 @@ void setattrGeneric(Box* obj, BoxedString* attr, Box* val, SetattrRewriteArgs* r
     if (rewrite_args) {
         RewriterVar* r_cls = rewrite_args->obj->getAttr(offsetof(Box, cls), Location::any());
         GetattrRewriteArgs grewrite_args(rewrite_args->rewriter, r_cls, rewrite_args->rewriter->getReturnDestination());
-        descr = typeLookup(obj->cls, attr, &grewrite_args);
+        descr = typeLookup<true>(obj->cls, attr, &grewrite_args);
 
         if (!grewrite_args.out_success) {
             rewrite_args = NULL;
@@ -2255,7 +2288,7 @@ void setattrGeneric(Box* obj, BoxedString* attr, Box* val, SetattrRewriteArgs* r
             r_descr = grewrite_args.out_rtn;
         }
     } else {
-        descr = typeLookup(obj->cls, attr, NULL);
+        descr = typeLookup<false>(obj->cls, attr, NULL);
     }
 
     Box* _set_ = NULL;
@@ -2270,7 +2303,7 @@ void setattrGeneric(Box* obj, BoxedString* attr, Box* val, SetattrRewriteArgs* r
         if (rewrite_args) {
             RewriterVar* r_cls = r_descr->getAttr(offsetof(Box, cls), Location::any());
             GetattrRewriteArgs grewrite_args(rewrite_args->rewriter, r_cls, Location::any());
-            _set_ = typeLookup(descr->cls, set_str, &grewrite_args);
+            _set_ = typeLookup<true>(descr->cls, set_str, &grewrite_args);
             if (!grewrite_args.out_success) {
                 rewrite_args = NULL;
             } else if (_set_) {
@@ -2278,7 +2311,7 @@ void setattrGeneric(Box* obj, BoxedString* attr, Box* val, SetattrRewriteArgs* r
                 r_set = grewrite_args.out_rtn;
             }
         } else {
-            _set_ = typeLookup(descr->cls, set_str, NULL);
+            _set_ = typeLookup<false>(descr->cls, set_str, NULL);
         }
     }
 
@@ -2290,12 +2323,12 @@ void setattrGeneric(Box* obj, BoxedString* attr, Box* val, SetattrRewriteArgs* r
             crewrite_args.arg1 = r_descr;
             crewrite_args.arg2 = rewrite_args->obj;
             crewrite_args.arg3 = rewrite_args->attrval;
-            runtimeCallInternal<CXX>(_set_, &crewrite_args, ArgPassSpec(3), descr, obj, val, NULL, NULL);
+            runtimeCallInternal<CXX, true>(_set_, &crewrite_args, ArgPassSpec(3), descr, obj, val, NULL, NULL);
             if (crewrite_args.out_success) {
                 rewrite_args->out_success = true;
             }
         } else {
-            runtimeCallInternal<CXX>(_set_, NULL, ArgPassSpec(3), descr, obj, val, NULL, NULL);
+            runtimeCallInternal<CXX, false>(_set_, NULL, ArgPassSpec(3), descr, obj, val, NULL, NULL);
         }
 
         // We don't need to to the invalidation stuff in this case.
@@ -2365,7 +2398,7 @@ extern "C" void setattr(Box* obj, BoxedString* attr, Box* attr_val) {
         if (rewriter.get()) {
             GetattrRewriteArgs rewrite_args(rewriter.get(), rewriter->getArg(0)->getAttr(offsetof(Box, cls)),
                                             Location::any());
-            setattr = typeLookup(obj->cls, setattr_str, &rewrite_args);
+            setattr = typeLookup<true>(obj->cls, setattr_str, &rewrite_args);
             assert(setattr);
 
             if (rewrite_args.out_success) {
@@ -2377,7 +2410,7 @@ extern "C" void setattr(Box* obj, BoxedString* attr, Box* attr_val) {
                 rewriter.reset(NULL);
             }
         } else {
-            // setattr = typeLookup(obj->cls, setattr_str, NULL);
+            // setattr = typeLookup(obj->cls, setattr_str);
         }
     }
 
@@ -2392,12 +2425,12 @@ extern "C" void setattr(Box* obj, BoxedString* attr, Box* attr_val) {
         if (rewriter.get()) {
             // rewriter->trap();
             SetattrRewriteArgs rewrite_args(rewriter.get(), rewriter->getArg(0), rewriter->getArg(2));
-            setattrGeneric(obj, attr, attr_val, &rewrite_args);
+            setattrGeneric<true>(obj, attr, attr_val, &rewrite_args);
             if (rewrite_args.out_success) {
                 rewriter->commit();
             }
         } else {
-            setattrGeneric(obj, attr, attr_val, NULL);
+            setattrGeneric<false>(obj, attr, attr_val, NULL);
         }
         return;
     }
@@ -2407,7 +2440,7 @@ extern "C" void setattr(Box* obj, BoxedString* attr, Box* attr_val) {
 
         // TODO actually rewrite this?
         setattr = processDescriptor(setattr, obj, obj->cls);
-        runtimeCallInternal<CXX>(setattr, NULL, ArgPassSpec(2), attr, attr_val, NULL, NULL, NULL);
+        runtimeCallInternal<CXX, true>(setattr, NULL, ArgPassSpec(2), attr, attr_val, NULL, NULL, NULL);
     } else {
         STAT_TIMER(t0, "us_timer_slowpath_tpsetattro", 10);
         int r = tp_setattro(obj, attr, attr_val);
@@ -2537,8 +2570,8 @@ extern "C" bool nonzero(Box* obj) {
     // try __nonzero__
     CallRewriteArgs crewrite_args(rewriter.get(), r_obj,
                                   rewriter.get() ? rewriter->getReturnDestination() : Location());
-    Box* rtn
-        = callattrInternal0<CXX>(obj, nonzero_str, CLASS_ONLY, rewriter.get() ? &crewrite_args : NULL, ArgPassSpec(0));
+    Box* rtn = callattrInternal0<CXX, true>(obj, nonzero_str, CLASS_ONLY, rewriter.get() ? &crewrite_args : NULL,
+                                            ArgPassSpec(0));
     if (!crewrite_args.out_success)
         rewriter.reset();
 
@@ -2546,7 +2579,8 @@ extern "C" bool nonzero(Box* obj) {
         // try __len__
         crewrite_args
             = CallRewriteArgs(rewriter.get(), r_obj, rewriter.get() ? rewriter->getReturnDestination() : Location());
-        rtn = callattrInternal0<CXX>(obj, len_str, CLASS_ONLY, rewriter.get() ? &crewrite_args : NULL, ArgPassSpec(0));
+        rtn = callattrInternal0<CXX, true>(obj, len_str, CLASS_ONLY, rewriter.get() ? &crewrite_args : NULL,
+                                           ArgPassSpec(0));
         if (!crewrite_args.out_success)
             rewriter.reset();
 
@@ -2583,7 +2617,8 @@ extern "C" BoxedString* str(Box* obj) {
     if (obj->cls != str_cls) {
         // TODO could do an IC optimization here (once we do rewrites here at all):
         // if __str__ is objectStr, just guard on that and call repr directly.
-        obj = callattrInternal<CXX>(obj, str_box, CLASS_ONLY, NULL, ArgPassSpec(0), NULL, NULL, NULL, NULL, NULL);
+        obj = callattrInternal<CXX, false>(obj, str_box, CLASS_ONLY, NULL, ArgPassSpec(0), NULL, NULL, NULL, NULL,
+                                           NULL);
     }
 
     if (isSubclass(obj->cls, unicode_cls)) {
@@ -2612,7 +2647,7 @@ extern "C" BoxedString* repr(Box* obj) {
     slowpath_repr.log();
 
     static BoxedString* repr_box = internStringImmortal(repr_str.c_str());
-    obj = callattrInternal<CXX>(obj, repr_box, CLASS_ONLY, NULL, ArgPassSpec(0), NULL, NULL, NULL, NULL, NULL);
+    obj = callattrInternal<CXX, false>(obj, repr_box, CLASS_ONLY, NULL, ArgPassSpec(0), NULL, NULL, NULL, NULL, NULL);
 
     if (isSubclass(obj->cls, unicode_cls)) {
         obj = PyUnicode_AsASCIIString(obj);
@@ -2692,7 +2727,11 @@ extern "C" BoxedInt* hash(Box* obj) {
     return new BoxedInt(r);
 }
 
-template <ExceptionStyle S> BoxedInt* lenInternal(Box* obj, LenRewriteArgs* rewrite_args) noexcept(S == CAPI) {
+template <ExceptionStyle S, bool support_rewriter>
+BoxedInt* lenInternal(Box* obj, LenRewriteArgs* rewrite_args) noexcept(S == CAPI) {
+    if (!support_rewriter)
+        rewrite_args = NULL;
+
     static BoxedString* len_str = internStringImmortal("__len__");
 
     if (S == CAPI) {
@@ -2743,13 +2782,13 @@ template <ExceptionStyle S> BoxedInt* lenInternal(Box* obj, LenRewriteArgs* rewr
     try {
         if (rewrite_args) {
             CallRewriteArgs crewrite_args(rewrite_args->rewriter, rewrite_args->obj, rewrite_args->destination);
-            rtn = callattrInternal0<CXX>(obj, len_str, CLASS_ONLY, &crewrite_args, ArgPassSpec(0));
+            rtn = callattrInternal0<CXX, true>(obj, len_str, CLASS_ONLY, &crewrite_args, ArgPassSpec(0));
             if (!crewrite_args.out_success)
                 rewrite_args = NULL;
             else if (rtn)
                 rewrite_args->out_rtn = crewrite_args.out_rtn;
         } else {
-            rtn = callattrInternal0<CXX>(obj, len_str, CLASS_ONLY, NULL, ArgPassSpec(0));
+            rtn = callattrInternal0<CXX, false>(obj, len_str, CLASS_ONLY, NULL, ArgPassSpec(0));
         }
     } catch (ExcInfo e) {
         if (S == CAPI) {
@@ -2783,8 +2822,10 @@ template <ExceptionStyle S> BoxedInt* lenInternal(Box* obj, LenRewriteArgs* rewr
 }
 
 // force template instantiation:
-template BoxedInt* lenInternal<CAPI>(Box*, LenRewriteArgs*);
-template BoxedInt* lenInternal<CXX>(Box*, LenRewriteArgs*);
+template BoxedInt* lenInternal<CAPI, false>(Box*, LenRewriteArgs*);
+template BoxedInt* lenInternal<CXX, false>(Box*, LenRewriteArgs*);
+template BoxedInt* lenInternal<CAPI, true>(Box*, LenRewriteArgs*);
+template BoxedInt* lenInternal<CXX, true>(Box*, LenRewriteArgs*);
 
 Box* lenCallInternal(BoxedFunctionBase* func, CallRewriteArgs* rewrite_args, ArgPassSpec argspec, Box* arg1, Box* arg2,
                      Box* arg3, Box** args, const std::vector<BoxedString*>* keyword_names) {
@@ -2793,7 +2834,7 @@ Box* lenCallInternal(BoxedFunctionBase* func, CallRewriteArgs* rewrite_args, Arg
 
     if (rewrite_args) {
         LenRewriteArgs lrewrite_args(rewrite_args->rewriter, rewrite_args->arg1, rewrite_args->destination);
-        Box* rtn = lenInternal<CXX>(arg1, &lrewrite_args);
+        Box* rtn = lenInternal<CXX, true>(arg1, &lrewrite_args);
         if (!lrewrite_args.out_success) {
             rewrite_args = 0;
         } else {
@@ -2802,7 +2843,7 @@ Box* lenCallInternal(BoxedFunctionBase* func, CallRewriteArgs* rewrite_args, Arg
         }
         return rtn;
     }
-    return lenInternal<CXX>(arg1, NULL);
+    return lenInternal<CXX, false>(arg1, NULL);
 }
 
 extern "C" BoxedInt* len(Box* obj) {
@@ -2811,7 +2852,7 @@ extern "C" BoxedInt* len(Box* obj) {
     static StatCounter slowpath_len("slowpath_len");
     slowpath_len.log();
 
-    return lenInternal<CXX>(obj, NULL);
+    return lenInternal<CXX, false>(obj, NULL);
 }
 
 extern "C" i64 unboxedLen(Box* obj) {
@@ -2828,14 +2869,14 @@ extern "C" i64 unboxedLen(Box* obj) {
     if (rewriter.get()) {
         // rewriter->trap();
         LenRewriteArgs rewrite_args(rewriter.get(), rewriter->getArg(0), rewriter->getReturnDestination());
-        lobj = lenInternal<CXX>(obj, &rewrite_args);
+        lobj = lenInternal<CXX, true>(obj, &rewrite_args);
 
         if (!rewrite_args.out_success) {
             rewriter.reset(NULL);
         } else
             r_boxed = rewrite_args.out_rtn;
     } else {
-        lobj = lenInternal<CXX>(obj, NULL);
+        lobj = lenInternal<CXX, false>(obj, NULL);
     }
 
     assert(lobj->cls == int_cls);
@@ -2850,10 +2891,13 @@ extern "C" i64 unboxedLen(Box* obj) {
 
 // For rewriting purposes, this function assumes that nargs will be constant.
 // That's probably fine for some uses (ex binops), but otherwise it should be guarded on beforehand.
-template <ExceptionStyle S>
+template <ExceptionStyle S, bool support_rewriter>
 Box* callattrInternal(Box* obj, BoxedString* attr, LookupScope scope, CallRewriteArgs* rewrite_args,
                       ArgPassSpec argspec, Box* arg1, Box* arg2, Box* arg3, Box** args,
                       const std::vector<BoxedString*>* keyword_names) noexcept(S == CAPI) {
+    if (!support_rewriter)
+        rewrite_args = NULL;
+
     assert(gc::isValidGCObject(attr));
 
     int npassed_args = argspec.totalPassed();
@@ -2894,7 +2938,7 @@ Box* callattrInternal(Box* obj, BoxedString* attr, LookupScope scope, CallRewrit
     RewriterVar* r_val = NULL;
     if (rewrite_args) {
         GetattrRewriteArgs grewrite_args(rewrite_args->rewriter, rewrite_args->obj, Location::any());
-        val = getattrInternalEx<S>(obj, attr, &grewrite_args, scope == CLASS_ONLY, true, &bind_obj, &r_bind_obj);
+        val = getattrInternalEx<S, true>(obj, attr, &grewrite_args, scope == CLASS_ONLY, true, &bind_obj, &r_bind_obj);
         // TODO: maybe callattrs should have return conventions as well.
         if (!grewrite_args.out_success || grewrite_args.out_return_convention == GetattrRewriteArgs::NOEXC_POSSIBLE) {
             rewrite_args = NULL;
@@ -2903,7 +2947,7 @@ Box* callattrInternal(Box* obj, BoxedString* attr, LookupScope scope, CallRewrit
             r_val = grewrite_args.out_rtn;
         }
     } else {
-        val = getattrInternalEx<S>(obj, attr, NULL, scope == CLASS_ONLY, true, &bind_obj, &r_bind_obj);
+        val = getattrInternalEx<S, false>(obj, attr, NULL, scope == CLASS_ONLY, true, &bind_obj, &r_bind_obj);
     }
 
     if (val == NULL) {
@@ -2945,7 +2989,7 @@ Box* callattrInternal(Box* obj, BoxedString* attr, LookupScope scope, CallRewrit
                 }
                 Box** args = (Box**)extra_args[0];
                 const std::vector<BoxedString*>* keyword_names = (const std::vector<BoxedString*>*)extra_args[1];
-                return runtimeCallInternal<S>(val, NULL, argspec, arg1, arg2, arg3, args, keyword_names);
+                return runtimeCallInternal<S, false>(val, NULL, argspec, arg1, arg2, arg3, args, keyword_names);
             }
         };
 
@@ -2975,8 +3019,12 @@ Box* callattrInternal(Box* obj, BoxedString* attr, LookupScope scope, CallRewrit
         return Helper::call(val, argspec, arg1, arg2, arg3, _args);
     }
 
-    return runtimeCallInternal<S>(val, rewrite_args, argspec, arg1, arg2, arg3, args, keyword_names);
+    return runtimeCallInternal<S, support_rewriter>(val, rewrite_args, argspec, arg1, arg2, arg3, args, keyword_names);
 }
+
+// Force instantiation of the template
+template Box* callattrInternal<CAPI, false>(Box*, BoxedString*, LookupScope, CallRewriteArgs*, ArgPassSpec, Box*, Box*,
+                                            Box*, Box**, const std::vector<BoxedString*>*);
 
 template <ExceptionStyle S>
 Box* _callattrEntry(Box* obj, BoxedString* attr, CallattrFlags flags, Box* arg1, Box* arg2, Box* arg3, Box** args,
@@ -3045,7 +3093,8 @@ Box* _callattrEntry(Box* obj, BoxedString* attr, CallattrFlags flags, Box* arg1,
             rewrite_args.arg3 = rewriter->getArg(5);
         if (npassed_args >= 4)
             rewrite_args.args = rewriter->getArg(6);
-        rtn = callattrInternal<S>(obj, attr, scope, &rewrite_args, argspec, arg1, arg2, arg3, args, keyword_names);
+        rtn = callattrInternal<S, true>(obj, attr, scope, &rewrite_args, argspec, arg1, arg2, arg3, args,
+                                        keyword_names);
 
         assert(!(S == CAPI && flags.null_on_nonexistent));
         if (!rewrite_args.out_success) {
@@ -3057,7 +3106,7 @@ Box* _callattrEntry(Box* obj, BoxedString* attr, CallattrFlags flags, Box* arg1,
             rewriter->commitReturning(rewriter->loadConst(0, rewriter->getReturnDestination()));
         }
     } else {
-        rtn = callattrInternal<S>(obj, attr, scope, NULL, argspec, arg1, arg2, arg3, args, keyword_names);
+        rtn = callattrInternal<S, false>(obj, attr, scope, NULL, argspec, arg1, arg2, arg3, args, keyword_names);
     }
 
     if (S == CXX && rtn == NULL && !flags.null_on_nonexistent) {
@@ -3975,9 +4024,12 @@ template Box* callCLFunc<CAPI>(CLFunction* f, CallRewriteArgs* rewrite_args, int
 template Box* callCLFunc<CXX>(CLFunction* f, CallRewriteArgs* rewrite_args, int num_output_args, BoxedClosure* closure,
                               BoxedGenerator* generator, Box* globals, Box* oarg1, Box* oarg2, Box* oarg3, Box** oargs);
 
-template <ExceptionStyle S>
+template <ExceptionStyle S, bool support_rewrite>
 Box* runtimeCallInternal(Box* obj, CallRewriteArgs* rewrite_args, ArgPassSpec argspec, Box* arg1, Box* arg2, Box* arg3,
                          Box** args, const std::vector<BoxedString*>* keyword_names) noexcept(S == CAPI) {
+    if (!support_rewrite)
+        rewrite_args = NULL;
+
     int npassed_args = argspec.totalPassed();
 
     if (obj->cls != function_cls && obj->cls != builtin_function_or_method_cls && obj->cls != instancemethod_cls) {
@@ -4013,14 +4065,15 @@ Box* runtimeCallInternal(Box* obj, CallRewriteArgs* rewrite_args, ArgPassSpec ar
         static BoxedString* call_str = internStringImmortal("__call__");
 
         if (DEBUG >= 2) {
-            assert((obj->cls->tp_call == NULL) == (typeLookup(obj->cls, call_str, NULL) == NULL));
+            assert((obj->cls->tp_call == NULL) == (typeLookup<support_rewrite>(obj->cls, call_str, NULL) == NULL));
         }
 
         if (rewrite_args) {
-            rtn = callattrInternal<S>(obj, call_str, CLASS_ONLY, rewrite_args, argspec, arg1, arg2, arg3, args,
-                                      keyword_names);
+            rtn = callattrInternal<S, support_rewrite>(obj, call_str, CLASS_ONLY, rewrite_args, argspec, arg1, arg2,
+                                                       arg3, args, keyword_names);
         } else {
-            rtn = callattrInternal<S>(obj, call_str, CLASS_ONLY, NULL, argspec, arg1, arg2, arg3, args, keyword_names);
+            rtn = callattrInternal<S, false>(obj, call_str, CLASS_ONLY, NULL, argspec, arg1, arg2, arg3, args,
+                                             keyword_names);
         }
 
         if (!rtn) {
@@ -4111,7 +4164,8 @@ Box* runtimeCallInternal(Box* obj, CallRewriteArgs* rewrite_args, ArgPassSpec ar
             if (rewrite_args) {
                 rewrite_args->obj = r_im_func;
             }
-            Box* res = runtimeCallInternal<S>(f, rewrite_args, argspec, arg1, arg2, arg3, args, keyword_names);
+            Box* res = runtimeCallInternal<S, support_rewrite>(f, rewrite_args, argspec, arg1, arg2, arg3, args,
+                                                               keyword_names);
             return res;
         }
 
@@ -4128,16 +4182,21 @@ Box* runtimeCallInternal(Box* obj, CallRewriteArgs* rewrite_args, ArgPassSpec ar
 
         ArgPassSpec new_argspec
             = bindObjIntoArgs(im->obj, r_bind_obj, rewrite_args, argspec, arg1, arg2, arg3, args, new_args);
-        return runtimeCallInternal<S>(im->func, rewrite_args, new_argspec, arg1, arg2, arg3, new_args, keyword_names);
+        return runtimeCallInternal<S, support_rewrite>(im->func, rewrite_args, new_argspec, arg1, arg2, arg3, new_args,
+                                                       keyword_names);
     }
     assert(0);
     abort();
 }
 // Force instantiation:
-template Box* runtimeCallInternal<CAPI>(Box*, CallRewriteArgs*, ArgPassSpec, Box*, Box*, Box*, Box**,
-                                        const std::vector<BoxedString*>*);
-template Box* runtimeCallInternal<CXX>(Box*, CallRewriteArgs*, ArgPassSpec, Box*, Box*, Box*, Box**,
-                                       const std::vector<BoxedString*>*);
+template Box* runtimeCallInternal<CAPI, false>(Box*, CallRewriteArgs*, ArgPassSpec, Box*, Box*, Box*, Box**,
+                                               const std::vector<BoxedString*>*);
+template Box* runtimeCallInternal<CXX, false>(Box*, CallRewriteArgs*, ArgPassSpec, Box*, Box*, Box*, Box**,
+                                              const std::vector<BoxedString*>*);
+template Box* runtimeCallInternal<CAPI, true>(Box*, CallRewriteArgs*, ArgPassSpec, Box*, Box*, Box*, Box**,
+                                              const std::vector<BoxedString*>*);
+template Box* runtimeCallInternal<CXX, true>(Box*, CallRewriteArgs*, ArgPassSpec, Box*, Box*, Box*, Box**,
+                                             const std::vector<BoxedString*>*);
 
 template <ExceptionStyle S>
 static Box* runtimeCallEntry(Box* obj, ArgPassSpec argspec, Box* arg1, Box* arg2, Box* arg3, Box** args,
@@ -4191,14 +4250,14 @@ static Box* runtimeCallEntry(Box* obj, ArgPassSpec argspec, Box* arg1, Box* arg2
             rewrite_args.arg3 = rewriter->getArg(4);
         if (npassed_args >= 4)
             rewrite_args.args = rewriter->getArg(5);
-        rtn = runtimeCallInternal<S>(obj, &rewrite_args, argspec, arg1, arg2, arg3, args, keyword_names);
+        rtn = runtimeCallInternal<S, true>(obj, &rewrite_args, argspec, arg1, arg2, arg3, args, keyword_names);
 
         if (!rewrite_args.out_success) {
             rewriter.reset(NULL);
         } else
             rewriter->commitReturning(rewrite_args.out_rtn);
     } else {
-        rtn = runtimeCallInternal<S>(obj, NULL, argspec, arg1, arg2, arg3, args, keyword_names);
+        rtn = runtimeCallInternal<S, false>(obj, NULL, argspec, arg1, arg2, arg3, args, keyword_names);
     }
     assert(rtn || (S == CAPI && PyErr_Occurred()));
 
@@ -4222,7 +4281,10 @@ extern "C" Box* runtimeCallCapi(Box* obj, ArgPassSpec argspec, Box* arg1, Box* a
                                   __builtin_extract_return_addr(__builtin_return_address(0)));
 }
 
-extern "C" Box* binopInternal(Box* lhs, Box* rhs, int op_type, bool inplace, BinopRewriteArgs* rewrite_args) {
+template <bool support_rewrite>
+Box* binopInternal(Box* lhs, Box* rhs, int op_type, bool inplace, BinopRewriteArgs* rewrite_args) {
+    if (!support_rewrite)
+        rewrite_args = NULL;
     // TODO handle the case of the rhs being a subclass of the lhs
     // this could get really annoying because you can dynamically make one type a subclass
     // of the other!
@@ -4247,7 +4309,7 @@ extern "C" Box* binopInternal(Box* lhs, Box* rhs, int op_type, bool inplace, Bin
             CallRewriteArgs srewrite_args(rewrite_args->rewriter, rewrite_args->lhs, rewrite_args->destination);
             srewrite_args.arg1 = rewrite_args->rhs;
             srewrite_args.args_guarded = true;
-            irtn = callattrInternal1<CXX>(lhs, iop_name, CLASS_ONLY, &srewrite_args, ArgPassSpec(1), rhs);
+            irtn = callattrInternal1<CXX, true>(lhs, iop_name, CLASS_ONLY, &srewrite_args, ArgPassSpec(1), rhs);
 
             if (!srewrite_args.out_success) {
                 rewrite_args = NULL;
@@ -4256,7 +4318,7 @@ extern "C" Box* binopInternal(Box* lhs, Box* rhs, int op_type, bool inplace, Bin
                     rewrite_args->out_rtn = srewrite_args.out_rtn;
             }
         } else {
-            irtn = callattrInternal1<CXX>(lhs, iop_name, CLASS_ONLY, NULL, ArgPassSpec(1), rhs);
+            irtn = callattrInternal1<CXX, false>(lhs, iop_name, CLASS_ONLY, NULL, ArgPassSpec(1), rhs);
         }
 
         if (irtn) {
@@ -4274,7 +4336,7 @@ extern "C" Box* binopInternal(Box* lhs, Box* rhs, int op_type, bool inplace, Bin
     if (rewrite_args) {
         CallRewriteArgs srewrite_args(rewrite_args->rewriter, rewrite_args->lhs, rewrite_args->destination);
         srewrite_args.arg1 = rewrite_args->rhs;
-        lrtn = callattrInternal1<CXX>(lhs, op_name, CLASS_ONLY, &srewrite_args, ArgPassSpec(1), rhs);
+        lrtn = callattrInternal1<CXX, true>(lhs, op_name, CLASS_ONLY, &srewrite_args, ArgPassSpec(1), rhs);
 
         if (!srewrite_args.out_success)
             rewrite_args = NULL;
@@ -4283,7 +4345,7 @@ extern "C" Box* binopInternal(Box* lhs, Box* rhs, int op_type, bool inplace, Bin
                 rewrite_args->out_rtn = srewrite_args.out_rtn;
         }
     } else {
-        lrtn = callattrInternal1<CXX>(lhs, op_name, CLASS_ONLY, NULL, ArgPassSpec(1), rhs);
+        lrtn = callattrInternal1<CXX, false>(lhs, op_name, CLASS_ONLY, NULL, ArgPassSpec(1), rhs);
     }
 
 
@@ -4304,7 +4366,7 @@ extern "C" Box* binopInternal(Box* lhs, Box* rhs, int op_type, bool inplace, Bin
     }
 
     BoxedString* rop_name = getReverseOpName(op_type);
-    Box* rrtn = callattrInternal1<CXX>(rhs, rop_name, CLASS_ONLY, NULL, ArgPassSpec(1), lhs);
+    Box* rrtn = callattrInternal1<CXX, true>(rhs, rop_name, CLASS_ONLY, NULL, ArgPassSpec(1), lhs);
     if (rrtn != NULL && rrtn != NotImplemented)
         return rrtn;
 
@@ -4369,14 +4431,14 @@ extern "C" Box* binop(Box* lhs, Box* rhs, int op_type) {
         // rewriter->trap();
         BinopRewriteArgs rewrite_args(rewriter.get(), rewriter->getArg(0), rewriter->getArg(1),
                                       rewriter->getReturnDestination());
-        rtn = binopInternal(lhs, rhs, op_type, false, &rewrite_args);
+        rtn = binopInternal<true>(lhs, rhs, op_type, false, &rewrite_args);
         assert(rtn);
         if (!rewrite_args.out_success) {
             rewriter.reset(NULL);
         } else
             rewriter->commitReturning(rewrite_args.out_rtn);
     } else {
-        rtn = binopInternal(lhs, rhs, op_type, false, NULL);
+        rtn = binopInternal<false>(lhs, rhs, op_type, false, NULL);
     }
 
     return rtn;
@@ -4406,14 +4468,14 @@ extern "C" Box* augbinop(Box* lhs, Box* rhs, int op_type) {
     if (rewriter.get()) {
         BinopRewriteArgs rewrite_args(rewriter.get(), rewriter->getArg(0), rewriter->getArg(1),
                                       rewriter->getReturnDestination());
-        rtn = binopInternal(lhs, rhs, op_type, true, &rewrite_args);
+        rtn = binopInternal<true>(lhs, rhs, op_type, true, &rewrite_args);
         if (!rewrite_args.out_success) {
             rewriter.reset(NULL);
         } else {
             rewriter->commitReturning(rewrite_args.out_rtn);
         }
     } else {
-        rtn = binopInternal(lhs, rhs, op_type, true, NULL);
+        rtn = binopInternal<false>(lhs, rhs, op_type, true, NULL);
     }
 
     return rtn;
@@ -4454,7 +4516,11 @@ Box* nonzeroAndBox(Box* b, bool negate) {
     return boxBool(t);
 }
 
+template <bool support_rewriter>
 Box* compareInternal(Box* lhs, Box* rhs, int op_type, CompareRewriteArgs* rewrite_args) {
+    if (!support_rewriter)
+        rewrite_args = NULL;
+
     STAT_TIMER(t0, "us_timer_compareinternal", 0);
 
     if (op_type == AST_TYPE::Is || op_type == AST_TYPE::IsNot) {
@@ -4519,14 +4585,15 @@ Box* compareInternal(Box* lhs, Box* rhs, int op_type, CompareRewriteArgs* rewrit
         if (rewrite_args) {
             CallRewriteArgs crewrite_args(rewrite_args->rewriter, rewrite_args->rhs, rewrite_args->destination);
             crewrite_args.arg1 = rewrite_args->lhs;
-            contained = callattrInternal1<CXX>(rhs, contains_str, CLASS_ONLY, &crewrite_args, ArgPassSpec(1), lhs);
+            contained
+                = callattrInternal1<CXX, true>(rhs, contains_str, CLASS_ONLY, &crewrite_args, ArgPassSpec(1), lhs);
 
             if (!crewrite_args.out_success)
                 rewrite_args = NULL;
             else if (contained)
                 r_contained = crewrite_args.out_rtn;
         } else {
-            contained = callattrInternal1<CXX>(rhs, contains_str, CLASS_ONLY, NULL, ArgPassSpec(1), lhs);
+            contained = callattrInternal1<CXX, false>(rhs, contains_str, CLASS_ONLY, NULL, ArgPassSpec(1), lhs);
         }
 
         if (contained == NULL) {
@@ -4625,14 +4692,14 @@ Box* compareInternal(Box* lhs, Box* rhs, int op_type, CompareRewriteArgs* rewrit
     if (rewrite_args) {
         CallRewriteArgs crewrite_args(rewrite_args->rewriter, rewrite_args->lhs, rewrite_args->destination);
         crewrite_args.arg1 = rewrite_args->rhs;
-        lrtn = callattrInternal1<CXX>(lhs, op_name, CLASS_ONLY, &crewrite_args, ArgPassSpec(1), rhs);
+        lrtn = callattrInternal1<CXX, true>(lhs, op_name, CLASS_ONLY, &crewrite_args, ArgPassSpec(1), rhs);
 
         if (!crewrite_args.out_success)
             rewrite_args = NULL;
         else if (lrtn)
             rewrite_args->out_rtn = crewrite_args.out_rtn;
     } else {
-        lrtn = callattrInternal1<CXX>(lhs, op_name, CLASS_ONLY, NULL, ArgPassSpec(1), rhs);
+        lrtn = callattrInternal1<CXX, false>(lhs, op_name, CLASS_ONLY, NULL, ArgPassSpec(1), rhs);
     }
 
     if (lrtn) {
@@ -4652,16 +4719,16 @@ Box* compareInternal(Box* lhs, Box* rhs, int op_type, CompareRewriteArgs* rewrit
     }
 
     BoxedString* rop_name = getReverseOpName(op_type);
-    Box* rrtn = callattrInternal1<CXX>(rhs, rop_name, CLASS_ONLY, NULL, ArgPassSpec(1), lhs);
+    Box* rrtn = callattrInternal1<CXX, false>(rhs, rop_name, CLASS_ONLY, NULL, ArgPassSpec(1), lhs);
     if (rrtn != NULL && rrtn != NotImplemented)
         return rrtn;
 
     static BoxedString* cmp_str = internStringImmortal("__cmp__");
-    lrtn = callattrInternal1<CXX>(lhs, cmp_str, CLASS_ONLY, NULL, ArgPassSpec(1), rhs);
+    lrtn = callattrInternal1<CXX, false>(lhs, cmp_str, CLASS_ONLY, NULL, ArgPassSpec(1), rhs);
     if (lrtn && lrtn != NotImplemented) {
         return boxBool(convert3wayCompareResultToBool(lrtn, op_type));
     }
-    rrtn = callattrInternal1<CXX>(rhs, cmp_str, CLASS_ONLY, NULL, ArgPassSpec(1), lhs);
+    rrtn = callattrInternal1<CXX, false>(rhs, cmp_str, CLASS_ONLY, NULL, ArgPassSpec(1), lhs);
     if (rrtn && rrtn != NotImplemented) {
         bool success = false;
         int reversed_op = getReverseCmpOp(op_type, success);
@@ -4700,7 +4767,7 @@ extern "C" Box* compare(Box* lhs, Box* rhs, int op_type) {
         // rewriter->trap();
         CompareRewriteArgs rewrite_args(rewriter.get(), rewriter->getArg(0), rewriter->getArg(1),
                                         rewriter->getReturnDestination());
-        Box* rtn = compareInternal(lhs, rhs, op_type, &rewrite_args);
+        Box* rtn = compareInternal<true>(lhs, rhs, op_type, &rewrite_args);
         if (!rewrite_args.out_success) {
             rewriter.reset(NULL);
         } else
@@ -4710,7 +4777,7 @@ extern "C" Box* compare(Box* lhs, Box* rhs, int op_type) {
         // TODO: switch from our op types to cpythons
         int cpython_op_type;
         if (op_type == AST_TYPE::In || op_type == AST_TYPE::NotIn)
-            return compareInternal(lhs, rhs, op_type, NULL);
+            return compareInternal<false>(lhs, rhs, op_type, NULL);
         if (op_type == AST_TYPE::Is)
             return boxBool(lhs == rhs);
         if (op_type == AST_TYPE::IsNot)
@@ -4758,13 +4825,13 @@ extern "C" Box* unaryop(Box* operand, int op_type) {
     Box* rtn = NULL;
     if (rewriter.get()) {
         CallRewriteArgs srewrite_args(rewriter.get(), rewriter->getArg(0), rewriter->getReturnDestination());
-        rtn = callattrInternal0<CXX>(operand, op_name, CLASS_ONLY, &srewrite_args, ArgPassSpec(0));
+        rtn = callattrInternal0<CXX, true>(operand, op_name, CLASS_ONLY, &srewrite_args, ArgPassSpec(0));
         if (srewrite_args.out_success && rtn)
             rewriter->commitReturning(srewrite_args.out_rtn);
         else
             rewriter.reset();
     } else
-        rtn = callattrInternal0<CXX>(operand, op_name, CLASS_ONLY, NULL, ArgPassSpec(0));
+        rtn = callattrInternal0<CXX, false>(operand, op_name, CLASS_ONLY, NULL, ArgPassSpec(0));
 
     if (rtn == NULL) {
         raiseExcHelper(TypeError, "bad operand type for unary '%s': '%s'", op_name->c_str(), getTypeName(operand));
@@ -4772,21 +4839,25 @@ extern "C" Box* unaryop(Box* operand, int op_type) {
     return rtn;
 }
 
-template <ExceptionStyle S>
+template <ExceptionStyle S, bool support_rewrite>
 static Box* callItemAttr(Box* target, BoxedString* item_str, Box* item, Box* value,
                          CallRewriteArgs* rewrite_args) noexcept(S == CAPI) {
     if (value) {
-        return callattrInternal2<S>(target, item_str, CLASS_ONLY, rewrite_args, ArgPassSpec(2), item, value);
+        return callattrInternal2<S, support_rewrite>(target, item_str, CLASS_ONLY, rewrite_args, ArgPassSpec(2), item,
+                                                     value);
     } else {
-        return callattrInternal1<S>(target, item_str, CLASS_ONLY, rewrite_args, ArgPassSpec(1), item);
+        return callattrInternal1<S, support_rewrite>(target, item_str, CLASS_ONLY, rewrite_args, ArgPassSpec(1), item);
     }
 }
 
 // This function decides whether to call the slice operator (e.g. __getslice__)
 // or the item operator (__getitem__).
-template <ExceptionStyle S>
+template <ExceptionStyle S, bool support_rewrite>
 static Box* callItemOrSliceAttr(Box* target, BoxedString* item_str, BoxedString* slice_str, Box* slice, Box* value,
                                 CallRewriteArgs* rewrite_args) noexcept(S == CAPI) {
+    if (!support_rewrite)
+        rewrite_args = NULL;
+
     // This function contains a lot of logic for deciding between whether to call
     // the slice operator or the item operator, so we can match CPython's behavior
     // on custom classes that define those operators. However, for builtin types,
@@ -4800,7 +4871,7 @@ static Box* callItemOrSliceAttr(Box* target, BoxedString* item_str, BoxedString*
         if (rewrite_args) {
             rewrite_args->obj->addAttrGuard(offsetof(Box, cls), (uint64_t)target->cls);
         }
-        return callItemAttr<S>(target, item_str, slice, value, rewrite_args);
+        return callItemAttr<S, support_rewrite>(target, item_str, slice, value, rewrite_args);
     }
 
     // Guard on the type of the object (need to have the slice operator attribute to call it).
@@ -4808,7 +4879,7 @@ static Box* callItemOrSliceAttr(Box* target, BoxedString* item_str, BoxedString*
     if (rewrite_args) {
         RewriterVar* target_cls = rewrite_args->obj->getAttr(offsetof(Box, cls));
         GetattrRewriteArgs grewrite_args(rewrite_args->rewriter, target_cls, Location::any());
-        slice_attr = typeLookup(target->cls, slice_str, &grewrite_args);
+        slice_attr = typeLookup<true>(target->cls, slice_str, &grewrite_args);
         if (!grewrite_args.out_success) {
             rewrite_args = NULL;
         } else {
@@ -4816,11 +4887,11 @@ static Box* callItemOrSliceAttr(Box* target, BoxedString* item_str, BoxedString*
                    == (slice_attr ? GetattrRewriteArgs::VALID_RETURN : GetattrRewriteArgs::NO_RETURN));
         }
     } else {
-        slice_attr = typeLookup(target->cls, slice_str, NULL);
+        slice_attr = typeLookup<false>(target->cls, slice_str, NULL);
     }
 
     if (!slice_attr) {
-        return callItemAttr<S>(target, item_str, slice, value, rewrite_args);
+        return callItemAttr<S, support_rewrite>(target, item_str, slice, value, rewrite_args);
     }
 
     // Need a slice object to use the slice operators.
@@ -4828,7 +4899,7 @@ static Box* callItemOrSliceAttr(Box* target, BoxedString* item_str, BoxedString*
         rewrite_args->arg1->addAttrGuard(offsetof(Box, cls), (uint64_t)slice->cls);
     }
     if (slice->cls != slice_cls) {
-        return callItemAttr<S>(target, item_str, slice, value, rewrite_args);
+        return callItemAttr<S, support_rewrite>(target, item_str, slice, value, rewrite_args);
     }
 
     BoxedSlice* bslice = (BoxedSlice*)slice;
@@ -4841,7 +4912,7 @@ static Box* callItemOrSliceAttr(Box* target, BoxedString* item_str, BoxedString*
                 ->addAttrGuard(offsetof(Box, cls), (uint64_t)none_cls, /*negate=*/true);
         }
 
-        return callItemAttr<S>(target, item_str, slice, value, rewrite_args);
+        return callItemAttr<S, support_rewrite>(target, item_str, slice, value, rewrite_args);
     } else {
         rewrite_args = NULL;
         REWRITE_ABORTED("");
@@ -4850,7 +4921,7 @@ static Box* callItemOrSliceAttr(Box* target, BoxedString* item_str, BoxedString*
         // We could optimize further here by having a version of isSliceIndex that
         // creates guards, but it would only affect some rare edge cases.
         if (!isSliceIndex(bslice->start) || !isSliceIndex(bslice->stop)) {
-            return callItemAttr<S>(target, item_str, slice, value, rewrite_args);
+            return callItemAttr<S, false>(target, item_str, slice, value, rewrite_args);
         }
 
         // If we don't specify the start/stop (e.g. o[:]), the slice operator functions
@@ -4876,17 +4947,20 @@ static Box* callItemOrSliceAttr(Box* target, BoxedString* item_str, BoxedString*
         Box* boxedStop = boxInt(stop);
 
         if (value) {
-            return callattrInternal3<S>(target, slice_str, CLASS_ONLY, rewrite_args, ArgPassSpec(3), boxedStart,
-                                        boxedStop, value);
+            return callattrInternal3<S, false>(target, slice_str, CLASS_ONLY, rewrite_args, ArgPassSpec(3), boxedStart,
+                                               boxedStop, value);
         } else {
-            return callattrInternal2<S>(target, slice_str, CLASS_ONLY, rewrite_args, ArgPassSpec(2), boxedStart,
-                                        boxedStop);
+            return callattrInternal2<S, false>(target, slice_str, CLASS_ONLY, rewrite_args, ArgPassSpec(2), boxedStart,
+                                               boxedStop);
         }
     }
 }
 
-template <ExceptionStyle S>
+template <ExceptionStyle S, bool support_rewriter>
 Box* getitemInternal(Box* target, Box* slice, GetitemRewriteArgs* rewrite_args) noexcept(S == CAPI) {
+    if (!support_rewriter)
+        rewrite_args = NULL;
+
     // The PyObject_GetItem logic is:
     // - call mp_subscript if it exists
     // - if tp_as_sequence exists, try using that (with a number of conditions)
@@ -4931,7 +5005,7 @@ Box* getitemInternal(Box* target, Box* slice, GetitemRewriteArgs* rewrite_args) 
             CallRewriteArgs crewrite_args(rewrite_args->rewriter, rewrite_args->target, rewrite_args->destination);
             crewrite_args.arg1 = rewrite_args->slice;
 
-            rtn = callItemOrSliceAttr<S>(target, getitem_str, getslice_str, slice, NULL, &crewrite_args);
+            rtn = callItemOrSliceAttr<S, true>(target, getitem_str, getslice_str, slice, NULL, &crewrite_args);
 
             if (!crewrite_args.out_success) {
                 rewrite_args = NULL;
@@ -4939,7 +5013,7 @@ Box* getitemInternal(Box* target, Box* slice, GetitemRewriteArgs* rewrite_args) 
                 rewrite_args->out_rtn = crewrite_args.out_rtn;
             }
         } else {
-            rtn = callItemOrSliceAttr<S>(target, getitem_str, getslice_str, slice, NULL, NULL);
+            rtn = callItemOrSliceAttr<S, false>(target, getitem_str, getslice_str, slice, NULL, NULL);
         }
     } catch (ExcInfo e) {
         if (S == CAPI) {
@@ -4978,8 +5052,10 @@ Box* getitemInternal(Box* target, Box* slice, GetitemRewriteArgs* rewrite_args) 
     return rtn;
 }
 // Force instantiation of the template
-template Box* getitemInternal<CAPI>(Box*, Box*, GetitemRewriteArgs*);
-template Box* getitemInternal<CXX>(Box*, Box*, GetitemRewriteArgs*);
+template Box* getitemInternal<CAPI, false>(Box*, Box*, GetitemRewriteArgs*);
+template Box* getitemInternal<CXX, false>(Box*, Box*, GetitemRewriteArgs*);
+template Box* getitemInternal<CAPI, true>(Box*, Box*, GetitemRewriteArgs*);
+template Box* getitemInternal<CXX, true>(Box*, Box*, GetitemRewriteArgs*);
 
 // target[slice]
 extern "C" Box* getitem(Box* target, Box* slice) {
@@ -5000,7 +5076,7 @@ extern "C" Box* getitem(Box* target, Box* slice) {
         GetitemRewriteArgs rewrite_args(rewriter.get(), rewriter->getArg(0), rewriter->getArg(1),
                                         rewriter->getReturnDestination());
 
-        rtn = getitemInternal<CXX>(target, slice, &rewrite_args);
+        rtn = getitemInternal<CXX, true>(target, slice, &rewrite_args);
 
         if (!rewrite_args.out_success) {
             rewriter.reset(NULL);
@@ -5008,7 +5084,7 @@ extern "C" Box* getitem(Box* target, Box* slice) {
             rewriter->commitReturning(rewrite_args.out_rtn);
         }
     } else {
-        rtn = getitemInternal<CXX>(target, slice, NULL);
+        rtn = getitemInternal<CXX, false>(target, slice, NULL);
     }
     assert(rtn);
 
@@ -5034,7 +5110,7 @@ extern "C" Box* getitem_capi(Box* target, Box* slice) noexcept {
         GetitemRewriteArgs rewrite_args(rewriter.get(), rewriter->getArg(0), rewriter->getArg(1),
                                         rewriter->getReturnDestination());
 
-        rtn = getitemInternal<CAPI>(target, slice, &rewrite_args);
+        rtn = getitemInternal<CAPI, true>(target, slice, &rewrite_args);
 
         if (!rewrite_args.out_success) {
             rewriter.reset(NULL);
@@ -5042,7 +5118,7 @@ extern "C" Box* getitem_capi(Box* target, Box* slice) noexcept {
             rewriter->commitReturning(rewrite_args.out_rtn);
         }
     } else {
-        rtn = getitemInternal<CAPI>(target, slice, NULL);
+        rtn = getitemInternal<CAPI, false>(target, slice, NULL);
     }
 
     return rtn;
@@ -5090,13 +5166,13 @@ extern "C" void setitem(Box* target, Box* slice, Box* value) {
         rewrite_args.arg1 = rewriter->getArg(1);
         rewrite_args.arg2 = rewriter->getArg(2);
 
-        rtn = callItemOrSliceAttr<CXX>(target, setitem_str, setslice_str, slice, value, &rewrite_args);
+        rtn = callItemOrSliceAttr<CXX, true>(target, setitem_str, setslice_str, slice, value, &rewrite_args);
 
         if (!rewrite_args.out_success) {
             rewriter.reset(NULL);
         }
     } else {
-        rtn = callItemOrSliceAttr<CXX>(target, setitem_str, setslice_str, slice, value, NULL);
+        rtn = callItemOrSliceAttr<CXX, false>(target, setitem_str, setslice_str, slice, value, NULL);
     }
 
     if (rtn == NULL) {
@@ -5125,13 +5201,13 @@ extern "C" void delitem(Box* target, Box* slice) {
         CallRewriteArgs rewrite_args(rewriter.get(), rewriter->getArg(0), rewriter->getReturnDestination());
         rewrite_args.arg1 = rewriter->getArg(1);
 
-        rtn = callItemOrSliceAttr<CXX>(target, delitem_str, delslice_str, slice, NULL, &rewrite_args);
+        rtn = callItemOrSliceAttr<CXX, true>(target, delitem_str, delslice_str, slice, NULL, &rewrite_args);
 
         if (!rewrite_args.out_success) {
             rewriter.reset(NULL);
         }
     } else {
-        rtn = callItemOrSliceAttr<CXX>(target, delitem_str, delslice_str, slice, NULL, NULL);
+        rtn = callItemOrSliceAttr<CXX, false>(target, delitem_str, delslice_str, slice, NULL, NULL);
     }
 
     if (rtn == NULL) {
@@ -5195,19 +5271,19 @@ void Box::delattr(BoxedString* attr, DelattrRewriteArgs* rewrite_args) {
 
 extern "C" void delattrGeneric(Box* obj, BoxedString* attr, DelattrRewriteArgs* rewrite_args) {
     // first check whether the deleting attribute is a descriptor
-    Box* clsAttr = typeLookup(obj->cls, attr, NULL);
+    Box* clsAttr = typeLookup<false>(obj->cls, attr, NULL);
     if (clsAttr != NULL) {
         static BoxedString* delete_str = internStringImmortal("__delete__");
-        Box* delAttr = typeLookup(static_cast<BoxedClass*>(clsAttr->cls), delete_str, NULL);
+        Box* delAttr = typeLookup(static_cast<BoxedClass*>(clsAttr->cls), delete_str);
 
         if (delAttr != NULL) {
-            Box* rtn = runtimeCallInternal<CXX>(delAttr, NULL, ArgPassSpec(2), clsAttr, obj, NULL, NULL, NULL);
+            Box* rtn = runtimeCallInternal<CXX, false>(delAttr, NULL, ArgPassSpec(2), clsAttr, obj, NULL, NULL, NULL);
             return;
         }
     }
 
     // check if the attribute is in the instance's __dict__
-    Box* attrVal = obj->getattr(attr, NULL);
+    Box* attrVal = obj->getattr(attr);
     if (attrVal != NULL) {
         obj->delattr(attr, NULL);
     } else {
@@ -5243,9 +5319,9 @@ extern "C" void delattrGeneric(Box* obj, BoxedString* attr, DelattrRewriteArgs* 
 
 extern "C" void delattrInternal(Box* obj, BoxedString* attr, DelattrRewriteArgs* rewrite_args) {
     static BoxedString* delattr_str = internStringImmortal("__delattr__");
-    Box* delAttr = typeLookup(obj->cls, delattr_str, NULL);
+    Box* delAttr = typeLookup(obj->cls, delattr_str);
     if (delAttr != NULL) {
-        Box* rtn = runtimeCallInternal<CXX>(delAttr, NULL, ArgPassSpec(2), obj, attr, NULL, NULL, NULL);
+        Box* rtn = runtimeCallInternal<CXX, false>(delAttr, NULL, ArgPassSpec(2), obj, attr, NULL, NULL, NULL);
         return;
     }
 
@@ -5286,7 +5362,7 @@ extern "C" Box* createBoxedIterWrapperIfNeeded(Box* o) {
         RewriterVar* r_o = rewriter->getArg(0);
         RewriterVar* r_cls = r_o->getAttr(offsetof(Box, cls));
         GetattrRewriteArgs rewrite_args(rewriter.get(), r_cls, rewriter->getReturnDestination());
-        Box* r = typeLookup(o->cls, hasnext_str, &rewrite_args);
+        Box* r = typeLookup<true>(o->cls, hasnext_str, &rewrite_args);
         if (!rewrite_args.out_success) {
             rewriter.reset(NULL);
         } else if (r) {
@@ -5306,7 +5382,7 @@ extern "C" Box* createBoxedIterWrapperIfNeeded(Box* o) {
         }
     }
 
-    // assert((typeLookup(o->cls, hasnext_str, NULL) == NULL) == (o->cls->tpp_hasnext == object_cls->tpp_hasnext));
+    // assert((typeLookup(o->cls, hasnext_str) == NULL) == (o->cls->tpp_hasnext == object_cls->tpp_hasnext));
     if (o->cls->tpp_hasnext == object_cls->tpp_hasnext)
         return new BoxedIterWrapper(o);
     return o;
@@ -5316,7 +5392,7 @@ extern "C" Box* getPystonIter(Box* o) {
     STAT_TIMER(t0, "us_timer_slowpath_getPystonIter", 10);
 
     Box* r = getiter(o);
-    // assert((typeLookup(r->cls, hasnext_str, NULL) == NULL) == (r->cls->tpp_hasnext == object_cls->tpp_hasnext));
+    // assert((typeLookup(r->cls, hasnext_str) == NULL) == (r->cls->tpp_hasnext == object_cls->tpp_hasnext));
     if (r->cls->tpp_hasnext == object_cls->tpp_hasnext)
         return new BoxedIterWrapper(r);
     return r;
@@ -5336,7 +5412,7 @@ Box* getiter(Box* o) {
         r = type->tp_iter(o);
     } else {
         static BoxedString* iter_str = internStringImmortal("__iter__");
-        r = callattrInternal0<CXX>(o, iter_str, LookupScope::CLASS_ONLY, NULL, ArgPassSpec(0));
+        r = callattrInternal0<CXX, false>(o, iter_str, LookupScope::CLASS_ONLY, NULL, ArgPassSpec(0));
     }
     if (r) {
         if (!PyIter_Check(r)) {
@@ -5796,7 +5872,7 @@ extern "C" Box* getGlobal(Box* globals, BoxedString* name) {
                 r_mod->addAttrGuard(offsetof(Box, cls), (intptr_t)module_cls);
 
                 GetattrRewriteArgs rewrite_args(rewriter.get(), r_mod, rewriter->getReturnDestination());
-                r = m->getattr(name, &rewrite_args);
+                r = m->getattr<true>(name, &rewrite_args);
                 if (!rewrite_args.out_success) {
                     rewriter.reset(NULL);
                 } else {
@@ -5812,7 +5888,7 @@ extern "C" Box* getGlobal(Box* globals, BoxedString* name) {
                     return r;
                 }
             } else {
-                r = m->getattr(name, NULL);
+                r = m->getattr(name);
                 nopatch_getglobal.log();
                 if (r) {
                     return r;
@@ -5839,7 +5915,7 @@ extern "C" Box* getGlobal(Box* globals, BoxedString* name) {
             RewriterVar* builtins = rewriter->loadConst((intptr_t)builtins_module, Location::any());
             GetattrRewriteArgs rewrite_args(rewriter.get(), builtins, rewriter->getReturnDestination());
             rewrite_args.obj_shape_guarded = true; // always builtin module
-            rtn = builtins_module->getattr(name, &rewrite_args);
+            rtn = builtins_module->getattr<true>(name, &rewrite_args);
 
             if (!rtn || !rewrite_args.out_success) {
                 rewriter.reset(NULL);
@@ -5851,7 +5927,7 @@ extern "C" Box* getGlobal(Box* globals, BoxedString* name) {
                 rewriter->commitReturning(rewrite_args.out_rtn);
             }
         } else {
-            rtn = builtins_module->getattr(name, NULL);
+            rtn = builtins_module->getattr(name);
         }
 
         if (rtn)
@@ -5898,7 +5974,7 @@ extern "C" void setGlobal(Box* globals, BoxedString* name, Box* value) {
 extern "C" Box* importFrom(Box* _m, BoxedString* name) {
     STAT_TIMER(t0, "us_timer_importFrom", 10);
 
-    Box* r = getattrInternal<CXX>(_m, name, NULL);
+    Box* r = getattrInternal<CXX, false>(_m, name, NULL);
     if (r)
         return r;
 
@@ -5916,7 +5992,7 @@ extern "C" Box* importStar(Box* _from_module, Box* to_globals) {
 
     if (all) {
         static BoxedString* getitem_str = internStringImmortal("__getitem__");
-        Box* all_getitem = typeLookup(all->cls, getitem_str, NULL);
+        Box* all_getitem = typeLookup(all->cls, getitem_str);
         if (!all_getitem)
             raiseExcHelper(TypeError, "'%s' object does not support indexing", getTypeName(all));
 
@@ -5924,7 +6000,7 @@ extern "C" Box* importStar(Box* _from_module, Box* to_globals) {
         while (true) {
             Box* attr_name;
             try {
-                attr_name = runtimeCallInternal2<CXX>(all_getitem, NULL, ArgPassSpec(2), all, boxInt(idx));
+                attr_name = runtimeCallInternal2<CXX, false>(all_getitem, NULL, ArgPassSpec(2), all, boxInt(idx));
             } catch (ExcInfo e) {
                 if (e.matches(IndexError))
                     break;
