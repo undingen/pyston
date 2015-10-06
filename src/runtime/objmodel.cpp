@@ -2966,7 +2966,7 @@ Box* callattrInternal(Box* obj, BoxedString* attr, LookupScope scope, CallattrRe
         // TODO should know which args don't need to be guarded, ex if we're guaranteed that they
         // already fit, either since the type inferencer could determine that,
         // or because they only need to fit into an UNKNOWN slot.
-
+        /*
         if (npassed_args >= 1)
             rewrite_args->arg1->addAttrGuard(offsetof(Box, cls), (intptr_t)arg1->cls);
         if (npassed_args >= 2)
@@ -2982,6 +2982,7 @@ Box* callattrInternal(Box* obj, BoxedString* attr, LookupScope scope, CallattrRe
                 v->addAttrGuard(offsetof(Box, cls), (intptr_t)args[i - 3]->cls);
             }
         }
+        */
 
         rewrite_args->args_guarded = true;
     }
@@ -4311,13 +4312,13 @@ Box* runtimeCallInternal(Box* obj, CallRewriteArgs* rewrite_args, ArgPassSpec ar
                         // I don't think this case should ever get hit currently -- the only places
                         // we offer rewriting are places that don't have the ability to pass a NULL
                         // kwargs.
-                        getArg(i, rewrite_args)->addGuard(0);
+                        //getArg(i, rewrite_args)->addGuard(0);
                     } else {
-                        getArg(i, rewrite_args)->addAttrGuard(offsetof(Box, cls), (intptr_t)v->cls);
+                        //getArg(i, rewrite_args)->addAttrGuard(offsetof(Box, cls), (intptr_t)v->cls);
                     }
                 } else {
                     assert(v);
-                    getArg(i, rewrite_args)->addAttrGuard(offsetof(Box, cls), (intptr_t)v->cls);
+                    //getArg(i, rewrite_args)->addAttrGuard(offsetof(Box, cls), (intptr_t)v->cls);
                 }
             }
             rewrite_args->args_guarded = true;
