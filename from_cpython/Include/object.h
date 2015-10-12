@@ -706,9 +706,10 @@ manually remove this flag though!
                  Py_TPFLAGS_HAVE_CLASS | \
                  Py_TPFLAGS_HAVE_STACKLESS_EXTENSION | \
                  Py_TPFLAGS_HAVE_INDEX | \
+                 Py_TPFLAGS_HAVE_VERSION_TAG | \
                  0)
 #define Py_TPFLAGS_DEFAULT_CORE (Py_TPFLAGS_DEFAULT_EXTERNAL | \
-                 Py_TPFLAGS_HAVE_VERSION_TAG)
+                 Py_TPFLAGS_HAVE_VERSION_TAG | Py_TPFLAGS_HAVE_VERSION_TAG)
 
 #ifdef Py_BUILD_CORE
 #define Py_TPFLAGS_DEFAULT Py_TPFLAGS_DEFAULT_CORE
