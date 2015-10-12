@@ -1022,6 +1022,8 @@ public:
 
     DEFAULT_CLASS(wrapperdescr_cls);
 
+    ParamReceiveSpec getParamSpec();
+
     static Box* descr_get(Box* self, Box* inst, Box* owner) noexcept;
     static Box* __call__(BoxedWrapperDescriptor* descr, PyObject* self, BoxedTuple* args, Box** _args);
     template <ExceptionStyle S>
@@ -1055,6 +1057,8 @@ public:
     BoxedMethodDescriptor(PyMethodDef* method, BoxedClass* type) : method(method), type(type) {}
 
     DEFAULT_CLASS(method_cls);
+
+    ParamReceiveSpec getParamSpec();
 
     static Box* descr_get(BoxedMethodDescriptor* self, Box* inst, Box* owner) noexcept;
     static Box* __call__(BoxedMethodDescriptor* self, Box* obj, BoxedTuple* varargs, Box** _args);

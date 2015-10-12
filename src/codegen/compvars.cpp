@@ -1667,8 +1667,55 @@ public:
             return undefVariable();
         }
 
-        if (rtattr->cls != function_cls)
+        if (rtattr->cls != function_cls) {
+            if (rtattr->cls == method_cls) {
+                BoxedMethodDescriptor* m = (BoxedMethodDescriptor*)rtattr;
+                ParamReceiveSpec paramspec = m->getParamSpec();
+                void* code = (void*)m->method->ml_meth;
+
+                if (paramspec.takes_varargs || paramspec.takes_kwargs)
+                    return NULL;
+
+                std::vector<llvm::Type*> arg_types(paramspec.num_args, g.llvm_value_type_ptr);
+                llvm::FunctionType* ft = llvm::FunctionType::get(g.llvm_value_type_ptr, arg_types, false);
+
+                llvm::Value* linked_function = embedConstantPtr(code, ft->getPointerTo());
+
+                std::vector<CompilerVariable*> new_args;
+                new_args.push_back(var);
+                new_args.insert(new_args.end(), args.begin(), args.end());
+
+                std::vector<llvm::Value*> other_args;
+                return _call(emitter, info, linked_function, CAPI, code, other_args, argspec,
+                                                      new_args, keyword_names, UNKNOWN);
+            } else if (rtattr->cls == wrapperdescr_cls) {
+                BoxedWrapperDescriptor* m = (BoxedWrapperDescriptor*)rtattr;
+                ParamReceiveSpec paramspec = m->getParamSpec();
+                void* code = (void*)m->wrapper->wrapper;
+
+                if (paramspec.takes_varargs || paramspec.takes_kwargs)
+                    return NULL;
+
+                std::vector<llvm::Type*> arg_types(paramspec.num_args, g.llvm_value_type_ptr);
+                arg_types.push_back(g.llvm_value_type_ptr);
+                llvm::FunctionType* ft = llvm::FunctionType::get(g.llvm_value_type_ptr, arg_types, false);
+
+                llvm::Value* linked_function = embedConstantPtr(code, ft->getPointerTo());
+
+                std::vector<CompilerVariable*> new_args;
+                new_args.push_back(var);
+                new_args.insert(new_args.end(), args.begin(), args.end());
+                new_args.push_back(new ConcreteCompilerVariable(
+                    UNKNOWN, embedRelocatablePtr(m->wrapped, g.llvm_value_type_ptr), false));
+
+                std::vector<llvm::Value*> other_args;
+                return _call(emitter, info, linked_function, CAPI, code, other_args, argspec,
+                                                      new_args, keyword_names, UNKNOWN);
+            }
+            // RELEASE_ASSERT(0, "unsupported class %s %s:%s", rtattr->cls->tp_name, cls->tp_name, attr->data());
             return NULL;
+        }
+
         BoxedFunction* rtattr_func = static_cast<BoxedFunction*>(rtattr);
 
         if (argspec.num_keywords || argspec.has_starargs || argspec.has_kwargs)
@@ -1821,7 +1868,7 @@ public:
             // Ugly, but for now special-case the set of type-pairs that we know will always work
             if (exp_type == BinOp
                 && ((cls == int_cls && rhs_cls == int_cls) || (cls == float_cls && rhs_cls == float_cls)
-                    || (cls == list_cls && rhs_cls == int_cls) || (cls == str_cls))) {
+                    || (cls == list_cls && rhs_cls == int_cls) || (cls == str_cls) || (cls == unicode_cls))) {
 
                 BoxedString* left_side_name = getOpName(op_type);
 
