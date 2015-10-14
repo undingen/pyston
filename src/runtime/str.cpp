@@ -1662,7 +1662,7 @@ Box* _strSlice(BoxedString* self, i64 start, i64 stop, i64 step, i64 length) {
     if (length == 0)
         return EmptyString;
 
-    if (length == 1) {
+    if (0 && length == 1) {
         char c = self->s()[start];
         return characters[c & UCHAR_MAX];
     }
