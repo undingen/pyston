@@ -63,4 +63,10 @@ Box* tupleiterNext(Box* s) {
     }
     return rtn;
 }
+
+extern "C" Box* createTuple(int64_t nelts, Box** elts) {
+    for (int i = 0; i < nelts; i++)
+        assert(gc::isValidGCObject(elts[i]));
+    return BoxedTuple::create(nelts, elts);
+}
 }

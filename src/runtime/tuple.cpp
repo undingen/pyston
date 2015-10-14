@@ -27,12 +27,6 @@
 
 namespace pyston {
 
-extern "C" Box* createTuple(int64_t nelts, Box** elts) {
-    for (int i = 0; i < nelts; i++)
-        assert(gc::isValidGCObject(elts[i]));
-    return BoxedTuple::create(nelts, elts);
-}
-
 Box* _tupleSlice(BoxedTuple* self, i64 start, i64 stop, i64 step, i64 length) {
 
     i64 size = self->size();

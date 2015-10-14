@@ -47,5 +47,10 @@ i64 unboxInt(Box* b) {
     return ((BoxedInt*)b)->n;
 }
 
+extern "C" Box* createSlice(Box* start, Box* stop, Box* step) {
+    BoxedSlice* rtn = new BoxedSlice(start, stop, step);
+    return rtn;
+}
+
 // BoxedInt::BoxedInt(int64_t n) : Box(int_cls), n(n) {}
 }

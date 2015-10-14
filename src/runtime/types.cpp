@@ -1807,11 +1807,6 @@ Box* range_obj = NULL;
 HiddenClass* root_hcls;
 HiddenClass* HiddenClass::dict_backed;
 
-extern "C" Box* createSlice(Box* start, Box* stop, Box* step) {
-    BoxedSlice* rtn = new BoxedSlice(start, stop, step);
-    return rtn;
-}
-
 extern "C" BoxedClosure* createClosure(BoxedClosure* parent_closure, size_t n) {
     if (parent_closure)
         assert(parent_closure->cls == closure_cls);
