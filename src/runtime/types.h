@@ -520,7 +520,9 @@ public:
         BoxedTuple* rtn = new (nelts) BoxedTuple();
         for (int i = 0; i < nelts; i++)
             assert(gc::isValidGCObject(elts[i]));
-        memmove(&rtn->elts[0], elts, sizeof(Box*) * nelts);
+        for (int i = 0; i < nelts; i++)
+            rtn->elts[i] = elts[i];
+        //memmove(&rtn->elts[0], elts, sizeof(Box*) * nelts);
         return rtn;
     }
     static BoxedTuple* create1(Box* elt0) {
