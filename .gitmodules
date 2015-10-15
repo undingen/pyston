@@ -31,6 +31,7 @@
 [submodule "build_deps/jemalloc"]
 	path = build_deps/jemalloc
 	url = git://github.com/jemalloc/jemalloc.git
+	ignore = untracked
 [submodule "test/lib/numpy"]
 	path = test/lib/numpy
 	url = https://github.com/numpy/numpy
