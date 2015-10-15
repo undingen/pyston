@@ -115,6 +115,8 @@ uint8_t* PystonMemoryManager::allocateSection(MemoryGroup& MemGroup, uintptr_t S
     // FIXME: Initialize the Near member for each memory group to avoid
     // interleaving.
     llvm_error_code ec;
+    if (!MemGroup.Near.base())
+        MemGroup.Near = sys::MemoryBlock((void*)(1L << 31), 0);
     sys::MemoryBlock MB = sys::Memory::allocateMappedMemory(RequiredSize, &MemGroup.Near,
                                                             sys::Memory::MF_READ | sys::Memory::MF_WRITE, ec);
     if (ec) {
