@@ -2191,6 +2191,62 @@ public:
         return rtn;
     }
 
+    std::vector<CompilerVariable*> unpack(IREmitter& emitter, const OpInfo& info, VAR* var, int num_into) override {
+        if (var->getType() == BOXED_TUPLE) {
+            auto* cast_tuple = emitter.getBuilder()->CreateBitCast(var->getValue(), g.llvm_boxedtuple_type_ptr);
+            llvm::Value* size_ptr = emitter.getBuilder()->CreateConstInBoundsGEP2_32(
+                cast_tuple, 0, offsetof(BoxedTuple, ob_size) / sizeof(void*));
+
+            llvm::Value* size_value = emitter.getBuilder()->CreateLoad(
+                emitter.getBuilder()->CreateBitCast(size_ptr, g.i64->getPointerTo()));
+
+            assert(size_value->getType() == g.i64);
+            llvm::Value* is_same_size = emitter.getBuilder()->CreateICmpEQ(size_value, getConstantInt(num_into));
+
+            llvm::BasicBlock* bb_same = emitter.createBasicBlock("is_same_size");
+            // bb_same->moveAfter(emitter.currentBasicBlock());
+            llvm::BasicBlock* bb_general_unpack = emitter.createBasicBlock("general_unpack");
+            // bb_general_unpack->moveAfter(bb_same);
+            llvm::BasicBlock* bb_merge = emitter.createBasicBlock("merge");
+            // bb_merge->moveAfter(bb_general_unpack);
+
+
+            emitter.getBuilder()->CreateCondBr(is_same_size, bb_same, bb_general_unpack);
+
+            emitter.setCurrentBasicBlock(bb_same);
+            // auto* cast_box_array = emitter.getBuilder()->CreateBitCast(var->getValue(), g.llvm_value_type_ptr);
+            llvm::Value* elt_ptr
+                = emitter.getBuilder()->CreateGEP(cast_tuple, { getConstantInt(0, g.i64), getConstantInt(1, g.i32),
+                                                                getConstantInt(0, g.i32), getConstantInt(0, g.i64) });
+            emitter.getBuilder()->CreateBr(bb_merge);
+
+
+            emitter.setCurrentBasicBlock(bb_general_unpack);
+            llvm::Value* unpacked = emitter.createCall2(info.unw_info, g.funcs.unpackIntoArray, var->getValue(),
+                                                        getConstantInt(num_into, g.i64));
+            emitter.getBuilder()->CreateBr(bb_merge);
+
+            emitter.setCurrentBasicBlock(bb_merge);
+            auto phi = emitter.getBuilder()->CreatePHI(g.llvm_value_type_ptr_ptr, 2, "elts");
+            phi->addIncoming(elt_ptr, bb_same);
+            phi->addIncoming(unpacked, llvm::cast<Instruction>(unpacked)->getParent());
+
+            std::vector<CompilerVariable*> rtn;
+            for (int i = 0; i < num_into; i++) {
+                llvm::Value* ptr = emitter.getBuilder()->CreateConstGEP1_32(phi, i);
+                llvm::Value* val = emitter.getBuilder()->CreateLoad(ptr);
+                assert(val->getType() == g.llvm_value_type_ptr);
+
+                rtn.push_back(new ConcreteCompilerVariable(UNKNOWN, val, true));
+            }
+            return rtn;
+        }
+
+
+
+        return UNKNOWN->unpack(emitter, info, var, num_into);
+    }
+
     BoxedClass* guaranteedClass() override { return cls; }
 
     ConcreteCompilerType* getBoxType() override { return this; }

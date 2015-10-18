@@ -1798,6 +1798,9 @@ private:
     void _doUnpackTuple(AST_Tuple* target, CompilerVariable* val, const UnwindInfo& unw_info) {
         int ntargets = target->elts.size();
 
+        // printf("t: %s:%s %d %s\n", irstate->getCL()->source->getFn()->c_str(),
+        //       irstate->getCL()->source->getName()->c_str(), ntargets, val->getType()->debugName().c_str());
+
         std::vector<CompilerVariable*> unpacked = val->unpack(emitter, getOpInfoForNode(target, unw_info), ntargets);
 
 #ifndef NDEBUG

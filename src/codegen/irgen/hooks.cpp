@@ -16,6 +16,7 @@
 
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/Support/raw_ostream.h"
+#include <llvm/IR/Verifier.h>
 
 #include "analysis/function_analysis.h"
 #include "analysis/scoping_analysis.h"
@@ -151,6 +152,9 @@ static void compileIR(CompiledFunction* cf, EffortLevel effort) {
 
     {
         Timer _t("to jit the IR");
+// cf->func->getParent()->dump();
+// llvm::verifyModule(*cf->func->getParent());
+
 #if LLVMREV < 215967
         g.engine->addModule(cf->func->getParent());
 #else

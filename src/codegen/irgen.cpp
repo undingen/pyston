@@ -72,7 +72,7 @@ void MyInserter::InsertHelper(llvm::Instruction* I, const llvm::Twine& Name, llv
 static void optimizeIR(llvm::Function* f, EffortLevel effort) {
     // TODO maybe should do some simple passes (ex: gvn?) if effort level isn't maximal?
     // In general, this function needs a lot of tuning.
-    if (effort < EffortLevel::MAXIMAL)
+    if (1 || effort < EffortLevel::MAXIMAL)
         return;
 
     Timer _t("optimizing");
@@ -1116,6 +1116,8 @@ CompiledFunction* doCompile(CLFunction* clfunc, SourceInfo* source, ParamNames* 
         // printf("\033[0m");
         // fflush(stdout);
     }
+
+    // g.cur_module->dump();
 
     irgen_us += _t2.split();
     static StatCounter us_irgen("us_compiling_irgen");
