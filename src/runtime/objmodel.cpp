@@ -4827,7 +4827,46 @@ Box* compareInternal(Box* lhs, Box* rhs, int op_type, CompareRewriteArgs* rewrit
     }
 
     bool any_user_defined = lhs->cls->is_user_defined || rhs->cls->is_user_defined;
-    if (any_user_defined) {
+    if (any_user_defined && rewrite_args) {
+        rewrite_args->lhs->addAttrGuard(offsetof(Box, cls), (intptr_t)lhs->cls);
+        if (!lhs->cls->is_user_defined)
+            rewrite_args->rhs->addAttrGuard(offsetof(Box, cls), (intptr_t)rhs->cls);
+
+        int cpython_op_type;
+        switch (op_type) {
+            case AST_TYPE::Eq:
+                cpython_op_type = Py_EQ;
+                break;
+            case AST_TYPE::NotEq:
+                cpython_op_type = Py_NE;
+                break;
+            case AST_TYPE::Lt:
+                cpython_op_type = Py_LT;
+                break;
+            case AST_TYPE::LtE:
+                cpython_op_type = Py_LE;
+                break;
+            case AST_TYPE::Gt:
+                cpython_op_type = Py_GT;
+                break;
+            case AST_TYPE::GtE:
+                cpython_op_type = Py_GE;
+                break;
+            default:
+                RELEASE_ASSERT(0, "%d", op_type);
+        }
+
+        auto ret = rewrite_args->rewriter->call(true, (void*)PyObject_RichCompare, rewrite_args->lhs, rewrite_args->rhs,
+                                                rewrite_args->rewriter->loadConst(cpython_op_type));
+        rewrite_args->rewriter->checkAndThrowCAPIException(ret);
+        rewrite_args->rewriter->commitReturning(ret);
+
+        Box* r = PyObject_RichCompare(lhs, rhs, cpython_op_type);
+        if (!r)
+            throwCAPIException();
+        return r;
+
+
         rewrite_args = NULL;
         REWRITE_ABORTED("");
     }
