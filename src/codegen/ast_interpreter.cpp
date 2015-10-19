@@ -1757,7 +1757,7 @@ Box* astInterpretFunction(CLFunction* clfunc, Box* closure, Box* generator, Box*
 #endif
             // arg_types.push_back(typeFromClass(arg->cls));
         }
-        FunctionSpecialization* spec = new FunctionSpecialization(UNKNOWN, arg_types);
+        FunctionSpecialization* spec = new FunctionSpecialization(UNKNOWN, arg_types, true);
 
         // this also pushes the new CompiledVersion to the back of the version list:
         CompiledFunction* optimized = compileFunction(clfunc, spec, new_effort, NULL);

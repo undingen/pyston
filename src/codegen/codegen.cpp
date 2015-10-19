@@ -283,10 +283,12 @@ FunctionSpecialization::FunctionSpecialization(ConcreteCompilerType* rtn_type) :
 }
 
 FunctionSpecialization::FunctionSpecialization(ConcreteCompilerType* rtn_type,
-                                               const std::vector<ConcreteCompilerType*>& arg_types)
+                                               const std::vector<ConcreteCompilerType*>& arg_types, bool all)
     : rtn_type(rtn_type), arg_types(arg_types) {
     accepts_all_inputs = true;
     boxed_return_value = (rtn_type->llvmType() == UNKNOWN->llvmType());
+    if (all)
+        return;
     for (auto t : arg_types) {
         accepts_all_inputs = accepts_all_inputs && (t == UNKNOWN);
     }

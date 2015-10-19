@@ -250,7 +250,7 @@ struct FunctionSpecialization {
     bool accepts_all_inputs;
 
     FunctionSpecialization(ConcreteCompilerType* rtn_type);
-    FunctionSpecialization(ConcreteCompilerType* rtn_type, const std::vector<ConcreteCompilerType*>& arg_types);
+    FunctionSpecialization(ConcreteCompilerType* rtn_type, const std::vector<ConcreteCompilerType*>& arg_types, bool all =false);
 };
 
 class BoxedClosure;
