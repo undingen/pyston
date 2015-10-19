@@ -1345,7 +1345,7 @@ void Rewriter::commit() {
     uint64_t asm_size_bytes = assembler->bytesWritten();
 #ifndef NDEBUG
     std::string asm_dump;
-    if (ASSEMBLY_LOGGING) {
+    if (ASSEMBLY_LOGGING && should_log) {
         assembler->comment("size in bytes: " + std::to_string(asm_size_bytes));
         asm_dump = assembler->dump();
     }

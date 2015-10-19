@@ -53,9 +53,24 @@ const unsigned char eh_info[]
 static_assert(JitCodeBlock::num_stack_args == 2, "have to update EH table!");
 static_assert(JitCodeBlock::scratch_size == 256, "have to update EH table!");
 
+uint8_t* mymalloc(int s) {
+    static uint8_t* addr = 0;
+    if (!addr) {
+        llvm_error_code ec;
+        llvm::sys::MemoryBlock memblock((void*)(1L << 31), 0);
+        llvm::sys::MemoryBlock MB = llvm::sys::Memory::allocateMappedMemory(
+            1000 * 1000 * 100, &memblock,
+            llvm::sys::Memory::MF_READ | llvm::sys::Memory::MF_WRITE | llvm::sys::Memory::MF_EXEC, ec);
+        addr = (uint8_t*)MB.base();
+    }
+    auto a = addr;
+    addr += s;
+    return a;
+}
+
 JitCodeBlock::JitCodeBlock(llvm::StringRef name)
-    : code(new uint8_t[code_size]),
-      eh_frame(new uint8_t[sizeof(eh_info)]),
+    : code(mymalloc(code_size)),
+      eh_frame(mymalloc(sizeof(eh_info))),
       entry_offset(0),
       a(code.get(), code_size),
       is_currently_writing(false),
@@ -141,6 +156,7 @@ JitFragmentWriter::JitFragmentWriter(CFGBlock* block, std::unique_ptr<ICInfo> ic
       code_block(code_block),
       interp(0),
       ic_info(std::move(ic_info)) {
+    should_log = false;
     interp = createNewVar();
     addLocationToVar(interp, assembler::R12);
     interp->setAttr(ASTInterpreterJitInterface::getCurrentBlockOffset(), imm(block));

@@ -360,6 +360,7 @@ private:
     RegionAllocator allocator;
 
 protected:
+    bool should_log = true;
     // Allocates `bytes` bytes of data.  The allocation will get freed when the rewriter gets freed.
     void* regionAlloc(size_t bytes) { return allocator.alloc(bytes); }
 
