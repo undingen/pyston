@@ -1745,7 +1745,7 @@ Box* astInterpretFunction(CLFunction* clfunc, Box* closure, Box* generator, Box*
             assert(arg || i == clfunc->param_names.kwargsIndex()); // only builtin functions can pass NULL args
 
 // TODO: reenable argument-type specialization
-#if 1
+#if 0
             if (clfunc->param_names.vararg.size() && clfunc->param_names.args.size() == i)
                 arg_types.push_back(BOXED_TUPLE);
             else if (clfunc->param_names.kwarg.size() && clfunc->param_names.kwargsIndex() == i)
@@ -1753,11 +1753,13 @@ Box* astInterpretFunction(CLFunction* clfunc, Box* closure, Box* generator, Box*
             else
                 arg_types.push_back(UNKNOWN);
 #else
-            arg_types.push_back(UNKNOWN);
+            // arg_types.push_back(UNKNOWN);
+            arg_types.push_back(arg ? typeFromClass(arg->cls) : UNKNOWN);
 #endif
             // arg_types.push_back(typeFromClass(arg->cls));
         }
-        FunctionSpecialization* spec = new FunctionSpecialization(UNKNOWN, arg_types, true);
+        // FunctionSpecialization* spec = new FunctionSpecialization(UNKNOWN, arg_types, true);
+        FunctionSpecialization* spec = new FunctionSpecialization(UNKNOWN, arg_types);
 
         // this also pushes the new CompiledVersion to the back of the version list:
         CompiledFunction* optimized = compileFunction(clfunc, spec, new_effort, NULL);
