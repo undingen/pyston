@@ -1748,8 +1748,8 @@ Box* astInterpretFunction(CLFunction* clfunc, Box* closure, Box* generator, Box*
 #if 1
             if (clfunc->param_names.vararg.size() && clfunc->param_names.args.size() == i)
                 arg_types.push_back(BOXED_TUPLE);
-            // else if (clfunc->param_names.kwarg.size() && clfunc->param_names.kwargsIndex() == i)
-            //    arg_types.push_back(DICT);
+            else if (clfunc->param_names.kwarg.size() && clfunc->param_names.kwargsIndex() == i)
+                arg_types.push_back(DICT);
             else
                 arg_types.push_back(UNKNOWN);
 #else
