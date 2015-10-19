@@ -72,7 +72,7 @@ void MyInserter::InsertHelper(llvm::Instruction* I, const llvm::Twine& Name, llv
 static void optimizeIR(llvm::Function* f, EffortLevel effort) {
     // TODO maybe should do some simple passes (ex: gvn?) if effort level isn't maximal?
     // In general, this function needs a lot of tuning.
-    if (1 || effort < EffortLevel::MAXIMAL)
+    if (effort < EffortLevel::MAXIMAL)
         return;
 
     Timer _t("optimizing");
