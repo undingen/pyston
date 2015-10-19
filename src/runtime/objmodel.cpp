@@ -2398,6 +2398,21 @@ void setattrGeneric(Box* obj, BoxedString* attr, Box* val, SetattrRewriteArgs* r
     }
 }
 
+static void setattrHelper(Box* obj, BoxedString* attr, Box* attr_val) {
+
+    if (obj->cls == instance_cls) {
+        STAT_TIMER(t0, "us_timer_slowpath_setattrHelper1", 10);
+        int r = obj->cls->tp_setattro(obj, attr, attr_val);
+        if (r)
+            throwCAPIException();
+    } else {
+        STAT_TIMER(t1, "us_timer_slowpath_setattrHelper2", 10);
+        int r = obj->cls->tp_setattro(obj, attr, attr_val);
+        if (r)
+            throwCAPIException();
+    }
+}
+
 extern "C" void setattr(Box* obj, BoxedString* attr, Box* attr_val) {
     STAT_TIMER(t0, "us_timer_slowpath_setattr", 10);
 
@@ -2429,7 +2444,48 @@ extern "C" void setattr(Box* obj, BoxedString* attr, Box* attr_val) {
         r_cls->addAttrGuard(offsetof(BoxedClass, tp_setattro), (intptr_t)tp_setattro);
     }
 
+#if 1
+    // We should probably add this as a GC root, but we can cheat a little bit since
+    // we know it's not going to get deallocated:
+    static Box* object_setattr = object_cls->getattr(internStringImmortal("__setattr__"));
+    assert(object_setattr);
 
+    // I guess this check makes it ok for us to just rely on having guarded on the value of setattr without
+    // invalidating on deallocation, since we assume that object.__setattr__ will never get deallocated.
+    if (tp_setattro == PyObject_GenericSetAttr) {
+        if (rewriter.get()) {
+            // rewriter->trap();
+            SetattrRewriteArgs rewrite_args(rewriter.get(), rewriter->getArg(0), rewriter->getArg(2));
+            setattrGeneric<REWRITABLE>(obj, attr, attr_val, &rewrite_args);
+            if (rewrite_args.out_success) {
+                rewriter->commit();
+            }
+        } else {
+            setattrGeneric<NOT_REWRITABLE>(obj, attr, attr_val, NULL);
+        }
+        return;
+    } else if (tp_setattro == instance_setattro) {
+        if (rewriter.get()) {
+            // rewriter->trap();
+            SetattrRewriteArgs rewrite_args(rewriter.get(), rewriter->getArg(0), rewriter->getArg(2));
+            instanceSetattroInternal(obj, attr, attr_val, &rewrite_args);
+            if (rewrite_args.out_success) {
+                rewriter->commit();
+            }
+        } else {
+            instanceSetattroInternal(obj, attr, attr_val, NULL);
+        }
+        return;
+    }
+
+
+    if (rewriter.get()) {
+        rewriter->call(true, (void*)setattrHelper, rewriter->getArg(0), rewriter->getArg(1), rewriter->getArg(2));
+        rewriter->commit();
+    }
+    setattrHelper(obj, attr, attr_val);
+
+#else
     // Note: setattr will only be retrieved if we think it will be profitable to try calling that as opposed to
     // the tp_setattr function pointer.
     Box* setattr = NULL;
@@ -2487,6 +2543,7 @@ extern "C" void setattr(Box* obj, BoxedString* attr, Box* attr_val) {
         if (r)
             throwCAPIException();
     }
+#endif
 }
 
 static bool nonzeroHelper(Box* r) {

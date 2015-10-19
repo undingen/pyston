@@ -46,11 +46,20 @@ static Box* classLookup(BoxedClassobj* cls, BoxedString* attr, GetattrRewriteArg
         return r;
     }
 
+    if (cls->bases == EmptyTuple) {
+        if (rewrite_args && rewrite_args->isSuccessful()) {
+            rewrite_args->obj->addAttrGuard(offsetof(BoxedClassobj, bases), (uint64_t)EmptyTuple);
+            rewrite_args->assertReturnConvention(ReturnConvention::NO_RETURN);
+        }
+        return NULL;
+    }
+
     if (rewrite_args) {
         if (rewrite_args->isSuccessful()) {
             rewrite_args->getReturn(); // just to make the asserts happy
             rewrite_args->clearReturn();
         }
+
         rewrite_args = NULL;
     }
 
@@ -489,6 +498,60 @@ Box* instanceGetattroInternal(Box* cls, Box* _attr, GetattrRewriteArgs* rewrite_
 template Box* instanceGetattroInternal<CAPI>(Box*, Box*, GetattrRewriteArgs*) noexcept;
 template Box* instanceGetattroInternal<CXX>(Box*, Box*, GetattrRewriteArgs*);
 
+Box* instanceSetattroInternal(Box* _inst, Box* _attr, Box* value, SetattrRewriteArgs* rewrite_args) {
+    RELEASE_ASSERT(_inst->cls == instance_cls, "");
+    BoxedInstance* inst = static_cast<BoxedInstance*>(_inst);
+
+    RELEASE_ASSERT(_attr->cls == str_cls, "");
+    BoxedString* attr = static_cast<BoxedString*>(_attr);
+
+    assert(value);
+
+    // These are special cases in CPython as well:
+    if (attr->s()[0] == '_' && attr->s()[1] == '_') {
+        if (attr->s() == "__dict__")
+            Py_FatalError("unimplemented");
+
+        if (attr->s() == "__class__") {
+            if (value->cls != classobj_cls)
+                raiseExcHelper(TypeError, "__class__ must be set to a class");
+
+            inst->inst_cls = static_cast<BoxedClassobj*>(value);
+            return None;
+        }
+    }
+
+    static BoxedString* setattr_str = internStringImmortal("__setattr__");
+
+    Box* setattr = NULL;
+
+    if (rewrite_args) {
+        RewriterVar* inst_r = rewrite_args->obj->getAttr(offsetof(BoxedInstance, inst_cls));
+        inst_r->addGuard((uint64_t)inst->inst_cls);
+        GetattrRewriteArgs grewrite_args(rewrite_args->rewriter, inst_r,
+                                         rewrite_args->rewriter->getReturnDestination());
+        setattr = classLookup<REWRITABLE>(inst->inst_cls, setattr_str, &grewrite_args);
+
+        if (setattr) {
+            setattr = processDescriptor(setattr, inst, inst->inst_cls);
+            return runtimeCall(setattr, ArgPassSpec(2), _attr, value, NULL, NULL, NULL);
+        }
+
+        _inst->setattr(attr, value, rewrite_args);
+        return None;
+    } else {
+        setattr = classLookup(inst->inst_cls, setattr_str);
+        if (setattr) {
+            setattr = processDescriptor(setattr, inst, inst->inst_cls);
+            return runtimeCall(setattr, ArgPassSpec(2), _attr, value, NULL, NULL, NULL);
+        }
+
+        _inst->setattr(attr, value, NULL);
+        return None;
+    }
+}
+
+
 Box* instanceSetattr(Box* _inst, Box* _attr, Box* value) {
     RELEASE_ASSERT(_inst->cls == instance_cls, "");
     BoxedInstance* inst = static_cast<BoxedInstance*>(_inst);
@@ -552,7 +615,7 @@ Box* instanceDelattr(Box* _inst, Box* _attr) {
     return None;
 }
 
-static int instance_setattro(Box* cls, Box* attr, Box* value) noexcept {
+int instance_setattro(Box* cls, Box* attr, Box* value) noexcept {
     try {
         if (value) {
             instanceSetattr(cls, attr, value);
