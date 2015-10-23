@@ -2932,7 +2932,6 @@ Box* callattrInternal(Box* obj, BoxedString* attr, LookupScope scope, CallattrRe
         // TODO should know which args don't need to be guarded, ex if we're guaranteed that they
         // already fit, either since the type inferencer could determine that,
         // or because they only need to fit into an UNKNOWN slot.
-
         if (npassed_args >= 1)
             rewrite_args->arg1->addAttrGuard(offsetof(Box, cls), (intptr_t)arg1->cls);
         if (npassed_args >= 2)
@@ -2948,7 +2947,6 @@ Box* callattrInternal(Box* obj, BoxedString* attr, LookupScope scope, CallattrRe
                 v->addAttrGuard(offsetof(Box, cls), (intptr_t)args[i - 3]->cls);
             }
         }
-
         rewrite_args->args_guarded = true;
     }
 
@@ -3137,6 +3135,10 @@ Box* _callattrEntry(Box* obj, BoxedString* attr, CallattrFlags flags, Box* arg1,
         // rewriter->getArg(3).addGuard(npassed_args);
 
         CallattrRewriteArgs rewrite_args(rewriter.get(), rewriter->getArg(0), rewriter->getReturnDestination());
+
+        if (rewriter->getICInfo()->all_known)
+            rewrite_args.args_guarded = true;
+
         if (npassed_args >= 1)
             rewrite_args.arg1 = rewriter->getArg(3);
         if (npassed_args >= 2)
