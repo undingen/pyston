@@ -653,7 +653,7 @@ static ConcreteCompilerVariable* _call(IREmitter& emitter, const OpInfo& info, l
     if (do_patchpoint) {
         assert(func_addr);
 
-        ICSetupInfo* pp = createCallsiteIC(info.getTypeRecorder(), args.size(), info.getBJitICInfo());
+        ICSetupInfo* pp = createCallsiteIC(info.getTypeRecorder(), args.size(), info.getBJitICInfo(), all_known);
         pp->all_known = all_known;
 
         llvm::Value* uncasted = emitter.createIC(pp, func_addr, llvm_args, info.unw_info, target_exception_style);

@@ -331,9 +331,9 @@ ICSetupInfo* createDelattrIC(TypeRecorder* type_recorder) {
     return ICSetupInfo::initialize(false, 1, 144, ICSetupInfo::Delattr, type_recorder);
 }
 
-ICSetupInfo* createCallsiteIC(TypeRecorder* type_recorder, int num_args, ICInfo* bjit_ic_info) {
-    return ICSetupInfo::initialize(true, numSlots(bjit_ic_info, 4), 640 + 48 * num_args, ICSetupInfo::Callsite,
-                                   type_recorder);
+ICSetupInfo* createCallsiteIC(TypeRecorder* type_recorder, int num_args, ICInfo* bjit_ic_info, bool all_known) {
+    return ICSetupInfo::initialize(true, all_known ? 1 : numSlots(bjit_ic_info, 4), 640 + 48 * num_args,
+                                   ICSetupInfo::Callsite, type_recorder);
 }
 
 ICSetupInfo* createGetGlobalIC(TypeRecorder* type_recorder) {

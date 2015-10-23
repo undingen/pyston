@@ -157,7 +157,7 @@ public:
 
 class ICInfo;
 ICSetupInfo* createGenericIC(TypeRecorder* type_recorder, bool has_return_value, int size);
-ICSetupInfo* createCallsiteIC(TypeRecorder* type_recorder, int num_args, ICInfo* bjit_ic_info);
+ICSetupInfo* createCallsiteIC(TypeRecorder* type_recorder, int num_args, ICInfo* bjit_ic_info, bool all_known);
 ICSetupInfo* createGetGlobalIC(TypeRecorder* type_recorder);
 ICSetupInfo* createGetattrIC(TypeRecorder* type_recorder, ICInfo* bjit_ic_info);
 ICSetupInfo* createSetattrIC(TypeRecorder* type_recorder, ICInfo* bjit_ic_info);
