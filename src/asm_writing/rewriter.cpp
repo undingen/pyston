@@ -357,6 +357,23 @@ void RewriterVar::addAttrGuard(int offset, uint64_t val, bool negate) {
     if (!attr_guards.insert(std::make_tuple(offset, val, negate)).second)
         return; // duplicate guard detected
 
+
+    if (0 && is_arg && offset == offsetof(Box, cls) && !negate) {
+        const auto& guaranteed_classes = rewriter->rewrite->getICInfo()->guaranteed_classes;
+        for (int i = 0; i < std::min((int)rewriter->args.size(), 6); ++i) {
+            if (arg_loc == Location::forArg(i)) {
+                if (guaranteed_classes.size() > i) {
+                    BoxedClass* cls = guaranteed_classes[i];
+                    if (cls && cls == (BoxedClass*)val) {
+                        printf("cls: %p %s %s\n", cls, cls->tp_name, ((BoxedClass*)val)->tp_name);
+                        assert(cls == (BoxedClass*)val);
+                    }
+                }
+                break;
+            }
+        }
+    }
+
     RewriterVar* val_var = rewriter->loadConst(val);
     rewriter->addAction([=]() { rewriter->_addAttrGuard(this, offset, val_var, negate); }, { this, val_var },
                         ActionType::GUARD);
@@ -1986,9 +2003,9 @@ Rewriter* Rewriter::createRewriter(void* rtn_addr, int num_args, const char* deb
     // Horrible non-robust optimization: addresses below this address are probably in the binary (ex the interpreter),
     // so don't do the more-expensive hash table lookup to find it.
     if (rtn_addr > (void*)0x1000000) {
-        ic = getICInfo(rtn_addr);
+        ic = pyston::getICInfo(rtn_addr);
     } else {
-        ASSERT(!getICInfo(rtn_addr), "%p", rtn_addr);
+        ASSERT(!pyston::getICInfo(rtn_addr), "%p", rtn_addr);
     }
 
     log_ic_attempts(debug_name);

@@ -2933,11 +2933,46 @@ Box* callattrInternal(Box* obj, BoxedString* attr, LookupScope scope, CallattrRe
         // already fit, either since the type inferencer could determine that,
         // or because they only need to fit into an UNKNOWN slot.
 
-        if (npassed_args >= 1)
+
+        const auto& guaranteed_classes = rewrite_args->rewriter->getICInfo()->guaranteed_classes;
+
+        bool should_guard1 = true;
+        if (npassed_args >= 1 && guaranteed_classes.size() > 0) {
+            BoxedClass* cls = guaranteed_classes[0];
+            if (cls && cls == arg1->cls) {
+                // printf("cls1: %p %s %s\n", cls, cls->tp_name, arg1->cls->tp_name);
+                assert(cls == arg1->cls);
+                should_guard1 = false;
+            }
+        }
+
+        bool should_guard2 = true;
+        if (npassed_args >= 2 && guaranteed_classes.size() > 1) {
+            BoxedClass* cls = guaranteed_classes[1];
+            if (cls && cls == arg2->cls) {
+                // printf("cls2: %p %s %s\n", cls, cls->tp_name, arg1->cls->tp_name);
+                assert(cls == arg2->cls);
+                should_guard2 = false;
+            }
+        }
+
+        bool should_guard3 = true;
+        if (npassed_args >= 3 && guaranteed_classes.size() > 2) {
+            BoxedClass* cls = guaranteed_classes[2];
+            if (cls && cls == arg3->cls) {
+                // printf("cls3: %p %s %s\n", cls, cls->tp_name, arg1->cls->tp_name);
+                assert(cls == arg3->cls);
+                should_guard3 = false;
+            }
+        }
+
+
+
+        if (npassed_args >= 1 && should_guard1)
             rewrite_args->arg1->addAttrGuard(offsetof(Box, cls), (intptr_t)arg1->cls);
-        if (npassed_args >= 2)
+        if (npassed_args >= 2 && should_guard2)
             rewrite_args->arg2->addAttrGuard(offsetof(Box, cls), (intptr_t)arg2->cls);
-        if (npassed_args >= 3)
+        if (npassed_args >= 3 && should_guard3)
             rewrite_args->arg3->addAttrGuard(offsetof(Box, cls), (intptr_t)arg3->cls);
 
         if (npassed_args > 3) {

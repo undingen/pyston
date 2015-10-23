@@ -100,6 +100,7 @@ public:
     static void* getSlowpathAddr(unsigned int pp_id);
 };
 
+class BoxedClass;
 class ICSetupInfo {
 public:
     enum ICType {
@@ -150,6 +151,8 @@ public:
 
     static ICSetupInfo* initialize(bool has_return_value, int num_slots, int slot_size, ICType type,
                                    TypeRecorder* type_recorder);
+
+    std::vector<BoxedClass*> known_types;
 };
 
 class ICInfo;

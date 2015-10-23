@@ -613,6 +613,8 @@ public:
         return 100 - ic->percentBackedoff() - ic->percentMegamorphic();
     }
 
+    const ICInfo* getICInfo() { return rewrite->getICInfo(); }
+
     friend class RewriterVar;
 };
 

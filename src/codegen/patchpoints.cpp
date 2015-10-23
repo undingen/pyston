@@ -255,6 +255,7 @@ void processStackmap(CompiledFunction* cf, StackMap* stackmap) {
             start_addr, initialization_info.slowpath_start, initialization_info.continue_addr,
             initialization_info.slowpath_rtn_addr, ic, StackInfo(scratch_size, scratch_rsp_offset),
             std::move(initialization_info.live_outs));
+        icinfo->guaranteed_classes = ic->known_types;
 
         assert(cf);
         // TODO: unsafe.  hard to use a unique_ptr here though.
