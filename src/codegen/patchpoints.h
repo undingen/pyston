@@ -118,11 +118,13 @@ public:
     };
 
 private:
-    ICSetupInfo(ICType type, int num_slots, int slot_size, bool has_return_value, TypeRecorder* type_recorder)
+    ICSetupInfo(ICType type, int num_slots, int slot_size, bool has_return_value, TypeRecorder* type_recorder,
+                bool has_const_arg_classes = false)
         : type(type),
           num_slots(num_slots),
           slot_size(slot_size),
           has_return_value(has_return_value),
+          has_const_arg_classes(has_const_arg_classes),
           type_recorder(type_recorder) {}
 
 public:
@@ -130,6 +132,7 @@ public:
 
     const int num_slots, slot_size;
     const bool has_return_value;
+    const bool has_const_arg_classes;
     TypeRecorder* const type_recorder;
 
     int totalSize() const;
@@ -149,12 +152,13 @@ public:
     }
 
     static ICSetupInfo* initialize(bool has_return_value, int num_slots, int slot_size, ICType type,
-                                   TypeRecorder* type_recorder);
+                                   TypeRecorder* type_recorder, bool has_const_arg_classes = false);
 };
 
 class ICInfo;
 ICSetupInfo* createGenericIC(TypeRecorder* type_recorder, bool has_return_value, int size);
-ICSetupInfo* createCallsiteIC(TypeRecorder* type_recorder, int num_args, ICInfo* bjit_ic_info);
+ICSetupInfo* createCallsiteIC(TypeRecorder* type_recorder, int num_args, ICInfo* bjit_ic_info,
+                              bool has_const_arg_classes);
 ICSetupInfo* createGetGlobalIC(TypeRecorder* type_recorder);
 ICSetupInfo* createGetattrIC(TypeRecorder* type_recorder, ICInfo* bjit_ic_info);
 ICSetupInfo* createSetattrIC(TypeRecorder* type_recorder, ICInfo* bjit_ic_info);

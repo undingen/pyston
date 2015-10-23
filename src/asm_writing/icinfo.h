@@ -122,6 +122,7 @@ private:
     TypeRecorder* const type_recorder;
     int retry_in, retry_backoff;
     int times_rewritten;
+    bool has_const_arg_classes;
 
     // for ICSlotRewrite:
     ICSlotInfo* pickEntryForRewrite(const char* debug_name);
@@ -148,6 +149,9 @@ public:
     int percentMegamorphic() const { return times_rewritten * 100 / IC_MEGAMORPHIC_THRESHOLD; }
     int percentBackedoff() const { return retry_backoff; }
     int timesRewritten() const { return times_rewritten; }
+
+    void setHasConstArgClasses(bool b = true) { has_const_arg_classes = b; }
+    bool hasConstArgClasses() const { return has_const_arg_classes; }
 
     friend class ICSlotRewrite;
     static void visitGCReferences(gc::GCVisitor* visitor);
