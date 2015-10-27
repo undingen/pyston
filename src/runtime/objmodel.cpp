@@ -3137,11 +3137,10 @@ Box* _callattrEntry(Box* obj, BoxedString* attr, CallattrFlags flags, Box* arg1,
     }
 
     if (rewriter.get()) {
-        // TODO feel weird about doing this; it either isn't necessary
-        // or this kind of thing is necessary in a lot more places
-        // rewriter->getArg(3).addGuard(npassed_args);
-
         CallattrRewriteArgs rewrite_args(rewriter.get(), rewriter->getArg(0), rewriter->getReturnDestination());
+        if (rewriter->getICInfo()->hasConstArgClasses())
+            rewrite_args.args_guarded = true;
+
         if (npassed_args >= 1)
             rewrite_args.arg1 = rewriter->getArg(3);
         if (npassed_args >= 2)
@@ -4424,11 +4423,10 @@ static Box* runtimeCallEntry(Box* obj, ArgPassSpec argspec, Box* arg1, Box* arg2
 #endif
 
     if (rewriter.get()) {
-        // TODO feel weird about doing this; it either isn't necessary
-        // or this kind of thing is necessary in a lot more places
-        // rewriter->getArg(1).addGuard(npassed_args);
-
         CallRewriteArgs rewrite_args(rewriter.get(), rewriter->getArg(0), rewriter->getReturnDestination());
+        if (rewriter->getICInfo()->hasConstArgClasses())
+            rewrite_args.args_guarded = true;
+
         if (npassed_args >= 1)
             rewrite_args.arg1 = rewriter->getArg(2);
         if (npassed_args >= 2)
