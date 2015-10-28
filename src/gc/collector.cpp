@@ -27,6 +27,15 @@
 #include "core/threading.h"
 #include "core/types.h"
 #include "core/util.h"
+
+#undef likely
+#undef unlikely
+
+#include "gc/concurrentqueue.h"
+
+#define likely(x) __builtin_expect(!!(x), 1)
+#define unlikely(x) __builtin_expect(!!(x), 0)
+
 #include "gc/heap.h"
 #include "runtime/hiddenclass.h"
 #include "runtime/objmodel.h"
@@ -160,10 +169,15 @@ enum TraversalType {
 
 class Worklist {
 protected:
-    ChunkedStack stack;
+    moodycamel::ConcurrentQueue<void*> stack;
+    // ChunkedStack stack;
 
 public:
-    void* next() { return stack.pop(); }
+    void* next() {
+        void* p = NULL;
+        stack.try_dequeue(p);
+        return p;
+    }
 };
 
 class TraversalWorklist : public Worklist {
@@ -172,9 +186,34 @@ class TraversalWorklist : public Worklist {
 public:
     TraversalWorklist(TraversalType type) : visit_type(type) {}
     TraversalWorklist(TraversalType type, const std::unordered_set<void*>& roots) : TraversalWorklist(type) {
-        for (void* p : roots) {
-            ASSERT(!isMarked(GCAllocation::fromUserData(p)), "");
-            addWork(p);
+
+        if (visit_type == TraversalType::MarkPhase) {
+            moodycamel::ProducerToken pt(stack);
+            llvm::SmallVector<void*, 64> buf;
+            for (void* p : roots) {
+                ASSERT(!isMarked(GCAllocation::fromUserData(p)), "");
+
+                GCAllocation* al = GCAllocation::fromUserData(p);
+                if (!isMarked(al)) {
+                    setMark(al);
+                    buf.push_back(p);
+
+                    if (buf.size() == 64) {
+                        stack.enqueue_bulk(pt, &buf[0], buf.size());
+                        buf.clear();
+                    }
+                }
+            }
+            stack.enqueue_bulk(pt, &buf[0], buf.size());
+            buf.clear();
+
+
+        } else {
+            for (void* p : roots) {
+                ASSERT(!isMarked(GCAllocation::fromUserData(p)), "");
+
+                addWork(p);
+            }
         }
     }
 
@@ -235,7 +274,7 @@ public:
                 assert(false);
         }
 
-        stack.push(p);
+        stack.enqueue(p);
     }
 };
 
