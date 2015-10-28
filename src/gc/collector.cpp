@@ -717,7 +717,7 @@ static void graphTraversalMarking(Worklist& worklist, GCVisitor& visitor) {
         }
     };
 
-    const int num_threads = std::min((int)std::thread::hardware_concurrency(), 10);
+    const int num_threads = std::min((int)std::thread::hardware_concurrency() / 2, 10);
     std::thread t[10];
     for (int i = 0; i < num_threads; ++i) {
         t[i] = std::thread(func);
