@@ -715,9 +715,6 @@ static void graphTraversalMarking(Worklist& worklist, GCVisitor& visitor) {
 
             visitByGCKind(p, visitor);
         }
-
-        long us = _t.end();
-        sc_us.log(us);
     };
 
     const int num_threads = std::min((int)std::thread::hardware_concurrency(), 10);
@@ -728,6 +725,9 @@ static void graphTraversalMarking(Worklist& worklist, GCVisitor& visitor) {
     for (int i = 0; i < num_threads; ++i) {
         t[i].join();
     }
+
+    long us = _t.end();
+    sc_us.log(us);
 
 #else
 
