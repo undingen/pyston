@@ -169,10 +169,11 @@ enum TraversalType {
 
 class Worklist {
 protected:
+public:
     moodycamel::ConcurrentQueue<void*> stack;
     // ChunkedStack stack;
 
-public:
+
     void* next() {
         void* p = NULL;
         stack.try_dequeue(p);
@@ -675,6 +676,58 @@ static void graphTraversalMarking(Worklist& worklist, GCVisitor& visitor) {
     static StatCounter sc_marked_objs("gc_marked_object_count");
     Timer _t("traversing", /*min_usec=*/10000);
 
+#if 1
+    auto func = [&]() {
+        constexpr int buf_size = 16;
+        void* buf[buf_size];
+        int num_items = 0;
+
+        moodycamel::ConsumerToken ct(worklist.stack);
+
+        auto next = [&]() -> void* {
+            if (unlikely(!num_items)) {
+                num_items = worklist.stack.try_dequeue_bulk(ct, buf, buf_size);
+                if (!num_items)
+                    return 0;
+            }
+
+            return buf[--num_items];
+        };
+
+
+        while (void* p = next()) {
+            sc_marked_objs.log();
+
+            GCAllocation* al = GCAllocation::fromUserData(p);
+
+#if TRACE_GC_MARKING
+            if (al->kind_id == GCKind::PYTHON)
+                GC_TRACE_LOG("Looking at %s object %p\n", static_cast<Box*>(p)->cls->tp_name, p);
+            else
+                GC_TRACE_LOG("Looking at non-python allocation %p\n", p);
+#endif
+
+            // Won't work once we visit objects in more ways than just marking them.
+            assert(isMarked(al) || MOVING_GC);
+
+            visitByGCKind(p, visitor);
+        }
+
+        long us = _t.end();
+        sc_us.log(us);
+    };
+
+    const int num_threads = std::min((int)std::thread::hardware_concurrency(), 10);
+    std::thread t[10];
+    for (int i = 0; i < num_threads; ++i) {
+        t[i] = std::thread(func);
+    }
+    for (int i = 0; i < num_threads; ++i) {
+        t[i].join();
+    }
+
+#else
+
     while (void* p = worklist.next()) {
         sc_marked_objs.log();
 
@@ -695,6 +748,7 @@ static void graphTraversalMarking(Worklist& worklist, GCVisitor& visitor) {
 
     long us = _t.end();
     sc_us.log(us);
+#endif
 }
 
 static void callWeakrefCallback(PyWeakReference* head) {
