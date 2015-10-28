@@ -726,11 +726,7 @@ static void graphTraversalMarking(Worklist& worklist, GCVisitor& visitor) {
         t[i].join();
     }
 
-    long us = _t.end();
-    sc_us.log(us);
-
 #else
-
     while (void* p = worklist.next()) {
         sc_marked_objs.log();
 
@@ -748,10 +744,10 @@ static void graphTraversalMarking(Worklist& worklist, GCVisitor& visitor) {
 
         visitByGCKind(p, visitor);
     }
+#endif
 
     long us = _t.end();
     sc_us.log(us);
-#endif
 }
 
 static void callWeakrefCallback(PyWeakReference* head) {
