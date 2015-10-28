@@ -678,7 +678,7 @@ static void graphTraversalMarking(Worklist& worklist, GCVisitor& visitor) {
 
 #if 1
     auto func = [&]() {
-        constexpr int buf_size = 16;
+        constexpr int buf_size = 8;
         void* buf[buf_size];
         int num_items = 0;
 
@@ -690,7 +690,7 @@ static void graphTraversalMarking(Worklist& worklist, GCVisitor& visitor) {
                 if (!num_items)
                     return 0;
                 for (int i=0; i<num_items; ++i) {
-                    __builtin_prefetch(buf[num_items-i-1]);
+                    __builtin_prefetch(GCAllocation::fromUserData(buf[num_items-i-1]));
                 }
             }
 
