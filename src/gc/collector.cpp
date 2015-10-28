@@ -689,6 +689,9 @@ static void graphTraversalMarking(Worklist& worklist, GCVisitor& visitor) {
                 num_items = worklist.stack.try_dequeue_bulk(ct, buf, buf_size);
                 if (!num_items)
                     return 0;
+                for (int i=0; i<num_items; ++i) {
+                    __builtin_prefetch(buf[num_items-i-1]);
+                }
             }
 
             return buf[--num_items];
