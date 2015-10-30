@@ -314,6 +314,10 @@ void ASTInterpreter::finishJITing(CFGBlock* continue_block) {
         return;
     int exit_offset = jit->finishCompilation();
     jit.reset();
+
+    static int times = 0;
+    times++;
+
     if (continue_block && !continue_block->code)
         startJITing(continue_block, exit_offset);
 }
@@ -326,6 +330,8 @@ Box* ASTInterpreter::execJITedBlock(CFGBlock* b) {
         if (!next_block)
             return rtn.second;
     } catch (ExcInfo e) {
+        if (!current_inst)
+            throw e;
         AST_stmt* stmt = getCurrentStatement();
         if (stmt->type != AST_TYPE::Invoke)
             throw e;
@@ -397,8 +403,19 @@ Box* ASTInterpreter::executeInner(ASTInterpreter& interpreter, CFGBlock* start_b
 
         for (AST_stmt* s : interpreter.current_block->body) {
             interpreter.current_inst = s;
-            if (interpreter.jit)
-                interpreter.jit->emitSetCurrentInst(s);
+            if (interpreter.jit) {
+                if (s->type != AST_TYPE::Assign) {
+                    interpreter.jit->emitSetCurrentInst(s);
+                } else {
+                    AST_Assign* assign = (AST_Assign*)s;
+                    if (assign->value->type != AST_TYPE::Name
+                        || ((AST_Name*)assign->value)->lookup_type != ScopeInfo::VarScopeType::FAST) {
+                        interpreter.jit->emitSetCurrentInst(s);
+                    } else
+                        interpreter.jit->emitSetCurrentInst(0);
+                }
+            }
+
             v = interpreter.visit_stmt(s);
         }
     }

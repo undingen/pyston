@@ -196,6 +196,9 @@ private:
 
     llvm::SmallVector<PPInfo, 8> pp_infos;
 
+    // llvm::DenseSet<InternedString> cant_be_null;
+    AST_stmt* last_node = (AST_stmt*)0x1;
+
 public:
     JitFragmentWriter(CFGBlock* block, std::unique_ptr<ICInfo> ic_info, std::unique_ptr<ICSlotRewrite> rewrite,
                       int code_offset, int num_bytes_overlapping, void* entry_code, JitCodeBlock& code_block);

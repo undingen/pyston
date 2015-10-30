@@ -500,6 +500,9 @@ void JitFragmentWriter::emitSetBlockLocal(InternedString s, RewriterVar* v) {
 }
 
 void JitFragmentWriter::emitSetCurrentInst(AST_stmt* node) {
+    if (node == last_node)
+        return;
+    last_node = node;
     getInterp()->setAttr(ASTInterpreterJitInterface::getCurrentInstOffset(), imm(node));
 }
 
@@ -771,6 +774,10 @@ Box* JitFragmentWriter::runtimeCallHelper(Box* obj, ArgPassSpec argspec, TypeRec
 }
 
 void JitFragmentWriter::_emitGetLocal(RewriterVar* val_var, const char* name) {
+    val_var->getInReg();
+    val_var->bumpUse();
+    return;
+
     assembler::Register var_reg = val_var->getInReg();
     assembler->test(var_reg, var_reg);
     val_var->bumpUse();
