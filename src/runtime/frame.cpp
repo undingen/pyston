@@ -15,8 +15,10 @@
 #include "Python.h"
 #include "pythread.h"
 
+#include "codegen/ast_interpreter.h"
 #include "codegen/unwinding.h"
 #include "core/ast.h"
+#include "runtime/code.h"
 #include "runtime/types.h"
 
 namespace pyston {
@@ -31,7 +33,7 @@ class BoxedFrame : public Box {
 private:
     // Call boxFrame to get a BoxedFrame object.
     BoxedFrame(PythonFrameIterator it) __attribute__((visibility("default")))
-    : it(std::move(it)), thread_id(PyThread_get_thread_ident()) {}
+    : it(std::move(it)), thread_id(PyThread_get_thread_ident()), vregs(NULL), _back(NULL) {}
 
 public:
     PythonFrameIterator it;
@@ -39,8 +41,12 @@ public:
 
     Box* _globals;
     Box* _code;
+    Box** vregs;
+    BoxedFrame* _back;
 
     void update() {
+        if (vregs)
+            return;
         // This makes sense as an exception, but who knows how the user program would react
         // (it might swallow it and do something different)
         RELEASE_ASSERT(thread_id == PyThread_get_thread_ident(),
@@ -84,6 +90,8 @@ public:
 
         v->visit(&f->_code);
         v->visit(&f->_globals);
+        v->visit(&f->vregs);
+        v->visit(&f->_back);
     }
 
     static void simpleDestructor(Box* b) {
@@ -99,6 +107,18 @@ public:
 
     static Box* locals(Box* obj, void*) {
         auto f = static_cast<BoxedFrame*>(obj);
+        if (f->vregs) {
+            CLFunction* clfunc = ((BoxedCode*)f->_code)->f;
+
+            if (clfunc->source->scope_info->areLocalsFromModule()) {
+                // printf("module\n");
+                return clfunc->source->parent_module->getAttrWrapper();
+            }
+
+            return localsForInterpretedFrame(f->vregs, clfunc->source->cfg, true);
+        }
+
+
         f->update();
         return f->it.fastLocalsToBoxedLocals();
     }
@@ -111,6 +131,12 @@ public:
     static Box* back(Box* obj, void*) {
         auto f = static_cast<BoxedFrame*>(obj);
         f->update();
+
+        if (f->_back || f->vregs) {
+            if (!f->_back)
+                return None;
+            return f->_back;
+        }
 
         PythonFrameIterator it = f->it.back();
         if (!it.exists())
@@ -136,8 +162,15 @@ public:
             f->_globals = globals;
             f->_code = (Box*)cl->getCode();
         }
-
         return fi->frame_obj;
+    }
+
+    static Box* boxFrame(BoxedCode* code, Box** vregs, Box* next_frame) {
+        auto frame = new BoxedFrame(PythonFrameIterator());
+        frame->_code = (Box*)code;
+        frame->vregs = vregs;
+        frame->_back = (BoxedFrame*)next_frame;
+        return frame;
     }
 };
 
@@ -147,6 +180,22 @@ Box* getFrame(int depth) {
         return NULL;
 
     return BoxedFrame::boxFrame(std::move(it));
+}
+
+Box* createFrame(BoxedCode* code, Box** vregs, Box* next_frame) {
+    if (!vregs)
+        return next_frame;
+    // vregs = (Box**)gc_compat_malloc(1);
+    if (!next_frame) {
+        // next_frame = builtins_module;
+    }
+    return BoxedFrame::boxFrame(code, vregs, next_frame);
+}
+
+Box* backFrame(Box* frame) {
+    if (!frame)
+        return NULL;
+    return ((BoxedFrame*)frame)->_back;
 }
 
 void setupFrame() {

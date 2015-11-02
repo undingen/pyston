@@ -1123,6 +1123,8 @@ Box* codeForCLFunction(CLFunction*);
 CLFunction* clfunctionFromCode(Box* code);
 
 Box* getFrame(int depth);
+Box* createFrame(BoxedCode* code, Box** vregs, Box* next_frame);
+Box* backFrame(Box* frame);
 
 inline BoxedString* boxString(llvm::StringRef s) {
     if (s.size() <= 1) {

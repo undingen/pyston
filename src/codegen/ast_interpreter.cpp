@@ -35,6 +35,7 @@
 #include "core/stats.h"
 #include "core/thread_utils.h"
 #include "core/util.h"
+#include "runtime/code.h"
 #include "runtime/generator.h"
 #include "runtime/import.h"
 #include "runtime/inline/boxing.h"
@@ -67,6 +68,7 @@ extern "C" Box* executeInnerAndSetupFrame(ASTInterpreter& interpreter, CFGBlock*
 class ASTInterpreter {
 public:
     ASTInterpreter(CLFunction* clfunc, Box** vregs);
+    ~ASTInterpreter();
 
     void initArguments(BoxedClosure* closure, BoxedGenerator* generator, Box* arg1, Box* arg2, Box* arg3, Box** args);
 
@@ -177,6 +179,7 @@ public:
     BoxedClosure* getPassedClosure() { return passed_closure; }
     Box** getVRegs() { return vregs; }
     const ScopeInfo* getScopeInfo() { return scope_info; }
+    SourceInfo* getSourceInfo() { return source_info; }
 
     void addSymbol(InternedString name, Box* value, bool allow_duplicates);
     void setGenerator(Box* gen);
@@ -247,7 +250,13 @@ ASTInterpreter::ASTInterpreter(CLFunction* clfunc, Box** vregs)
 
     scope_info = source_info->getScopeInfo();
 
+    _PyThreadState_Current->frame = (_frame*)createFrame(clfunc->getCode(), vregs, (Box*)_PyThreadState_Current->frame);
+
     assert(scope_info);
+}
+
+ASTInterpreter::~ASTInterpreter() {
+    _PyThreadState_Current->frame = (_frame*)backFrame((Box*)_PyThreadState_Current->frame);
 }
 
 void ASTInterpreter::initArguments(BoxedClosure* _closure, BoxedGenerator* _generator, Box* arg1, Box* arg2, Box* arg3,
@@ -796,7 +805,12 @@ Value ASTInterpreter::visit_invoke(AST_Invoke* node) {
 
         auto source = getCL()->source.get();
         node->cxx_exception_count++;
-        caughtCxxException(LineInfo(node->lineno, node->col_offset, source->getFn(), source->getName()), &e);
+
+        // BoxedFrame* frame = (BoxedFrame*)createFrame(new BoxedCode(clfunc), vregs,
+        // (Box*)_PyThreadState_Current->frame);
+
+        caughtCxxException(LineInfo(node->lineno, node->col_offset, source->getFn(), source->getName()), &e,
+                           (BoxedFrame*)_PyThreadState_Current->frame);
 
         next_block = node->exc_dest;
         last_exception = e;
@@ -1973,15 +1987,14 @@ FrameInfo* getFrameInfoForInterpretedFrame(void* frame_ptr) {
     return interpreter->getFrameInfo();
 }
 
-BoxedDict* localsForInterpretedFrame(void* frame_ptr, bool only_user_visible) {
-    ASTInterpreter* interpreter = getInterpreterFromFramePtr(frame_ptr);
-    assert(interpreter);
+
+BoxedDict* localsForInterpretedFrame(Box** vregs, CFG* cfg, bool only_user_visible) {
     BoxedDict* rtn = new BoxedDict();
-    for (auto& l : interpreter->getSymVRegMap()) {
+    for (auto& l : cfg->sym_vreg_map) {
         if (only_user_visible && (l.first.s()[0] == '!' || l.first.s()[0] == '#'))
             continue;
 
-        Box* val = interpreter->getVRegs()[l.second];
+        Box* val = vregs[l.second];
         if (val) {
             assert(gc::isValidGCObject(val));
             rtn->d[l.first.getBox()] = val;
@@ -1989,6 +2002,12 @@ BoxedDict* localsForInterpretedFrame(void* frame_ptr, bool only_user_visible) {
     }
 
     return rtn;
+}
+
+BoxedDict* localsForInterpretedFrame(void* frame_ptr, bool only_user_visible) {
+    ASTInterpreter* interpreter = getInterpreterFromFramePtr(frame_ptr);
+    assert(interpreter);
+    return localsForInterpretedFrame(interpreter->getVRegs(), interpreter->getSourceInfo()->cfg, only_user_visible);
 }
 
 BoxedClosure* passedClosureForInterpretedFrame(void* frame_ptr) {
