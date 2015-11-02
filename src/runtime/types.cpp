@@ -90,6 +90,18 @@ extern "C" void initstrop();
 
 namespace pyston {
 
+__thread int frame_num;
+extern "C" void initFrame(Box* code, Box** vregs, Box* globals) {
+    // printf("++frame: %d %d\n", ++frame_num, countFrames((Box*)_PyThreadState_Current->frame));
+    _PyThreadState_Current->frame
+        = (_frame*)createFrame((BoxedCode*)code, vregs, (Box*)_PyThreadState_Current->frame, globals);
+}
+
+extern "C" void deinitFrame(void) {
+    // printf("--frame: %d\n", --frame_num);
+    _PyThreadState_Current->frame = (_frame*)backFrame((Box*)_PyThreadState_Current->frame);
+}
+
 void setupGC();
 
 bool IN_SHUTDOWN = false;

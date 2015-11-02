@@ -373,6 +373,9 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
     llvm::BasicBlock* osr_entry_block = NULL;
     llvm::BasicBlock* osr_unbox_block_end = NULL; // the block after type guards where we up/down-convert things
     ConcreteSymbolTable* osr_syms = NULL;         // syms after conversion
+
+    bool created_frame = false;
+
     if (entry_descriptor != NULL) {
         llvm::BasicBlock* osr_unbox_block = llvm::BasicBlock::Create(g.context, "osr_unbox", irstate->getLLVMFunction(),
                                                                      &irstate->getLLVMFunction()->getEntryBlock());
@@ -388,6 +391,28 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
         osr_unbox_block_end = osr_unbox_block;
         std::unique_ptr<IREmitter> entry_emitter(createIREmitter(irstate, osr_entry_block_end));
         std::unique_ptr<IREmitter> unbox_emitter(createIREmitter(irstate, osr_unbox_block_end));
+
+        if (!irstate->vregs) {
+            int num_vregs = irstate->getCL()->calculateNumVRegs();
+            num_vregs = irstate->getCL()->source->cfg->num_vregs_user_visible;
+            /*
+            num_vregs = 0;
+            for (auto&& e : irstate->getSourceInfo()->cfg->sym_vreg_map) {
+                if (e.first.c_str()[0] != '#' && e.first.c_str()[0] != '!') {
+                    num_vregs++;
+                }
+            }
+            */
+            // irstate->vregs = getNullPtr(g.llvm_value_type_ptr_ptr);
+            irstate->vregs
+                = entry_emitter->getBuilder()->CreateCall(g.funcs.createVRegs, { getConstantInt(num_vregs) });
+        }
+        if (!created_frame) {
+            created_frame = true;
+            entry_emitter->getBuilder()->CreateCall(
+                g.funcs.initFrame, { embedRelocatablePtr(irstate->getCL()->getCode(), g.llvm_value_type_ptr),
+                                     irstate->vregs, irstate->getGlobals() });
+        }
 
         CFGBlock* target_block = entry_descriptor->backedge->target;
 
@@ -538,6 +563,27 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
         PHITable* phis = new PHITable();
         created_phis[block] = phis;
 
+        if (!irstate->vregs) {
+            int num_vregs = irstate->getCL()->calculateNumVRegs();
+            num_vregs = irstate->getCL()->source->cfg->num_vregs_user_visible;
+            /*
+            num_vregs = 0;
+            for (auto&& e : irstate->getSourceInfo()->cfg->sym_vreg_map) {
+                if (e.first.c_str()[0] != '#' && e.first.c_str()[0] != '!') {
+                    num_vregs++;
+                }
+            }
+            */
+            // irstate->vregs = getNullPtr(g.llvm_value_type_ptr_ptr);
+            irstate->vregs = emitter->getBuilder()->CreateCall(g.funcs.createVRegs, { getConstantInt(num_vregs) });
+        }
+        if (!created_frame) {
+            created_frame = true;
+            emitter->getBuilder()->CreateCall(g.funcs.initFrame,
+                                              { embedRelocatablePtr(irstate->getCL()->getCode(), g.llvm_value_type_ptr),
+                                                irstate->vregs, irstate->getGlobals() });
+        }
+
         // Set initial symbol table:
         // If we're in the starting block, no phis or symbol table changes for us.
         // Generate function entry code instead.
@@ -594,6 +640,9 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
                 // printf("%ld\n", args.size());
                 llvm::CallInst* postcall = emitter->getBuilder()->CreateCall(bitcast_r, args);
                 postcall->setTailCall(true);
+
+
+                emitter->getBuilder()->CreateCall(g.funcs.deinitFrame);
                 emitter->getBuilder()->CreateRet(postcall);
 
                 emitter->getBuilder()->SetInsertPoint(llvm_entry_blocks[source->cfg->getStartingBlock()]);

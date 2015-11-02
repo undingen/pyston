@@ -30,8 +30,10 @@ public:
     Box* tb_next;
     LineInfo line;
     Box* py_lines;
+    BoxedFrame* frame;
 
-    BoxedTraceback(LineInfo line, Box* tb_next) : tb_next(tb_next), line(std::move(line)), py_lines(NULL) {}
+    BoxedTraceback(LineInfo line, Box* tb_next, BoxedFrame* frame = NULL)
+        : tb_next(tb_next), line(std::move(line)), py_lines(NULL), frame(frame) {}
 
     DEFAULT_CLASS(traceback_cls);
 
@@ -40,7 +42,7 @@ public:
     static void gcHandler(gc::GCVisitor* v, Box* b);
 
     // somewhat equivalent to PyTraceBack_Here
-    static void here(LineInfo lineInfo, Box** tb);
+    static void here(LineInfo lineInfo, Box** tb, BoxedFrame* frame = NULL);
 };
 
 void printTraceback(Box* b);

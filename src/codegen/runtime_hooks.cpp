@@ -191,6 +191,9 @@ void initGlobalFuncs(GlobalState& g) {
     GET(boxInstanceMethod);
     GET(boxBool);
     GET(unboxBool);
+    GET(createVRegs);
+    GET(initFrame);
+    GET(deinitFrame);
     GET(createTuple);
     GET(createList);
     GET(createDict);

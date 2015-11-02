@@ -570,7 +570,9 @@ public:
                 // TODO: shouldn't fetch this multiple times?
                 frame_iter.getCurrentStatement()->cxx_exception_count++;
                 auto line_info = lineInfoForFrame(&frame_iter);
-                exceptionAtLine(line_info, &exc_info.traceback);
+
+                Box* frame = (Box*)_PyThreadState_Current->frame;
+                exceptionAtLine(line_info, &exc_info.traceback, (BoxedFrame*)frame);
             }
         }
     }
@@ -849,6 +851,7 @@ void PythonFrameIterator::operator=(PythonFrameIterator&& rhs) {
 PythonFrameIterator::PythonFrameIterator(std::unique_ptr<PythonFrameIteratorImpl> impl) {
     std::swap(this->impl, impl);
 }
+
 
 // TODO factor getDeoptState and fastLocalsToBoxedLocals
 // because they are pretty ugly but have a pretty repetitive pattern.
