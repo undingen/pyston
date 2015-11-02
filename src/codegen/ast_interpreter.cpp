@@ -1788,7 +1788,7 @@ Box* astInterpretFunction(CLFunction* clfunc, Box* closure, Box* generator, Box*
     Box** vregs = NULL;
     int num_vregs = calculateNumVRegs(clfunc);
     if (num_vregs > 0) {
-        vregs = (Box**)alloca(sizeof(Box*) * num_vregs);
+        vregs = (Box**)gc_alloc(sizeof(Box*) * num_vregs, gc::GCKind::CONSERVATIVE);
         memset(vregs, 0, sizeof(Box*) * num_vregs);
     }
 
@@ -1819,7 +1819,7 @@ Box* astInterpretFunctionEval(CLFunction* clfunc, Box* globals, Box* boxedLocals
     Box** vregs = NULL;
     int num_vregs = calculateNumVRegs(clfunc);
     if (num_vregs > 0) {
-        vregs = (Box**)alloca(sizeof(Box*) * num_vregs);
+        vregs = (Box**)gc_alloc(sizeof(Box*) * num_vregs, gc::GCKind::CONSERVATIVE);
         memset(vregs, 0, sizeof(Box*) * num_vregs);
     }
 
@@ -1850,7 +1850,7 @@ static Box* astInterpretDeoptInner(CLFunction* clfunc, AST_expr* after_expr, AST
     Box** vregs = NULL;
     int num_vregs = calculateNumVRegs(clfunc);
     if (num_vregs > 0) {
-        vregs = (Box**)alloca(sizeof(Box*) * num_vregs);
+        vregs = (Box**)gc_alloc(sizeof(Box*) * num_vregs, gc::GCKind::CONSERVATIVE);
         memset(vregs, 0, sizeof(Box*) * num_vregs);
     }
 
