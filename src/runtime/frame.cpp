@@ -33,7 +33,7 @@ class BoxedFrame : public Box {
 private:
     // Call boxFrame to get a BoxedFrame object.
     BoxedFrame(PythonFrameIterator it) __attribute__((visibility("default")))
-    : it(std::move(it)), thread_id(PyThread_get_thread_ident()), vregs(NULL), _back(NULL) {}
+    : it(std::move(it)), thread_id(PyThread_get_thread_ident()), vregs(NULL), _back(NULL), _locals(NULL) {}
 
 public:
     PythonFrameIterator it;
@@ -43,10 +43,11 @@ public:
     Box* _code;
     Box** vregs;
     BoxedFrame* _back;
+    Box* _locals;
 
     void update() {
-        if (vregs)
-            return;
+        // if (vregs || _locals)
+        return;
         // This makes sense as an exception, but who knows how the user program would react
         // (it might swallow it and do something different)
         RELEASE_ASSERT(thread_id == PyThread_get_thread_ident(),
@@ -92,6 +93,7 @@ public:
         v->visit(&f->_globals);
         v->visit(&f->vregs);
         v->visit(&f->_back);
+        v->visit(&f->_locals);
     }
 
     static void simpleDestructor(Box* b) {
@@ -107,6 +109,15 @@ public:
 
     static Box* locals(Box* obj, void*) {
         auto f = static_cast<BoxedFrame*>(obj);
+        if (f->_locals)
+            return f->_locals;
+
+        CLFunction* clfunc = ((BoxedCode*)f->_code)->f;
+        if (clfunc->source->scope_info->areLocalsFromModule()) {
+            // printf("module\n");
+            return clfunc->source->parent_module->getAttrWrapper();
+        }
+
         if (f->vregs) {
             CLFunction* clfunc = ((BoxedCode*)f->_code)->f;
 
@@ -132,7 +143,7 @@ public:
         auto f = static_cast<BoxedFrame*>(obj);
         f->update();
 
-        if (f->_back || f->vregs) {
+        if (1 || f->_back || f->vregs || f->_locals) {
             if (!f->_back)
                 return None;
             return f->_back;
@@ -183,8 +194,8 @@ Box* getFrame(int depth) {
 }
 
 Box* createFrame(BoxedCode* code, Box** vregs, Box* next_frame) {
-    if (!vregs)
-        return next_frame;
+    // if (!vregs)
+    //    return next_frame;
     // vregs = (Box**)gc_compat_malloc(1);
     if (!next_frame) {
         // next_frame = builtins_module;
@@ -196,6 +207,10 @@ Box* backFrame(Box* frame) {
     if (!frame)
         return NULL;
     return ((BoxedFrame*)frame)->_back;
+}
+
+void frameSetLocals(Box* frame, Box* locals) {
+    ((BoxedFrame*)frame)->_locals = locals;
 }
 
 void setupFrame() {

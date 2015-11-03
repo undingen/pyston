@@ -90,6 +90,14 @@ extern "C" void initstrop();
 
 namespace pyston {
 
+extern "C" void initFrame(Box* code) {
+    _PyThreadState_Current->frame = (_frame*)createFrame((BoxedCode*)code, 0, (Box*)_PyThreadState_Current->frame);
+}
+
+extern "C" void deinitFrame(void) {
+    _PyThreadState_Current->frame = (_frame*)backFrame((Box*)_PyThreadState_Current->frame);
+}
+
 void setupGC();
 
 bool IN_SHUTDOWN = false;

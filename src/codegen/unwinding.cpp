@@ -570,7 +570,14 @@ public:
                 // TODO: shouldn't fetch this multiple times?
                 frame_iter.getCurrentStatement()->cxx_exception_count++;
                 auto line_info = lineInfoForFrame(&frame_iter);
-                exceptionAtLine(line_info, &exc_info.traceback, NULL);
+
+                Box* frame = (Box*)_PyThreadState_Current->frame;
+                Box* locals = fastLocalsToBoxedLocals();
+                frameSetLocals(frame, locals);
+
+                exceptionAtLine(line_info, &exc_info.traceback, (BoxedFrame*)frame);
+
+                deinitFrame();
             }
         }
     }

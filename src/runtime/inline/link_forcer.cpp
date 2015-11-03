@@ -73,6 +73,8 @@ void force() {
     FORCE(createSet);
     FORCE(decodeUTF8StringPtr);
     FORCE(createVRegs);
+    FORCE(initFrame);
+    FORCE(deinitFrame);
 
     FORCE(getattr);
     FORCE(getattr_capi);

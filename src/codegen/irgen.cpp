@@ -373,6 +373,9 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
     llvm::BasicBlock* osr_entry_block = NULL;
     llvm::BasicBlock* osr_unbox_block_end = NULL; // the block after type guards where we up/down-convert things
     ConcreteSymbolTable* osr_syms = NULL;         // syms after conversion
+
+    bool created_frame = false;
+
     if (entry_descriptor != NULL) {
         llvm::BasicBlock* osr_unbox_block = llvm::BasicBlock::Create(g.context, "osr_unbox", irstate->getLLVMFunction(),
                                                                      &irstate->getLLVMFunction()->getEntryBlock());
@@ -389,7 +392,7 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
         std::unique_ptr<IREmitter> entry_emitter(createIREmitter(irstate, osr_entry_block_end));
         std::unique_ptr<IREmitter> unbox_emitter(createIREmitter(irstate, osr_unbox_block_end));
 
-        if (!irstate->vregs) {
+        if (0 && !irstate->vregs) {
             int num_vregs = irstate->getCL()->calculateNumVRegs();
             num_vregs = 0;
             for (auto&& e : irstate->getSourceInfo()->cfg->sym_vreg_map) {
@@ -399,6 +402,13 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
             }
             irstate->vregs
                 = entry_emitter->getBuilder()->CreateCall(g.funcs.createVRegs, { getConstantInt(num_vregs) });
+        }
+        if (!created_frame) {
+            created_frame = true;
+            entry_emitter->getBuilder()->CreateCall(
+                g.funcs.initFrame, { embedRelocatablePtr(irstate->getCL()->getCode(), g.llvm_value_type_ptr) });
+            //_PyThreadState_Current->frame = (_frame*)createFrame(clfunc->getCode(), vregs,
+            //(Box*)_PyThreadState_Current->frame);
         }
 
         CFGBlock* target_block = entry_descriptor->backedge->target;
@@ -550,7 +560,7 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
         PHITable* phis = new PHITable();
         created_phis[block] = phis;
 
-        if (!irstate->vregs) {
+        if (0 && !irstate->vregs) {
             int num_vregs = irstate->getCL()->calculateNumVRegs();
             num_vregs = 0;
             for (auto&& e : irstate->getSourceInfo()->cfg->sym_vreg_map) {
@@ -559,6 +569,13 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
                 }
             }
             irstate->vregs = emitter->getBuilder()->CreateCall(g.funcs.createVRegs, { getConstantInt(num_vregs) });
+        }
+        if (!created_frame) {
+            created_frame = true;
+            emitter->getBuilder()->CreateCall(
+                g.funcs.initFrame, { embedRelocatablePtr(irstate->getCL()->getCode(), g.llvm_value_type_ptr) });
+            //_PyThreadState_Current->frame = (_frame*)createFrame(clfunc->getCode(), vregs,
+            //(Box*)_PyThreadState_Current->frame);
         }
 
         // Set initial symbol table:
@@ -617,6 +634,9 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
                 // printf("%ld\n", args.size());
                 llvm::CallInst* postcall = emitter->getBuilder()->CreateCall(bitcast_r, args);
                 postcall->setTailCall(true);
+
+
+                emitter->getBuilder()->CreateCall(g.funcs.deinitFrame);
                 emitter->getBuilder()->CreateRet(postcall);
 
                 emitter->getBuilder()->SetInsertPoint(llvm_entry_blocks[source->cfg->getStartingBlock()]);

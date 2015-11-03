@@ -169,6 +169,8 @@ extern "C" double unboxFloat(Box* b);
 extern "C" Box* createDict();
 extern "C" Box* createList();
 extern "C" Box** createVRegs(uint64_t num_vregs);
+extern "C" void initFrame(Box* code);
+extern "C" void deinitFrame(void);
 extern "C" Box* createSlice(Box* start, Box* stop, Box* step);
 extern "C" Box* createTuple(int64_t nelts, Box** elts);
 extern "C" void printFloat(double d);
@@ -1125,6 +1127,7 @@ CLFunction* clfunctionFromCode(Box* code);
 
 Box* getFrame(int depth);
 Box* createFrame(BoxedCode* code, Box** vregs, Box* next_frame);
+void frameSetLocals(Box* frame, Box* locals);
 Box* backFrame(Box* frame);
 
 inline BoxedString* boxString(llvm::StringRef s) {
