@@ -401,6 +401,8 @@ public:
             return source->is_generator;
         return false;
     }
+
+    int calculateNumVRegs();
 };
 
 CLFunction* createRTFunction(int num_args, bool takes_varargs, bool takes_kwargs,

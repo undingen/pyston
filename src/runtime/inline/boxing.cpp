@@ -30,6 +30,13 @@ extern "C" Box* createList() {
     return new BoxedList();
 }
 
+extern "C" Box** createVRegs(uint64_t num_vregs) {
+    // printf("createVregs called %lu\n", num_vregs);
+    Box** vregs = (Box**)gc_alloc(sizeof(Box*) * num_vregs, gc::GCKind::PRECISE);
+    memset(vregs, 0, sizeof(Box*) * num_vregs);
+    return vregs;
+}
+
 BoxedString* boxStringTwine(const llvm::Twine& t) {
     llvm::SmallString<256> Vec;
     return boxString(t.toStringRef(Vec));

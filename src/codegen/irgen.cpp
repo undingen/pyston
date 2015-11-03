@@ -544,6 +544,11 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
         if (block == source->cfg->getStartingBlock()) {
             assert(entry_descriptor == NULL);
 
+            int num_vregs = irstate->getCL()->calculateNumVRegs();
+            irstate->vregs = emitter->getBuilder()->CreateCall(g.funcs.createVRegs, { getConstantInt(num_vregs) });
+
+
+
             if (ENABLE_REOPT && effort < EffortLevel::MAXIMAL && source->ast != NULL
                 && source->ast->type != AST_TYPE::Module) {
                 llvm::BasicBlock* preentry_bb
