@@ -389,6 +389,11 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
         std::unique_ptr<IREmitter> entry_emitter(createIREmitter(irstate, osr_entry_block_end));
         std::unique_ptr<IREmitter> unbox_emitter(createIREmitter(irstate, osr_unbox_block_end));
 
+        if (!irstate->vregs) {
+            int num_vregs = irstate->getCL()->calculateNumVRegs();
+            irstate->vregs = entry_emitter->getBuilder()->CreateCall(g.funcs.createVRegs, { getConstantInt(num_vregs) });
+        }
+
         CFGBlock* target_block = entry_descriptor->backedge->target;
 
         std::vector<llvm::Value*> func_args;
@@ -538,16 +543,16 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
         PHITable* phis = new PHITable();
         created_phis[block] = phis;
 
+        if (!irstate->vregs) {
+            int num_vregs = irstate->getCL()->calculateNumVRegs();
+            irstate->vregs = emitter->getBuilder()->CreateCall(g.funcs.createVRegs, { getConstantInt(num_vregs) });
+        }
+
         // Set initial symbol table:
         // If we're in the starting block, no phis or symbol table changes for us.
         // Generate function entry code instead.
         if (block == source->cfg->getStartingBlock()) {
             assert(entry_descriptor == NULL);
-
-            int num_vregs = irstate->getCL()->calculateNumVRegs();
-            irstate->vregs = emitter->getBuilder()->CreateCall(g.funcs.createVRegs, { getConstantInt(num_vregs) });
-
-
 
             if (ENABLE_REOPT && effort < EffortLevel::MAXIMAL && source->ast != NULL
                 && source->ast->type != AST_TYPE::Module) {
