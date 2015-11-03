@@ -109,6 +109,8 @@ public:
 
     static Box* locals(Box* obj, void*) {
         auto f = static_cast<BoxedFrame*>(obj);
+
+#if !(GC_ALLOC_FRAME)
         if (f->_locals)
             return f->_locals;
 
@@ -117,6 +119,7 @@ public:
             // printf("module\n");
             return clfunc->source->parent_module->getAttrWrapper();
         }
+#endif
 
         if (f->vregs) {
             CLFunction* clfunc = ((BoxedCode*)f->_code)->f;

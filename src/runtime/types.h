@@ -169,7 +169,7 @@ extern "C" double unboxFloat(Box* b);
 extern "C" Box* createDict();
 extern "C" Box* createList();
 extern "C" Box** createVRegs(uint64_t num_vregs);
-extern "C" void initFrame(Box* code);
+extern "C" void initFrame(Box* code, Box** vregs);
 extern "C" void deinitFrame(void);
 extern "C" Box* createSlice(Box* start, Box* stop, Box* step);
 extern "C" Box* createTuple(int64_t nelts, Box** elts);

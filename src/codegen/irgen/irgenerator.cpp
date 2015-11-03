@@ -1757,11 +1757,10 @@ private:
                 emitter.getBuilder()->CreateStore(val->makeConverted(emitter, UNKNOWN)->getValue(), gep);
             }
 
-
-            // assert(irstate->getSourceInfo()->cfg->sym_vreg_map.count(name));
-            // int vreg = irstate->getSourceInfo()->cfg->sym_vreg_map[name];
-            // assert(vreg >= 0);
-
+#if GC_ALLOC_FRAME
+            assert(irstate->getSourceInfo()->cfg->sym_vreg_map.count(name));
+            int vreg = irstate->getSourceInfo()->cfg->sym_vreg_map[name];
+            assert(vreg >= 0);
 
             /*
             auto* gep = emitter.getBuilder()->CreateConstInBoundsGEP1_64(
@@ -1769,10 +1768,10 @@ private:
                 { llvm::ConstantInt::get(g.i64, vreg) });
              */
 
-            // auto* gep = emitter.getBuilder()->CreateConstInBoundsGEP1_64(
-            //            irstate->vregs, vreg);
-            // auto* llvm_val = val->makeConverted(emitter, UNKNOWN)->getValue();
-            // emitter.getBuilder()->CreateStore(llvm_val, gep);
+            auto* gep = emitter.getBuilder()->CreateConstInBoundsGEP1_64(irstate->vregs, vreg);
+            auto* llvm_val = val->makeConverted(emitter, UNKNOWN)->getValue();
+            emitter.getBuilder()->CreateStore(llvm_val, gep);
+#endif
         }
     }
 

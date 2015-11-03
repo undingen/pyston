@@ -250,7 +250,11 @@ ASTInterpreter::ASTInterpreter(CLFunction* clfunc, Box** vregs)
 
     scope_info = source_info->getScopeInfo();
 
-    initFrame(clfunc->getCode());
+#if GC_ALLOC_FRAME
+    initFrame(clfunc->getCode(), vregs);
+#else
+    initFrame(clfunc->getCode(), NULL);
+#endif
 
     assert(scope_info);
 }
@@ -806,14 +810,18 @@ Value ASTInterpreter::visit_invoke(AST_Invoke* node) {
         auto source = getCL()->source.get();
         node->cxx_exception_count++;
 
-        // BoxedFrame* frame = (BoxedFrame*)createFrame(new BoxedCode(clfunc), vregs,
-        // (Box*)_PyThreadState_Current->frame);
+// BoxedFrame* frame = (BoxedFrame*)createFrame(new BoxedCode(clfunc), vregs,
+// (Box*)_PyThreadState_Current->frame);
 
+#if !(GC_ALLOC_FRAME)
         Box* locals = localsForInterpretedFrame(vregs, source_info->cfg, true);
         frameSetLocals((Box*)_PyThreadState_Current->frame, locals);
+#endif
 
         caughtCxxException(LineInfo(node->lineno, node->col_offset, source->getFn(), source->getName()), &e,
                            (BoxedFrame*)_PyThreadState_Current->frame);
+
+
 
         next_block = node->exc_dest;
         last_exception = e;
@@ -1783,8 +1791,11 @@ Box* astInterpretFunction(CLFunction* clfunc, Box* closure, Box* generator, Box*
     Box** vregs = NULL;
     int num_vregs = clfunc->calculateNumVRegs();
     if (num_vregs > 0) {
-        // vregs = (Box**)gc_alloc(sizeof(Box*) * num_vregs, gc::GCKind::PRECISE);
+#if GC_ALLOC_FRAME
+        vregs = (Box**)gc_alloc(sizeof(Box*) * num_vregs, gc::GCKind::PRECISE);
+#else
         vregs = (Box**)alloca(sizeof(Box*) * num_vregs);
+#endif
         memset(vregs, 0, sizeof(Box*) * num_vregs);
     }
 
@@ -1815,8 +1826,11 @@ Box* astInterpretFunctionEval(CLFunction* clfunc, Box* globals, Box* boxedLocals
     Box** vregs = NULL;
     int num_vregs = clfunc->calculateNumVRegs();
     if (num_vregs > 0) {
-        // vregs = (Box**)gc_alloc(sizeof(Box*) * num_vregs, gc::GCKind::PRECISE);
+#if GC_ALLOC_FRAME
+        vregs = (Box**)gc_alloc(sizeof(Box*) * num_vregs, gc::GCKind::PRECISE);
+#else
         vregs = (Box**)alloca(sizeof(Box*) * num_vregs);
+#endif
         memset(vregs, 0, sizeof(Box*) * num_vregs);
     }
 
@@ -1847,8 +1861,11 @@ static Box* astInterpretDeoptInner(CLFunction* clfunc, AST_expr* after_expr, AST
     Box** vregs = NULL;
     int num_vregs = clfunc->calculateNumVRegs();
     if (num_vregs > 0) {
-        // vregs = (Box**)gc_alloc(sizeof(Box*) * num_vregs, gc::GCKind::PRECISE);
+#if GC_ALLOC_FRAME
+        vregs = (Box**)gc_alloc(sizeof(Box*) * num_vregs, gc::GCKind::PRECISE);
+#else
         vregs = (Box**)alloca(sizeof(Box*) * num_vregs);
+#endif
         memset(vregs, 0, sizeof(Box*) * num_vregs);
     }
 

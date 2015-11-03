@@ -90,11 +90,14 @@ extern "C" void initstrop();
 
 namespace pyston {
 
-extern "C" void initFrame(Box* code) {
-    _PyThreadState_Current->frame = (_frame*)createFrame((BoxedCode*)code, 0, (Box*)_PyThreadState_Current->frame);
+__thread int frame_num;
+extern "C" void initFrame(Box* code, Box** vregs) {
+    // printf("++frame: %d\n", ++frame_num);
+    _PyThreadState_Current->frame = (_frame*)createFrame((BoxedCode*)code, vregs, (Box*)_PyThreadState_Current->frame);
 }
 
 extern "C" void deinitFrame(void) {
+    // printf("--frame: %d\n", --frame_num);
     _PyThreadState_Current->frame = (_frame*)backFrame((Box*)_PyThreadState_Current->frame);
 }
 

@@ -392,24 +392,35 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
         std::unique_ptr<IREmitter> entry_emitter(createIREmitter(irstate, osr_entry_block_end));
         std::unique_ptr<IREmitter> unbox_emitter(createIREmitter(irstate, osr_unbox_block_end));
 
-        if (0 && !irstate->vregs) {
+#if GC_ALLOC_FRAME
+        if (!irstate->vregs) {
             int num_vregs = irstate->getCL()->calculateNumVRegs();
+            /*
             num_vregs = 0;
             for (auto&& e : irstate->getSourceInfo()->cfg->sym_vreg_map) {
                 if (e.first.c_str()[0] != '#' && e.first.c_str()[0] != '!') {
                     num_vregs++;
                 }
             }
+            */
             irstate->vregs
                 = entry_emitter->getBuilder()->CreateCall(g.funcs.createVRegs, { getConstantInt(num_vregs) });
         }
         if (!created_frame) {
             created_frame = true;
             entry_emitter->getBuilder()->CreateCall(
-                g.funcs.initFrame, { embedRelocatablePtr(irstate->getCL()->getCode(), g.llvm_value_type_ptr) });
-            //_PyThreadState_Current->frame = (_frame*)createFrame(clfunc->getCode(), vregs,
-            //(Box*)_PyThreadState_Current->frame);
+                g.funcs.initFrame,
+                { embedRelocatablePtr(irstate->getCL()->getCode(), g.llvm_value_type_ptr), irstate->vregs });
         }
+
+#else
+        if (!created_frame) {
+            created_frame = true;
+            entry_emitter->getBuilder()->CreateCall(
+                g.funcs.initFrame, { embedRelocatablePtr(irstate->getCL()->getCode(), g.llvm_value_type_ptr),
+                                     getNullPtr(g.llvm_value_type_ptr_ptr) });
+        }
+#endif
 
         CFGBlock* target_block = entry_descriptor->backedge->target;
 
@@ -560,23 +571,34 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
         PHITable* phis = new PHITable();
         created_phis[block] = phis;
 
-        if (0 && !irstate->vregs) {
+#if GC_ALLOC_FRAME
+        if (!irstate->vregs) {
             int num_vregs = irstate->getCL()->calculateNumVRegs();
+
+            /*
             num_vregs = 0;
             for (auto&& e : irstate->getSourceInfo()->cfg->sym_vreg_map) {
                 if (e.first.c_str()[0] != '#' && e.first.c_str()[0] != '!') {
                     num_vregs++;
                 }
             }
+            */
             irstate->vregs = emitter->getBuilder()->CreateCall(g.funcs.createVRegs, { getConstantInt(num_vregs) });
         }
         if (!created_frame) {
             created_frame = true;
             emitter->getBuilder()->CreateCall(
-                g.funcs.initFrame, { embedRelocatablePtr(irstate->getCL()->getCode(), g.llvm_value_type_ptr) });
-            //_PyThreadState_Current->frame = (_frame*)createFrame(clfunc->getCode(), vregs,
-            //(Box*)_PyThreadState_Current->frame);
+                g.funcs.initFrame,
+                { embedRelocatablePtr(irstate->getCL()->getCode(), g.llvm_value_type_ptr), irstate->vregs });
         }
+#else
+        if (!created_frame) {
+            created_frame = true;
+            emitter->getBuilder()->CreateCall(g.funcs.initFrame,
+                                              { embedRelocatablePtr(irstate->getCL()->getCode(), g.llvm_value_type_ptr),
+                                                getNullPtr(g.llvm_value_type_ptr_ptr) });
+        }
+#endif
 
         // Set initial symbol table:
         // If we're in the starting block, no phis or symbol table changes for us.
