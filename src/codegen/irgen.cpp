@@ -391,7 +391,14 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
 
         if (!irstate->vregs) {
             int num_vregs = irstate->getCL()->calculateNumVRegs();
-            irstate->vregs = entry_emitter->getBuilder()->CreateCall(g.funcs.createVRegs, { getConstantInt(num_vregs) });
+            num_vregs = 0;
+            for (auto&& e : irstate->getSourceInfo()->cfg->sym_vreg_map) {
+                if (e.first.c_str()[0] != '#' && e.first.c_str()[0] != '!') {
+                    num_vregs++;
+                }
+            }
+            irstate->vregs
+                = entry_emitter->getBuilder()->CreateCall(g.funcs.createVRegs, { getConstantInt(num_vregs) });
         }
 
         CFGBlock* target_block = entry_descriptor->backedge->target;
@@ -545,6 +552,12 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
 
         if (!irstate->vregs) {
             int num_vregs = irstate->getCL()->calculateNumVRegs();
+            num_vregs = 0;
+            for (auto&& e : irstate->getSourceInfo()->cfg->sym_vreg_map) {
+                if (e.first.c_str()[0] != '#' && e.first.c_str()[0] != '!') {
+                    num_vregs++;
+                }
+            }
             irstate->vregs = emitter->getBuilder()->CreateCall(g.funcs.createVRegs, { getConstantInt(num_vregs) });
         }
 

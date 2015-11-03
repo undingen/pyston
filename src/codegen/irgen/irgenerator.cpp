@@ -1768,10 +1768,10 @@ private:
                 { llvm::ConstantInt::get(g.i64, vreg) });
              */
 
-            auto* gep = emitter.getBuilder()->CreateConstInBoundsGEP1_64(
-                        irstate->vregs, vreg);
-            auto* llvm_val = val->makeConverted(emitter, UNKNOWN)->getValue();
-            emitter.getBuilder()->CreateStore(llvm_val, gep);
+            // auto* gep = emitter.getBuilder()->CreateConstInBoundsGEP1_64(
+            //            irstate->vregs, vreg);
+            // auto* llvm_val = val->makeConverted(emitter, UNKNOWN)->getValue();
+            // emitter.getBuilder()->CreateStore(llvm_val, gep);
         }
     }
 
