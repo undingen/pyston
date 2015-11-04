@@ -179,18 +179,24 @@ public:
         return fi->frame_obj;
     }
 
-    static Box* boxFrame(BoxedCode* code, Box** vregs, Box* next_frame) {
+    static Box* boxFrame(BoxedCode* code, Box** vregs, Box* next_frame, Box* globals) {
         auto frame = new BoxedFrame(PythonFrameIterator());
         frame->_code = (Box*)code;
         frame->vregs = vregs;
         frame->_back = (BoxedFrame*)next_frame;
+        frame->_globals = globals;
         return frame;
     }
 };
 
 Box* getFrame(int depth) {
-    assert(depth == 0);
-    return (Box*)PyThreadState_GET()->frame;
+    BoxedFrame* f = (BoxedFrame*)PyThreadState_GET()->frame;
+    while (depth > 0 && f != NULL) {
+        f = f->_back;
+        --depth;
+    }
+    RELEASE_ASSERT(f, "");
+    return f;
 
     auto it = getPythonFrame(depth);
     if (!it.exists())
@@ -199,14 +205,14 @@ Box* getFrame(int depth) {
     return BoxedFrame::boxFrame(std::move(it));
 }
 
-Box* createFrame(BoxedCode* code, Box** vregs, Box* next_frame) {
+Box* createFrame(BoxedCode* code, Box** vregs, Box* next_frame, Box* globals) {
     // if (!vregs)
     //    return next_frame;
     // vregs = (Box**)gc_compat_malloc(1);
     if (!next_frame) {
         // next_frame = builtins_module;
     }
-    return BoxedFrame::boxFrame(code, vregs, next_frame);
+    return BoxedFrame::boxFrame(code, vregs, next_frame, globals);
 }
 
 Box* backFrame(Box* frame) {

@@ -67,7 +67,7 @@ extern "C" Box* executeInnerAndSetupFrame(ASTInterpreter& interpreter, CFGBlock*
  */
 class ASTInterpreter {
 public:
-    ASTInterpreter(CLFunction* clfunc, Box** vregs);
+    ASTInterpreter(CLFunction* clfunc, Box** vregs, Box* globals);
     ~ASTInterpreter();
 
     void initArguments(BoxedClosure* closure, BoxedGenerator* generator, Box* arg1, Box* arg2, Box* arg3, Box** args);
@@ -187,7 +187,6 @@ public:
     void setCreatedClosure(Box* closure);
     void setBoxedLocals(Box*);
     void setFrameInfo(const FrameInfo* frame_info);
-    void setGlobals(Box* globals);
 
     friend struct pyston::ASTInterpreterJitInterface;
 };
@@ -225,12 +224,7 @@ void ASTInterpreter::setFrameInfo(const FrameInfo* frame_info) {
     this->frame_info = *frame_info;
 }
 
-void ASTInterpreter::setGlobals(Box* globals) {
-    assert(gc::isValidGCObject(globals));
-    this->globals = globals;
-}
-
-ASTInterpreter::ASTInterpreter(CLFunction* clfunc, Box** vregs)
+ASTInterpreter::ASTInterpreter(CLFunction* clfunc, Box** vregs, Box* globals)
     : current_block(0),
       current_inst(0),
       clfunc(clfunc),
@@ -245,15 +239,15 @@ ASTInterpreter::ASTInterpreter(CLFunction* clfunc, Box** vregs)
       edgecount(0),
       frame_info(ExcInfo(NULL, NULL, NULL)),
       parent_module(source_info->parent_module),
-      globals(0),
+      globals(globals),
       should_jit(false) {
 
     scope_info = source_info->getScopeInfo();
 
 #if GC_ALLOC_FRAME
-    initFrame(clfunc->getCode(), vregs);
+    initFrame(clfunc->getCode(), vregs, globals);
 #else
-    initFrame(clfunc->getCode(), NULL);
+    initFrame(clfunc->getCode(), NULL, globals);
 #endif
 
     assert(scope_info);
@@ -1804,19 +1798,19 @@ Box* astInterpretFunction(CLFunction* clfunc, Box* closure, Box* generator, Box*
     }
 
     ++clfunc->times_interpreted;
-    ASTInterpreter interpreter(clfunc, vregs);
+
+    assert((!globals) == clfunc->source->scoping->areGlobalsFromModule());
+    if (!globals) {
+        globals = source_info->parent_module;
+    }
+
+
+    ASTInterpreter interpreter(clfunc, vregs, globals);
 
     ScopeInfo* scope_info = clfunc->source->getScopeInfo();
 
     if (unlikely(scope_info->usesNameLookup())) {
         interpreter.setBoxedLocals(new BoxedDict());
-    }
-
-    assert((!globals) == clfunc->source->scoping->areGlobalsFromModule());
-    if (globals) {
-        interpreter.setGlobals(globals);
-    } else {
-        interpreter.setGlobals(source_info->parent_module);
     }
 
     interpreter.initArguments((BoxedClosure*)closure, (BoxedGenerator*)generator, arg1, arg2, arg3, args);
@@ -1838,13 +1832,14 @@ Box* astInterpretFunctionEval(CLFunction* clfunc, Box* globals, Box* boxedLocals
         memset(vregs, 0, sizeof(Box*) * num_vregs);
     }
 
-    ASTInterpreter interpreter(clfunc, vregs);
+    assert(!clfunc->source->scoping->areGlobalsFromModule());
+    assert(globals);
+
+    ASTInterpreter interpreter(clfunc, vregs, globals);
     interpreter.initArguments(NULL, NULL, NULL, NULL, NULL, NULL);
     interpreter.setBoxedLocals(boxedLocals);
 
-    assert(!clfunc->source->scoping->areGlobalsFromModule());
-    assert(globals);
-    interpreter.setGlobals(globals);
+
 
     Box* v = ASTInterpreter::execute(interpreter);
     return v ? v : None;
@@ -1873,9 +1868,11 @@ static Box* astInterpretDeoptInner(CLFunction* clfunc, AST_expr* after_expr, AST
         memset(vregs, 0, sizeof(Box*) * num_vregs);
     }
 
-    ASTInterpreter interpreter(clfunc, vregs);
-    if (source_info->scoping->areGlobalsFromModule())
-        interpreter.setGlobals(source_info->parent_module);
+    Box* globals = source_info->scoping->areGlobalsFromModule() ? source_info->parent_module : NULL;
+    if (frame_state.locals->d.count(boxString(PASSED_GLOBALS_NAME)))
+        globals = frame_state.locals->d[boxString(PASSED_GLOBALS_NAME)];
+    ASTInterpreter interpreter(clfunc, vregs, globals);
+
 
     for (const auto& p : *frame_state.locals) {
         assert(p.first->cls == str_cls);
@@ -1887,8 +1884,8 @@ static Box* astInterpretDeoptInner(CLFunction* clfunc, AST_expr* after_expr, AST
         } else if (name == CREATED_CLOSURE_NAME) {
             interpreter.setCreatedClosure(p.second);
         } else if (name == PASSED_GLOBALS_NAME) {
-            assert(!source_info->scoping->areGlobalsFromModule());
-            interpreter.setGlobals(p.second);
+            // assert(!source_info->scoping->areGlobalsFromModule());
+            // interpreter.setGlobals(p.second);
         } else {
             InternedString interned = clfunc->source->getInternedStrings().get(name);
             interpreter.addSymbol(interned, p.second, false);

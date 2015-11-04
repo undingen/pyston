@@ -409,8 +409,8 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
         if (!created_frame) {
             created_frame = true;
             entry_emitter->getBuilder()->CreateCall(
-                g.funcs.initFrame,
-                { embedRelocatablePtr(irstate->getCL()->getCode(), g.llvm_value_type_ptr), irstate->vregs });
+                g.funcs.initFrame, { embedRelocatablePtr(irstate->getCL()->getCode(), g.llvm_value_type_ptr),
+                                     irstate->vregs, irstate->getGlobals() });
         }
 
 #else
@@ -587,9 +587,9 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
         }
         if (!created_frame) {
             created_frame = true;
-            emitter->getBuilder()->CreateCall(
-                g.funcs.initFrame,
-                { embedRelocatablePtr(irstate->getCL()->getCode(), g.llvm_value_type_ptr), irstate->vregs });
+            emitter->getBuilder()->CreateCall(g.funcs.initFrame,
+                                              { embedRelocatablePtr(irstate->getCL()->getCode(), g.llvm_value_type_ptr),
+                                                irstate->vregs, irstate->getGlobals() });
         }
 #else
         if (!created_frame) {
