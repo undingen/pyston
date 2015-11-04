@@ -189,6 +189,9 @@ public:
 };
 
 Box* getFrame(int depth) {
+    assert(depth == 0);
+    return (Box*)PyThreadState_GET()->frame;
+
     auto it = getPythonFrame(depth);
     if (!it.exists())
         return NULL;
@@ -220,12 +223,14 @@ int countFrames(Box* frame) {
 
 void frameSetLocals(Box* frame, Box* locals) {
     ((BoxedFrame*)frame)->_locals = locals;
+    /*
     while (frame) {
         ((BoxedFrame*)frame)
             ->_locals
 
                 frame = ((BoxedFrame*)frame)->_back;
     }
+    */
 }
 
 void setupFrame() {
