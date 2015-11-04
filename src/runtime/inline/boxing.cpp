@@ -32,7 +32,8 @@ extern "C" Box* createList() {
 
 extern "C" Box** createVRegs(uint64_t num_vregs) {
     // printf("createVregs called %lu\n", num_vregs);
-    Box** vregs = (Box**)gc_alloc(sizeof(Box*) * num_vregs, gc::GCKind::PRECISE);
+    // Box** vregs = (Box**)gc_alloc(sizeof(Box*) * num_vregs, gc::GCKind::PRECISE);
+    Box** vregs = (Box**)malloc(sizeof(Box*) * num_vregs);
     memset(vregs, 0, sizeof(Box*) * num_vregs);
     return vregs;
 }
