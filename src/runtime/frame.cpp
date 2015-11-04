@@ -212,6 +212,12 @@ Box* backFrame(Box* frame) {
     return ((BoxedFrame*)frame)->_back;
 }
 
+int countFrames(Box* frame) {
+    if (!frame)
+        return 0;
+    return countFrames(((BoxedFrame*)frame)->_back) + 1;
+}
+
 void frameSetLocals(Box* frame, Box* locals) {
     ((BoxedFrame*)frame)->_locals = locals;
 }

@@ -260,6 +260,7 @@ ASTInterpreter::ASTInterpreter(CLFunction* clfunc, Box** vregs)
 }
 
 ASTInterpreter::~ASTInterpreter() {
+    deinitFrame();
 }
 
 void ASTInterpreter::initArguments(BoxedClosure* _closure, BoxedGenerator* _generator, Box* arg1, Box* arg2, Box* arg3,
@@ -346,6 +347,8 @@ Box* ASTInterpreter::execJITedBlock(CFGBlock* b) {
         stmt->cxx_exception_count++;
         caughtCxxException(LineInfo(stmt->lineno, stmt->col_offset, source->getFn(), source->getName()), &e);
 
+        // deinitFrame();
+
         next_block = ((AST_Invoke*)stmt)->exc_dest;
         last_exception = e;
     }
@@ -414,7 +417,7 @@ Box* ASTInterpreter::executeInner(ASTInterpreter& interpreter, CFGBlock* start_b
             v = interpreter.visit_stmt(s);
         }
     }
-    deinitFrame();
+    // deinitFrame();
     return v.o;
 }
 
@@ -822,6 +825,7 @@ Value ASTInterpreter::visit_invoke(AST_Invoke* node) {
                            (BoxedFrame*)_PyThreadState_Current->frame);
 
 
+        // deinitFrame();
 
         next_block = node->exc_dest;
         last_exception = e;

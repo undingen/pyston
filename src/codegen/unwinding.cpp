@@ -578,7 +578,7 @@ public:
 #endif
                 exceptionAtLine(line_info, &exc_info.traceback, (BoxedFrame*)frame);
 
-                deinitFrame();
+                // deinitFrame();
             }
         }
     }
