@@ -33,7 +33,12 @@ class BoxedFrame : public Box {
 private:
     // Call boxFrame to get a BoxedFrame object.
     BoxedFrame() __attribute__((visibility("default")))
-    : thread_id(PyThread_get_thread_ident()), vregs(NULL), _back(NULL), _locals(NULL), _stmt(NULL) {}
+    : thread_id(PyThread_get_thread_ident()),
+      vregs(NULL),
+      _back(NULL),
+      _locals(NULL),
+      _stmt(NULL),
+      is_referenced(false) {}
 
 public:
     long thread_id;
@@ -44,6 +49,7 @@ public:
     BoxedFrame* _back;
     Box* _locals;
     AST_stmt* _stmt;
+    bool is_referenced;
 
     // cpython frame objects have the following attributes
 
@@ -145,17 +151,51 @@ Box* getFrame(int depth) {
         f = f->_back;
         --depth;
     }
+
+    markFrameReferenced(f);
+
     RELEASE_ASSERT(f, "");
     return f;
 }
 
+void markFrameReferenced(BoxedFrame* frame) {
+    while (frame) {
+        frame->is_referenced = true;
+        frame = frame->_back;
+    }
+}
+
+constexpr int max_free_frames = 16;
+static BoxedFrame* free_frames[max_free_frames];
+static int num_free_frames;
+static bool init_num_free_frames;
+
+
 Box* createFrame(BoxedCode* code, Box** vregs, Box* next_frame, Box* globals) {
+    if (num_free_frames) {
+        BoxedFrame* frame = free_frames[--num_free_frames];
+        frame->_code = (Box*)code;
+        frame->vregs = vregs;
+        frame->_back = (BoxedFrame*)next_frame;
+        frame->_globals = globals;
+        return frame;
+    }
+    if (unlikely(!init_num_free_frames)) {
+        gc::registerPotentialRootRange(&free_frames[0], &free_frames[8]);
+        init_num_free_frames = true;
+    }
+
     return BoxedFrame::boxFrame(code, vregs, next_frame, globals);
 }
 
 Box* backFrame(Box* frame) {
     if (!frame)
         return NULL;
+    if (num_free_frames < max_free_frames && !((BoxedFrame*)frame)->is_referenced) {
+        free_frames[num_free_frames] = (BoxedFrame*)frame;
+        ++num_free_frames;
+    }
+
     return ((BoxedFrame*)frame)->_back;
 }
 

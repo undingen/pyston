@@ -262,7 +262,7 @@ extern "C" void caughtCapiException(AST_stmt* stmt, void* _source_info) {
     PyThreadState* tstate = PyThreadState_GET();
 
     exceptionAtLine(LineInfo(stmt->lineno, stmt->col_offset, source->getFn(), source->getName()),
-                    &tstate->curexc_traceback, NULL);
+                    &tstate->curexc_traceback);
 }
 
 extern "C" void reraiseCapiExcAsCxx() {
@@ -275,11 +275,11 @@ extern "C" void reraiseCapiExcAsCxx() {
     throw e;
 }
 
-void caughtCxxException(LineInfo line_info, ExcInfo* exc_info, BoxedFrame* frame) {
+void caughtCxxException(LineInfo line_info, ExcInfo* exc_info) {
     static StatCounter frames_unwound("num_frames_unwound_python");
     frames_unwound.log();
 
-    exceptionAtLine(line_info, &exc_info->traceback, frame);
+    exceptionAtLine(line_info, &exc_info->traceback);
 }
 
 
@@ -297,9 +297,9 @@ bool exceptionAtLineCheck() {
     return true;
 }
 
-void exceptionAtLine(LineInfo line_info, Box** traceback, BoxedFrame* frame) {
+void exceptionAtLine(LineInfo line_info, Box** traceback) {
     if (exceptionAtLineCheck())
-        BoxedTraceback::here(line_info, traceback, frame);
+        BoxedTraceback::here(line_info, traceback);
 }
 
 void startReraise() {

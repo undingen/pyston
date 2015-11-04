@@ -1129,6 +1129,7 @@ Box* getFrame(int depth);
 Box* createFrame(BoxedCode* code, Box** vregs, Box* next_frame, Box* globals);
 Box* backFrame(Box* frame);
 int countFrames(Box* frame);
+void markFrameReferenced(BoxedFrame* frame);
 
 inline BoxedString* boxString(llvm::StringRef s) {
     if (s.size() <= 1) {

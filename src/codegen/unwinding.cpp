@@ -571,8 +571,7 @@ public:
                 frame_iter.getCurrentStatement()->cxx_exception_count++;
                 auto line_info = lineInfoForFrame(&frame_iter);
 
-                Box* frame = (Box*)_PyThreadState_Current->frame;
-                exceptionAtLine(line_info, &exc_info.traceback, (BoxedFrame*)frame);
+                exceptionAtLine(line_info, &exc_info.traceback);
             }
         }
     }

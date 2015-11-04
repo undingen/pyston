@@ -116,7 +116,9 @@ Box* BoxedTraceback::getLines(Box* b) {
     return tb->py_lines;
 }
 
-void BoxedTraceback::here(LineInfo lineInfo, Box** tb, BoxedFrame* frame) {
+void BoxedTraceback::here(LineInfo lineInfo, Box** tb) {
+    BoxedFrame* frame = (BoxedFrame*)_PyThreadState_Current->frame;
+    markFrameReferenced(frame);
     *tb = new BoxedTraceback(std::move(lineInfo), *tb, frame);
 }
 

@@ -803,11 +803,7 @@ Value ASTInterpreter::visit_invoke(AST_Invoke* node) {
         auto source = getCL()->source.get();
         node->cxx_exception_count++;
 
-        caughtCxxException(LineInfo(node->lineno, node->col_offset, source->getFn(), source->getName()), &e,
-                           (BoxedFrame*)_PyThreadState_Current->frame);
-
-
-        // deinitFrame();
+        caughtCxxException(LineInfo(node->lineno, node->col_offset, source->getFn(), source->getName()), &e);
 
         next_block = node->exc_dest;
         last_exception = e;

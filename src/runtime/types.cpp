@@ -92,6 +92,8 @@ namespace pyston {
 
 __thread int frame_num;
 extern "C" void initFrame(Box* code, Box** vregs, Box* globals) {
+
+
     // printf("++frame: %d %d\n", ++frame_num, countFrames((Box*)_PyThreadState_Current->frame));
     _PyThreadState_Current->frame
         = (_frame*)createFrame((BoxedCode*)code, vregs, (Box*)_PyThreadState_Current->frame, globals);
