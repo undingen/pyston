@@ -395,6 +395,7 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
 #if GC_ALLOC_FRAME
         if (!irstate->vregs) {
             int num_vregs = irstate->getCL()->calculateNumVRegs();
+            num_vregs = irstate->getCL()->source->cfg->num_vregs_user_visible;
             /*
             num_vregs = 0;
             for (auto&& e : irstate->getSourceInfo()->cfg->sym_vreg_map) {
@@ -574,7 +575,7 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
 #if GC_ALLOC_FRAME
         if (!irstate->vregs) {
             int num_vregs = irstate->getCL()->calculateNumVRegs();
-
+            num_vregs = irstate->getCL()->source->cfg->num_vregs_user_visible;
             /*
             num_vregs = 0;
             for (auto&& e : irstate->getSourceInfo()->cfg->sym_vreg_map) {
