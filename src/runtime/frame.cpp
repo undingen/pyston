@@ -57,6 +57,8 @@ public:
         if (exited)
             return;
 
+        printf("cl: %p\n", it.getCL());
+
         // This makes sense as an exception, but who knows how the user program would react
         // (it might swallow it and do something different)
         RELEASE_ASSERT(thread_id == PyThread_get_thread_ident(),
@@ -224,9 +226,10 @@ extern "C" void initFrame(bool is_interpreter, uint64_t ip, uint64_t bp, CLFunct
     */
     BoxedFrame* frame = (BoxedFrame*)PyThreadState_GET()->frame;
 
+
     PyThreadState_GET()->frame
         = (struct _frame*)BoxedFrame::boxFrame(PythonFrameIterator(is_interpreter, ip, bp, cl, cf), frame);
-    printf("+ init frame:%p  %p %p\n", cl, PyThreadState_GET()->frame, frame);
+    printf("+ init frame:%p  %p %p %s\n", cl, PyThreadState_GET()->frame, frame, cl->source->getName()->c_str());
 }
 
 extern "C" void deinitFrame(void) {

@@ -26,7 +26,7 @@ int MAX_OPT_ITERATIONS = 1;
 
 bool ASSEMBLY_LOGGING = false;
 bool CONTINUE_AFTER_FATAL = false;
-bool FORCE_INTERPRETER = false;
+bool FORCE_INTERPRETER = true;
 bool FORCE_OPTIMIZE = false;
 bool SHOW_DISASM = false;
 bool PROFILE = false;
