@@ -36,6 +36,7 @@
 #include "codegen/irgen/hooks.h"
 #include "codegen/irgen/irgenerator.h"
 #include "codegen/stackmaps.h"
+#include "core/cfg.h"
 #include "core/util.h"
 #include "runtime/ctxswitching.h"
 #include "runtime/objmodel.h"
@@ -558,9 +559,6 @@ public:
     }
 
     void handleCFrame(unw_cursor_t* cursor) {
-        unw_word_t ip = get_cursor_ip(cursor);
-        unw_word_t bp = get_cursor_bp(cursor);
-
         PythonFrameIteratorImpl frame_iter;
         bool found_frame = pystack_extractor.handleCFrame(cursor, &frame_iter);
         if (found_frame) {
@@ -891,6 +889,18 @@ DeoptState getDeoptState() {
                 }
             }
 
+            Box** vregs = frame_iter->getFrameInfo()->vregs;
+            for (const auto& p : cf->md->source->cfg->sym_vreg_map_user) {
+                if (is_undefined.count(p.first.s()))
+                    continue;
+                Box* v = vregs[p.second];
+                if (!v)
+                    continue;
+
+                ASSERT(gc::isValidGCObject(v), "%p", v);
+                d->d[p.first.getBox()] = v;
+            }
+
             for (const auto& p : cf->location_map->names) {
                 if (p.first()[0] == '!')
                     continue;
@@ -953,67 +963,13 @@ Box* PythonFrameIterator::fastLocalsToBoxedLocals() {
 
     if (impl->getId().type == PythonFrameId::COMPILED) {
         CompiledFunction* cf = impl->getCF();
-        d = new BoxedDict();
-
         uint64_t ip = impl->getId().ip;
 
         assert(ip > cf->code_start);
         unsigned offset = ip - cf->code_start;
 
-        assert(cf->location_map);
-
-        // We have to detect + ignore any entries for variables that
-        // could have been defined (so they have entries) but aren't (so the
-        // entries point to uninitialized memory).
-        std::unordered_set<std::string> is_undefined;
-
-        for (const auto& p : cf->location_map->names) {
-            if (!startswith(p.first(), "!is_defined_"))
-                continue;
-
-            auto e = p.second.findEntry(offset);
-            if (e) {
-                const auto& locs = e->locations;
-
-                assert(locs.size() == 1);
-                uint64_t v = impl->readLocation(locs[0]);
-                if ((v & 1) == 0)
-                    is_undefined.insert(p.first().substr(12));
-            }
-        }
-
-        for (const auto& p : cf->location_map->names) {
-            if (p.first()[0] == '!')
-                continue;
-
-            if (p.first()[0] == '#')
-                continue;
-
-            if (is_undefined.count(p.first()))
-                continue;
-
-            auto e = p.second.findEntry(offset);
-            if (e) {
-                const auto& locs = e->locations;
-
-                llvm::SmallVector<uint64_t, 1> vals;
-                // printf("%s: %s\n", p.first().c_str(), e.type->debugName().c_str());
-                // printf("%ld locs\n", locs.size());
-
-                for (auto& loc : locs) {
-                    auto v = impl->readLocation(loc);
-                    vals.push_back(v);
-                    // printf("%d %d %d: 0x%lx\n", loc.type, loc.regnum, loc.offset, v);
-                    // dump((void*)v);
-                }
-
-                Box* v = e->type->deserializeFromFrame(vals);
-                // printf("%s: (pp id %ld) %p\n", p.first().c_str(), e._debug_pp_id, v);
-                assert(gc::isValidGCObject(v));
-                d->d[boxString(p.first())] = v;
-            }
-        }
-
+        frame_info = impl->getFrameInfo();
+        d = localsForInterpretedFrame(frame_info->vregs, cf->md->source->cfg, true);
         closure = NULL;
         if (cf->location_map->names.count(PASSED_CLOSURE_NAME) > 0) {
             auto e = cf->location_map->names[PASSED_CLOSURE_NAME].findEntry(offset);
@@ -1031,8 +987,6 @@ Box* PythonFrameIterator::fastLocalsToBoxedLocals() {
                 closure = static_cast<BoxedClosure*>(v);
             }
         }
-
-        frame_info = impl->getFrameInfo();
     } else if (impl->getId().type == PythonFrameId::INTERPRETED) {
         d = localsForInterpretedFrame((void*)impl->getId().bp, true);
         closure = passedClosureForInterpretedFrame((void*)impl->getId().bp);
@@ -1071,10 +1025,14 @@ Box* PythonFrameIterator::fastLocalsToBoxedLocals() {
     // TODO Right now d just has all the python variables that are *initialized*
     // But we also need to loop through all the uninitialized variables that we have
     // access to and delete them from the locals dict
-    for (const auto& p : *d) {
-        Box* varname = p.first;
-        Box* value = p.second;
-        setitem(frame_info->boxedLocals, varname, value);
+    if (frame_info->boxedLocals == dict_cls) {
+        ((BoxedDict*)frame_info->boxedLocals)->d.insert(d->d.begin(), d->d.end());
+    } else {
+        for (const auto& p : *d) {
+            Box* varname = p.first;
+            Box* value = p.second;
+            setitem(frame_info->boxedLocals, varname, value);
+        }
     }
 
     return frame_info->boxedLocals;

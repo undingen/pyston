@@ -1973,12 +1973,15 @@ FrameInfo* getFrameInfoForInterpretedFrame(void* frame_ptr) {
     return interpreter->getFrameInfo();
 }
 
+Box** getVRegsForInterpretedFrame(void* frame_ptr) {
+    ASTInterpreter* interpreter = getInterpreterFromFramePtr(frame_ptr);
+    assert(interpreter);
+    return interpreter->getVRegs();
+}
+
 BoxedDict* localsForInterpretedFrame(Box** vregs, CFG* cfg, bool only_user_visible) {
     BoxedDict* rtn = new BoxedDict();
-    for (auto& l : cfg->sym_vreg_map) {
-        if (only_user_visible && (l.first.s()[0] == '!' || l.first.s()[0] == '#'))
-            continue;
-
+    for (auto& l : only_user_visible ? cfg->sym_vreg_map_user : cfg->sym_vreg_map) {
         Box* val = vregs[l.second];
         if (val) {
             assert(gc::isValidGCObject(val));

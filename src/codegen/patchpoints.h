@@ -34,7 +34,7 @@ class ICSetupInfo;
 static const int MAX_FRAME_SPILLS = 9; // TODO this shouldn't have to be larger than the set of non-callee-save args (9)
                                        // except that will we currently spill the same reg multiple times
 static const int CALL_ONLY_SIZE
-    = 13 + (MAX_FRAME_SPILLS * 9)
+    = 13   /*+ (MAX_FRAME_SPILLS * 9)*/
       + 1; // 13 for the call, 9 bytes per spill (7 for GP, 9 for XMM), + 1 if we want to nop/trap
 
 void processStackmap(CompiledFunction* cf, StackMap* stackmap);

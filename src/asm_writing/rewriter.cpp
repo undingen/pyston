@@ -2110,6 +2110,7 @@ PatchpointInitializationInfo initializePatchpoint3(void* slowpath_func, uint8_t*
     std::vector<assembler::Register> regs_to_reload;
 
     for (int dwarf_regnum : live_outs) {
+        break;
         assembler::GenericRegister ru = assembler::GenericRegister::fromDwarf(dwarf_regnum);
 
         assert(!(ru.type == assembler::GenericRegister::GP && ru.gp == assembler::R11) && "We assume R11 is free!");
@@ -2179,6 +2180,7 @@ PatchpointInitializationInfo initializePatchpoint3(void* slowpath_func, uint8_t*
         continue_addr = assem.curInstPointer();
 
     for (assembler::Register r : regs_to_reload) {
+        break;
         StackMap::Record::Location& l = remapped[r];
         assert(l.type == StackMap::Record::Location::LocationType::Indirect);
         assert(l.regnum == DWARF_RBP_REGNUM);

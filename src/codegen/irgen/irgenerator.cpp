@@ -58,6 +58,7 @@ IRGenState::IRGenState(FunctionMetadata* md, CompiledFunction* cf, SourceInfo* s
       frame_info(NULL),
       frame_info_arg(NULL),
       globals(NULL),
+      vregs(NULL),
       scratch_size(0) {
     assert(cf->func);
     assert(!cf->md); // in this case don't need to pass in sourceinfo
@@ -143,7 +144,7 @@ static llvm::Value* getExcinfoGep(llvm::IRBuilder<true>& builder, llvm::Value* v
     return builder.CreateConstInBoundsGEP2_32(v, 0, 0);
 }
 
-static llvm::Value* getFrameObjGep(llvm::IRBuilder<true>& builder, llvm::Value* v) {
+template <typename Builder> static llvm::Value* getFrameObjGep(Builder& builder, llvm::Value* v) {
     static_assert(offsetof(FrameInfo, exc) == 0, "");
     static_assert(sizeof(ExcInfo) == 24, "");
     static_assert(sizeof(Box*) == 8, "");
@@ -180,6 +181,12 @@ llvm::Value* IRGenState::getFrameInfoVar() {
         if (entry_block.begin() != entry_block.end())
             builder.SetInsertPoint(&entry_block, entry_block.getFirstInsertionPt());
 
+        assert(!vregs);
+        getMD()->calculateNumVRegs();
+        vregs = builder.CreateAlloca(g.llvm_value_type_ptr,
+                                     getConstantInt(getMD()->source->cfg->num_vregs_user_visible), "vregs");
+        builder.CreateMemSet(vregs, getConstantInt(0, g.i8),
+                             getConstantInt(getMD()->source->cfg->num_vregs_user_visible * sizeof(Box*)), 1);
 
         llvm::AllocaInst* al = builder.CreateAlloca(g.llvm_frame_info_type, NULL, "frame_info");
         assert(al->isStaticAlloca());
@@ -223,6 +230,9 @@ llvm::Value* IRGenState::getFrameInfoVar() {
                 = llvm::cast<llvm::StructType>(g.llvm_frame_info_type)->getElementType(2);
             builder.CreateStore(getNullPtr(llvm_frame_obj_type_ptr), getFrameObjGep(builder, al));
 
+            // set vregs
+            builder.CreateStore(vregs, builder.CreateConstInBoundsGEP2_32(al, 0, 3));
+
             this->frame_info = al;
         }
     }
@@ -235,6 +245,15 @@ llvm::Value* IRGenState::getBoxedLocalsVar() {
     getFrameInfoVar(); // ensures this->boxed_locals_var is initialized
     assert(this->boxed_locals != NULL);
     return this->boxed_locals;
+}
+
+llvm::Value* IRGenState::getVRegsVar() {
+    if (!vregs) {
+        // calling this set's also the vregs member
+        getFrameInfoVar();
+        assert(vregs);
+    }
+    return vregs;
 }
 
 ScopeInfo* IRGenState::getScopeInfo() {
@@ -275,6 +294,9 @@ private:
 
     llvm::CallSite emitCall(const UnwindInfo& unw_info, llvm::Value* callee, const std::vector<llvm::Value*>& args,
                             ExceptionStyle target_exception_style) {
+        // getBuilder()->CreateStore(embedRelocatablePtr(unw_info.current_stmt, g.llvm_aststmt_type_ptr),
+        // irstate->getCurStmt());
+
         if (target_exception_style == CXX && (unw_info.hasHandler() || irstate->getExceptionStyle() == CAPI)) {
             // Create the invoke:
             llvm::BasicBlock* normal_dest
@@ -348,7 +370,7 @@ private:
 
         pp_args.insert(pp_args.end(), ic_stackmap_args.begin(), ic_stackmap_args.end());
 
-        irgenerator->addFrameStackmapArgs(info, unw_info.current_stmt, pp_args);
+        irgenerator->addFrameStackmapArgs(info, unw_info.current_stmt, pp_args, func_addr == (void*)deopt);
 
         llvm::Intrinsic::ID intrinsic_id;
         if (return_type->isIntegerTy() || return_type->isPointerTy()) {
@@ -625,8 +647,15 @@ private:
 
         curblock = deopt_bb;
         emitter.getBuilder()->SetInsertPoint(curblock);
-        llvm::Value* v = emitter.createCall2(UnwindInfo(current_statement, NULL), g.funcs.deopt,
-                                             embedRelocatablePtr(node, g.llvm_astexpr_type_ptr), node_value);
+        // llvm::Value* v = emitter.createCall2(UnwindInfo(current_statement, NULL), g.funcs.deopt,
+        //                                     embedRelocatablePtr(node, g.llvm_astexpr_type_ptr), node_value);
+
+        ICSetupInfo* pp = createGenericIC(NULL, true, 95);
+        llvm::Value* v = emitter.createIC(pp, (void*)pyston::deopt,
+                                          { embedRelocatablePtr(node, g.llvm_astexpr_type_ptr), node_value },
+                                          UnwindInfo(current_statement, NULL));
+        v = emitter.getBuilder()->CreateIntToPtr(v, g.llvm_value_type_ptr);
+
         emitter.getBuilder()->CreateRet(v);
 
         curblock = success_bb;
@@ -1755,6 +1784,17 @@ private:
                 llvm::Value* gep = getClosureElementGep(emitter, closureValue, offset);
                 emitter.getBuilder()->CreateStore(val->makeConverted(emitter, UNKNOWN)->getValue(), gep);
             }
+
+            irstate->getMD()->calculateNumVRegs();
+            assert(irstate->getSourceInfo()->cfg->sym_vreg_map.count(name));
+            int vreg = irstate->getSourceInfo()->cfg->sym_vreg_map[name];
+            assert(vreg >= 0);
+
+            if (vreg < irstate->getSourceInfo()->cfg->num_vregs_user_visible) {
+                auto* gep = emitter.getBuilder()->CreateConstInBoundsGEP1_64(irstate->getVRegsVar(), vreg);
+                auto* llvm_val = val->makeConverted(emitter, UNKNOWN)->getValue();
+                emitter.getBuilder()->CreateStore(llvm_val, gep);
+            }
         }
     }
 
@@ -1946,6 +1986,18 @@ private:
         // Can't be in a closure because of this syntax error:
         // SyntaxError: can not delete variable 'x' referenced in nested scope
         assert(vst == ScopeInfo::VarScopeType::FAST);
+
+        InternedString name = target->id;
+
+        irstate->getMD()->calculateNumVRegs();
+        assert(irstate->getSourceInfo()->cfg->sym_vreg_map.count(name));
+        int vreg = irstate->getSourceInfo()->cfg->sym_vreg_map[name];
+        assert(vreg >= 0);
+
+        if (vreg < irstate->getSourceInfo()->cfg->num_vregs_user_visible) {
+            auto* gep = emitter.getBuilder()->CreateConstInBoundsGEP1_64(irstate->getVRegsVar(), vreg);
+            emitter.getBuilder()->CreateStore(getNullPtr(g.llvm_value_type_ptr), gep);
+        }
 
         if (symbol_table.count(target->id) == 0) {
             llvm::CallSite call
@@ -2521,8 +2573,8 @@ private:
     }
 
 public:
-    void addFrameStackmapArgs(PatchpointInfo* pp, AST_stmt* current_stmt,
-                              std::vector<llvm::Value*>& stackmap_args) override {
+    void addFrameStackmapArgs(PatchpointInfo* pp, AST_stmt* current_stmt, std::vector<llvm::Value*>& stackmap_args,
+                              bool add_compiler_vars) override {
         int initial_args = stackmap_args.size();
 
         stackmap_args.push_back(irstate->getFrameInfoVar());
@@ -2554,6 +2606,14 @@ public:
             std::sort(sorted_symbol_table.begin(), sorted_symbol_table.end(),
                       [](const Entry& lhs, const Entry& rhs) { return lhs.first < rhs.first; });
             for (const auto& p : sorted_symbol_table) {
+                if (!p.first.isCompilerCreatedName())
+                    continue;
+
+                if (!add_compiler_vars) {
+                    if (p.first.isCompilerCreatedName() && p.first.s() != PASSED_CLOSURE_NAME)
+                        continue;
+                }
+
                 CompilerVariable* v = p.second;
                 v->serializeToFrame(stackmap_args);
                 pp->addFrameVar(p.first.s(), v->getType());
@@ -2826,8 +2886,8 @@ public:
             emitter.setCurrentBasicBlock(capi_exc_dest);
             assert(!phi_node);
             phi_node = emitter.getBuilder()->CreatePHI(g.llvm_aststmt_type_ptr, 0);
-            emitter.getBuilder()->CreateCall2(g.funcs.caughtCapiException, phi_node,
-                                              embedRelocatablePtr(irstate->getSourceInfo(), g.i8_ptr));
+            emitter.createCall2(UnwindInfo(current_stmt, 0), g.funcs.caughtCapiException, phi_node,
+                                embedRelocatablePtr(irstate->getSourceInfo(), g.i8_ptr));
 
             if (!final_dest) {
                 // Propagate the exception out of the function:
