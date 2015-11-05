@@ -850,6 +850,14 @@ PythonFrameIterator::PythonFrameIterator(std::unique_ptr<PythonFrameIteratorImpl
     std::swap(this->impl, impl);
 }
 
+PythonFrameIterator::PythonFrameIterator(bool is_interpreter, uint64_t ip, uint64_t bp, CLFunction* cl,
+                                         CompiledFunction* cf) {
+    std::unique_ptr<PythonFrameIteratorImpl> impl(new PythonFrameIteratorImpl(
+        is_interpreter ? PythonFrameId::INTERPRETED : PythonFrameId::COMPILED, ip, bp, cl, cf));
+    std::swap(this->impl, impl);
+}
+
+
 // TODO factor getDeoptState and fastLocalsToBoxedLocals
 // because they are pretty ugly but have a pretty repetitive pattern.
 
@@ -1104,6 +1112,7 @@ PythonFrameIterator PythonFrameIterator::getCurrentVersion() {
     std::unique_ptr<PythonFrameIteratorImpl> rtn(nullptr);
     auto& impl = this->impl;
     unwindPythonStack([&](PythonFrameIteratorImpl* frame_iter) {
+        printf("%p %p\n", frame_iter->getCL(), impl->getCL());
         if (frame_iter->pointsToTheSameAs(*impl.get())) {
             rtn = std::unique_ptr<PythonFrameIteratorImpl>(new PythonFrameIteratorImpl(*frame_iter));
             return true;

@@ -627,6 +627,7 @@ private:
         emitter.getBuilder()->SetInsertPoint(curblock);
         llvm::Value* v = emitter.createCall2(UnwindInfo(current_statement, NULL), g.funcs.deopt,
                                              embedRelocatablePtr(node, g.llvm_astexpr_type_ptr), node_value);
+        emitter.getBuilder()->CreateCall(g.funcs.deinitFrame);
         emitter.getBuilder()->CreateRet(v);
 
         curblock = success_bb;
@@ -2066,6 +2067,7 @@ private:
         // This is tripping in test/tests/return_selfreferential.py. kmod says it should be removed.
         // ASSERT(rtn->getVrefs() == 1, "%d", rtn->getVrefs());
         assert(rtn->getValue());
+        emitter.getBuilder()->CreateCall(g.funcs.deinitFrame);
         emitter.getBuilder()->CreateRet(rtn->getValue());
     }
 
@@ -2264,6 +2266,7 @@ private:
             converted_args[i]->decvref(emitter);
         }
 
+        emitter.getBuilder()->CreateCall(g.funcs.deinitFrame);
         emitter.getBuilder()->CreateRet(rtn);
 
         emitter.getBuilder()->SetInsertPoint(starting_block);
@@ -2832,6 +2835,7 @@ public:
             if (!final_dest) {
                 // Propagate the exception out of the function:
                 if (irstate->getExceptionStyle() == CXX) {
+                    emitter.getBuilder()->CreateCall(g.funcs.deinitFrame);
                     emitter.getBuilder()->CreateCall(g.funcs.reraiseCapiExcAsCxx);
                     emitter.getBuilder()->CreateUnreachable();
                 } else {
@@ -2927,6 +2931,7 @@ public:
             // just not created an Invoke and let the exception machinery propagate it for us.
             assert(irstate->getExceptionStyle() == CAPI);
             builder->CreateCall3(g.funcs.PyErr_Restore, exc_type, exc_value, exc_traceback);
+            builder->CreateCall(g.funcs.deinitFrame);
             builder->CreateRet(getNullPtr(g.llvm_value_type_ptr));
         }
 

@@ -677,6 +677,8 @@ static uint64_t* unwinding_stattimer = pyston::Stats::getStatCounter("us_timer_u
 #endif
 
 extern "C" void __cxa_throw(void* exc_obj, std::type_info* tinfo, void (*dtor)(void*)) {
+    printf("__cxa_throw\n");
+
     static pyston::StatCounter num_cxa_throw("num_cxa_throw");
     num_cxa_throw.log();
 
