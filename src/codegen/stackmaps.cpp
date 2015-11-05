@@ -34,6 +34,35 @@ namespace pyston {
 // TODO shouldn't be recording this in a global variable
 static uint64_t stackmap_address = 0;
 
+
+
+struct compare_entries {
+    int operator()(unsigned offset, const LocationMap::LocationTable::LocationEntry& item) const {
+        // key is the return address of the callsite, so we will check it against
+        // the region (start, end] (opposite-endedness of normal half-open regions)
+        if (offset <= item.offset)
+            return -1;
+        else if (offset > item.offset + item.length)
+            return 1;
+        return 0;
+    }
+};
+
+const LocationMap::LocationTable::LocationEntry* LocationMap::LocationTable::findEntry(unsigned offset) const {
+    /*
+    for (const LocationMap::LocationTable::LocationEntry& e : locations) {
+        if (e.offset < offset && offset <= e.offset + e.length) {
+            return &e;
+        }
+    }
+    */
+
+    int idx = binarySearch(offset, locations.begin(), locations.end(), compare_entries());
+    if (idx < 0)
+        return NULL;
+    return &locations[idx];
+}
+
 StackMap* parseStackMap() {
     if (!stackmap_address)
         return NULL;

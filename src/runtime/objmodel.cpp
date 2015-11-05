@@ -1905,6 +1905,7 @@ Box* getattrInternalGeneric(Box* obj, BoxedString* attr, GetattrRewriteArgs* rew
                         }
                     } else {
                         res = descr_get(descr, obj, obj->cls);
+                        printf("%s\n", attr->c_str());
                         if (!res)
                             throwCAPIException();
                     }
