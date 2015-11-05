@@ -1112,7 +1112,6 @@ PythonFrameIterator PythonFrameIterator::getCurrentVersion() {
     std::unique_ptr<PythonFrameIteratorImpl> rtn(nullptr);
     auto& impl = this->impl;
     unwindPythonStack([&](PythonFrameIteratorImpl* frame_iter) {
-        printf("%p %p\n", frame_iter->getCL(), impl->getCL());
         if (frame_iter->pointsToTheSameAs(*impl.get())) {
             rtn = std::unique_ptr<PythonFrameIteratorImpl>(new PythonFrameIteratorImpl(*frame_iter));
             return true;

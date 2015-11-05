@@ -57,17 +57,17 @@ public:
         if (exited)
             return;
 
-        printf("cl: %p\n", it.getCL());
+        // printf("cl: %p\n", it.getCL());
 
         // This makes sense as an exception, but who knows how the user program would react
         // (it might swallow it and do something different)
         RELEASE_ASSERT(thread_id == PyThread_get_thread_ident(),
                        "frame objects can only be accessed from the same thread");
         PythonFrameIterator new_it = it.getCurrentVersion();
-        if (!(new_it.exists() && new_it.getFrameInfo()->frame_obj == this))
+        if (!(new_it.exists() && new_it.getFrameInfo()->frame_obj == this)) {
             printf("aa");
-        new_it = it.getCurrentVersion();
-
+            new_it = it.getCurrentVersion();
+        }
 
         RELEASE_ASSERT(new_it.exists() && new_it.getFrameInfo()->frame_obj == this, "frame has exited");
         it = std::move(new_it);
@@ -165,8 +165,7 @@ public:
             f->_globals = globals;
             f->_code = (Box*)cl->getCode();
             f->_back = (BoxedFrame*)back;
-        } else
-            RELEASE_ASSERT(0, "");
+        }
 
         return fi->frame_obj;
     }
@@ -185,22 +184,21 @@ public:
 };
 
 Box* getFrame(int depth) {
-    /*
     auto it = getPythonFrame(depth);
     if (!it.exists())
         return NULL;
 
-    return BoxedFrame::boxFrame(std::move(it));
+    return BoxedFrame::boxFrame(std::move(it), getFrame(depth + 1));
+    /*
+        BoxedFrame* f = (BoxedFrame*)PyThreadState_GET()->frame;
+        while (depth > 0 && f != NULL) {
+            f = f->_back;
+            --depth;
+        }
+        RELEASE_ASSERT(f, "");
+        printf("getframe %d %p\n", depth, f);
+        return f;
     */
-
-    BoxedFrame* f = (BoxedFrame*)PyThreadState_GET()->frame;
-    while (depth > 0 && f != NULL) {
-        f = f->_back;
-        --depth;
-    }
-    RELEASE_ASSERT(f, "");
-    printf("getframe %d %p\n", depth, f);
-    return f;
 }
 
 
@@ -224,20 +222,27 @@ extern "C" void initFrame(bool is_interpreter, uint64_t ip, uint64_t bp, CLFunct
         init_num_free_frames = true;
     }
     */
+
+
+    // BoxedFrame::boxFrame(PythonFrameIterator(is_interpreter, ip, bp, cl, cf), frame);
+
+    /*
     BoxedFrame* frame = (BoxedFrame*)PyThreadState_GET()->frame;
 
 
     PyThreadState_GET()->frame
         = (struct _frame*)BoxedFrame::boxFrame(PythonFrameIterator(is_interpreter, ip, bp, cl, cf), frame);
     printf("+ init frame:%p  %p %p %s\n", cl, PyThreadState_GET()->frame, frame, cl->source->getName()->c_str());
+    */
 }
 
 extern "C" void deinitFrame(void) {
-    BoxedFrame* frame = (BoxedFrame*)PyThreadState_GET()->frame;
-    printf("- deinitFrame %p\n", frame);
-    frame->handleExit();
+    // BoxedFrame* frame = (BoxedFrame*)PyThreadState_GET()->frame;
+    // printf("- deinitFrame %p\n", frame);
+    // frame->handleExit();
+    ((BoxedFrame*)getFrame(0))->handleExit();
 
-    PyThreadState_GET()->frame = (struct _frame*)frame->_back;
+    // PyThreadState_GET()->frame = (struct _frame*)frame->_back;
 }
 
 void setupFrame() {
