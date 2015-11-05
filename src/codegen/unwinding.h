@@ -52,7 +52,7 @@ void unwindingThroughFrame(PythonUnwindSession* unwind_session, unw_cursor_t* cu
 void logException(ExcInfo* exc_info);
 void startReraise();
 bool exceptionAtLineCheck();
-void exceptionAtLine(LineInfo line_info, Box** traceback);
+void exceptionAtLine(LineInfo line_info, Box** traceback, Box* frame);
 void caughtCxxException(LineInfo line_info, ExcInfo* exc_info);
 extern "C" void caughtCapiException(AST_stmt* current_stmt, void* source_info);
 extern "C" void reraiseCapiExcAsCxx() __attribute__((noreturn));
@@ -98,6 +98,7 @@ public:
     PythonFrameIterator(PythonFrameIterator&& rhs);
     void operator=(PythonFrameIterator&& rhs);
     PythonFrameIterator(std::unique_ptr<PythonFrameIteratorImpl> impl);
+    PythonFrameIterator(bool is_interpreter, uint64_t ip, uint64_t bp, CLFunction* cl, CompiledFunction* cf);
     ~PythonFrameIterator();
 };
 

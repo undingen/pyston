@@ -408,7 +408,7 @@ public:
         // for x86_64, at least, libunwind seems to use the dwarf numbering
 
         assert(0 <= dwarf_num && dwarf_num < 16);
-        assert(regs_valid & (1 << dwarf_num));
+        // assert(regs_valid & (1 << dwarf_num));
         assert(id.type == PythonFrameId::COMPILED);
 
         return regs[dwarf_num];
@@ -558,9 +558,6 @@ public:
     }
 
     void handleCFrame(unw_cursor_t* cursor) {
-        unw_word_t ip = get_cursor_ip(cursor);
-        unw_word_t bp = get_cursor_bp(cursor);
-
         PythonFrameIteratorImpl frame_iter;
         bool found_frame = pystack_extractor.handleCFrame(cursor, &frame_iter);
         if (found_frame) {
@@ -570,7 +567,9 @@ public:
                 // TODO: shouldn't fetch this multiple times?
                 frame_iter.getCurrentStatement()->cxx_exception_count++;
                 auto line_info = lineInfoForFrame(&frame_iter);
-                exceptionAtLine(line_info, &exc_info.traceback);
+                Box* frame
+                    = getFrame(std::unique_ptr<PythonFrameIteratorImpl>(new PythonFrameIteratorImpl(frame_iter)), true);
+                exceptionAtLine(line_info, &exc_info.traceback, frame);
             }
         }
     }
@@ -740,7 +739,9 @@ Box* getTraceback() {
 
     Box* tb = None;
     unwindPythonStack([&](PythonFrameIteratorImpl* frame_iter) {
-        BoxedTraceback::here(lineInfoForFrame(frame_iter), &tb);
+        Box* frame
+            = getFrame(std::unique_ptr<PythonFrameIteratorImpl>(new PythonFrameIteratorImpl(*frame_iter)), false);
+        BoxedTraceback::here(lineInfoForFrame(frame_iter), &tb, frame);
         return false;
     });
 
@@ -849,6 +850,14 @@ void PythonFrameIterator::operator=(PythonFrameIterator&& rhs) {
 PythonFrameIterator::PythonFrameIterator(std::unique_ptr<PythonFrameIteratorImpl> impl) {
     std::swap(this->impl, impl);
 }
+
+PythonFrameIterator::PythonFrameIterator(bool is_interpreter, uint64_t ip, uint64_t bp, CLFunction* cl,
+                                         CompiledFunction* cf) {
+    std::unique_ptr<PythonFrameIteratorImpl> impl(new PythonFrameIteratorImpl(
+        is_interpreter ? PythonFrameId::INTERPRETED : PythonFrameId::COMPILED, ip, bp, cl, cf));
+    std::swap(this->impl, impl);
+}
+
 
 // TODO factor getDeoptState and fastLocalsToBoxedLocals
 // because they are pretty ugly but have a pretty repetitive pattern.
