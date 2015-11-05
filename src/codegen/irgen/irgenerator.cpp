@@ -2355,8 +2355,6 @@ private:
             emitter.getBuilder()->SetCurrentDebugLocation(
                 llvm::DebugLoc::get(node->lineno, 0, irstate->getFuncDbgInfo()));
         }
-        emitter.getBuilder()->CreateStore(embedRelocatablePtr(node, g.llvm_aststmt_type_ptr),
-                                          emitter.getBuilder()->CreateLoad(irstate->cur_inst));
 
         switch (node->type) {
             case AST_TYPE::Assert:

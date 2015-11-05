@@ -167,15 +167,13 @@ static int num_free_frames;
 static bool init_num_free_frames;
 
 
-Box* createFrame(BoxedCode* code, Box** vregs, Box* next_frame, Box* globals, AST_stmt*** stmt) {
+Box* createFrame(BoxedCode* code, Box** vregs, Box* next_frame, Box* globals) {
     if (num_free_frames) {
         BoxedFrame* frame = free_frames[--num_free_frames];
         frame->_code = (Box*)code;
         frame->vregs = vregs;
         frame->_back = (BoxedFrame*)next_frame;
         frame->_globals = globals;
-        if (stmt)
-            *stmt = &frame->_stmt;
         return frame;
     }
     if (unlikely(!init_num_free_frames)) {
@@ -183,10 +181,7 @@ Box* createFrame(BoxedCode* code, Box** vregs, Box* next_frame, Box* globals, AS
         init_num_free_frames = true;
     }
 
-    auto* rtn = (BoxedFrame*)BoxedFrame::boxFrame(code, vregs, next_frame, globals);
-    if (stmt)
-        *stmt = &rtn->_stmt;
-    return rtn;
+    return BoxedFrame::boxFrame(code, vregs, next_frame, globals);
 }
 
 Box* backFrame(Box* _frame) {

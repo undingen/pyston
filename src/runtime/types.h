@@ -169,7 +169,7 @@ extern "C" double unboxFloat(Box* b);
 extern "C" Box* createDict();
 extern "C" Box* createList();
 extern "C" Box** createVRegs(uint64_t num_vregs);
-extern "C" void initFrame(Box* code, Box** vregs, Box* globals, AST_stmt*** stmt = NULL);
+extern "C" void initFrame(Box* code, Box** vregs, Box* globals);
 extern "C" void deinitFrame(void);
 extern "C" Box* createSlice(Box* start, Box* stop, Box* step);
 extern "C" Box* createTuple(int64_t nelts, Box** elts);
@@ -1126,7 +1126,7 @@ Box* codeForCLFunction(CLFunction*);
 CLFunction* clfunctionFromCode(Box* code);
 
 Box* getFrame(int depth);
-Box* createFrame(BoxedCode* code, Box** vregs, Box* next_frame, Box* globals, AST_stmt*** stmt);
+Box* createFrame(BoxedCode* code, Box** vregs, Box* next_frame, Box* globals);
 Box* backFrame(Box* frame);
 int countFrames(Box* frame);
 void markFrameReferenced(BoxedFrame* frame);

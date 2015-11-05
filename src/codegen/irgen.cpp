@@ -404,19 +404,14 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
             }
             */
             // irstate->vregs = getNullPtr(g.llvm_value_type_ptr_ptr);
-            irstate->cur_inst = entry_emitter->getBuilder()->CreateAlloca(g.llvm_aststmt_type_ptr->getPointerTo());
-
             irstate->vregs
                 = entry_emitter->getBuilder()->CreateCall(g.funcs.createVRegs, { getConstantInt(num_vregs) });
         }
         if (!created_frame) {
             created_frame = true;
-
-
-
             entry_emitter->getBuilder()->CreateCall(
                 g.funcs.initFrame, { embedRelocatablePtr(irstate->getCL()->getCode(), g.llvm_value_type_ptr),
-                                     irstate->vregs, irstate->getGlobals(), irstate->cur_inst });
+                                     irstate->vregs, irstate->getGlobals() });
         }
 
         CFGBlock* target_block = entry_descriptor->backedge->target;
@@ -580,17 +575,13 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
             }
             */
             // irstate->vregs = getNullPtr(g.llvm_value_type_ptr_ptr);
-            irstate->cur_inst = emitter->getBuilder()->CreateAlloca(g.llvm_aststmt_type_ptr->getPointerTo());
             irstate->vregs = emitter->getBuilder()->CreateCall(g.funcs.createVRegs, { getConstantInt(num_vregs) });
         }
         if (!created_frame) {
             created_frame = true;
-
-
-
             emitter->getBuilder()->CreateCall(g.funcs.initFrame,
                                               { embedRelocatablePtr(irstate->getCL()->getCode(), g.llvm_value_type_ptr),
-                                                irstate->vregs, irstate->getGlobals(), irstate->cur_inst });
+                                                irstate->vregs, irstate->getGlobals() });
         }
 
         // Set initial symbol table:

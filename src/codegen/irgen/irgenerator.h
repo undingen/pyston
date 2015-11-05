@@ -117,7 +117,6 @@ public:
     llvm::Value* getGlobalsIfCustom();
 
     llvm::Value* vregs = NULL;
-    llvm::Value* cur_inst = NULL;
 };
 
 // turns CFGBlocks into LLVM IR
