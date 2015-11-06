@@ -180,6 +180,9 @@ llvm::Value* IRGenState::getFrameInfoVar() {
         if (entry_block.begin() != entry_block.end())
             builder.SetInsertPoint(&entry_block, entry_block.getFirstInsertionPt());
 
+        assert(!vregs);
+        vregs = builder.CreateAlloca(g.llvm_value_type_ptr, getConstantInt(getCL()->calculateNumVRegs()), "vregs");
+
 
         llvm::AllocaInst* al = builder.CreateAlloca(g.llvm_frame_info_type, NULL, "frame_info");
         assert(al->isStaticAlloca());
@@ -222,6 +225,9 @@ llvm::Value* IRGenState::getFrameInfoVar() {
             static llvm::Type* llvm_frame_obj_type_ptr
                 = llvm::cast<llvm::StructType>(g.llvm_frame_info_type)->getElementType(2);
             builder.CreateStore(getNullPtr(llvm_frame_obj_type_ptr), getFrameObjGep(builder, al));
+
+            // set vregs
+            builder.CreateStore(vregs, builder.CreateConstInBoundsGEP2_32(al, 0, 3));
 
             this->frame_info = al;
         }
@@ -1754,6 +1760,18 @@ private:
                 closure->decvref(emitter);
                 llvm::Value* gep = getClosureElementGep(emitter, closureValue, offset);
                 emitter.getBuilder()->CreateStore(val->makeConverted(emitter, UNKNOWN)->getValue(), gep);
+            }
+
+            if (!irstate->vregs)
+                irstate->getFrameInfoVar();
+            assert(irstate->getSourceInfo()->cfg->sym_vreg_map.count(name));
+            int vreg = irstate->getSourceInfo()->cfg->sym_vreg_map[name];
+            assert(vreg >= 0);
+
+            if (1 /*vreg < irstate->getSourceInfo()->cfg->num_vregs_user_visible*/) {
+                auto* gep = emitter.getBuilder()->CreateConstInBoundsGEP1_64(irstate->vregs, vreg);
+                auto* llvm_val = val->makeConverted(emitter, UNKNOWN)->getValue();
+                emitter.getBuilder()->CreateStore(llvm_val, gep);
             }
         }
     }
