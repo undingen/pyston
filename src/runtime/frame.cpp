@@ -65,7 +65,7 @@ public:
                        "frame objects can only be accessed from the same thread");
         PythonFrameIterator new_it = it.getCurrentVersion();
         if (!(new_it.exists() && new_it.getFrameInfo()->frame_obj == this)) {
-            printf("aa");
+            printf("%p\n", this);
             new_it = it.getCurrentVersion();
         }
 
@@ -184,6 +184,7 @@ public:
     static void handleExitIfHasFrame(PythonFrameIterator it) {
         FrameInfo* fi = it.getFrameInfo();
         if (fi->frame_obj != NULL) {
+            // printf("handleExitIfHasFrame %p\n", fi->frame_obj);
             fi->frame_obj->handleExit();
         }
     }
@@ -202,8 +203,11 @@ public:
     }
 };
 
-Box* getFrame(PythonFrameIterator it) {
-    return BoxedFrame::boxFrame(std::move(it));
+Box* getFrame(PythonFrameIterator it, bool exits) {
+    BoxedFrame* rtn = (BoxedFrame*)BoxedFrame::boxFrame(std::move(it));
+    if (exits)
+        rtn->handleExit();
+    return rtn;
 }
 
 Box* getFrame(int depth) {
@@ -281,6 +285,7 @@ extern "C" void deinitFrame(FrameInfo* frame_info) {
     // PyThreadState_GET()->frame = (struct _frame*)frame->_back;
 #else
     if (frame_info && frame_info->frame_obj) {
+
         frame_info->frame_obj->handleExit();
     }
 

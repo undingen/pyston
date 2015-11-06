@@ -359,7 +359,7 @@ struct AutoDeinit {
 };
 
 Box* ASTInterpreter::executeInner(ASTInterpreter& interpreter, CFGBlock* start_block, AST_stmt* start_at) {
-    AutoDeinit deinit(&interpreter, (uint64_t)__builtin_frame_address(1));
+    // AutoDeinit deinit(&interpreter, (uint64_t)__builtin_frame_address(1));
 
     Value v;
 
@@ -422,6 +422,9 @@ Box* ASTInterpreter::executeInner(ASTInterpreter& interpreter, CFGBlock* start_b
             v = interpreter.visit_stmt(s);
         }
     }
+
+    deinitFrame2(true, ((uint64_t)interpreter_instr_addr) + 1, (uint64_t)__builtin_frame_address(1),
+                 interpreter.getCL(), 0);
     return v.o;
 }
 

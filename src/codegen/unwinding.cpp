@@ -568,7 +568,7 @@ public:
                 frame_iter.getCurrentStatement()->cxx_exception_count++;
                 auto line_info = lineInfoForFrame(&frame_iter);
                 Box* frame
-                    = getFrame(std::unique_ptr<PythonFrameIteratorImpl>(new PythonFrameIteratorImpl(frame_iter)));
+                    = getFrame(std::unique_ptr<PythonFrameIteratorImpl>(new PythonFrameIteratorImpl(frame_iter)), true);
                 exceptionAtLine(line_info, &exc_info.traceback, frame);
             }
         }
@@ -739,7 +739,8 @@ Box* getTraceback() {
 
     Box* tb = None;
     unwindPythonStack([&](PythonFrameIteratorImpl* frame_iter) {
-        Box* frame = getFrame(std::unique_ptr<PythonFrameIteratorImpl>(new PythonFrameIteratorImpl(*frame_iter)));
+        Box* frame
+            = getFrame(std::unique_ptr<PythonFrameIteratorImpl>(new PythonFrameIteratorImpl(*frame_iter)), false);
         BoxedTraceback::here(lineInfoForFrame(frame_iter), &tb, frame);
         return false;
     });
