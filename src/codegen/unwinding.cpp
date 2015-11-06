@@ -36,6 +36,7 @@
 #include "codegen/irgen/hooks.h"
 #include "codegen/irgen/irgenerator.h"
 #include "codegen/stackmaps.h"
+#include "core/cfg.h"
 #include "core/util.h"
 #include "runtime/ctxswitching.h"
 #include "runtime/objmodel.h"
@@ -408,7 +409,7 @@ public:
         // for x86_64, at least, libunwind seems to use the dwarf numbering
 
         assert(0 <= dwarf_num && dwarf_num < 16);
-        // assert(regs_valid & (1 << dwarf_num));
+        assert(regs_valid & (1 << dwarf_num));
         assert(id.type == PythonFrameId::COMPILED);
 
         return regs[dwarf_num];
@@ -941,6 +942,24 @@ DeoptState getDeoptState() {
 
 Box* fastLocalsToBoxedLocals() {
     return getPythonFrame(0).fastLocalsToBoxedLocals();
+}
+
+
+Box* PythonFrameIterator::copyVRegs() {
+    CLFunction* clfunc = impl->getCL();
+    ScopeInfo* scope_info = clfunc->source->getScopeInfo();
+
+    if (scope_info->areLocalsFromModule()) {
+        return 0;
+    }
+
+    if (impl->getId().type == PythonFrameId::COMPILED) {
+        return BoxedTuple::create(clfunc->source->cfg->num_vregs_user_visible, impl->getFrameInfo()->vregs, tuple_cls);
+    } else if (impl->getId().type == PythonFrameId::INTERPRETED) {
+        return BoxedTuple::create(clfunc->source->cfg->num_vregs_user_visible,
+                                  getVRegsForInterpretedFrame((void*)impl->getId().bp), tuple_cls);
+    }
+    RELEASE_ASSERT(0, "");
 }
 
 Box* PythonFrameIterator::fastLocalsToBoxedLocals() {

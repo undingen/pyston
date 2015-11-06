@@ -51,7 +51,8 @@ void raiseSyntaxError(const char* msg, int lineno, int col_offset, llvm::StringR
     } else {
         // This is more like how the parser handles it:
         exc = runtimeCall(SyntaxError, ArgPassSpec(1), boxString(msg), NULL, NULL, NULL, NULL);
-        tb = new BoxedTraceback(LineInfo(lineno, col_offset, boxString(file), boxString(func)), None, getFrame(0));
+        tb = new BoxedTraceback(LineInfo(lineno, col_offset, boxString(file), boxString(func)), None,
+                                getFrame(0, true));
     }
 
     assert(!PyErr_Occurred());
@@ -262,7 +263,7 @@ extern "C" void caughtCapiException(AST_stmt* stmt, void* _source_info) {
     PyThreadState* tstate = PyThreadState_GET();
 
     exceptionAtLine(LineInfo(stmt->lineno, stmt->col_offset, source->getFn(), source->getName()),
-                    &tstate->curexc_traceback, getFrame(0));
+                    &tstate->curexc_traceback, getFrame(0, true));
 }
 
 extern "C" void reraiseCapiExcAsCxx() {
@@ -279,7 +280,7 @@ void caughtCxxException(LineInfo line_info, ExcInfo* exc_info) {
     static StatCounter frames_unwound("num_frames_unwound_python");
     frames_unwound.log();
 
-    exceptionAtLine(line_info, &exc_info->traceback, getFrame(0));
+    exceptionAtLine(line_info, &exc_info->traceback, getFrame(0, true));
 }
 
 

@@ -120,8 +120,6 @@ typedef struct _ts {
 
     PyObject *dict;  /* Stores per-thread state */
 
-    struct _frame *frame;
-
     // Pyston note: additions in here need to be mirrored in ThreadStateInternal::accept
 } PyThreadState;
 

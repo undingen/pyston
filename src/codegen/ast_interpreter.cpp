@@ -67,7 +67,6 @@ extern "C" Box* executeInnerAndSetupFrame(ASTInterpreter& interpreter, CFGBlock*
 class ASTInterpreter {
 public:
     ASTInterpreter(CLFunction* clfunc, Box** vregs);
-    ~ASTInterpreter();
 
     void initArguments(BoxedClosure* closure, BoxedGenerator* generator, Box* arg1, Box* arg2, Box* arg3, Box** args);
 
@@ -251,9 +250,6 @@ ASTInterpreter::ASTInterpreter(CLFunction* clfunc, Box** vregs)
     assert(scope_info);
 }
 
-ASTInterpreter::~ASTInterpreter() {
-}
-
 void ASTInterpreter::initArguments(BoxedClosure* _closure, BoxedGenerator* _generator, Box* arg1, Box* arg2, Box* arg3,
                                    Box** args) {
     passed_closure = _closure;
@@ -407,8 +403,7 @@ Box* ASTInterpreter::executeInner(ASTInterpreter& interpreter, CFGBlock* start_b
         }
     }
 
-    deinitFrame2(true, ((uint64_t)interpreter_instr_addr) + 1, (uint64_t)__builtin_frame_address(1),
-                 interpreter.getCL(), 0);
+    deinitFrame(interpreter.getFrameInfo());
     return v.o;
 }
 
@@ -1703,9 +1698,6 @@ const void* interpreter_instr_addr = (void*)&executeInnerAndSetupFrame;
 
 // small wrapper around executeInner because we can not directly call the member function from asm.
 extern "C" Box* executeInnerFromASM(ASTInterpreter& interpreter, CFGBlock* start_block, AST_stmt* start_at) {
-    // initFrame(true, ((uint64_t)interpreter_instr_addr) + 1, (uint64_t)__builtin_frame_address(1),
-    // interpreter.getCL(),
-    //          0);
     Box* rtn = ASTInterpreter::executeInner(interpreter, start_block, start_at);
     return rtn;
 }
@@ -1961,6 +1953,12 @@ FrameInfo* getFrameInfoForInterpretedFrame(void* frame_ptr) {
     ASTInterpreter* interpreter = getInterpreterFromFramePtr(frame_ptr);
     assert(interpreter);
     return interpreter->getFrameInfo();
+}
+
+Box** getVRegsForInterpretedFrame(void* frame_ptr) {
+    ASTInterpreter* interpreter = getInterpreterFromFramePtr(frame_ptr);
+    assert(interpreter);
+    return interpreter->getVRegs();
 }
 
 BoxedDict* localsForInterpretedFrame(Box** vregs, CFG* cfg, bool only_user_visible) {

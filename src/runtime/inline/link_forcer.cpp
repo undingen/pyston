@@ -72,7 +72,6 @@ void force() {
     FORCE(createPureImaginary);
     FORCE(createSet);
     FORCE(decodeUTF8StringPtr);
-    FORCE(initFrame);
     FORCE(deinitFrame);
 
     FORCE(getattr);

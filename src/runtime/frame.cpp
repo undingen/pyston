@@ -127,8 +127,9 @@ public:
         auto f = static_cast<BoxedFrame*>(obj);
         f->update();
 
-        if (f->exited)
+        if (f->exited) {
             return f->_locals;
+        }
 
         return f->it.fastLocalsToBoxedLocals();
     }
@@ -194,7 +195,8 @@ public:
         if (0 && should_update)
             update();
 
-        _locals = it.fastLocalsToBoxedLocals();
+        _locals = it.copyVRegs();
+        //_locals = it.fastLocalsToBoxedLocals();
         if (!_back) {
             PythonFrameIterator it_back = it.back();
             if (!it_back.exists())
@@ -216,65 +218,16 @@ Box* getFrame(PythonFrameIterator it, bool exits) {
     return rtn;
 }
 
-Box* getFrame(int depth) {
+Box* getFrame(int depth, bool exits) {
     auto it = getPythonFrame(depth);
     if (!it.exists())
         return NULL;
 
-    return BoxedFrame::boxFrame(std::move(it));
-    /*
-        BoxedFrame* f = (BoxedFrame*)PyThreadState_GET()->frame;
-        while (depth > 0 && f != NULL) {
-            f = f->_back;
-            --depth;
-        }
-        RELEASE_ASSERT(f, "");
-        printf("getframe %d %p\n", depth, f);
-        return f;
-    */
-}
-
-
-constexpr int max_free_frames = 16;
-static BoxedFrame* free_frames[max_free_frames];
-static int num_free_frames;
-static bool init_num_free_frames;
-
-extern "C" void initFrame(bool is_interpreter, uint64_t ip, uint64_t bp, CLFunction* cl, CompiledFunction* cf) {
-    /*
-    if (num_free_frames) {
-        BoxedFrame* frame = free_frames[--num_free_frames];
-        frame->_code = (Box*)code;
-        frame->vregs = vregs;
-        frame->_back = (BoxedFrame*)next_frame;
-        frame->_globals = globals;
-        return frame;
-    }
-    if (unlikely(!init_num_free_frames)) {
-        gc::registerPotentialRootRange(&free_frames[0], &free_frames[max_free_frames]);
-        init_num_free_frames = true;
-    }
-    */
-
-
-    // BoxedFrame::boxFrame(PythonFrameIterator(is_interpreter, ip, bp, cl, cf), frame);
-
-    /*
-    BoxedFrame* frame = (BoxedFrame*)PyThreadState_GET()->frame;
-
-
-    PyThreadState_GET()->frame
-        = (struct _frame*)BoxedFrame::boxFrame(PythonFrameIterator(is_interpreter, ip, bp, cl, cf), frame);
-    printf("+ init frame:%p  %p %p %s\n", cl, PyThreadState_GET()->frame, frame, cl->source->getName()->c_str());
-    */
-}
-
-extern "C" void deinitFrame2(bool is_interpreter, uint64_t ip, uint64_t bp, CLFunction* cl, CompiledFunction* cf) {
-    PythonFrameIterator frame_iter(is_interpreter, ip, bp, cl, cf);
-    FrameInfo* fi = frame_iter.getFrameInfo();
-    if (fi->frame_obj != NULL) {
-        fi->frame_obj->handleExit(false);
-    }
+    bool created_new;
+    BoxedFrame* rtn = (BoxedFrame*)BoxedFrame::boxFrame(std::move(it), created_new);
+    if (exits)
+        rtn->handleExit(!created_new);
+    return rtn;
 }
 
 extern "C" void deinitFrame(FrameInfo* frame_info) {

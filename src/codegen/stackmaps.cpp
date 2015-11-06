@@ -34,8 +34,6 @@ namespace pyston {
 // TODO shouldn't be recording this in a global variable
 static uint64_t stackmap_address = 0;
 
-
-
 struct compare_entries {
     int operator()(unsigned offset, const LocationMap::LocationTable::LocationEntry& item) const {
         // key is the return address of the callsite, so we will check it against
