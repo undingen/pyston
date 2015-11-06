@@ -75,6 +75,7 @@ private:
     int scratch_size;
 
 public:
+    llvm::Value* vregs = 0;
     IRGenState(CLFunction* clfunc, CompiledFunction* cf, SourceInfo* source_info, std::unique_ptr<PhiAnalysis> phis,
                ParamNames* param_names, GCBuilder* gc, llvm::MDNode* func_dbg_info);
     ~IRGenState();

@@ -961,6 +961,7 @@ Box* PythonFrameIterator::fastLocalsToBoxedLocals() {
     }
 
     if (impl->getId().type == PythonFrameId::COMPILED) {
+#if 0
         CompiledFunction* cf = impl->getCF();
         d = new BoxedDict();
 
@@ -1042,6 +1043,14 @@ Box* PythonFrameIterator::fastLocalsToBoxedLocals() {
         }
 
         frame_info = impl->getFrameInfo();
+#else
+        CompiledFunction* cf = impl->getCF();
+        frame_info = impl->getFrameInfo();
+        d = localsForInterpretedFrame(frame_info->vregs, cf->clfunc->source->cfg, true);
+        closure = NULL;
+// closure = passedClosureForInterpretedFrame((void*)impl->getId().bp);
+// frame_info = getFrameInfoForInterpretedFrame((void*)impl->getId().bp);
+#endif
     } else if (impl->getId().type == PythonFrameId::INTERPRETED) {
         d = localsForInterpretedFrame((void*)impl->getId().bp, true);
         closure = passedClosureForInterpretedFrame((void*)impl->getId().bp);
