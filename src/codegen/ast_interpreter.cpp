@@ -1966,8 +1966,11 @@ FrameInfo* getFrameInfoForInterpretedFrame(void* frame_ptr) {
 BoxedDict* localsForInterpretedFrame(Box** vregs, CFG* cfg, bool only_user_visible) {
     BoxedDict* rtn = new BoxedDict();
     for (auto& l : cfg->sym_vreg_map) {
-        if (only_user_visible && (l.first.s()[0] == '!' || l.first.s()[0] == '#'))
-            continue;
+        if (only_user_visible) {
+            char c = l.first.getBox()->c_str()[0];
+            if (c == '!' || c == '#')
+                continue;
+        }
 
         Box* val = vregs[l.second];
         if (val) {

@@ -181,9 +181,11 @@ llvm::Value* IRGenState::getFrameInfoVar() {
             builder.SetInsertPoint(&entry_block, entry_block.getFirstInsertionPt());
 
         assert(!vregs);
-        vregs = builder.CreateAlloca(g.llvm_value_type_ptr, getConstantInt(getCL()->calculateNumVRegs()), "vregs");
+        getCL()->calculateNumVRegs();
+        vregs = builder.CreateAlloca(g.llvm_value_type_ptr,
+                                     getConstantInt(getCL()->source->cfg->num_vregs_user_visible), "vregs");
         builder.CreateMemSet(vregs, getConstantInt(0, g.i8),
-                             getConstantInt(getCL()->calculateNumVRegs() * sizeof(Box*)), 1);
+                             getConstantInt(getCL()->source->cfg->num_vregs_user_visible * sizeof(Box*)), 1);
 
         llvm::AllocaInst* al = builder.CreateAlloca(g.llvm_frame_info_type, NULL, "frame_info");
         assert(al->isStaticAlloca());
@@ -1769,7 +1771,7 @@ private:
             int vreg = irstate->getSourceInfo()->cfg->sym_vreg_map[name];
             assert(vreg >= 0);
 
-            if (1 /*vreg < irstate->getSourceInfo()->cfg->num_vregs_user_visible*/) {
+            if (vreg < irstate->getSourceInfo()->cfg->num_vregs_user_visible) {
                 auto* gep = emitter.getBuilder()->CreateConstInBoundsGEP1_64(irstate->vregs, vreg);
                 auto* llvm_val = val->makeConverted(emitter, UNKNOWN)->getValue();
                 emitter.getBuilder()->CreateStore(llvm_val, gep);
