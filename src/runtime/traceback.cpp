@@ -43,6 +43,8 @@ void BoxedTraceback::gcHandler(GCVisitor* v, Box* b) {
         v->visit(&self->py_lines);
     if (self->tb_next)
         v->visit(&self->tb_next);
+    if (self->frame)
+        v->visit(&self->frame);
 
     v->visit(&self->line.file);
     v->visit(&self->line.func);
@@ -116,7 +118,7 @@ Box* BoxedTraceback::getLines(Box* b) {
 }
 
 void BoxedTraceback::here(LineInfo lineInfo, Box** tb) {
-    *tb = new BoxedTraceback(std::move(lineInfo), *tb);
+    *tb = new BoxedTraceback(std::move(lineInfo), *tb, getFrame(0));
 }
 
 void setupTraceback() {
@@ -124,6 +126,8 @@ void setupTraceback() {
                                        false, "traceback");
 
     traceback_cls->giveAttr("getLines", new BoxedFunction(boxRTFunction((void*)BoxedTraceback::getLines, UNKNOWN, 1)));
+    traceback_cls->giveAttr("tb_frame",
+                            new BoxedMemberDescriptor(BoxedMemberDescriptor::OBJECT, offsetof(BoxedTraceback, frame)));
 
     traceback_cls->freeze();
 }

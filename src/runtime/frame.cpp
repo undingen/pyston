@@ -140,7 +140,9 @@ public:
 
     static Box* back(Box* obj, void*) {
         auto f = static_cast<BoxedFrame*>(obj);
-        return f->_back;
+        if (f->_back)
+            return f->_back;
+        return None;
     }
 
     static Box* lineno(Box* obj, void*) {
