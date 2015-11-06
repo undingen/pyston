@@ -594,7 +594,7 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
                 // printf("%ld\n", args.size());
                 llvm::CallInst* postcall = emitter->getBuilder()->CreateCall(bitcast_r, args);
                 postcall->setTailCall(true);
-                emitter->getBuilder()->CreateCall(g.funcs.deinitFrame);
+                emitter->getBuilder()->CreateCall(g.funcs.deinitFrame, irstate->getFrameInfoVar());
                 emitter->getBuilder()->CreateRet(postcall);
 
                 emitter->getBuilder()->SetInsertPoint(llvm_entry_blocks[source->cfg->getStartingBlock()]);

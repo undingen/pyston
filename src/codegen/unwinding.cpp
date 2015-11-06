@@ -408,7 +408,7 @@ public:
         // for x86_64, at least, libunwind seems to use the dwarf numbering
 
         assert(0 <= dwarf_num && dwarf_num < 16);
-        assert(regs_valid & (1 << dwarf_num));
+        // assert(regs_valid & (1 << dwarf_num));
         assert(id.type == PythonFrameId::COMPILED);
 
         return regs[dwarf_num];

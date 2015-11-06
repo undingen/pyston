@@ -347,18 +347,19 @@ Box* ASTInterpreter::execJITedBlock(CFGBlock* b) {
 struct AutoDeinit {
     ASTInterpreter* interp;
     CLFunction* func;
+    uint64_t bp;
 
-    AutoDeinit(ASTInterpreter* interp) : interp(interp), func(interp->getCL()) {}
+    AutoDeinit(ASTInterpreter* interp, uint64_t bp) : interp(interp), func(interp->getCL()), bp(bp) {}
 
     ~AutoDeinit() {
         assert(func == interp->getCL());
-        deinitFrame();
+        deinitFrame2(true, ((uint64_t)interpreter_instr_addr) + 1, bp, interp->getCL(), 0);
         assert(func == interp->getCL());
     }
 };
 
 Box* ASTInterpreter::executeInner(ASTInterpreter& interpreter, CFGBlock* start_block, AST_stmt* start_at) {
-    AutoDeinit deinit(&interpreter);
+    AutoDeinit deinit(&interpreter, (uint64_t)__builtin_frame_address(1));
 
     Value v;
 
@@ -1715,8 +1716,9 @@ const void* interpreter_instr_addr = (void*)&executeInnerAndSetupFrame;
 
 // small wrapper around executeInner because we can not directly call the member function from asm.
 extern "C" Box* executeInnerFromASM(ASTInterpreter& interpreter, CFGBlock* start_block, AST_stmt* start_at) {
-    initFrame(true, ((uint64_t)interpreter_instr_addr) + 1, (uint64_t)__builtin_frame_address(1), interpreter.getCL(),
-              0);
+    // initFrame(true, ((uint64_t)interpreter_instr_addr) + 1, (uint64_t)__builtin_frame_address(1),
+    // interpreter.getCL(),
+    //          0);
     Box* rtn = ASTInterpreter::executeInner(interpreter, start_block, start_at);
     return rtn;
 }

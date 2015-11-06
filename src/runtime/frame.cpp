@@ -170,6 +170,13 @@ public:
         return fi->frame_obj;
     }
 
+    static void handleExitIfHasFrame(PythonFrameIterator it) {
+        FrameInfo* fi = it.getFrameInfo();
+        if (fi->frame_obj != NULL) {
+            fi->frame_obj->handleExit();
+        }
+    }
+
     void handleExit() {
         if (exited)
             return;
@@ -177,7 +184,7 @@ public:
         update();
 
         _locals = it.fastLocalsToBoxedLocals();
-        _stmt = it.getCurrentStatement();
+        //_stmt = it.getCurrentStatement();
 
         exited = true;
     }
@@ -236,13 +243,32 @@ extern "C" void initFrame(bool is_interpreter, uint64_t ip, uint64_t bp, CLFunct
     */
 }
 
-extern "C" void deinitFrame(void) {
+extern "C" void deinitFrame2(bool is_interpreter, uint64_t ip, uint64_t bp, CLFunction* cl, CompiledFunction* cf) {
+    PythonFrameIterator frame_iter(is_interpreter, ip, bp, cl, cf);
+    BoxedFrame::handleExitIfHasFrame(std::move(frame_iter));
+}
+
+extern "C" void deinitFrame(FrameInfo* frame_info) {
+#if 0
+    CompiledFunction* cf = (CompiledFunction*)_cf;
     // BoxedFrame* frame = (BoxedFrame*)PyThreadState_GET()->frame;
     // printf("- deinitFrame %p\n", frame);
     // frame->handleExit();
-    ((BoxedFrame*)getFrame(0))->handleExit();
+    //((BoxedFrame*)getFrame(0))->handleExit();
+
+    //auto it = getPythonFrame(0);
+    //BoxedFrame::handleExitIfHasFrame(std::move(it));
+
+    deinitFrame2(false, (uint64_t)__builtin_return_address(0), (uint64_t)__builtin_frame_address(1), cf->clfunc, cf);
+
 
     // PyThreadState_GET()->frame = (struct _frame*)frame->_back;
+#else
+    if (frame_info && frame_info->frame_obj) {
+        frame_info->frame_obj->handleExit();
+    }
+
+#endif
 }
 
 void setupFrame() {
