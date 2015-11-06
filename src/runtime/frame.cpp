@@ -48,7 +48,7 @@ public:
     Box* _code;
 
     Box* _locals;
-    BoxedFrame* _back;
+    Box* _back;
     AST_stmt* _stmt;
 
     bool exited;
@@ -140,18 +140,19 @@ public:
 
     static Box* back(Box* obj, void*) {
         auto f = static_cast<BoxedFrame*>(obj);
-        if (f->exited) {
-            if (f->_back)
-                return f->_back;
-            return None;
-        }
+
+        if (f->_back)
+            return f->_back;
 
         f->update();
 
+
         PythonFrameIterator it = f->it.back();
         if (!it.exists())
-            return None;
-        return BoxedFrame::boxFrame(std::move(it));
+            f->_back = None;
+        else
+            f->_back = BoxedFrame::boxFrame(std::move(it));
+        return f->_back;
     }
 
     static Box* lineno(Box* obj, void*) {
