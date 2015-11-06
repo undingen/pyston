@@ -191,7 +191,7 @@ public:
         if (exited)
             return;
 
-        if (should_update)
+        if (0 && should_update)
             update();
 
         _locals = it.fastLocalsToBoxedLocals();
