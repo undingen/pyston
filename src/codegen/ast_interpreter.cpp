@@ -1710,28 +1710,6 @@ extern "C" Box* executeInnerFromASM(ASTInterpreter& interpreter, CFGBlock* start
     return rtn;
 }
 
-static int calculateNumVRegs(CLFunction* clfunc) {
-    SourceInfo* source_info = clfunc->source.get();
-
-    CFG* cfg = source_info->cfg;
-
-    // Note: due to some (avoidable) restrictions, this check is pretty constrained in where
-    // it can go, due to the fact that it can throw an exception.
-    // It can't go in the ASTInterpreter constructor, since that will cause the C++ runtime to
-    // delete the partially-constructed memory which we don't currently handle.  It can't go into
-    // executeInner since we want the SyntaxErrors to happen *before* the stack frame is entered.
-    // (For instance, throwing the exception will try to fetch the current statement, but we determine
-    // that by looking at the cfg.)
-    if (!cfg)
-        cfg = source_info->cfg = computeCFG(source_info, source_info->body);
-
-    if (!cfg->hasVregsAssigned()) {
-        ScopeInfo* scope_info = clfunc->source->getScopeInfo();
-        cfg->assignVRegs(clfunc->param_names, scope_info);
-    }
-    return cfg->sym_vreg_map.size();
-}
-
 Box* astInterpretFunction(CLFunction* clfunc, Box* closure, Box* generator, Box* globals, Box* arg1, Box* arg2,
                           Box* arg3, Box** args) {
     UNAVOIDABLE_STAT_TIMER(t0, "us_timer_in_interpreter");
@@ -1798,7 +1776,7 @@ Box* astInterpretFunction(CLFunction* clfunc, Box* closure, Box* generator, Box*
     }
 
     Box** vregs = NULL;
-    int num_vregs = calculateNumVRegs(clfunc);
+    int num_vregs = clfunc->calculateNumVRegs();
     if (num_vregs > 0) {
         vregs = (Box**)alloca(sizeof(Box*) * num_vregs);
         memset(vregs, 0, sizeof(Box*) * num_vregs);
@@ -1829,7 +1807,7 @@ Box* astInterpretFunctionEval(CLFunction* clfunc, Box* globals, Box* boxedLocals
     ++clfunc->times_interpreted;
 
     Box** vregs = NULL;
-    int num_vregs = calculateNumVRegs(clfunc);
+    int num_vregs = clfunc->calculateNumVRegs();
     if (num_vregs > 0) {
         vregs = (Box**)alloca(sizeof(Box*) * num_vregs);
         memset(vregs, 0, sizeof(Box*) * num_vregs);
@@ -1860,7 +1838,7 @@ static Box* astInterpretDeoptInner(CLFunction* clfunc, AST_expr* after_expr, AST
     SourceInfo* source_info = clfunc->source.get();
 
     Box** vregs = NULL;
-    int num_vregs = calculateNumVRegs(clfunc);
+    int num_vregs = clfunc->calculateNumVRegs();
     if (num_vregs > 0) {
         vregs = (Box**)alloca(sizeof(Box*) * num_vregs);
         memset(vregs, 0, sizeof(Box*) * num_vregs);
