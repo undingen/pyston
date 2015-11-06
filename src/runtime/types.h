@@ -23,6 +23,7 @@
 #include "structmember.h"
 
 #include "codegen/irgen/future.h"
+#include "codegen/unwinding.h"
 #include "core/contiguous_map.h"
 #include "core/from_llvm/DenseMap.h"
 #include "core/threading.h"
@@ -1122,6 +1123,7 @@ Box* codeForFunction(BoxedFunction*);
 Box* codeForCLFunction(CLFunction*);
 CLFunction* clfunctionFromCode(Box* code);
 
+Box* getFrame(PythonFrameIterator it);
 Box* getFrame(int depth);
 extern "C" void initFrame(bool is_interpreter, uint64_t ip, uint64_t bp, CLFunction* cl, CompiledFunction* cf);
 extern "C" void deinitFrame2(bool is_interpreter, uint64_t ip, uint64_t bp, CLFunction* cl, CompiledFunction* cf);

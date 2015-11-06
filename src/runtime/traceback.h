@@ -45,7 +45,7 @@ public:
     static void gcHandler(gc::GCVisitor* v, Box* b);
 
     // somewhat equivalent to PyTraceBack_Here
-    static void here(LineInfo lineInfo, Box** tb);
+    static void here(LineInfo lineInfo, Box** tb, Box* frame);
 };
 
 void printTraceback(Box* b);

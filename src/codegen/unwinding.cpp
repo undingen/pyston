@@ -558,9 +558,6 @@ public:
     }
 
     void handleCFrame(unw_cursor_t* cursor) {
-        unw_word_t ip = get_cursor_ip(cursor);
-        unw_word_t bp = get_cursor_bp(cursor);
-
         PythonFrameIteratorImpl frame_iter;
         bool found_frame = pystack_extractor.handleCFrame(cursor, &frame_iter);
         if (found_frame) {
@@ -570,7 +567,9 @@ public:
                 // TODO: shouldn't fetch this multiple times?
                 frame_iter.getCurrentStatement()->cxx_exception_count++;
                 auto line_info = lineInfoForFrame(&frame_iter);
-                exceptionAtLine(line_info, &exc_info.traceback);
+                Box* frame
+                    = getFrame(std::unique_ptr<PythonFrameIteratorImpl>(new PythonFrameIteratorImpl(frame_iter)));
+                exceptionAtLine(line_info, &exc_info.traceback, frame);
             }
         }
     }
@@ -740,7 +739,8 @@ Box* getTraceback() {
 
     Box* tb = None;
     unwindPythonStack([&](PythonFrameIteratorImpl* frame_iter) {
-        BoxedTraceback::here(lineInfoForFrame(frame_iter), &tb);
+        Box* frame = getFrame(std::unique_ptr<PythonFrameIteratorImpl>(new PythonFrameIteratorImpl(*frame_iter)));
+        BoxedTraceback::here(lineInfoForFrame(frame_iter), &tb, frame);
         return false;
     });
 

@@ -117,8 +117,8 @@ Box* BoxedTraceback::getLines(Box* b) {
     return tb->py_lines;
 }
 
-void BoxedTraceback::here(LineInfo lineInfo, Box** tb) {
-    *tb = new BoxedTraceback(std::move(lineInfo), *tb, getFrame(0));
+void BoxedTraceback::here(LineInfo lineInfo, Box** tb, Box* frame) {
+    *tb = new BoxedTraceback(std::move(lineInfo), *tb, frame);
 }
 
 void setupTraceback() {
@@ -128,6 +128,8 @@ void setupTraceback() {
     traceback_cls->giveAttr("getLines", new BoxedFunction(boxRTFunction((void*)BoxedTraceback::getLines, UNKNOWN, 1)));
     traceback_cls->giveAttr("tb_frame",
                             new BoxedMemberDescriptor(BoxedMemberDescriptor::OBJECT, offsetof(BoxedTraceback, frame)));
+    traceback_cls->giveAttr(
+        "tb_next", new BoxedMemberDescriptor(BoxedMemberDescriptor::OBJECT, offsetof(BoxedTraceback, tb_next)));
 
     traceback_cls->freeze();
 }

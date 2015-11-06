@@ -195,15 +195,16 @@ public:
         update();
 
         _locals = it.fastLocalsToBoxedLocals();
-
-        PythonFrameIterator it_back = it.back();
-        if (it_back.exists())
-            _back = (BoxedFrame*)BoxedFrame::boxFrame(std::move(it_back));
+        _back = back(this, NULL);
         //_stmt = it.getCurrentStatement();
 
         exited = true;
     }
 };
+
+Box* getFrame(PythonFrameIterator it) {
+    return BoxedFrame::boxFrame(std::move(it));
+}
 
 Box* getFrame(int depth) {
     auto it = getPythonFrame(depth);
