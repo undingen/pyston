@@ -2609,9 +2609,10 @@ void CFG::assignVRegs(const ParamNames& param_names, ScopeInfo* scope_info) {
             param_names.kwarg_name->accept(&visitor);
 
         if (visitor.only_user_visible) {
-                    visitor.only_user_visible = false;
-                    num_vregs_user_visible = visitor.sym_vreg_map.size();
-                }
+            visitor.only_user_visible = false;
+            num_vregs_user_visible = visitor.sym_vreg_map.size();
+            sym_vreg_map_user = visitor.sym_vreg_map;
+        }
     }
 
 
