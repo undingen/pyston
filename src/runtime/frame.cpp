@@ -146,7 +146,6 @@ public:
 
         f->update();
 
-
         PythonFrameIterator it = f->it.back();
         if (!it.exists())
             f->_back = None;
@@ -169,8 +168,15 @@ public:
     DEFAULT_CLASS(frame_cls);
 
     static Box* boxFrame(PythonFrameIterator it) {
+        bool dummy;
+        return boxFrame(std::move(it), dummy);
+    }
+
+
+    static Box* boxFrame(PythonFrameIterator it, bool& created_new) {
         FrameInfo* fi = it.getFrameInfo();
-        if (fi->frame_obj == NULL) {
+        created_new = fi->frame_obj == NULL;
+        if (created_new) {
             auto cl = it.getCL();
             Box* globals = it.getGlobalsDict();
             BoxedFrame* f = fi->frame_obj = new BoxedFrame(std::move(it));
@@ -181,22 +187,21 @@ public:
         return fi->frame_obj;
     }
 
-    static void handleExitIfHasFrame(PythonFrameIterator it) {
-        FrameInfo* fi = it.getFrameInfo();
-        if (fi->frame_obj != NULL) {
-            // printf("handleExitIfHasFrame %p\n", fi->frame_obj);
-            fi->frame_obj->handleExit();
-        }
-    }
-
-    void handleExit() {
+    void handleExit(bool should_update) {
         if (exited)
             return;
 
-        update();
+        if (should_update)
+            update();
 
         _locals = it.fastLocalsToBoxedLocals();
-        _back = back(this, NULL);
+        if (!_back) {
+            PythonFrameIterator it_back = it.back();
+            if (!it_back.exists())
+                _back = None;
+            else
+                _back = BoxedFrame::boxFrame(std::move(it_back));
+        }
         //_stmt = it.getCurrentStatement();
 
         exited = true;
@@ -204,9 +209,10 @@ public:
 };
 
 Box* getFrame(PythonFrameIterator it, bool exits) {
-    BoxedFrame* rtn = (BoxedFrame*)BoxedFrame::boxFrame(std::move(it));
+    bool created_new;
+    BoxedFrame* rtn = (BoxedFrame*)BoxedFrame::boxFrame(std::move(it), created_new);
     if (exits)
-        rtn->handleExit();
+        rtn->handleExit(!created_new);
     return rtn;
 }
 
@@ -265,31 +271,16 @@ extern "C" void initFrame(bool is_interpreter, uint64_t ip, uint64_t bp, CLFunct
 
 extern "C" void deinitFrame2(bool is_interpreter, uint64_t ip, uint64_t bp, CLFunction* cl, CompiledFunction* cf) {
     PythonFrameIterator frame_iter(is_interpreter, ip, bp, cl, cf);
-    BoxedFrame::handleExitIfHasFrame(std::move(frame_iter));
+    FrameInfo* fi = frame_iter.getFrameInfo();
+    if (fi->frame_obj != NULL) {
+        fi->frame_obj->handleExit(false);
+    }
 }
 
 extern "C" void deinitFrame(FrameInfo* frame_info) {
-#if 0
-    CompiledFunction* cf = (CompiledFunction*)_cf;
-    // BoxedFrame* frame = (BoxedFrame*)PyThreadState_GET()->frame;
-    // printf("- deinitFrame %p\n", frame);
-    // frame->handleExit();
-    //((BoxedFrame*)getFrame(0))->handleExit();
-
-    //auto it = getPythonFrame(0);
-    //BoxedFrame::handleExitIfHasFrame(std::move(it));
-
-    deinitFrame2(false, (uint64_t)__builtin_return_address(0), (uint64_t)__builtin_frame_address(1), cf->clfunc, cf);
-
-
-    // PyThreadState_GET()->frame = (struct _frame*)frame->_back;
-#else
     if (frame_info && frame_info->frame_obj) {
-
-        frame_info->frame_obj->handleExit();
+        frame_info->frame_obj->handleExit(true);
     }
-
-#endif
 }
 
 void setupFrame() {
