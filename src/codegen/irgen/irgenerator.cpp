@@ -182,7 +182,8 @@ llvm::Value* IRGenState::getFrameInfoVar() {
 
         assert(!vregs);
         vregs = builder.CreateAlloca(g.llvm_value_type_ptr, getConstantInt(getCL()->calculateNumVRegs()), "vregs");
-
+        builder.CreateMemSet(vregs, getConstantInt(0, g.i8),
+                             getConstantInt(getCL()->calculateNumVRegs() * sizeof(Box*)), 1);
 
         llvm::AllocaInst* al = builder.CreateAlloca(g.llvm_frame_info_type, NULL, "frame_info");
         assert(al->isStaticAlloca());
