@@ -140,9 +140,18 @@ public:
 
     static Box* back(Box* obj, void*) {
         auto f = static_cast<BoxedFrame*>(obj);
-        if (f->_back)
-            return f->_back;
-        return None;
+        if (f->exited) {
+            if (f->_back)
+                return f->_back;
+            return None;
+        }
+
+        f->update();
+
+        PythonFrameIterator it = f->it.back();
+        if (!it.exists())
+            return None;
+        return BoxedFrame::boxFrame(std::move(it));
     }
 
     static Box* lineno(Box* obj, void*) {
@@ -158,7 +167,7 @@ public:
 
     DEFAULT_CLASS(frame_cls);
 
-    static Box* boxFrame(PythonFrameIterator it, Box* back) {
+    static Box* boxFrame(PythonFrameIterator it) {
         FrameInfo* fi = it.getFrameInfo();
         if (fi->frame_obj == NULL) {
             auto cl = it.getCL();
@@ -166,7 +175,6 @@ public:
             BoxedFrame* f = fi->frame_obj = new BoxedFrame(std::move(it));
             f->_globals = globals;
             f->_code = (Box*)cl->getCode();
-            f->_back = (BoxedFrame*)back;
         }
 
         return fi->frame_obj;
@@ -186,6 +194,10 @@ public:
         update();
 
         _locals = it.fastLocalsToBoxedLocals();
+
+        PythonFrameIterator it_back = it.back();
+        if (it_back.exists())
+            _back = (BoxedFrame*)BoxedFrame::boxFrame(std::move(it_back));
         //_stmt = it.getCurrentStatement();
 
         exited = true;
@@ -197,7 +209,7 @@ Box* getFrame(int depth) {
     if (!it.exists())
         return NULL;
 
-    return BoxedFrame::boxFrame(std::move(it), getFrame(depth + 1));
+    return BoxedFrame::boxFrame(std::move(it));
     /*
         BoxedFrame* f = (BoxedFrame*)PyThreadState_GET()->frame;
         while (depth > 0 && f != NULL) {
