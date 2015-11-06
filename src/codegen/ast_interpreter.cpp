@@ -1963,15 +1963,13 @@ FrameInfo* getFrameInfoForInterpretedFrame(void* frame_ptr) {
     return interpreter->getFrameInfo();
 }
 
-BoxedDict* localsForInterpretedFrame(void* frame_ptr, bool only_user_visible) {
-    ASTInterpreter* interpreter = getInterpreterFromFramePtr(frame_ptr);
-    assert(interpreter);
+BoxedDict* localsForInterpretedFrame(Box** vregs, CFG* cfg, bool only_user_visible) {
     BoxedDict* rtn = new BoxedDict();
-    for (auto& l : interpreter->getSymVRegMap()) {
+    for (auto& l : cfg->sym_vreg_map) {
         if (only_user_visible && (l.first.s()[0] == '!' || l.first.s()[0] == '#'))
             continue;
 
-        Box* val = interpreter->getVRegs()[l.second];
+        Box* val = vregs[l.second];
         if (val) {
             assert(gc::isValidGCObject(val));
             rtn->d[l.first.getBox()] = val;
@@ -1979,6 +1977,12 @@ BoxedDict* localsForInterpretedFrame(void* frame_ptr, bool only_user_visible) {
     }
 
     return rtn;
+}
+
+BoxedDict* localsForInterpretedFrame(void* frame_ptr, bool only_user_visible) {
+    ASTInterpreter* interpreter = getInterpreterFromFramePtr(frame_ptr);
+    assert(interpreter);
+    return localsForInterpretedFrame(interpreter->getVRegs(), interpreter->getCL()->source->cfg, only_user_visible);
 }
 
 BoxedClosure* passedClosureForInterpretedFrame(void* frame_ptr) {
