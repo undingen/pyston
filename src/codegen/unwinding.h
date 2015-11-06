@@ -83,6 +83,8 @@ public:
     Box* fastLocalsToBoxedLocals();
     Box* getGlobalsDict();
 
+    Box* copyVRegs();
+
     // Gets the "current version" of this frame: if the frame has executed since
     // the iterator was obtained, the methods may return old values. This returns
     // an updated copy that returns the updated values.

@@ -127,8 +127,9 @@ public:
         auto f = static_cast<BoxedFrame*>(obj);
         f->update();
 
-        if (f->exited)
+        if (f->exited) {
             return f->_locals;
+        }
 
         return f->it.fastLocalsToBoxedLocals();
     }
@@ -194,7 +195,8 @@ public:
         if (0 && should_update)
             update();
 
-        _locals = it.fastLocalsToBoxedLocals();
+        _locals = it.copyVRegs();
+        //_locals = it.fastLocalsToBoxedLocals();
         if (!_back) {
             PythonFrameIterator it_back = it.back();
             if (!it_back.exists())
