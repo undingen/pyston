@@ -218,12 +218,16 @@ Box* getFrame(PythonFrameIterator it, bool exits) {
     return rtn;
 }
 
-Box* getFrame(int depth) {
+Box* getFrame(int depth, bool exits) {
     auto it = getPythonFrame(depth);
     if (!it.exists())
         return NULL;
 
-    return BoxedFrame::boxFrame(std::move(it));
+    bool created_new;
+    BoxedFrame* rtn = (BoxedFrame*)BoxedFrame::boxFrame(std::move(it), created_new);
+    if (exits)
+        rtn->handleExit(!created_new);
+    return rtn;
     /*
         BoxedFrame* f = (BoxedFrame*)PyThreadState_GET()->frame;
         while (depth > 0 && f != NULL) {
