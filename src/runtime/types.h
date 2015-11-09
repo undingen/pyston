@@ -1123,6 +1123,7 @@ Box* codeForFunction(BoxedFunction*);
 Box* codeForCLFunction(CLFunction*);
 CLFunction* clfunctionFromCode(Box* code);
 
+void frameSetBack(Box* frame_old, Box* frame_new);
 Box* getFrame(PythonFrameIterator it, bool exits);
 Box* getFrame(int depth, bool exits);
 extern "C" void initFrame(bool is_interpreter, uint64_t ip, uint64_t bp, CLFunction* cl, CompiledFunction* cf);

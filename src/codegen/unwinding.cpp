@@ -536,13 +536,14 @@ public:
 class PythonUnwindSession : public Box {
     ExcInfo exc_info;
     PythonStackExtractor pystack_extractor;
+    Box* last_frame;
 
     Timer t;
 
 public:
     DEFAULT_CLASS_SIMPLE(unwind_session_cls);
 
-    PythonUnwindSession() : exc_info(NULL, NULL, NULL), t(/*min_usec=*/10000) {}
+    PythonUnwindSession() : exc_info(NULL, NULL, NULL), last_frame(0), t(/*min_usec=*/10000) {}
 
     ExcInfo* getExcInfoStorage() { return &exc_info; }
 
@@ -570,6 +571,9 @@ public:
                 auto line_info = lineInfoForFrame(&frame_iter);
                 Box* frame
                     = getFrame(std::unique_ptr<PythonFrameIteratorImpl>(new PythonFrameIteratorImpl(frame_iter)), true);
+                if (last_frame)
+                    frameSetBack(last_frame, frame);
+                last_frame = frame;
                 exceptionAtLine(line_info, &exc_info.traceback, frame);
             }
         }
@@ -1158,6 +1162,8 @@ PythonFrameIterator PythonFrameIterator::back() {
     // TODO this is ineffecient: the iterator is no longer valid for libunwind iteration, so
     // we have to do a full stack crawl again.
     // Hopefully examination of f_back is uncommon.
+    UNAVOIDABLE_STAT_TIMER(t0, "us_mytimer_back");
+
 
     std::unique_ptr<PythonFrameIteratorImpl> rtn(nullptr);
     auto& impl = this->impl;
