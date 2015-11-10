@@ -2600,6 +2600,8 @@ public:
             std::sort(sorted_symbol_table.begin(), sorted_symbol_table.end(),
                       [](const Entry& lhs, const Entry& rhs) { return lhs.first < rhs.first; });
             for (const auto& p : sorted_symbol_table) {
+                if (p.first.s()[0] != '#' && p.first.s()[0] != '!')
+                    continue;
                 CompilerVariable* v = p.second;
                 v->serializeToFrame(stackmap_args);
                 pp->addFrameVar(p.first.s(), v->getType());
