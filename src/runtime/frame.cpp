@@ -188,18 +188,15 @@ public:
         return fi->frame_obj;
     }
 
-    void handleExit(bool should_update, bool skip_back = false) {
+    void handleExit(bool should_update) {
         if (exited)
             return;
 
         if (0 && should_update)
             update();
 
-        // _locals = it.copyVRegs();
-        _locals = it.fastLocalsToBoxedLocals();
-        if (skip_back)
-            _back = None;
-
+        _locals = it.copyVRegs();
+        //_locals = it.fastLocalsToBoxedLocals();
         if (!_back) {
             PythonFrameIterator it_back = it.back();
             if (!it_back.exists())
@@ -213,17 +210,13 @@ public:
     }
 };
 
-void frameSetBack(Box* frame_old, Box* frame_new) {
-    ((BoxedFrame*)frame_old)->_back = frame_new;
-}
-
 Box* getFrame(PythonFrameIterator it, bool exits) {
     UNAVOIDABLE_STAT_TIMER(t0, "us_mytimer_getFrame_it");
 
     bool created_new;
     BoxedFrame* rtn = (BoxedFrame*)BoxedFrame::boxFrame(std::move(it), created_new);
     if (exits)
-        rtn->handleExit(!created_new, true);
+        rtn->handleExit(!created_new);
     return rtn;
 }
 

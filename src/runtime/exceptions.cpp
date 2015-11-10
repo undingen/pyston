@@ -263,7 +263,7 @@ extern "C" void caughtCapiException(AST_stmt* stmt, void* _source_info) {
     PyThreadState* tstate = PyThreadState_GET();
 
     exceptionAtLine(LineInfo(stmt->lineno, stmt->col_offset, source->getFn(), source->getName()),
-                    &tstate->curexc_traceback, getFrame(0, false));
+                    &tstate->curexc_traceback, getFrame(0, true));
 }
 
 extern "C" void reraiseCapiExcAsCxx() {
@@ -280,7 +280,7 @@ void caughtCxxException(LineInfo line_info, ExcInfo* exc_info) {
     static StatCounter frames_unwound("num_frames_unwound_python");
     frames_unwound.log();
 
-    exceptionAtLine(line_info, &exc_info->traceback, getFrame(0, false));
+    exceptionAtLine(line_info, &exc_info->traceback, getFrame(0, true));
 }
 
 
