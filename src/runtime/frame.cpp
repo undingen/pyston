@@ -218,6 +218,8 @@ void frameSetBack(Box* frame_old, Box* frame_new) {
 }
 
 Box* getFrame(PythonFrameIterator it, bool exits) {
+    UNAVOIDABLE_STAT_TIMER(t0, "us_mytimer_getFrame_it");
+
     bool created_new;
     BoxedFrame* rtn = (BoxedFrame*)BoxedFrame::boxFrame(std::move(it), created_new);
     if (exits)
@@ -226,6 +228,8 @@ Box* getFrame(PythonFrameIterator it, bool exits) {
 }
 
 Box* getFrame(int depth, bool exits) {
+    UNAVOIDABLE_STAT_TIMER(t0, "us_mytimer_getFrame_int");
+
     auto it = getPythonFrame(depth);
     if (!it.exists())
         return NULL;
@@ -237,11 +241,12 @@ Box* getFrame(int depth, bool exits) {
     return rtn;
 }
 
-extern "C" void deinitFrame(FrameInfo* frame_info) {
-    if (frame_info && frame_info->frame_obj) {
-        frame_info->frame_obj->handleExit(true);
-    }
+extern "C" void deinitFrame(BoxedFrame* frame) {
+    UNAVOIDABLE_STAT_TIMER(t0, "us_mytimer_deinitFrame");
+    frame->handleExit(true);
 }
+
+
 
 void setupFrame() {
     frame_cls

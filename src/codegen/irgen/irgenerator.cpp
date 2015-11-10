@@ -143,7 +143,7 @@ static llvm::Value* getExcinfoGep(llvm::IRBuilder<true>& builder, llvm::Value* v
     return builder.CreateConstInBoundsGEP2_32(v, 0, 0);
 }
 
-static llvm::Value* getFrameObjGep(llvm::IRBuilder<true>& builder, llvm::Value* v) {
+template <typename Builder> static llvm::Value* getFrameObjGep(Builder& builder, llvm::Value* v) {
     static_assert(offsetof(FrameInfo, exc) == 0, "");
     static_assert(sizeof(ExcInfo) == 24, "");
     static_assert(sizeof(Box*) == 8, "");
@@ -2077,7 +2077,29 @@ private:
         rtn->ensureGrabbed(emitter);
         val->decvref(emitter);
 
-        emitter.createCall(unw_info, g.funcs.deinitFrame, irstate->getFrameInfoVar());
+
+        auto&& builder = *emitter.getBuilder();
+        auto&& frame = builder.CreateLoad(getFrameObjGep(builder, irstate->getFrameInfoVar()));
+
+        llvm::BasicBlock* cur_block = builder.GetInsertBlock();
+
+        llvm::BasicBlock* if_frame_set = emitter.createBasicBlock("if_frame_set");
+        if_frame_set->moveAfter(cur_block);
+        llvm::BasicBlock* join_block = emitter.createBasicBlock("ret");
+        join_block->moveAfter(if_frame_set);
+
+        auto&& is_frame_null = builder.CreateICmpEQ(frame, getNullPtr(frame->getType()));
+
+        builder.CreateCondBr(is_frame_null, join_block, if_frame_set);
+        {
+            emitter.setCurrentBasicBlock(if_frame_set);
+            emitter.createCall(unw_info, g.funcs.deinitFrame, frame);
+            builder.CreateBr(join_block);
+        }
+
+        cur_block = join_block;
+        emitter.setCurrentBasicBlock(join_block);
+
 
         for (auto& p : symbol_table) {
             p.second->decvref(emitter);
