@@ -1121,7 +1121,7 @@ CompiledFunction* doCompile(CLFunction* clfunc, SourceInfo* source, ParamNames* 
     static StatCounter us_irgen("us_compiling_irgen");
     us_irgen.log(irgen_us);
 
-    llvm::verifyModule(*g.cur_module);
+    // llvm::verifyModule(*g.cur_module);
 
 
     // Calculate the module hash before doing any optimizations.
