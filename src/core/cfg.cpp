@@ -2564,7 +2564,7 @@ public:
         if (node->vreg != -1)
             return true;
 
-        if (only_user_visible && node->id.c_str()[0] == '#')
+        if (only_user_visible && node->id.isCompilerCreatedName())
             return true;
 
         if (node->lookup_type == ScopeInfo::VarScopeType::UNKNOWN)
@@ -2591,6 +2591,7 @@ void CFG::assignVRegs(const ParamNames& param_names, ScopeInfo* scope_info) {
 
     AssignVRegsVisitor visitor(scope_info, true);
 
+    // we need todo two passes: first we assign the user visible vars a vreg and than the compiler created get there value.
     for (int i=0; i<2; ++i) {
         for (CFGBlock* b : blocks) {
             for (AST_stmt* stmt : b->body) {
@@ -2614,9 +2615,6 @@ void CFG::assignVRegs(const ParamNames& param_names, ScopeInfo* scope_info) {
             sym_vreg_map_user = visitor.sym_vreg_map;
         }
     }
-
-
-
     sym_vreg_map = std::move(visitor.sym_vreg_map);
     has_vregs_assigned = true;
 }
