@@ -250,7 +250,7 @@ RuntimeIC::RuntimeIC(void* func_addr, int num_slots, int slot_size) : eh_frame(R
         static const int EPILOGUE_SIZE = 6;
         assert(SCRATCH_BYTES % 16 == 0);
 #endif
-        static const int CALL_SIZE = 13;
+        static const int CALL_SIZE = 13 + 23;
 
         int patchable_size = num_slots * slot_size;
 
@@ -277,8 +277,8 @@ RuntimeIC::RuntimeIC(void* func_addr, int num_slots, int slot_size) : eh_frame(R
             func_addr, pp_start, pp_end, 0 /* scratch_offset */, 0 /* scratch_size */, LiveOutSet(), _spill_map);
         assert(_spill_map.size() == 0);
         assert(initialization_info.slowpath_start == pp_start + patchable_size);
-        assert(initialization_info.slowpath_rtn_addr == pp_end);
-        assert(initialization_info.continue_addr == pp_end);
+        // assert(initialization_info.slowpath_rtn_addr == pp_end);
+        // assert(initialization_info.continue_addr == pp_end);
 
         StackInfo stack_info(SCRATCH_BYTES, 0);
         icinfo = registerCompiledPatchpoint(pp_start, pp_start + patchable_size, pp_end, pp_end, setup_info.get(),

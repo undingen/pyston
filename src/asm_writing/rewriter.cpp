@@ -2104,7 +2104,7 @@ PatchpointInitializationInfo initializePatchpoint3(void* slowpath_func, uint8_t*
                                                    SpillMap& remapped) {
     assert(start_addr < end_addr);
 
-    int est_slowpath_size = INITIAL_CALL_SIZE;
+    int est_slowpath_size = INITIAL_CALL_SIZE + 23;
 
     std::vector<assembler::GenericRegister> regs_to_spill;
     std::vector<assembler::Register> regs_to_reload;
@@ -2165,6 +2165,18 @@ PatchpointInitializationInfo initializePatchpoint3(void* slowpath_func, uint8_t*
     uint8_t* slowpath_rtn_addr = assem.emitCall(slowpath_func, assembler::R11);
     assem.emitBatchPop(scratch_offset, scratch_size, regs_to_spill);
 
+    // int num_bytes = assem.bytesWritten();
+
+    uint8_t* is_sig_check = assem.curInstPointer();
+    assem.cmp(assembler::Immediate((uint64_t)(&_is_sig)), assembler::Immediate(0ul));
+    {
+        assembler::ForwardJump je(assem, assembler::COND_EQUAL);
+        assem.mov(assembler::RAX, assembler::RDI);
+        assem.mov(assembler::Immediate((void*)tickHandler), assembler::R11);
+        assem.callq(assembler::R11);
+    }
+    // printf("n: %d\n ", assem.bytesWritten() - num_bytes);
+
     // The place we should continue if we took a fast path.
     // If we have to reload things, make sure to set it to the beginning
     // of the reloading section.
@@ -2173,10 +2185,10 @@ PatchpointInitializationInfo initializePatchpoint3(void* slowpath_func, uint8_t*
     // (Actually I think the calculations of the size above were exact so there should
     // always be 0 nops, but this optimization shouldn't hurt.)
     uint8_t* continue_addr;
-    if (regs_to_reload.empty())
+    if (0 && regs_to_reload.empty())
         continue_addr = end_addr;
     else
-        continue_addr = assem.curInstPointer();
+        continue_addr = is_sig_check; // assem.curInstPointer();
 
     for (assembler::Register r : regs_to_reload) {
         StackMap::Record::Location& l = remapped[r];

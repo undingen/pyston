@@ -273,8 +273,52 @@ private:
     llvm::BasicBlock*& curblock;
     IRGenerator* irgenerator;
 
+
+    void doTickCheck(const UnwindInfo& unw_info) {
+        auto&& builder = *getBuilder();
+
+        llvm::GlobalVariable* py_ticker = g.cur_module->getGlobalVariable("_is_sig");
+        if (!py_ticker) {
+            py_ticker = new llvm::GlobalVariable(*g.cur_module, g.i64, false, llvm::GlobalValue::ExternalLinkage, 0,
+                                                 "_is_sig");
+            py_ticker->setAlignment(8);
+        }
+
+        llvm::BasicBlock* cur_block = builder.GetInsertBlock();
+
+        llvm::BasicBlock* if_tick_set = createBasicBlock("if_tick_set");
+        if_tick_set->moveAfter(cur_block);
+        llvm::BasicBlock* join_block = createBasicBlock("continue");
+        join_block->moveAfter(if_tick_set);
+
+        llvm::Value* py_ticker_val = builder.CreateLoad(py_ticker, true);
+        auto&& is_tick_null = builder.CreateICmpEQ(py_ticker_val, getConstantInt(0, g.i64));
+
+        llvm::Metadata* md_vals[]
+            = { llvm::MDString::get(g.context, "branch_weights"), llvm::ConstantAsMetadata::get(getConstantInt(1000)),
+                llvm::ConstantAsMetadata::get(getConstantInt(1)) };
+        llvm::MDNode* branch_weights = llvm::MDNode::get(g.context, llvm::ArrayRef<llvm::Metadata*>(md_vals));
+
+
+        builder.CreateCondBr(is_tick_null, join_block, if_tick_set, branch_weights);
+        {
+            setCurrentBasicBlock(if_tick_set);
+
+            // builder.CreateCall(g.funcs.tickHandler);
+            createCall(UnwindInfo(unw_info.current_stmt, NULL), g.funcs.tickHandler);
+            builder.CreateBr(join_block);
+        }
+
+        cur_block = join_block;
+        setCurrentBasicBlock(join_block);
+    }
+
     llvm::CallSite emitCall(const UnwindInfo& unw_info, llvm::Value* callee, const std::vector<llvm::Value*>& args,
-                            ExceptionStyle target_exception_style) {
+                            ExceptionStyle target_exception_style, bool is_tickHandler) {
+        // if (!is_tickHandler)
+        //    doTickCheck(unw_info);
+
+
         if (target_exception_style == CXX && (unw_info.hasHandler() || irstate->getExceptionStyle() == CAPI)) {
             // Create the invoke:
             llvm::BasicBlock* normal_dest
@@ -363,7 +407,8 @@ private:
         }
         llvm::Function* patchpoint = this->getIntrinsic(intrinsic_id);
 
-        llvm::CallSite rtn = this->emitCall(unw_info, patchpoint, pp_args, target_exception_style);
+        llvm::CallSite rtn
+            = this->emitCall(unw_info, patchpoint, pp_args, target_exception_style, func_addr == (void*)tickHandler);
         return rtn;
     }
 
@@ -441,7 +486,7 @@ public:
                 RELEASE_ASSERT(0, "don't know how to convert those");
             }
         } else {
-            return emitCall(unw_info, callee, args, target_exception_style).getInstruction();
+            return emitCall(unw_info, callee, args, target_exception_style, false).getInstruction();
         }
     }
 
@@ -2342,6 +2387,8 @@ private:
             emitter.getBuilder()->SetCurrentDebugLocation(
                 llvm::DebugLoc::get(node->lineno, 0, irstate->getFuncDbgInfo()));
         }
+
+
 
         switch (node->type) {
             case AST_TYPE::Assert:

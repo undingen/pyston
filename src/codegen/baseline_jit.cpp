@@ -615,7 +615,6 @@ int JitFragmentWriter::finishCompilation() {
                                     0 /* scratch_size */, LiveOutSet(), _spill_map);
         uint8_t* slowpath_start = initialization_info.slowpath_start;
         uint8_t* slowpath_rtn_addr = initialization_info.slowpath_rtn_addr;
-
         std::unique_ptr<ICInfo> pp
             = registerCompiledPatchpoint(start_addr, slowpath_start, initialization_info.continue_addr,
                                          slowpath_rtn_addr, pp_info.ic.get(), pp_info.stack_info, LiveOutSet());
@@ -857,7 +856,7 @@ void JitFragmentWriter::_emitPPCall(RewriterVar* result, void* func_addr, llvm::
 
     // make space for patchpoint
     uint8_t* pp_start = rewrite->getSlotStart() + assembler->bytesWritten();
-    constexpr int call_size = 16;
+    constexpr int call_size = 16 + 23;
     assembler->skipBytes(pp_size + call_size);
     uint8_t* pp_end = rewrite->getSlotStart() + assembler->bytesWritten();
     assert(assembler->hasFailed() || (pp_start + pp_size + call_size == pp_end));

@@ -72,6 +72,7 @@ void force() {
     FORCE(createPureImaginary);
     FORCE(createSet);
     FORCE(decodeUTF8StringPtr);
+    FORCE(tickHandler);
 
     FORCE(getattr);
     FORCE(getattr_capi);
@@ -160,6 +161,7 @@ void force() {
     FORCE(boxedLocalsDel);
 
     FORCE(threading::allowGLReadPreemption);
+    FORCE(_is_sig);
 
     // FORCE(listIter);
 }

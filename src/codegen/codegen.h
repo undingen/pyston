@@ -80,6 +80,8 @@ struct GlobalState {
     llvm::Type* i1, *i8, *i8_ptr, *i32, *i64, *void_, *double_;
     llvm::Type* vector_ptr;
 
+    llvm::Value* is_sig;
+
     GlobalFuncs funcs;
 
     GlobalState();

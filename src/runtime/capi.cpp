@@ -1554,8 +1554,34 @@ extern "C" PyOS_sighandler_t PyOS_setsig(int sig, PyOS_sighandler_t handler) noe
 #endif
 }
 
+
+extern "C" {
+volatile uint64_t _is_sig;
+}
+
+
+std::vector<std::pair<int (*)(void*), void*>> pending;
+extern "C" unsigned long tickHandler(unsigned long ret) {
+    try {
+        // RELEASE_ASSERT(0, "");
+        for (auto&& i : pending) {
+            i.first(i.second);
+        }
+        pending.clear();
+    } catch (ExcInfo exc) {
+        printf("caught exc\n");
+    }
+
+    PyErr_Clear();
+    _is_sig = 0;
+    return ret;
+}
+
 extern "C" int Py_AddPendingCall(int (*func)(void*), void* arg) noexcept {
-    fatalOrError(PyExc_NotImplementedError, "unimplemented");
+    assert(!_is_sig);
+    pending.emplace_back(func, arg);
+    _is_sig = 1;
+    // fatalOrError(PyExc_NotImplementedError, "unimplemented");
     return -1;
 }
 
@@ -1721,6 +1747,10 @@ extern "C" PyThreadState* PyEval_SaveThread(void) noexcept {
 extern "C" void PyEval_RestoreThread(PyThreadState* tstate) noexcept {
     RELEASE_ASSERT(tstate == PyThreadState_GET(), "");
     endAllowThreads();
+}
+
+extern "C" struct _frame* PyEval_GetFrame(void) noexcept {
+    return (struct _frame*)getFrame(0);
 }
 
 extern "C" char* PyModule_GetName(PyObject* m) noexcept {

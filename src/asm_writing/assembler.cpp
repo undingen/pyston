@@ -800,6 +800,17 @@ void Assembler::cmp(Indirect mem, Register reg) {
     }
 }
 
+void Assembler::cmp(Immediate mem, Immediate val) {
+    assert(val.val == 0);
+    assert(mem.fitsInto32Bit());
+    emitRex(REX_W);
+    emitByte(0x83);
+    emitByte(0x3c);
+    emitByte(0x25);
+    emitInt(mem.val, 4);
+    emitByte(0x00);
+}
+
 void Assembler::lea(Indirect mem, Register reg) {
     int mem_idx = mem.base.regnum;
     int reg_idx = reg.regnum;

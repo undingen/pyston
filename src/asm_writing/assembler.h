@@ -170,6 +170,7 @@ public:
     void cmp(Register reg, Immediate imm);
     void cmp(Indirect mem, Immediate imm);
     void cmp(Indirect mem, Register reg);
+    void cmp(Immediate mem, Immediate val);
 
     void lea(Indirect mem, Register reg);
 
