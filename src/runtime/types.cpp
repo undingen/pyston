@@ -4168,6 +4168,18 @@ BoxedModule* createModule(BoxedString* name, const char* fn, const char* doc) {
     return module;
 }
 
+extern "C" {
+/* for manipulating the thread switch and periodic "stuff" - used to be
+   per thread, now just a pair o' globals */
+int _Py_CheckInterval = 100;
+volatile int _Py_Ticker = 0; /* so that we hit a "tick" first thing */
+}
+
+extern "C" void tickHandler() {
+    // threading::allowGLReadPreemption();
+    _Py_Ticker = _Py_CheckInterval;
+}
+
 void teardownRuntime() {
     // Things start to become very precarious after this point, as the basic classes stop to work.
     // TODO it's probably a waste of time to tear these down in non-debugging mode

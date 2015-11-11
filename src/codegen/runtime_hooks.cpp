@@ -198,6 +198,7 @@ void initGlobalFuncs(GlobalState& g) {
     GET(createClosure);
     GET(createGenerator);
     GET(createSet);
+    GET(tickHandler);
 
     GET(getattr);
     GET(getattr_capi);

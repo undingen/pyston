@@ -2336,12 +2336,51 @@ private:
         endBlock(DEAD);
     }
 
+    void doTickCheck(const UnwindInfo& unw_info) {
+        auto&& builder = *emitter.getBuilder();
+
+        llvm::GlobalVariable* py_ticker = g.cur_module->getGlobalVariable("_Py_Ticker");
+        if (!py_ticker) {
+            py_ticker = new llvm::GlobalVariable(*g.cur_module, g.i32, false, llvm::GlobalValue::ExternalLinkage, 0,
+                                                 "_Py_Ticker");
+            py_ticker->setAlignment(4);
+        }
+
+        llvm::Value* py_ticker_val = builder.CreateLoad(py_ticker, true);
+        llvm::Value* py_ticker_val_sub1 = builder.CreateSub(py_ticker_val, getConstantInt(1, g.i32));
+        builder.CreateStore(py_ticker_val_sub1, py_ticker, true);
+
+
+        llvm::BasicBlock* cur_block = builder.GetInsertBlock();
+
+        llvm::BasicBlock* if_frame_set = emitter.createBasicBlock("if_tick_neg");
+        if_frame_set->moveAfter(cur_block);
+        llvm::BasicBlock* join_block = emitter.createBasicBlock("continue");
+        join_block->moveAfter(if_frame_set);
+
+        auto&& is_frame_null = builder.CreateICmpSLT(py_ticker_val_sub1, getConstantInt(0, g.i32));
+
+        builder.CreateCondBr(is_frame_null, if_frame_set, join_block);
+        {
+            emitter.setCurrentBasicBlock(if_frame_set);
+
+
+            emitter.createCall(UnwindInfo(unw_info.current_stmt, NULL), g.funcs.tickHandler);
+            builder.CreateBr(join_block);
+        }
+
+        cur_block = join_block;
+        emitter.setCurrentBasicBlock(join_block);
+    }
+
     void doStmt(AST_stmt* node, const UnwindInfo& unw_info) {
         // printf("%d stmt: %d\n", node->type, node->lineno);
         if (node->lineno) {
             emitter.getBuilder()->SetCurrentDebugLocation(
                 llvm::DebugLoc::get(node->lineno, 0, irstate->getFuncDbgInfo()));
         }
+
+        doTickCheck(unw_info);
 
         switch (node->type) {
             case AST_TYPE::Assert:
