@@ -31,7 +31,7 @@ struct StackMap;
 class TypeRecorder;
 class ICSetupInfo;
 
-static const int MAX_FRAME_SPILLS = 9; // TODO this shouldn't have to be larger than the set of non-callee-save args (9)
+static const int MAX_FRAME_SPILLS = 1; // TODO this shouldn't have to be larger than the set of non-callee-save args (9)
                                        // except that will we currently spill the same reg multiple times
 static const int CALL_ONLY_SIZE
     = 13 + (MAX_FRAME_SPILLS * 9)
