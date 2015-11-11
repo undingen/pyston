@@ -323,7 +323,7 @@ extern "C" PyObject* PyGC_AddRoot(PyObject* obj) noexcept {
     return obj;
 }
 
-extern "C" PyObject* PyGC_AddNonHeapRoot(PyObject* obj, int size) noexcept {
+extern "C" void* PyGC_AddNonHeapRoot(void* obj, int size) noexcept {
     if (obj) {
         registerNonheapRootObject(obj, size);
     }

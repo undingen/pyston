@@ -626,6 +626,8 @@ initsignal(void)
         old_siginthandler = PyOS_setsig(SIGINT, signal_handler);
     }
 
+    PyGC_AddNonHeapRoot(Handlers, sizeof(Handlers));
+
 #ifdef SIGHUP
     x = PyInt_FromLong(SIGHUP);
     PyDict_SetItemString(d, "SIGHUP", x);
@@ -896,9 +898,9 @@ PyErr_CheckSignals(void)
         return 0;
 
     // Pyston change:
-    Py_FatalError("TODO");
+    // Py_FatalError("TODO");
 
-#if 0
+#if 1
     int i;
     PyObject *f;
 

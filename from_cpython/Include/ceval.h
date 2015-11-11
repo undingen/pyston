@@ -71,6 +71,7 @@ PyAPI_FUNC(PyObject *) PyEval_EvalFrameEx(struct _frame *f, int exc) PYSTON_NOEX
 /* this used to be handled on a per-thread basis - now just two globals */
 PyAPI_DATA(volatile int) _Py_Ticker;
 PyAPI_DATA(int) _Py_CheckInterval;
+PyAPI_DATA(volatile unsigned long) _is_sig;
 
 /* Interface for threads.
 

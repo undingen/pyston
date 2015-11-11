@@ -928,6 +928,10 @@ Value ASTInterpreter::visit_stmt(AST_stmt* node) {
     threading::allowGLReadPreemption();
 #endif
 
+    if (_is_sig) {
+        tickHandler();
+    }
+
     if (0) {
         printf("%20s % 2d ", source_info->getName()->c_str(), current_block->idx);
         print_ast(node);
