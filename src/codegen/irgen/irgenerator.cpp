@@ -297,6 +297,8 @@ private:
 
     llvm::CallSite emitCall(const UnwindInfo& unw_info, llvm::Value* callee, const std::vector<llvm::Value*>& args,
                             ExceptionStyle target_exception_style) {
+        getBuilder()->CreateStore(embedRelocatablePtr(unw_info.current_stmt, g.llvm_aststmt_type_ptr), irstate->getCurStmt());
+
         if (target_exception_style == CXX && (unw_info.hasHandler() || irstate->getExceptionStyle() == CAPI)) {
             // Create the invoke:
             llvm::BasicBlock* normal_dest
@@ -2409,8 +2411,6 @@ private:
             emitter.getBuilder()->SetCurrentDebugLocation(
                 llvm::DebugLoc::get(node->lineno, 0, irstate->getFuncDbgInfo()));
         }
-
-        emitter.getBuilder()->CreateStore(embedRelocatablePtr(node, g.llvm_aststmt_type_ptr), irstate->getCurStmt());
 
         switch (node->type) {
             case AST_TYPE::Assert:
