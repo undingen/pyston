@@ -367,7 +367,7 @@ private:
 
         pp_args.insert(pp_args.end(), ic_stackmap_args.begin(), ic_stackmap_args.end());
 
-        irgenerator->addFrameStackmapArgs(info, unw_info.current_stmt, pp_args);
+        irgenerator->addFrameStackmapArgs(info, unw_info.current_stmt, pp_args, func_addr == (void*)deopt);
 
         llvm::Intrinsic::ID intrinsic_id;
         if (return_type->isIntegerTy() || return_type->isPointerTy()) {
@@ -2585,8 +2585,8 @@ private:
     }
 
 public:
-    void addFrameStackmapArgs(PatchpointInfo* pp, AST_stmt* current_stmt,
-                              std::vector<llvm::Value*>& stackmap_args) override {
+    void addFrameStackmapArgs(PatchpointInfo* pp, AST_stmt* current_stmt, std::vector<llvm::Value*>& stackmap_args,
+                              bool add_compiler_vars) override {
         int initial_args = stackmap_args.size();
 
         stackmap_args.push_back(irstate->getFrameInfoVar());
@@ -2618,6 +2618,8 @@ public:
             std::sort(sorted_symbol_table.begin(), sorted_symbol_table.end(),
                       [](const Entry& lhs, const Entry& rhs) { return lhs.first < rhs.first; });
             for (const auto& p : sorted_symbol_table) {
+                if (!add_compiler_vars && p.first.isCompilerCreatedName() && p.first.s() != PASSED_CLOSURE_NAME)
+                    continue;
                 CompilerVariable* v = p.second;
                 v->serializeToFrame(stackmap_args);
                 pp->addFrameVar(p.first.s(), v->getType());
