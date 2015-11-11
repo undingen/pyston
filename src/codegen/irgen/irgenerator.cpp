@@ -233,6 +233,9 @@ llvm::Value* IRGenState::getFrameInfoVar() {
             // set vregs
             builder.CreateStore(vregs, builder.CreateConstInBoundsGEP2_32(al, 0, 3));
 
+            // set vregs
+            cur_stmt = builder.CreateConstInBoundsGEP2_32(al, 0, 4);
+
             this->frame_info = al;
         }
     }
@@ -2406,6 +2409,8 @@ private:
             emitter.getBuilder()->SetCurrentDebugLocation(
                 llvm::DebugLoc::get(node->lineno, 0, irstate->getFuncDbgInfo()));
         }
+
+        emitter.getBuilder()->CreateStore(embedRelocatablePtr(node, g.llvm_aststmt_type_ptr), irstate->getCurStmt());
 
         switch (node->type) {
             case AST_TYPE::Assert:

@@ -885,8 +885,9 @@ struct FrameInfo {
     BoxedFrame* frame_obj;
 
     Box** vregs;
+    AST_stmt* cur_stmt;
 
-    FrameInfo(ExcInfo exc) : exc(exc), boxedLocals(NULL), frame_obj(0), vregs(0) {}
+    FrameInfo(ExcInfo exc) : exc(exc), boxedLocals(NULL), frame_obj(0), vregs(0), cur_stmt(0) {}
 
     void gcVisit(GCVisitor* visitor);
 };
