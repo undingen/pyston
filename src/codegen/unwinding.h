@@ -102,6 +102,7 @@ public:
 };
 
 PythonFrameIterator getPythonFrame(int depth);
+void patchReturnAddr(int (*func)(void*));
 
 // Fetches a writeable pointer to the frame-local excinfo object,
 // calculating it if necessary (from previous frames).

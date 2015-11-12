@@ -1249,6 +1249,10 @@ extern "C" PyObject* PyEval_GetBuiltins(void) noexcept {
     return builtins_module;
 }
 
+extern "C" struct _frame* PyEval_GetFrame(void) noexcept {
+    return (struct _frame*)getFrame(0);
+}
+
 Box* ellipsisRepr(Box* self) {
     return boxString("Ellipsis");
 }

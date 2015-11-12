@@ -896,9 +896,9 @@ PyErr_CheckSignals(void)
         return 0;
 
     // Pyston change:
-    Py_FatalError("TODO");
+    // Py_FatalError("TODO");
 
-#if 0
+#if 1
     int i;
     PyObject *f;
 

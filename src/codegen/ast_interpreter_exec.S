@@ -38,5 +38,30 @@ executeInnerAndSetupFrame:
     .cfi_endproc
 .size executeInnerAndSetupFrame,.-executeInnerAndSetupFrame
 
+.text
+.globl patchingHelperAsm
+.type patchingHelperAsm,@function
+.align 16
+patchingHelperAsm:
+    pushq (orig_return)
+    movq $0, orig_return
+    .cfi_startproc
+    push %rbp
+    .cfi_def_cfa_offset     16
+    .cfi_offset             rbp,-16
+    mov %rsp, %rbp
+    .cfi_def_cfa_register   rbp
+    push %rax
+    push %rax
+    call patchingHelperC
+    pop %rax
+    pop %rax
+    leave
+    .cfi_def_cfa            rsp,8
+    ret
+    .cfi_endproc
+    #jmpq *(orig_return)
+.size patchingHelperAsm,.-patchingHelperAsm
+
 .section .note.GNU-stack,"",%progbits // we don't need executable stack
 

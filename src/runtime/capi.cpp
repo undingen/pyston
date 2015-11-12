@@ -1555,7 +1555,10 @@ extern "C" PyOS_sighandler_t PyOS_setsig(int sig, PyOS_sighandler_t handler) noe
 }
 
 extern "C" int Py_AddPendingCall(int (*func)(void*), void* arg) noexcept {
-    fatalOrError(PyExc_NotImplementedError, "unimplemented");
+    patchReturnAddr(func);
+
+
+    // fatalOrError(PyExc_NotImplementedError, "unimplemented");
     return -1;
 }
 

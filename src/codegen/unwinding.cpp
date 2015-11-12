@@ -628,13 +628,11 @@ void unwindingThroughFrame(PythonUnwindSession* unwind_session, unw_cursor_t* cu
 // the stack frame that they were created in, so we need to use this approach (as opposed to
 // C++11 range loops, for example).
 // Return true from the handler to stop iteration at that frame.
-template <typename Func> void unwindPythonStack(Func func) {
+template <typename Func> void unwindStack(Func func) {
     unw_context_t ctx;
     unw_cursor_t cursor;
     unw_getcontext(&ctx);
     unw_init_local(&cursor, &ctx);
-
-    PythonStackExtractor pystack_extractor;
 
     while (true) {
         int r = unw_step(&cursor);
@@ -643,14 +641,8 @@ template <typename Func> void unwindPythonStack(Func func) {
         if (r == 0)
             break;
 
-        PythonFrameIteratorImpl frame_iter;
-        bool found_frame = pystack_extractor.handleCFrame(&cursor, &frame_iter);
-
-        if (found_frame) {
-            bool stop_unwinding = func(&frame_iter);
-            if (stop_unwinding)
-                break;
-        }
+        if (func(cursor))
+            break;
 
         unw_word_t ip = get_cursor_ip(&cursor);
         if (inGeneratorEntry(ip)) {
@@ -674,6 +666,22 @@ template <typename Func> void unwindPythonStack(Func func) {
         // keep unwinding
     }
 }
+
+template <typename Func> void unwindPythonStack(Func func) {
+    PythonStackExtractor pystack_extractor;
+
+    auto frame_func = [&](unw_cursor_t& cursor) -> bool {
+        PythonFrameIteratorImpl frame_iter;
+        bool found_frame = pystack_extractor.handleCFrame(&cursor, &frame_iter);
+
+        bool stop_unwinding = false;
+        if (found_frame)
+            stop_unwinding = func(&frame_iter);
+        return stop_unwinding;
+    };
+    unwindStack(frame_func);
+}
+
 
 static std::unique_ptr<PythonFrameIteratorImpl> getTopPythonFrame() {
     STAT_TIMER(t0, "us_timer_getTopPythonFrame", 10);
@@ -833,6 +841,62 @@ PythonFrameIterator getPythonFrame(int depth) {
         return false;
     });
     return PythonFrameIterator(std::move(rtn));
+}
+
+
+
+extern "C" volatile uint64_t orig_return = 0;
+
+extern "C" uint64_t patchingHelperAsm(void);
+
+int (*g_func)(void*);
+
+extern "C" void patchingHelperC() {
+    printf("patchingHelperC\n");
+    assert(!PyErr_Occurred());
+    try {
+        g_func(NULL);
+    } catch (ExcInfo exc) {
+        printf("cou ght exc\n");
+    }
+    // PyErr_Clear();
+    printf("~patchingHelperC\n");
+}
+
+void patchReturnAddr(int (*func)(void*)) {
+    /*
+    PythonStackExtractor pystack_extractor;
+    auto frame_func = [&](unw_cursor_t& cursor) -> bool {
+        PythonFrameIteratorImpl frame_iter;
+        bool found_frame = pystack_extractor.handleCFrame(&cursor, &frame_iter);
+
+        bool stop_unwinding = false;
+        if (found_frame)
+            stop_unwinding = func(&frame_iter);
+        return stop_unwinding;
+    };
+    unwindStack(frame_func);
+    */
+    printf("patchReturnAddr\n");
+
+
+
+    assert(!orig_return);
+    // sleep(15);
+    auto&& frame = getTopPythonFrame();
+    orig_return = frame->id.ip;
+
+    uint64_t* bp = (uint64_t*)frame->id.bp;
+    g_func = func;
+
+    while (true) {
+        if (*bp == orig_return) {
+            *bp = (uint64_t)patchingHelperAsm;
+            break;
+        }
+        bp -= 1;
+    }
+    printf("~patchReturnAddr\n");
 }
 
 PythonFrameIterator::~PythonFrameIterator() {
