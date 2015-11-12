@@ -2360,7 +2360,12 @@ private:
 
         auto&& is_frame_null = builder.CreateICmpSLT(py_ticker_val_sub1, getConstantInt(0, g.i32));
 
-        builder.CreateCondBr(is_frame_null, if_frame_set, join_block);
+        llvm::Metadata* md_vals[]
+            = { llvm::MDString::get(g.context, "branch_weights"), llvm::ConstantAsMetadata::get(getConstantInt(1)),
+                llvm::ConstantAsMetadata::get(getConstantInt(1000)) };
+        llvm::MDNode* branch_weights = llvm::MDNode::get(g.context, llvm::ArrayRef<llvm::Metadata*>(md_vals));
+
+        builder.CreateCondBr(is_frame_null, if_frame_set, join_block, branch_weights);
         {
             emitter.setCurrentBasicBlock(if_frame_set);
 
