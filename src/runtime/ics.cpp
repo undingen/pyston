@@ -250,7 +250,7 @@ RuntimeIC::RuntimeIC(void* func_addr, int num_slots, int slot_size) : eh_frame(R
         static const int EPILOGUE_SIZE = 6;
         assert(SCRATCH_BYTES % 16 == 0);
 #endif
-        static const int CALL_SIZE = 13 + 23;
+        static const int CALL_SIZE = 13 + 30;
 
         int patchable_size = num_slots * slot_size;
 
