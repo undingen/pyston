@@ -699,11 +699,17 @@ RewriterVar* JitFragmentWriter::emitPPCall(void* func_addr, llvm::ArrayRef<Rewri
         addAction([=]() { _emitRecordType(type_recorder_var, obj_cls_var); }, { type_recorder_var, obj_cls_var },
                   ActionType::NORMAL);
 
-        call(false, (void*)checkSignal);
+
+        RewriterVar* tick_handler_var = imm((void*)&_is_sig)->getAttr(0);
+        addAction([=]() { _emitCheckSignal(tick_handler_var); }, { tick_handler_var }, ActionType::NORMAL);
+
+        // call(false, (void*)checkSignal);
         return result;
     }
 
-    call(false, (void*)checkSignal);
+    // call(false, (void*)checkSignal);
+    RewriterVar* tick_handler_var = imm((void*)&_is_sig)->getAttr(0);
+    addAction([=]() { _emitCheckSignal(tick_handler_var); }, { tick_handler_var }, ActionType::NORMAL);
 
     return result;
 #else
@@ -711,7 +717,9 @@ RewriterVar* JitFragmentWriter::emitPPCall(void* func_addr, llvm::ArrayRef<Rewri
 
     call(false, (void*)checkSignal);
 
-    return call(false, func_addr, args_vec);
+    // return call(false, func_addr, args_vec);
+    RewriterVar* tick_handler_var = imm((void*)&_is_sig)->getAttr(0);
+    addAction([=]() { _emitCheckSignal(tick_handler_var); }, { tick_handler_var }, ActionType::NORMAL);
 #endif
 }
 
@@ -934,6 +942,19 @@ void JitFragmentWriter::_emitReturn(RewriterVar* return_val) {
     assembler->pop(assembler::R14);
     assembler->retq();
     return_val->bumpUse();
+}
+
+extern "C" void tickHandlerSave();
+void JitFragmentWriter::_emitCheckSignal(RewriterVar* is_sig_var) {
+    assembler::Register reg = is_sig_var->getInReg();
+    assembler->test(reg, reg);
+    {
+        assembler::ForwardJump je(*assembler, assembler::COND_EQUAL);
+        assembler->mov(assembler::Immediate((void*)tickHandlerSave), assembler::R11);
+        assembler->callq(assembler::R11);
+    }
+    is_sig_var->bumpUse();
+    assertConsistent();
 }
 
 void JitFragmentWriter::_emitSideExit(RewriterVar* var, RewriterVar* val_constant, CFGBlock* next_block,

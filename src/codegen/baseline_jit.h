@@ -299,6 +299,7 @@ private:
     void _emitRecordType(RewriterVar* type_recorder_var, RewriterVar* obj_cls_var);
     void _emitReturn(RewriterVar* v);
     void _emitSideExit(RewriterVar* var, RewriterVar* val_constant, CFGBlock* next_block, RewriterVar* false_path);
+    void _emitCheckSignal(RewriterVar* is_sig_var);
 };
 }
 

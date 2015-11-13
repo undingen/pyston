@@ -1559,11 +1559,9 @@ extern "C" {
 volatile uint64_t _is_sig;
 }
 
-static long main_thread = pthread_self();
-
 std::vector<std::pair<int (*)(void*), void*>> pending;
 extern "C" void tickHandler() {
-    if (pthread_self() != main_thread)
+    if (!threading::isMainThread())
         return;
 
     // RELEASE_ASSERT(0, "");

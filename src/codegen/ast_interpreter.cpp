@@ -343,6 +343,8 @@ Box* ASTInterpreter::execJITedBlock(CFGBlock* b) {
 Box* ASTInterpreter::executeInner(ASTInterpreter& interpreter, CFGBlock* start_block, AST_stmt* start_at) {
     Value v;
 
+    bool is_main_thread = threading::isMainThread();
+
     bool from_start = start_block == NULL && start_at == NULL;
 
     assert((start_block == NULL) == (start_at == NULL));
@@ -400,7 +402,8 @@ Box* ASTInterpreter::executeInner(ASTInterpreter& interpreter, CFGBlock* start_b
             if (interpreter.jit)
                 interpreter.jit->emitSetCurrentInst(s);
             v = interpreter.visit_stmt(s);
-            if (unlikely(_is_sig)) {
+
+            if (unlikely(is_main_thread && _is_sig)) {
                 tickHandler();
             }
         }

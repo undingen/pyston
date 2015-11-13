@@ -38,5 +38,39 @@ executeInnerAndSetupFrame:
     .cfi_endproc
 .size executeInnerAndSetupFrame,.-executeInnerAndSetupFrame
 
+.text
+.globl tickHandlerSave
+.type tickHandlerSave,@function
+.align 16
+tickHandlerSave:
+    .cfi_startproc
+    push %rbp
+    .cfi_def_cfa_offset     16
+    .cfi_offset             rbp,-16
+    mov %rsp, %rbp
+    .cfi_def_cfa_register   rbp
+    push %rax
+    push %rax
+    push %rdi
+    push %rsi
+    push %rdx
+    push %rcx
+    push %r8
+    push %r9
+    call tickHandler
+    pop  %r9
+    pop  %r8
+    pop  %rcx
+    pop  %rdx
+    pop  %rsi
+    pop  %rdi
+    pop  %rax
+    pop  %rax
+    leave
+    .cfi_def_cfa            rsp,8
+    ret
+    .cfi_endproc
+.size executeInnerAndSetupFrame,.-executeInnerAndSetupFrame
+
 .section .note.GNU-stack,"",%progbits // we don't need executable stack
 
