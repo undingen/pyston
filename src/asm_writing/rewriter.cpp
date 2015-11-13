@@ -1376,7 +1376,10 @@ void Rewriter::commit() {
 bool Rewriter::finishAssembly(int continue_offset) {
     assert(picked_slot);
 
+    assembler->cmp(assembler::Immediate((uint64_t)(&_is_sig)), assembler::Immediate(0ul));
+    assembler->jne(assembler::JumpDestination::fromStart(continue_offset - 12));
     assembler->jmp(assembler::JumpDestination::fromStart(continue_offset));
+
 
     assembler->fillWithNops();
 
