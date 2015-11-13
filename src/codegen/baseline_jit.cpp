@@ -499,6 +499,11 @@ void JitFragmentWriter::emitSetBlockLocal(InternedString s, RewriterVar* v) {
     local_syms[s] = v;
 }
 
+static void checkSignal() {
+    if (unlikely(_is_sig))
+        tickHandler();
+}
+
 void JitFragmentWriter::emitSetCurrentInst(AST_stmt* node) {
     getInterp()->setAttr(ASTInterpreterJitInterface::getCurrentInstOffset(), imm(node));
 }
@@ -693,11 +698,19 @@ RewriterVar* JitFragmentWriter::emitPPCall(void* func_addr, llvm::ArrayRef<Rewri
         RewriterVar* obj_cls_var = result->getAttr(offsetof(Box, cls));
         addAction([=]() { _emitRecordType(type_recorder_var, obj_cls_var); }, { type_recorder_var, obj_cls_var },
                   ActionType::NORMAL);
+
+        call(false, (void*)checkSignal);
         return result;
     }
+
+    call(false, (void*)checkSignal);
+
     return result;
 #else
     assert(args_vec.size() < 7);
+
+    call(false, (void*)checkSignal);
+
     return call(false, func_addr, args_vec);
 #endif
 }

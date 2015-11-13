@@ -400,6 +400,9 @@ Box* ASTInterpreter::executeInner(ASTInterpreter& interpreter, CFGBlock* start_b
             if (interpreter.jit)
                 interpreter.jit->emitSetCurrentInst(s);
             v = interpreter.visit_stmt(s);
+            if (unlikely(_is_sig)) {
+                tickHandler();
+            }
         }
     }
     return v.o;
@@ -927,10 +930,6 @@ Value ASTInterpreter::visit_stmt(AST_stmt* node) {
 #if ENABLE_SAMPLING_PROFILER
     threading::allowGLReadPreemption();
 #endif
-
-    if (_is_sig) {
-        tickHandler();
-    }
 
     if (0) {
         printf("%20s % 2d ", source_info->getName()->c_str(), current_block->idx);
