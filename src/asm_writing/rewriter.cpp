@@ -2104,7 +2104,7 @@ PatchpointInitializationInfo initializePatchpoint3(void* slowpath_func, uint8_t*
                                                    SpillMap& remapped) {
     assert(start_addr < end_addr);
 
-    int est_slowpath_size = INITIAL_CALL_SIZE + 30;
+    int est_slowpath_size = INITIAL_CALL_SIZE + 23;
 
     std::vector<assembler::GenericRegister> regs_to_spill;
     std::vector<assembler::Register> regs_to_reload;
@@ -2169,19 +2169,12 @@ PatchpointInitializationInfo initializePatchpoint3(void* slowpath_func, uint8_t*
 
     uint8_t* is_sig_check = assem.curInstPointer();
     assem.cmp(assembler::Immediate((uint64_t)(&_is_sig)), assembler::Immediate(0ul));
-    assem.nop();
-    assem.nop();
-    assem.nop();
     {
         assembler::ForwardJump je(assem, assembler::COND_EQUAL);
         assem.mov(assembler::RAX, assembler::RDI);
         assem.mov(assembler::Immediate((void*)tickHandler), assembler::R11);
         assem.callq(assembler::R11);
-        assem.nop();
-        assem.nop();
-        assem.nop();
     }
-    assem.nop();
     // printf("n: %d\n ", assem.bytesWritten() - num_bytes);
 
     // The place we should continue if we took a fast path.
@@ -2195,7 +2188,7 @@ PatchpointInitializationInfo initializePatchpoint3(void* slowpath_func, uint8_t*
     if (0 && regs_to_reload.empty())
         continue_addr = end_addr;
     else
-        continue_addr = is_sig_check; // assem.curInstPointer();
+        continue_addr = assem.curInstPointer();
 
     for (assembler::Register r : regs_to_reload) {
         StackMap::Record::Location& l = remapped[r];
