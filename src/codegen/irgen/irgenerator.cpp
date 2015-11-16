@@ -277,10 +277,10 @@ private:
     void doTickCheck(const UnwindInfo& unw_info) {
         auto&& builder = *getBuilder();
 
-        llvm::GlobalVariable* py_ticker = g.cur_module->getGlobalVariable("_is_sig");
+        llvm::GlobalVariable* py_ticker = g.cur_module->getGlobalVariable("_check_signals");
         if (!py_ticker) {
             py_ticker = new llvm::GlobalVariable(*g.cur_module, g.i64, false, llvm::GlobalValue::ExternalLinkage, 0,
-                                                 "_is_sig");
+                                                 "_check_signals");
             py_ticker->setAlignment(8);
         }
 
@@ -315,9 +315,6 @@ private:
 
     llvm::CallSite emitCall(const UnwindInfo& unw_info, llvm::Value* callee, const std::vector<llvm::Value*>& args,
                             ExceptionStyle target_exception_style, bool is_tickHandler) {
-        if (!is_tickHandler)
-            doTickCheck(unw_info);
-
 
         if (target_exception_style == CXX && (unw_info.hasHandler() || irstate->getExceptionStyle() == CAPI)) {
             // Create the invoke:
@@ -341,9 +338,14 @@ private:
             // Normal case:
             getBuilder()->SetInsertPoint(normal_dest);
             curblock = normal_dest;
+
+            if (!is_tickHandler)
+                doTickCheck(unw_info);
             return rtn;
         } else {
             llvm::CallInst* cs = getBuilder()->CreateCall(callee, args);
+            if (!is_tickHandler)
+                doTickCheck(unw_info);
             return cs;
         }
     }

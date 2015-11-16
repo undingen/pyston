@@ -161,7 +161,6 @@ void force() {
     FORCE(boxedLocalsDel);
 
     FORCE(threading::allowGLReadPreemption);
-    FORCE(_is_sig);
 
     // FORCE(listIter);
 }

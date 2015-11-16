@@ -403,7 +403,7 @@ Box* ASTInterpreter::executeInner(ASTInterpreter& interpreter, CFGBlock* start_b
                 interpreter.jit->emitSetCurrentInst(s);
             v = interpreter.visit_stmt(s);
 
-            if (unlikely(is_main_thread && _is_sig)) {
+            if (unlikely(is_main_thread && _check_signals)) {
                 tickHandler();
             }
         }

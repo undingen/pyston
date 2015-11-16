@@ -500,7 +500,7 @@ void JitFragmentWriter::emitSetBlockLocal(InternedString s, RewriterVar* v) {
 }
 
 static void __attribute__((optimize("-fomit-frame-pointer"))) checkSignal() {
-    if (unlikely(_is_sig))
+    if (unlikely(_check_signals))
         tickHandler();
 }
 
@@ -700,7 +700,7 @@ RewriterVar* JitFragmentWriter::emitPPCall(void* func_addr, llvm::ArrayRef<Rewri
                   ActionType::NORMAL);
 
 
-        // RewriterVar* tick_handler_var = imm((void*)&_is_sig)->getAttr(0);
+        // RewriterVar* tick_handler_var = imm((void*)&_check_signals)->getAttr(0);
         // addAction([=]() { _emitCheckSignal(tick_handler_var); }, { tick_handler_var }, ActionType::NORMAL);
 
         call(false, (void*)checkSignal);
@@ -708,7 +708,7 @@ RewriterVar* JitFragmentWriter::emitPPCall(void* func_addr, llvm::ArrayRef<Rewri
     }
 
     call(false, (void*)checkSignal);
-    // RewriterVar* tick_handler_var = imm((void*)&_is_sig)->getAttr(0);
+    // RewriterVar* tick_handler_var = imm((void*)&_check_signals)->getAttr(0);
     // addAction([=]() { _emitCheckSignal(tick_handler_var); }, { tick_handler_var }, ActionType::NORMAL);
 
     return result;
@@ -718,7 +718,7 @@ RewriterVar* JitFragmentWriter::emitPPCall(void* func_addr, llvm::ArrayRef<Rewri
     call(false, (void*)checkSignal);
 
     // return call(false, func_addr, args_vec);
-    RewriterVar* tick_handler_var = imm((void*)&_is_sig)->getAttr(0);
+    RewriterVar* tick_handler_var = imm((void*)&_check_signals)->getAttr(0);
     addAction([=]() { _emitCheckSignal(tick_handler_var); }, { tick_handler_var }, ActionType::NORMAL);
 #endif
 }

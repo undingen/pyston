@@ -1554,9 +1554,8 @@ extern "C" PyOS_sighandler_t PyOS_setsig(int sig, PyOS_sighandler_t handler) noe
 #endif
 }
 
-
 extern "C" {
-volatile uint64_t _is_sig;
+volatile uint64_t _check_signals;
 }
 
 std::vector<std::pair<int (*)(void*), void*>> pending;
@@ -1572,12 +1571,12 @@ extern "C" void tickHandler() {
         RELEASE_ASSERT(rtn == 0, "");
     }
     pending.clear();
-    _is_sig = 0;
+    _check_signals = 0;
 }
 
 extern "C" int Py_AddPendingCall(int (*func)(void*), void* arg) noexcept {
     pending.emplace_back(func, arg);
-    _is_sig = 1;
+    _check_signals = 1;
     // fatalOrError(PyExc_NotImplementedError, "unimplemented");
     return -1;
 }

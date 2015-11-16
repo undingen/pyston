@@ -170,9 +170,6 @@ void initGlobalFuncs(GlobalState& g) {
     g.llvm_frame_info_type = g.stdlib_module->getTypeByName("struct.pyston::FrameInfo");
     assert(g.llvm_frame_info_type);
 
-    g.is_sig = g.stdlib_module->getGlobalVariable("_is_sig");
-    assert(g.is_sig);
-
 #define GET(N) g.funcs.N = getFunc((void*)N, STRINGIFY(N))
 
     g.funcs.printf = addFunc((void*)printf, g.i8_ptr, true);
