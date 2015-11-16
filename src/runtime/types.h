@@ -1146,11 +1146,11 @@ inline BoxedString* boxString(llvm::StringRef s) {
     return new (s.size()) BoxedString(s);
 }
 
-#define NUM_INTERNED_INTS 100
+#define NUM_INTERNED_INTS 200
 extern BoxedInt* interned_ints[NUM_INTERNED_INTS];
 extern "C" inline Box* boxInt(int64_t n) {
-    if (0 <= n && n < NUM_INTERNED_INTS) {
-        return interned_ints[n];
+    if (n >= -100 && n < (NUM_INTERNED_INTS - 100)) {
+        return interned_ints[n + 100];
     }
     return new BoxedInt(n);
 }

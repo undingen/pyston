@@ -1166,7 +1166,7 @@ void setupInt() {
     int_cls->tp_as_number = &int_as_number;
 
     for (int i = 0; i < NUM_INTERNED_INTS; i++) {
-        interned_ints[i] = new BoxedInt(i);
+        interned_ints[i] = new BoxedInt(i - 100);
         gc::registerPermanentRoot(interned_ints[i]);
     }
 

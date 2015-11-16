@@ -76,7 +76,7 @@ class conservative_unordered_map
 namespace gc {
 
 extern unsigned bytesAllocatedSinceCollection;
-#define ALLOCBYTES_PER_COLLECTION 10000000
+#define ALLOCBYTES_PER_COLLECTION 100000000
 void _bytesAllocatedTripped();
 
 // Notify the gc of n bytes as being under GC management.
