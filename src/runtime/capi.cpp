@@ -17,6 +17,7 @@
 #include <string.h>
 
 #include "Python.h"
+#include "pythread.h"
 
 #include "codegen/cpython_ast.h"
 #include "grammar.h"
@@ -1558,27 +1559,127 @@ extern "C" {
 volatile uint64_t _check_signals;
 }
 
+
+
+static PyThread_type_lock pending_lock = 0; /* for pending calls */
+
+/* The WITH_THREAD implementation is thread-safe.  It allows
+   scheduling to be made from any thread, and even from an executing
+   callback.
+ */
+
+#define NPENDINGCALLS 32
+static struct {
+    int (*func)(void*);
+    void* arg;
+} pendingcalls[NPENDINGCALLS];
+static int pendingfirst = 0;
+static int pendinglast = 0;
+static volatile int pendingcalls_to_do = 1; /* trigger initialization of lock */
+static char pendingbusy = 0;
+
 std::vector<std::pair<int (*)(void*), void*>> pending;
 extern "C" void tickHandler() {
     if (!threading::isMainThread())
         return;
 
-    // RELEASE_ASSERT(0, "");
-    for (auto&& i : pending) {
-        int rtn = i.first(i.second);
-        if (PyErr_Occurred())
-            throwCAPIException();
-        RELEASE_ASSERT(rtn == 0, "");
-    }
-    pending.clear();
+    int rtn = Py_MakePendingCalls();
+    if (rtn == -1)
+        throwCAPIException();
+
     _check_signals = 0;
 }
 
+extern "C" int Py_MakePendingCalls(void) noexcept {
+    int i;
+    int r = 0;
+
+    if (!pending_lock) {
+        /* initial allocation of the lock */
+        pending_lock = PyThread_allocate_lock();
+        if (pending_lock == NULL)
+            return -1;
+    }
+
+    /* only service pending calls on main thread */
+    if (!threading::isMainThread())
+        return 0;
+    /* don't perform recursive pending calls */
+    if (pendingbusy)
+        return 0;
+    pendingbusy = 1;
+    /* perform a bounded number of calls, in case of recursion */
+    for (i = 0; i < NPENDINGCALLS; i++) {
+        int j;
+        int (*func)(void*);
+        void* arg = NULL;
+
+        /* pop one item off the queue while holding the lock */
+        PyThread_acquire_lock(pending_lock, WAIT_LOCK);
+        j = pendingfirst;
+        if (j == pendinglast) {
+            func = NULL; /* Queue empty */
+        } else {
+            func = pendingcalls[j].func;
+            arg = pendingcalls[j].arg;
+            pendingfirst = (j + 1) % NPENDINGCALLS;
+        }
+        pendingcalls_to_do = pendingfirst != pendinglast;
+        PyThread_release_lock(pending_lock);
+        /* having released the lock, perform the callback */
+        if (func == NULL)
+            break;
+        r = func(arg);
+        if (r)
+            break;
+    }
+    pendingbusy = 0;
+    return r;
+}
+
 extern "C" int Py_AddPendingCall(int (*func)(void*), void* arg) noexcept {
-    pending.emplace_back(func, arg);
-    _check_signals = 1;
-    // fatalOrError(PyExc_NotImplementedError, "unimplemented");
-    return -1;
+    int i, j, result = 0;
+    PyThread_type_lock lock = pending_lock;
+
+    /* try a few times for the lock.  Since this mechanism is used
+     * for signal handling (on the main thread), there is a (slim)
+     * chance that a signal is delivered on the same thread while we
+     * hold the lock during the Py_MakePendingCalls() function.
+     * This avoids a deadlock in that case.
+     * Note that signals can be delivered on any thread.  In particular,
+     * on Windows, a SIGINT is delivered on a system-created worker
+     * thread.
+     * We also check for lock being NULL, in the unlikely case that
+     * this function is called before any bytecode evaluation takes place.
+     */
+    if (lock != NULL) {
+        for (i = 0; i < 100; i++) {
+            if (PyThread_acquire_lock(lock, NOWAIT_LOCK))
+                break;
+        }
+        if (i == 100)
+            return -1;
+    }
+
+    i = pendinglast;
+    j = (i + 1) % NPENDINGCALLS;
+    if (j == pendingfirst) {
+        result = -1; /* Queue full */
+    } else {
+        pendingcalls[i].func = func;
+        pendingcalls[i].arg = arg;
+        pendinglast = j;
+    }
+    /* signal main loop */
+    // Pyston change:
+    // _Py_Ticker = 0;
+    pendingcalls_to_do = 1;
+
+    _check_signals = true;
+
+    if (lock != NULL)
+        PyThread_release_lock(lock);
+    return result;
 }
 
 extern "C" PyObject* _PyImport_FixupExtension(char* name, char* filename) noexcept {
