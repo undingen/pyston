@@ -307,23 +307,23 @@ ICSetupInfo* createGenericIC(TypeRecorder* type_recorder, bool has_return_value,
 }
 
 ICSetupInfo* createGetattrIC(TypeRecorder* type_recorder, ICInfo* bjit_ic_info) {
-    return ICSetupInfo::initialize(true, numSlots(bjit_ic_info, 2), 512, ICSetupInfo::Getattr, type_recorder);
+    return ICSetupInfo::initialize(true, numSlots(bjit_ic_info, 2), 512 / 2, ICSetupInfo::Getattr, type_recorder);
 }
 
 ICSetupInfo* createGetitemIC(TypeRecorder* type_recorder, ICInfo* bjit_ic_info) {
-    return ICSetupInfo::initialize(true, numSlots(bjit_ic_info, 1), 512, ICSetupInfo::Getitem, type_recorder);
+    return ICSetupInfo::initialize(true, numSlots(bjit_ic_info, 1), 512 / 2, ICSetupInfo::Getitem, type_recorder);
 }
 
 ICSetupInfo* createSetitemIC(TypeRecorder* type_recorder) {
-    return ICSetupInfo::initialize(true, 1, 512, ICSetupInfo::Setitem, type_recorder);
+    return ICSetupInfo::initialize(true, 1, 512 / 2, ICSetupInfo::Setitem, type_recorder);
 }
 
 ICSetupInfo* createDelitemIC(TypeRecorder* type_recorder) {
-    return ICSetupInfo::initialize(false, 1, 512, ICSetupInfo::Delitem, type_recorder);
+    return ICSetupInfo::initialize(false, 1, 512 / 2, ICSetupInfo::Delitem, type_recorder);
 }
 
 ICSetupInfo* createSetattrIC(TypeRecorder* type_recorder, ICInfo* bjit_ic_info) {
-    return ICSetupInfo::initialize(false, numSlots(bjit_ic_info, 2), 512, ICSetupInfo::Setattr, type_recorder);
+    return ICSetupInfo::initialize(false, numSlots(bjit_ic_info, 2), 512 / 2, ICSetupInfo::Setattr, type_recorder);
 }
 
 ICSetupInfo* createDelattrIC(TypeRecorder* type_recorder) {
@@ -331,7 +331,7 @@ ICSetupInfo* createDelattrIC(TypeRecorder* type_recorder) {
 }
 
 ICSetupInfo* createCallsiteIC(TypeRecorder* type_recorder, int num_args, ICInfo* bjit_ic_info) {
-    return ICSetupInfo::initialize(true, numSlots(bjit_ic_info, 4), 640 + 48 * num_args, ICSetupInfo::Callsite,
+    return ICSetupInfo::initialize(true, numSlots(bjit_ic_info, 4), 640 / 2 + 48 * num_args, ICSetupInfo::Callsite,
                                    type_recorder);
 }
 
@@ -344,7 +344,7 @@ ICSetupInfo* createBinexpIC(TypeRecorder* type_recorder, ICInfo* bjit_ic_info) {
 }
 
 ICSetupInfo* createNonzeroIC(TypeRecorder* type_recorder) {
-    return ICSetupInfo::initialize(true, 2, 512, ICSetupInfo::Nonzero, type_recorder);
+    return ICSetupInfo::initialize(true, 2, 512 / 2, ICSetupInfo::Nonzero, type_recorder);
 }
 
 ICSetupInfo* createHasnextIC(TypeRecorder* type_recorder) {
