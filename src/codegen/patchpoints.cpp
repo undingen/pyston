@@ -287,6 +287,15 @@ void* PatchpointInfo::getSlowpathAddr(unsigned int pp_id) {
     return new_patchpoints[pp_id].second;
 }
 
+int slotSize(ICInfo* bjit_ic_info, int default_slot_size) {
+    if (!bjit_ic_info)
+        return default_slot_size;
+
+    if (bjit_ic_info->timesRewritten() == 1)
+        return bjit_ic_info->slots[0].actual_size + 24;
+    return default_slot_size;
+}
+
 int numSlots(ICInfo* bjit_ic_info, int default_num_slots) {
     if (!bjit_ic_info)
         return default_num_slots;
@@ -307,11 +316,13 @@ ICSetupInfo* createGenericIC(TypeRecorder* type_recorder, bool has_return_value,
 }
 
 ICSetupInfo* createGetattrIC(TypeRecorder* type_recorder, ICInfo* bjit_ic_info) {
-    return ICSetupInfo::initialize(true, numSlots(bjit_ic_info, 2), 512 / 2, ICSetupInfo::Getattr, type_recorder);
+    return ICSetupInfo::initialize(true, numSlots(bjit_ic_info, 2), slotSize(bjit_ic_info, 512 / 2),
+                                   ICSetupInfo::Getattr, type_recorder);
 }
 
 ICSetupInfo* createGetitemIC(TypeRecorder* type_recorder, ICInfo* bjit_ic_info) {
-    return ICSetupInfo::initialize(true, numSlots(bjit_ic_info, 1), 512 / 2, ICSetupInfo::Getitem, type_recorder);
+    return ICSetupInfo::initialize(true, numSlots(bjit_ic_info, 1), slotSize(bjit_ic_info, 512 / 2),
+                                   ICSetupInfo::Getitem, type_recorder);
 }
 
 ICSetupInfo* createSetitemIC(TypeRecorder* type_recorder) {
@@ -323,7 +334,8 @@ ICSetupInfo* createDelitemIC(TypeRecorder* type_recorder) {
 }
 
 ICSetupInfo* createSetattrIC(TypeRecorder* type_recorder, ICInfo* bjit_ic_info) {
-    return ICSetupInfo::initialize(false, numSlots(bjit_ic_info, 2), 512 / 2, ICSetupInfo::Setattr, type_recorder);
+    return ICSetupInfo::initialize(false, numSlots(bjit_ic_info, 2), slotSize(bjit_ic_info, 512 / 2),
+                                   ICSetupInfo::Setattr, type_recorder);
 }
 
 ICSetupInfo* createDelattrIC(TypeRecorder* type_recorder) {
@@ -331,8 +343,8 @@ ICSetupInfo* createDelattrIC(TypeRecorder* type_recorder) {
 }
 
 ICSetupInfo* createCallsiteIC(TypeRecorder* type_recorder, int num_args, ICInfo* bjit_ic_info) {
-    return ICSetupInfo::initialize(true, numSlots(bjit_ic_info, 4), 640 / 2 + 48 * num_args, ICSetupInfo::Callsite,
-                                   type_recorder);
+    return ICSetupInfo::initialize(true, numSlots(bjit_ic_info, 4), slotSize(bjit_ic_info, 640 / 2 + 48 * num_args),
+                                   ICSetupInfo::Callsite, type_recorder);
 }
 
 ICSetupInfo* createGetGlobalIC(TypeRecorder* type_recorder) {
@@ -340,7 +352,8 @@ ICSetupInfo* createGetGlobalIC(TypeRecorder* type_recorder) {
 }
 
 ICSetupInfo* createBinexpIC(TypeRecorder* type_recorder, ICInfo* bjit_ic_info) {
-    return ICSetupInfo::initialize(true, numSlots(bjit_ic_info, 4), 512, ICSetupInfo::Binexp, type_recorder);
+    return ICSetupInfo::initialize(true, numSlots(bjit_ic_info, 4), slotSize(bjit_ic_info, 512), ICSetupInfo::Binexp,
+                                   type_recorder);
 }
 
 ICSetupInfo* createNonzeroIC(TypeRecorder* type_recorder) {

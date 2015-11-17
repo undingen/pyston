@@ -41,11 +41,12 @@ class ICInvalidator;
 
 struct ICSlotInfo {
 public:
-    ICSlotInfo(ICInfo* ic, int idx) : ic(ic), idx(idx), num_inside(0) {}
+    ICSlotInfo(ICInfo* ic, int idx) : ic(ic), idx(idx), num_inside(0), actual_size(0) {}
 
     ICInfo* ic;
     int idx;        // the index inside the ic
     int num_inside; // the number of stack frames that are currently inside this slot
+    int actual_size;
 
     std::vector<void*> gc_references;
 
@@ -104,7 +105,7 @@ public:
 typedef BitSet<16> LiveOutSet;
 
 class ICInfo {
-private:
+public:
     std::vector<ICSlotInfo> slots;
     // For now, just use a round-robin eviction policy.
     // This is probably a bunch worse than LRU, but it's also

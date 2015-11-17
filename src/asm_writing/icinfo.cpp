@@ -106,6 +106,8 @@ void ICSlotRewrite::commit(CommitHook* hook, std::vector<void*> gc_references) {
     uint8_t* slot_start = getSlotStart();
     uint8_t* continue_point = (uint8_t*)ic->continue_addr;
 
+    ic_entry->actual_size = assembler.curInstPointer() - buf;
+
     bool do_commit = hook->finishAssembly(continue_point - slot_start);
 
     if (!do_commit)
