@@ -82,7 +82,8 @@ void PatchpointInfo::parseLocationMap(StackMap::Record* r, LocationMap* map) {
     // We could allow the frame_info to exist in a different location for each callsite,
     // but in reality it will always live at a fixed stack offset.
     if (map->frameInfoFound()) {
-        assert(frame_info_location == map->frame_info_location);
+        //assert(frame_info_location == map->frame_info_location);
+        map->frame_info_location = frame_info_location;
     } else {
         map->frame_info_location = frame_info_location;
     }
