@@ -358,8 +358,16 @@ void RewriterVar::addAttrGuard(int offset, uint64_t val, bool negate) {
         return; // duplicate guard detected
 
     RewriterVar* val_var = rewriter->loadConst(val);
-    rewriter->addAction([=]() { rewriter->_addAttrGuard(this, offset, val_var, negate); }, { this, val_var },
-                        ActionType::GUARD);
+    if (!negate) {
+        RewriterAction action;
+        action.type = RewriterAction::GetAttrGuard;
+        action.a1 = this;
+        action.a2 = val_var;
+        action.v1 = offset;
+        rewriter->addAction(std::move(action), { this, val_var }, ActionType::GUARD);
+    } else
+        rewriter->addAction([=]() { rewriter->_addAttrGuard(this, offset, val_var, negate); }, { this, val_var },
+                            ActionType::GUARD);
 }
 
 void Rewriter::_addAttrGuard(RewriterVar* var, int offset, RewriterVar* val_constant, bool negate) {
@@ -406,7 +414,19 @@ RewriterVar* RewriterVar::getAttr(int offset, Location dest, assembler::MovType 
     STAT_TIMER(t0, "us_timer_rewriter", 10);
 
     RewriterVar* result = rewriter->createNewVar();
-    rewriter->addAction([=]() { rewriter->_getAttr(result, this, offset, dest, type); }, { this }, ActionType::NORMAL);
+    if (dest == Location::any() && type == assembler::MovType::Q) {
+        RewriterAction action;
+        action.r = result;
+        action.type = RewriterAction::GetAttr;
+        action.a1 = this;
+        action.v1 = offset;
+        rewriter->addAction(std::move(action), { this }, ActionType::NORMAL);
+    } else {
+        rewriter->addAction([=]() { rewriter->_getAttr(result, this, offset, dest, type); }, { this },
+                            ActionType::NORMAL);
+    }
+
+
     return result;
 }
 
@@ -841,6 +861,20 @@ RewriterVar* Rewriter::call(bool has_side_effects, void* func_addr, const Rewrit
     else
         type = ActionType::NORMAL;
 
+    if (args.size() < 4 && args_xmm.empty()) {
+        RewriterAction a;
+        a.type = RewriterAction::Call;
+        a.r = result;
+        a.v1 = (uint64_t)func_addr;
+        a.v2 = has_side_effects;
+        a.a1 = args.size() > 0 ? args[0] : 0;
+        a.a2 = args.size() > 1 ? args[1] : 0;
+        a.a3 = args.size() > 2 ? args[2] : 0;
+        addAction(std::move(a), uses, type);
+        return result;
+    }
+
+
     // It's not nice to pass llvm::SmallVectors through a closure, especially with our SmallFunction
     // optimization, so just regionAlloc them and copy the data in:
     RewriterVar** _args = (RewriterVar**)this->regionAlloc(sizeof(RewriterVar*) * args.size());
@@ -1197,9 +1231,37 @@ void Rewriter::commit() {
         return;
     }
 
+    bool llvm_can_handle_this = true;
+
     // Now, start emitting assembly; check if we're dong guarding after each.
     for (int i = 0; i < actions.size(); i++) {
-        actions[i].action();
+        if (actions[i].type == RewriterAction::Func) {
+            actions[i].action();
+            llvm_can_handle_this = false;
+        } else if (actions[i].type == RewriterAction::GetAttr) {
+            auto&& a = actions[i];
+            _getAttr(a.r, a.a1, a.v1);
+        } else if (actions[i].type == RewriterAction::GetAttrGuard) {
+            auto&& a = actions[i];
+            _addAttrGuard(a.a1, a.v1, a.a2);
+        } else if (actions[i].type == RewriterAction::Allocate) {
+            auto&& a = actions[i];
+            _allocate(a.r, a.v1);
+        } else if (actions[i].type == RewriterAction::CommitReturning) {
+            auto&& a = actions[i];
+            _commitReturning(a.r);
+        } else if (actions[i].type == RewriterAction::Call) {
+            auto&& a = actions[i];
+            SmallVector<RewriterVar*, 8> args;
+            if (a.a1)
+                args.push_back(a.a1);
+            if (a.a2)
+                args.push_back(a.a2);
+            if (a.a3)
+                args.push_back(a.a3);
+
+            _call(a.r, a.v2, (void*)a.v1, args, {});
+        }
 
         if (failed) {
             ic_rewrites_aborted_failed.log();
@@ -1211,6 +1273,25 @@ void Rewriter::commit() {
         if (i == last_guard_action) {
             on_done_guarding();
         }
+    }
+
+    if (llvm_can_handle_this) {
+        for (int i = 0; i < actions.size(); i++) {
+            if (actions[i].type == RewriterAction::Func) {
+
+            } else if (actions[i].type == RewriterAction::GetAttr) {
+                printf("getattr\n");
+            } else if (actions[i].type == RewriterAction::GetAttrGuard) {
+                printf("GetAttrGuard\n");
+            } else if (actions[i].type == RewriterAction::Allocate) {
+                printf("Allocate");
+            } else if (actions[i].type == RewriterAction::CommitReturning) {
+                printf("CommitReturning");
+            } else if (actions[i].type == RewriterAction::Call) {
+                printf("call\n");
+            }
+        }
+        printf("\n");
     }
 
     if (marked_inside_ic) {
@@ -1383,14 +1464,21 @@ bool Rewriter::finishAssembly(int continue_offset) {
     return !assembler->hasFailed();
 }
 
+
+void Rewriter::_commitReturning(RewriterVar* var) {
+    assembler->comment("commitReturning");
+    var->getInReg(getReturnDestination(), true /* allow_constant_in_reg */);
+    var->bumpUse();
+}
+
 void Rewriter::commitReturning(RewriterVar* var) {
     STAT_TIMER(t0, "us_timer_rewriter", 10);
 
-    addAction([=]() {
-        assembler->comment("commitReturning");
-        var->getInReg(getReturnDestination(), true /* allow_constant_in_reg */);
-        var->bumpUse();
-    }, { var }, ActionType::NORMAL);
+    RewriterAction a;
+    a.type = RewriterAction::CommitReturning;
+    a.r = var;
+
+    addAction(std::move(a), { var }, ActionType::NORMAL);
 
     commit();
 }
@@ -1459,7 +1547,14 @@ RewriterVar* Rewriter::allocate(int n) {
     STAT_TIMER(t0, "us_timer_rewriter", 10);
 
     RewriterVar* result = createNewVar();
-    addAction([=]() { this->_allocate(result, n); }, {}, ActionType::NORMAL);
+
+    RewriterAction a;
+    a.r = result;
+    a.type = RewriterAction::Allocate;
+    a.v1 = n;
+    addAction(std::move(a), {}, ActionType::NORMAL);
+    // addAction([=]() { this->_allocate(result, n); }, {}, ActionType::NORMAL);
+
     return result;
 }
 

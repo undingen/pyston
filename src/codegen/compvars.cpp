@@ -554,14 +554,20 @@ CompilerVariable* UnknownType::getattr(IREmitter& emitter, const OpInfo& info, C
 
     bool do_patchpoint = ENABLE_ICGETATTRS;
     if (do_patchpoint) {
-        ICSetupInfo* pp = createGetattrIC(info.getTypeRecorder(), info.getBJitICInfo());
+        if (0 /*target_exception_style == CXX && info.getBJitICInfo() && info.getBJitICInfo()->timesRewritten == 1*/) {
 
-        std::vector<llvm::Value*> llvm_args;
-        llvm_args.push_back(var->getValue());
-        llvm_args.push_back(ptr);
 
-        llvm::Value* uncasted = emitter.createIC(pp, raw_func, llvm_args, info.unw_info, target_exception_style);
-        rtn_val = emitter.getBuilder()->CreateIntToPtr(uncasted, g.llvm_value_type_ptr);
+
+        } else {
+            ICSetupInfo* pp = createGetattrIC(info.getTypeRecorder(), info.getBJitICInfo());
+
+            std::vector<llvm::Value*> llvm_args;
+            llvm_args.push_back(var->getValue());
+            llvm_args.push_back(ptr);
+
+            llvm::Value* uncasted = emitter.createIC(pp, raw_func, llvm_args, info.unw_info, target_exception_style);
+            rtn_val = emitter.getBuilder()->CreateIntToPtr(uncasted, g.llvm_value_type_ptr);
+        }
     } else {
         rtn_val = emitter.createCall2(info.unw_info, llvm_func, var->getValue(), ptr, target_exception_style);
     }

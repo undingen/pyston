@@ -319,6 +319,18 @@ public:
 class RewriterAction {
 public:
     SmallFunction<56> action;
+    enum ActionType {
+        Func,
+        GetAttr,
+        GetAttrGuard,
+        Call,
+        Allocate,
+        CommitReturning,
+    } type = Func;
+
+    RewriterVar* r = 0, * a1 = 0, * a2 = 0, * a3 = 0;
+    uint64_t v1 = 0, v2 = 0;
+
 
     template <typename F> RewriterAction(F&& action) : action(std::forward<F>(action)) {}
 
@@ -511,6 +523,7 @@ protected:
     void _cmp(RewriterVar* result, RewriterVar* var1, AST_TYPE::AST_TYPE cmp_type, RewriterVar* var2,
               Location loc = Location::any());
     void _toBool(RewriterVar* result, RewriterVar* var, Location loc = Location::any());
+    void _commitReturning(RewriterVar* var);
 
     void assertConsistent() {
 #ifndef NDEBUG
