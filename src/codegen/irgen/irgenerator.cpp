@@ -2486,7 +2486,7 @@ private:
         {
             emitter.setCurrentBasicBlock(check_signals_set);
             emitter.createCall(unw_info, g.funcs.tickHandler);
-            builder.CreateBr(cur_block);
+            builder.CreateBr(join_block);
         }
 
         cur_block = join_block;
@@ -2568,7 +2568,8 @@ private:
                 exit(1);
         }
 
-        emitSignalCheck(unw_info);
+        if (node->type != AST_TYPE::Invoke)
+            emitSignalCheck(unw_info);
     }
 
     void loadArgument(InternedString name, ConcreteCompilerType* t, llvm::Value* v, const UnwindInfo& unw_info) {
