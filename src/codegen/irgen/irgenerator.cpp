@@ -383,13 +383,13 @@ private:
             getBuilder()->SetInsertPoint(normal_dest);
             curblock = normal_dest;
 
-            emitSignalCheck(exc_dest);
+            // emitSignalCheck(exc_dest);
 
             return rtn;
         } else {
             llvm::CallInst* cs = getBuilder()->CreateCall(callee, args);
 
-            emitSignalCheck(NULL);
+            // emitSignalCheck(NULL);
 
             return cs;
         }
@@ -2455,6 +2455,44 @@ private:
         endBlock(DEAD);
     }
 
+    void emitSignalCheck(const UnwindInfo& unw_info) {
+        auto&& builder = *emitter.getBuilder();
+
+        llvm::GlobalVariable* py_ticker = g.cur_module->getGlobalVariable("_check_signals");
+        if (!py_ticker) {
+            static_assert(sizeof(_check_signals) == 8, "");
+            py_ticker = new llvm::GlobalVariable(*g.cur_module, g.i64, false, llvm::GlobalValue::ExternalLinkage, 0,
+                                                 "_check_signals");
+            py_ticker->setAlignment(8);
+        }
+
+        llvm::BasicBlock* cur_block = builder.GetInsertBlock();
+
+        llvm::BasicBlock* check_signals_set = emitter.createBasicBlock("_check_signals_set");
+        check_signals_set->moveAfter(cur_block);
+        llvm::BasicBlock* join_block = emitter.createBasicBlock("continue_after_sig_check");
+        join_block->moveAfter(check_signals_set);
+
+        llvm::Value* py_ticker_val = builder.CreateLoad(py_ticker, true);
+        auto&& is_tick_zero = builder.CreateICmpEQ(py_ticker_val, getConstantInt(0, g.i64));
+
+        llvm::Metadata* md_vals[]
+            = { llvm::MDString::get(g.context, "branch_weights"), llvm::ConstantAsMetadata::get(getConstantInt(1000)),
+                llvm::ConstantAsMetadata::get(getConstantInt(1)) };
+        llvm::MDNode* branch_weights = llvm::MDNode::get(g.context, llvm::ArrayRef<llvm::Metadata*>(md_vals));
+
+
+        builder.CreateCondBr(is_tick_zero, join_block, check_signals_set, branch_weights);
+        {
+            emitter.setCurrentBasicBlock(check_signals_set);
+            emitter.createCall(unw_info, g.funcs.tickHandler);
+            builder.CreateBr(cur_block);
+        }
+
+        cur_block = join_block;
+        emitter.setCurrentBasicBlock(join_block);
+    }
+
     void doStmt(AST_stmt* node, const UnwindInfo& unw_info) {
         // printf("%d stmt: %d\n", node->type, node->lineno);
         if (node->lineno) {
@@ -2529,6 +2567,8 @@ private:
                 printf("Unhandled stmt type at " __FILE__ ":" STRINGIFY(__LINE__) ": %d\n", node->type);
                 exit(1);
         }
+
+        emitSignalCheck(unw_info);
     }
 
     void loadArgument(InternedString name, ConcreteCompilerType* t, llvm::Value* v, const UnwindInfo& unw_info) {
