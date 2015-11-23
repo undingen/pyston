@@ -481,9 +481,9 @@ void initCodegen() {
 
     setupRuntime();
 
-    // signal(SIGFPE, &handle_sigfpe);
-    signal(SIGUSR1, &handle_sigusr1);
-    signal(SIGINT, &handle_sigint);
+// signal(SIGFPE, &handle_sigfpe);
+// signal(SIGUSR1, &handle_sigusr1);
+// signal(SIGINT, &handle_sigint);
 
 #if ENABLE_SAMPLING_PROFILER
     struct itimerval prof_timer;

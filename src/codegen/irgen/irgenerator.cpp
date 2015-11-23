@@ -315,8 +315,51 @@ private:
     llvm::BasicBlock*& curblock;
     IRGenerator* irgenerator;
 
+    void emitSignalCheck(llvm::BasicBlock* exc_dest) {
+        auto&& builder = *getBuilder();
+
+        llvm::GlobalVariable* py_ticker = g.cur_module->getGlobalVariable("_check_signals");
+        if (!py_ticker) {
+            static_assert(sizeof(_check_signals) == 8, "");
+            py_ticker = new llvm::GlobalVariable(*g.cur_module, g.i64, false, llvm::GlobalValue::ExternalLinkage, 0,
+                                                 "_check_signals");
+            py_ticker->setAlignment(8);
+        }
+
+        llvm::BasicBlock* cur_block = builder.GetInsertBlock();
+
+        llvm::BasicBlock* check_signals_set = createBasicBlock("_check_signals_set");
+        check_signals_set->moveAfter(cur_block);
+        llvm::BasicBlock* join_block = createBasicBlock("continue_after_sig_check");
+        join_block->moveAfter(check_signals_set);
+
+        llvm::Value* py_ticker_val = builder.CreateLoad(py_ticker, true);
+        auto&& is_tick_zero = builder.CreateICmpEQ(py_ticker_val, getConstantInt(0, g.i64));
+
+        llvm::Metadata* md_vals[]
+            = { llvm::MDString::get(g.context, "branch_weights"), llvm::ConstantAsMetadata::get(getConstantInt(1000)),
+                llvm::ConstantAsMetadata::get(getConstantInt(1)) };
+        llvm::MDNode* branch_weights = llvm::MDNode::get(g.context, llvm::ArrayRef<llvm::Metadata*>(md_vals));
+
+
+        builder.CreateCondBr(is_tick_zero, join_block, check_signals_set, branch_weights);
+        {
+            setCurrentBasicBlock(check_signals_set);
+            if (exc_dest) {
+                builder.CreateInvoke(g.funcs.tickHandler, join_block, exc_dest);
+            } else {
+                builder.CreateCall(g.funcs.tickHandler);
+                builder.CreateBr(join_block);
+            }
+        }
+
+        cur_block = join_block;
+        setCurrentBasicBlock(join_block);
+    }
+
     llvm::CallSite emitCall(const UnwindInfo& unw_info, llvm::Value* callee, const std::vector<llvm::Value*>& args,
                             ExceptionStyle target_exception_style) {
+
         if (target_exception_style == CXX && (unw_info.hasHandler() || irstate->getExceptionStyle() == CAPI)) {
             // Create the invoke:
             llvm::BasicBlock* normal_dest
@@ -339,9 +382,15 @@ private:
             // Normal case:
             getBuilder()->SetInsertPoint(normal_dest);
             curblock = normal_dest;
+
+            emitSignalCheck(exc_dest);
+
             return rtn;
         } else {
             llvm::CallInst* cs = getBuilder()->CreateCall(callee, args);
+
+            emitSignalCheck(NULL);
+
             return cs;
         }
     }

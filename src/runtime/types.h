@@ -171,6 +171,7 @@ extern "C" Box* createList();
 extern "C" Box* createSlice(Box* start, Box* stop, Box* step);
 extern "C" Box* createTuple(int64_t nelts, Box** elts);
 extern "C" void printFloat(double d);
+extern "C" void tickHandler();
 
 Box* objectStr(Box*);
 Box* objectRepr(Box*);
@@ -1165,6 +1166,8 @@ inline Box*& getArg(int idx, Box*& arg1, Box*& arg2, Box*& arg3, Box** args) {
         return arg3;
     return args[idx - 3];
 }
+
+extern "C" volatile uint64_t _check_signals;
 }
 
 #endif
