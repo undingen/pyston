@@ -2478,7 +2478,7 @@ private:
         llvm::BasicBlock* join_block = emitter.createBasicBlock("continue_after_sig_check");
         join_block->moveAfter(check_signals_set);
 
-        llvm::Value* py_ticker_val = builder.CreateLoad(py_ticker, true);
+        llvm::Value* py_ticker_val = builder.CreateLoad(py_ticker /*, true*/);
         auto&& is_tick_zero = builder.CreateICmpEQ(py_ticker_val, getConstantInt(0, g.i64));
 
         llvm::Metadata* md_vals[]
