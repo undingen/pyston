@@ -923,6 +923,11 @@ Value ASTInterpreter::visit_yield(AST_Yield* node) {
     return Value(yield(generator, value.o), jit ? jit->emitYield(value) : NULL);
 }
 
+static void checkSignal() {
+    if (unlikely(_check_signals))
+        tickHandler();
+}
+
 Value ASTInterpreter::visit_stmt(AST_stmt* node) {
 #if ENABLE_SAMPLING_PROFILER
     threading::allowGLReadPreemption();
@@ -983,6 +988,9 @@ Value ASTInterpreter::visit_stmt(AST_stmt* node) {
         default:
             RELEASE_ASSERT(0, "not implemented");
     };
+
+    if (jit)
+        jit->call(false, (void*)checkSignal);
 
     if (unlikely(_check_signals))
         tickHandler();

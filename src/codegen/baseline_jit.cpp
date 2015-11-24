@@ -699,17 +699,17 @@ RewriterVar* JitFragmentWriter::emitPPCall(void* func_addr, llvm::ArrayRef<Rewri
         addAction([=]() { _emitRecordType(type_recorder_var, obj_cls_var); }, { type_recorder_var, obj_cls_var },
                   ActionType::NORMAL);
 
-        call(false, (void*)checkSignal);
+        // call(false, (void*)checkSignal);
         return result;
     }
 
-    call(false, (void*)checkSignal);
+    // call(false, (void*)checkSignal);
 
     return result;
 #else
     assert(args_vec.size() < 7);
 
-    call(false, (void*)checkSignal);
+// call(false, (void*)checkSignal);
 #endif
 }
 
