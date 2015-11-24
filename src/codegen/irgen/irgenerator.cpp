@@ -2208,6 +2208,8 @@ private:
 
         endBlock(FINISHED);
 
+        emitSignalCheck(unw_info);
+
         emitter.getBuilder()->CreateCondBr(v, iftrue, iffalse);
     }
 
@@ -2391,6 +2393,8 @@ private:
     void doJump(AST_Jump* node, const UnwindInfo& unw_info) {
         endBlock(FINISHED);
 
+        emitSignalCheck(unw_info);
+
         llvm::BasicBlock* target = entry_blocks[node->target];
 
         if (ENABLE_OSR && node->target->idx < myblock->idx && irstate->getEffortLevel() < EffortLevel::MAXIMAL) {
@@ -2466,7 +2470,8 @@ private:
             py_ticker->setAlignment(8);
         }
 
-        llvm::BasicBlock* cur_block = builder.GetInsertBlock();
+        llvm::BasicBlock* cur_block = emitter.currentBasicBlock();
+        assert(cur_block == builder.GetInsertBlock());
 
         llvm::BasicBlock* check_signals_set = emitter.createBasicBlock("_check_signals_set");
         check_signals_set->moveAfter(cur_block);
@@ -2486,10 +2491,10 @@ private:
         {
             emitter.setCurrentBasicBlock(check_signals_set);
             emitter.createCall(unw_info, g.funcs.tickHandler);
+            // builder.CreateCall(g.funcs.tickHandler);
             builder.CreateBr(join_block);
         }
 
-        cur_block = join_block;
         emitter.setCurrentBasicBlock(join_block);
     }
 
@@ -2503,19 +2508,25 @@ private:
         switch (node->type) {
             case AST_TYPE::Assert:
                 doAssert(ast_cast<AST_Assert>(node), unw_info);
+                emitSignalCheck(unw_info);
                 break;
             case AST_TYPE::Assign:
                 doAssign(ast_cast<AST_Assign>(node), unw_info);
+                emitSignalCheck(unw_info);
                 break;
             case AST_TYPE::Delete:
                 doDelete(ast_cast<AST_Delete>(node), unw_info);
+                emitSignalCheck(unw_info);
                 break;
             case AST_TYPE::Exec:
                 doExec(ast_cast<AST_Exec>(node), unw_info);
+                emitSignalCheck(unw_info);
                 break;
             case AST_TYPE::Expr:
-                if ((((AST_Expr*)node)->value)->type != AST_TYPE::Str)
+                if ((((AST_Expr*)node)->value)->type != AST_TYPE::Str) {
                     doExpr(ast_cast<AST_Expr>(node), unw_info);
+                    emitSignalCheck(unw_info);
+                }
                 break;
             // case AST_TYPE::If:
             // doIf(ast_cast<AST_If>(node));
@@ -2533,10 +2544,12 @@ private:
                 break;
             case AST_TYPE::Print:
                 doPrint(ast_cast<AST_Print>(node), unw_info);
+                emitSignalCheck(unw_info);
                 break;
             case AST_TYPE::Return:
                 assert(!unw_info.hasHandler());
                 doReturn(ast_cast<AST_Return>(node), unw_info);
+
                 break;
             case AST_TYPE::Branch:
                 assert(!unw_info.hasHandler());
@@ -2567,9 +2580,6 @@ private:
                 printf("Unhandled stmt type at " __FILE__ ":" STRINGIFY(__LINE__) ": %d\n", node->type);
                 exit(1);
         }
-
-        if (node->type != AST_TYPE::Invoke)
-            emitSignalCheck(unw_info);
     }
 
     void loadArgument(InternedString name, ConcreteCompilerType* t, llvm::Value* v, const UnwindInfo& unw_info) {
