@@ -2490,8 +2490,8 @@ private:
         builder.CreateCondBr(is_tick_zero, join_block, check_signals_set, branch_weights);
         {
             emitter.setCurrentBasicBlock(check_signals_set);
-            emitter.createCall(unw_info, g.funcs.tickHandler);
-            // builder.CreateCall(g.funcs.tickHandler);
+            //emitter.createCall(unw_info, g.funcs.tickHandler);
+            builder.CreateCall(g.funcs.tickHandler);
             builder.CreateBr(join_block);
         }
 
