@@ -1580,6 +1580,9 @@ static char pendingbusy = 0;
 
 std::vector<std::pair<int (*)(void*), void*>> pending;
 extern "C" void tickHandler() {
+    if (likely(!_check_signals))
+        return;
+
     if (!threading::isMainThread())
         return;
 

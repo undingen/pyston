@@ -2460,8 +2460,9 @@ private:
     }
 
     void emitSignalCheck(const UnwindInfo& unw_info) {
-        auto&& builder = *emitter.getBuilder();
 
+        auto&& builder = *emitter.getBuilder();
+#if 0
         llvm::GlobalVariable* py_ticker = g.cur_module->getGlobalVariable("_check_signals");
         if (!py_ticker) {
             static_assert(sizeof(_check_signals) == 8, "");
@@ -2496,6 +2497,10 @@ private:
         }
 
         emitter.setCurrentBasicBlock(join_block);
+#else
+        builder.CreateCall(g.funcs.tickHandler);
+// emitter.createCall(unw_info, g.funcs.tickHandler);
+#endif
     }
 
     void doStmt(AST_stmt* node, const UnwindInfo& unw_info) {
