@@ -137,7 +137,7 @@ public:
 
     // scratch size + space for passing additional args on the stack without having to adjust the SP when calling
     // functions with more than 6 args.
-    static constexpr int sp_adjustment = scratch_size + num_stack_args * 8 + 8 /* = alignment */;
+    static constexpr int sp_adjustment = scratch_size + num_stack_args * 8 /* = alignment */;
 
 private:
     std::unique_ptr<uint8_t[]> code;
@@ -260,6 +260,7 @@ public:
     void emitSetLocal(InternedString s, int vreg, bool set_closure, RewriterVar* v);
     void emitSideExit(RewriterVar* v, Box* cmp_value, CFGBlock* next_block);
     void emitUncacheExcInfo();
+    void emitCheckSignal();
 
     void abortCompilation();
     int finishCompilation();

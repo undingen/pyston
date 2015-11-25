@@ -46,12 +46,14 @@ static llvm::DenseMap<CFGBlock*, std::vector<void*>> block_patch_locations;
 //
 // It omits the frame pointer but saves R12 and R14
 const unsigned char eh_info[]
-    = { 0x14, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x7a, 0x52, 0x00, 0x01, 0x78, 0x10,
-        0x01, 0x1b, 0x0c, 0x07, 0x08, 0x90, 0x01, 0x00, 0x00, 0x1c, 0x00, 0x00, 0x00, 0x1c, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x00, 0x42, 0x0e, 0x10, 0x42,
-        0x0e, 0x18, 0x47, 0x0e, 0xb0, 0x02, 0x8c, 0x03, 0x8e, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00 };
+    = { 0x14, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x7a, 0x52, 0x00, 0x01, 0x78, 0x10, 0x01, 0x1b,
+        0x0c, 0x07, 0x08, 0x90, 0x01, 0x00, 0x00, 0x24, 0x00, 0x00, 0x00, 0x1c, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x24, 0x00, 0x00, 0x00, 0x00, 0x42, 0x0e, 0x10, 0x42, 0x0e, 0x18, 0x42, 0x0e, 0x20, 0x47,
+        0x0e, 0xb0, 0x02, 0x8c, 0x04, 0x8e, 0x03, 0x8f, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 static_assert(JitCodeBlock::num_stack_args == 2, "have to update EH table!");
 static_assert(JitCodeBlock::scratch_size == 256, "have to update EH table!");
+
+extern "C" void checkSignalSafe();
 
 JitCodeBlock::JitCodeBlock(llvm::StringRef name)
     : code(new uint8_t[code_size]),
@@ -66,12 +68,14 @@ JitCodeBlock::JitCodeBlock(llvm::StringRef name)
     num_jit_total_bytes.log(code_size);
 
     // emit prolog
+    a.push(assembler::R15);
     a.push(assembler::R14);
     a.push(assembler::R12);
-    static_assert(sp_adjustment % 16 == 8, "stack isn't aligned");
+    static_assert(sp_adjustment % 16 == 0, "stack isn't aligned");
     a.sub(assembler::Immediate(sp_adjustment), assembler::RSP);
     a.mov(assembler::RDI, assembler::R12);                                // interpreter pointer
     a.mov(assembler::RDX, assembler::R14);                                // vreg array
+    a.mov(assembler::Immediate((void*)checkSignalSafe), assembler::R15);  // &checkSignalSafe
     a.jmp(assembler::Indirect(assembler::RSI, offsetof(CFGBlock, code))); // jump to block
 
     entry_offset = a.bytesWritten();
@@ -168,6 +172,10 @@ RewriterVar* JitFragmentWriter::emitAugbinop(AST_expr* node, RewriterVar* lhs, R
 
 RewriterVar* JitFragmentWriter::emitBinop(AST_expr* node, RewriterVar* lhs, RewriterVar* rhs, int op_type) {
     return emitPPCall((void*)binop, { lhs, rhs, imm(op_type) }, 2, 240, node);
+}
+
+void JitFragmentWriter::emitCheckSignal() {
+    addAction([=]() { assembler->callq(assembler::R15); }, {}, ActionType::MUTATION);
 }
 
 RewriterVar* JitFragmentWriter::emitCallattr(AST_expr* node, RewriterVar* obj, BoxedString* attr, CallattrFlags flags,
@@ -499,11 +507,6 @@ void JitFragmentWriter::emitSetBlockLocal(InternedString s, RewriterVar* v) {
     local_syms[s] = v;
 }
 
-static void checkSignal() {
-    if (unlikely(_check_signals))
-        tickHandler();
-}
-
 void JitFragmentWriter::emitSetCurrentInst(AST_stmt* node) {
     getInterp()->setAttr(ASTInterpreterJitInterface::getCurrentInstOffset(), imm(node));
 }
@@ -809,6 +812,7 @@ void JitFragmentWriter::_emitJump(CFGBlock* b, RewriterVar* block_next, int& siz
         assembler->add(assembler::Immediate(JitCodeBlock::sp_adjustment), assembler::RSP);
         assembler->pop(assembler::R12);
         assembler->pop(assembler::R14);
+        assembler->pop(assembler::R15);
         assembler->retq();
 
         // make sure we have at least 'min_patch_size' of bytes available.
@@ -836,6 +840,7 @@ void JitFragmentWriter::_emitOSRPoint(RewriterVar* result, RewriterVar* node_var
         assembler->add(assembler::Immediate(JitCodeBlock::sp_adjustment), assembler::RSP);
         assembler->pop(assembler::R12);
         assembler->pop(assembler::R14);
+        assembler->pop(assembler::R15);
         assembler->retq();
     }
 
@@ -930,6 +935,7 @@ void JitFragmentWriter::_emitReturn(RewriterVar* return_val) {
     assembler->add(assembler::Immediate(JitCodeBlock::sp_adjustment), assembler::RSP);
     assembler->pop(assembler::R12);
     assembler->pop(assembler::R14);
+    assembler->pop(assembler::R15);
     assembler->retq();
     return_val->bumpUse();
 }

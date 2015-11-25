@@ -699,11 +699,11 @@ void Assembler::call(Immediate imm) {
 }
 
 void Assembler::callq(Register r) {
-    assert(r == R11 && "untested");
+    assert((r == R11 || r == R15) && "untested");
 
     emitRex(REX_B);
     emitByte(0xff);
-    emitByte(0xd3);
+    emitByte(r == R11 ? 0xd3 : 0xd7);
 }
 
 void Assembler::retq() {

@@ -172,6 +172,13 @@ public:
         return globals;
     }
 
+    void checkSignal() {
+        if (jit)
+            jit->emitCheckSignal();
+        if (unlikely(_check_signals))
+            tickHandler();
+    }
+
     FunctionMetadata* getMD() { return md; }
     FrameInfo* getFrameInfo() { return &frame_info; }
     BoxedClosure* getPassedClosure() { return frame_info.passed_closure; }
@@ -923,10 +930,7 @@ Value ASTInterpreter::visit_yield(AST_Yield* node) {
     return Value(yield(generator, value.o), jit ? jit->emitYield(value) : NULL);
 }
 
-static void checkSignal() {
-    if (unlikely(_check_signals))
-        tickHandler();
-}
+extern "C" void checkSignalSafe();
 
 Value ASTInterpreter::visit_stmt(AST_stmt* node) {
 #if ENABLE_SAMPLING_PROFILER
@@ -944,39 +948,33 @@ Value ASTInterpreter::visit_stmt(AST_stmt* node) {
     switch (node->type) {
         case AST_TYPE::Assert:
             rtn = visit_assert((AST_Assert*)node);
-            if (jit)
-                jit->call(false, (void*)checkSignal);
+            checkSignal();
             break;
         case AST_TYPE::Assign:
             rtn = visit_assign((AST_Assign*)node);
-            if (jit)
-                jit->call(false, (void*)checkSignal);
+            checkSignal();
             break;
         case AST_TYPE::Delete:
             rtn = visit_delete((AST_Delete*)node);
-            if (jit)
-                jit->call(false, (void*)checkSignal);
+            checkSignal();
             break;
         case AST_TYPE::Exec:
             rtn = visit_exec((AST_Exec*)node);
-            if (jit)
-                jit->call(false, (void*)checkSignal);
+            checkSignal();
             break;
         case AST_TYPE::Expr:
             // docstrings are str constant expression statements.
             // ignore those while interpreting.
             if ((((AST_Expr*)node)->value)->type != AST_TYPE::Str) {
                 rtn = visit_expr((AST_Expr*)node);
-                if (jit)
-                    jit->call(false, (void*)checkSignal);
+                checkSignal();
             }
             break;
         case AST_TYPE::Pass:
             break; // nothing todo
         case AST_TYPE::Print:
             rtn = visit_print((AST_Print*)node);
-            if (jit)
-                jit->call(false, (void*)checkSignal);
+            checkSignal();
             break;
         case AST_TYPE::Raise:
             rtn = visit_raise((AST_Raise*)node);
@@ -986,8 +984,7 @@ Value ASTInterpreter::visit_stmt(AST_stmt* node) {
             break;
         case AST_TYPE::Global:
             rtn = visit_global((AST_Global*)node);
-            if (jit)
-                jit->call(false, (void*)checkSignal);
+            checkSignal();
             break;
 
         // pseudo
@@ -1003,11 +1000,6 @@ Value ASTInterpreter::visit_stmt(AST_stmt* node) {
         default:
             RELEASE_ASSERT(0, "not implemented");
     };
-
-
-
-    if (unlikely(_check_signals))
-        tickHandler();
 
     return rtn;
 }

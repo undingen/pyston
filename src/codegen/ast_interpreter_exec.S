@@ -38,5 +38,20 @@ executeInnerAndSetupFrame:
     .cfi_endproc
 .size executeInnerAndSetupFrame,.-executeInnerAndSetupFrame
 
+// void checkSignalSafe()
+.text
+.globl  checkSignalSafe
+.type   checkSignalSafe,@function
+.align  16
+checkSignalSafe:
+        .cfi_startproc
+        cmpq    $0, _check_signals(%rip)
+        jne     .is_set
+        retq
+.is_set:
+        jmp     tickHandler             # TAILCALL
+        .cfi_endproc
+.size   checkSignalSafe,.-checkSignalSafe
+
 .section .note.GNU-stack,"",%progbits // we don't need executable stack
 
