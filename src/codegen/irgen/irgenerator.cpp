@@ -2208,7 +2208,7 @@ private:
 
         endBlock(FINISHED);
 
-        emitSignalCheck(unw_info);
+        // emitSignalCheck(unw_info);
 
         emitter.getBuilder()->CreateCondBr(v, iftrue, iffalse);
     }
@@ -2393,7 +2393,7 @@ private:
     void doJump(AST_Jump* node, const UnwindInfo& unw_info) {
         endBlock(FINISHED);
 
-        emitSignalCheck(unw_info);
+        // emitSignalCheck(unw_info);
 
         llvm::BasicBlock* target = entry_blocks[node->target];
 
@@ -2460,9 +2460,8 @@ private:
     }
 
     void emitSignalCheck(const UnwindInfo& unw_info) {
-
         auto&& builder = *emitter.getBuilder();
-#if 0
+
         llvm::GlobalVariable* py_ticker = g.cur_module->getGlobalVariable("_check_signals");
         if (!py_ticker) {
             static_assert(sizeof(_check_signals) == 8, "");
@@ -2491,16 +2490,11 @@ private:
         builder.CreateCondBr(is_tick_zero, join_block, check_signals_set, branch_weights);
         {
             emitter.setCurrentBasicBlock(check_signals_set);
-            //emitter.createCall(unw_info, g.funcs.tickHandler);
-            builder.CreateCall(g.funcs.tickHandler);
+            emitter.createCall(unw_info, g.funcs.tickHandler);
             builder.CreateBr(join_block);
         }
 
         emitter.setCurrentBasicBlock(join_block);
-#else
-        builder.CreateCall(g.funcs.tickHandler);
-// emitter.createCall(unw_info, g.funcs.tickHandler);
-#endif
     }
 
     void doStmt(AST_stmt* node, const UnwindInfo& unw_info) {
