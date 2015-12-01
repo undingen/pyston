@@ -55,7 +55,7 @@ public:
     static void gcHandler(GCVisitor* v, Box* b);
 };
 
-bool calliter_hasnext(Box* b);
+i1 calliterHasnextUnboxed(Box* b);
 
 void setupIter();
 }
