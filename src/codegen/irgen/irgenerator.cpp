@@ -1264,9 +1264,12 @@ private:
             int vreg = cfg->sym_vreg_map[node->id];
             assert(vreg >= 0);
 
-            if (vreg < cfg->sym_vreg_map_user_visible.size()) {
+            if (vreg < cfg->sym_vreg_map_user_visible.size() && rtn->getConcreteType()->llvmType() != g.i64) {
                 auto* gep = emitter.getBuilder()->CreateConstInBoundsGEP1_64(irstate->getVRegsVar(), vreg);
-                auto* v = emitter.getBuilder()->CreateLoad(gep);
+                llvm::Value* v = emitter.getBuilder()->CreateLoad(gep);
+                // v->getType()->dump();
+                // rtn->getConcreteType()->llvmType()->dump();
+                v = emitter.getBuilder()->CreateBitCast(v, rtn->getConcreteType()->llvmType());
                 return new ConcreteCompilerVariable(rtn->getConcreteType(), v, true);
             }
 
