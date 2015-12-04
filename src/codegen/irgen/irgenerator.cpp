@@ -1257,6 +1257,8 @@ private:
             else
                 rtn->incvref();
 
+            return rtn;
+
             auto cfg = irstate->getSourceInfo()->cfg;
             if (!cfg->hasVregsAssigned())
                 irstate->getMD()->calculateNumVRegs();
