@@ -43,6 +43,11 @@ extern "C" inline bool unboxBool(Box* b) {
     return b == True;
     // return static_cast<BoxedBool*>(b)->b;
 }
+
+extern "C" Box* createTuple1(Box* elt1);
+extern "C" Box* createTuple2(Box* elt1, Box* elt2);
+extern "C" Box* createTuple3(Box* elt1, Box* elt2, Box* elt3);
+extern "C" Box* createTuple5(Box* elt1, Box* elt2, Box* elt3, Box* elt4, Box* elt5);
 }
 
 #endif

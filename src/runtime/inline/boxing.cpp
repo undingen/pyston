@@ -30,11 +30,23 @@ extern "C" Box* createList() {
     return new BoxedList();
 }
 
+extern "C" Box* createTuple1(Box* elt1) {
+    return BoxedTuple::create1(elt1);
+}
+extern "C" Box* createTuple2(Box* elt1, Box* elt2) {
+    return BoxedTuple::create2(elt1, elt2);
+}
+extern "C" Box* createTuple3(Box* elt1, Box* elt2, Box* elt3) {
+    return BoxedTuple::create3(elt1, elt2, elt3);
+}
+extern "C" Box* createTuple5(Box* elt1, Box* elt2, Box* elt3, Box* elt4, Box* elt5) {
+    return BoxedTuple::create5(elt1, elt2, elt3, elt4, elt5);
+}
+
 BoxedString* boxStringTwine(const llvm::Twine& t) {
     llvm::SmallString<256> Vec;
     return boxString(t.toStringRef(Vec));
 }
-
 
 extern "C" double unboxFloat(Box* b) {
     ASSERT(b->cls == float_cls, "%s", getTypeName(b));

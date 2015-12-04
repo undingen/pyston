@@ -192,6 +192,10 @@ void initGlobalFuncs(GlobalState& g) {
     GET(boxBool);
     GET(unboxBool);
     GET(createTuple);
+    GET(createTuple1);
+    GET(createTuple2);
+    GET(createTuple3);
+    GET(createTuple5);
     GET(createList);
     GET(createDict);
     GET(createSlice);

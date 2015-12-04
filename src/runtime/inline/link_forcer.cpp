@@ -62,6 +62,10 @@ void force() {
     FORCE(boxBoolNegated);
     FORCE(unboxBool);
     FORCE(createTuple);
+    FORCE(createTuple1);
+    FORCE(createTuple2);
+    FORCE(createTuple3);
+    FORCE(createTuple5);
     FORCE(createDict);
     FORCE(createList);
     FORCE(createSlice);
