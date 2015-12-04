@@ -1256,6 +1256,20 @@ private:
                 symbol_table.erase(node->id);
             else
                 rtn->incvref();
+
+            auto cfg = irstate->getSourceInfo()->cfg;
+            if (!cfg->hasVregsAssigned())
+                irstate->getMD()->calculateNumVRegs();
+            assert(cfg->sym_vreg_map.count(node->id));
+            int vreg = cfg->sym_vreg_map[node->id];
+            assert(vreg >= 0);
+
+            if (vreg < cfg->sym_vreg_map_user_visible.size()) {
+                auto* gep = emitter.getBuilder()->CreateConstInBoundsGEP1_64(irstate->getVRegsVar(), vreg);
+                auto* v = emitter.getBuilder()->CreateLoad(gep);
+                return new ConcreteCompilerVariable(rtn->getConcreteType(), v, true);
+            }
+
             return rtn;
         }
     }
