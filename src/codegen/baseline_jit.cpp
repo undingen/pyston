@@ -500,7 +500,13 @@ void JitFragmentWriter::emitSetBlockLocal(InternedString s, RewriterVar* v) {
 }
 
 void JitFragmentWriter::emitSetCurrentInst(uint64_t node) {
-    getInterp()->setAttr(ASTInterpreterJitInterface::getCurrentInstOffset(), imm(node));
+    if (last_inst && last_inst + 1 == node) {
+        addAction([=]() {
+            assembler->incl(assembler::Indirect(assembler::R12, ASTInterpreterJitInterface::getCurrentInstOffset()));
+        }, {}, ActionType::NORMAL);
+    } else
+        getInterp()->setAttr(ASTInterpreterJitInterface::getCurrentInstOffset(), imm(node));
+    last_inst = node;
 }
 
 void JitFragmentWriter::emitSetExcInfo(RewriterVar* type, RewriterVar* value, RewriterVar* traceback) {

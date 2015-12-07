@@ -195,6 +195,7 @@ private:
     };
 
     llvm::SmallVector<PPInfo, 8> pp_infos;
+    uint64_t last_inst = 0;
 
 public:
     JitFragmentWriter(CFGBlock* block, std::unique_ptr<ICInfo> ic_info, std::unique_ptr<ICSlotRewrite> rewrite,

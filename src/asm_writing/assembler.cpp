@@ -646,11 +646,17 @@ void Assembler::incl(Indirect mem) {
         emitRex(rex);
     emitByte(0xff);
 
+    bool needssib = (src_idx == 0b100);
+
     assert(-0x80 <= mem.offset && mem.offset < 0x80);
     if (mem.offset == 0) {
         emitModRM(0b00, 0, src_idx);
+        if (needssib)
+            emitSIB(0b00, 0b100, src_idx);
     } else {
         emitModRM(0b01, 0, src_idx);
+        if (needssib)
+            emitSIB(0b00, 0b100, src_idx);
         emitByte(mem.offset);
     }
 }
