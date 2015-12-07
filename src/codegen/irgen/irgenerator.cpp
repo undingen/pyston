@@ -82,8 +82,12 @@ llvm::Value* IRGenState::getScratchSpace(int min_bytes) {
     if (entry_block.begin() == entry_block.end()) {
         new_scratch_space = new llvm::AllocaInst(g.i8, getConstantInt(min_bytes, g.i64), "scratch", &entry_block);
     } else {
-        new_scratch_space = new llvm::AllocaInst(g.i8, getConstantInt(min_bytes, g.i64), "scratch",
-                                                 llvm::cast<llvm::Instruction>(vregs));
+        if (llvm::isa<llvm::Instruction>(vregs))
+            new_scratch_space = new llvm::AllocaInst(g.i8, getConstantInt(min_bytes, g.i64), "scratch",
+                                                     llvm::cast<llvm::Instruction>(vregs));
+        else
+            new_scratch_space = new llvm::AllocaInst(g.i8, getConstantInt(min_bytes, g.i64), "scratch",
+                                                     entry_block.getFirstInsertionPt());
     }
 
     assert(new_scratch_space->isStaticAlloca());
