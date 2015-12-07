@@ -341,6 +341,10 @@ private:
 
     llvm::CallSite emitCall(const UnwindInfo& unw_info, llvm::Value* callee, const std::vector<llvm::Value*>& args,
                             ExceptionStyle target_exception_style) {
+        llvm::Value* stmt = unw_info.current_stmt ? embedRelocatablePtr(unw_info.current_stmt, g.llvm_aststmt_type_ptr)
+                                                  : getNullPtr(g.llvm_aststmt_type_ptr);
+        getBuilder()->CreateStore(stmt, irstate->getStmtVar());
+
         if (target_exception_style == CXX && (unw_info.hasHandler() || irstate->getExceptionStyle() == CAPI)) {
             // Create the invoke:
             llvm::BasicBlock* normal_dest
@@ -487,10 +491,6 @@ public:
             }
         }
 #endif
-
-        llvm::Value* stmt = unw_info.current_stmt ? embedRelocatablePtr(unw_info.current_stmt, g.llvm_aststmt_type_ptr)
-                                                  : getNullPtr(g.llvm_aststmt_type_ptr);
-        getBuilder()->CreateStore(stmt, irstate->getStmtVar());
         return emitCall(unw_info, callee, args, target_exception_style).getInstruction();
     }
 
@@ -2591,6 +2591,7 @@ public:
                               std::vector<llvm::Value*>& stackmap_args) override {
         int initial_args = stackmap_args.size();
 
+        /*
         assert(UNBOXED_INT->llvmType() == g.i64);
         if (ENABLE_JIT_OBJECT_CACHE) {
             llvm::Value* v;
@@ -2604,6 +2605,7 @@ public:
         }
 
         pp->addFrameVar("!current_stmt", UNBOXED_INT);
+        */
 
         // For deopts we need to add the compiler created names to the stackmap
         if (ENABLE_FRAME_INTROSPECTION && pp->isDeopt()) {

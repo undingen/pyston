@@ -353,7 +353,7 @@ public:
     }
 
     AST_stmt* getCurrentStatement() {
-        if (id.type == PythonFrameId::COMPILED) {
+        if (0 && id.type == PythonFrameId::COMPILED) {
             auto locations = findLocations("!current_stmt");
             if (locations.size() == 1)
                 return reinterpret_cast<AST_stmt*>(readLocation(locations[0]));
