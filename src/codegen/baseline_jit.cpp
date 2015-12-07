@@ -499,7 +499,7 @@ void JitFragmentWriter::emitSetBlockLocal(InternedString s, RewriterVar* v) {
     local_syms[s] = v;
 }
 
-void JitFragmentWriter::emitSetCurrentInst(AST_stmt* node) {
+void JitFragmentWriter::emitSetCurrentInst(uint64_t node) {
     getInterp()->setAttr(ASTInterpreterJitInterface::getCurrentInstOffset(), imm(node));
 }
 

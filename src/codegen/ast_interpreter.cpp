@@ -160,10 +160,10 @@ public:
 
     AST_stmt* getCurrentStatement() {
         assert(frame_info.stmt);
-        return frame_info.stmt;
+        return source_info->cfg->stmt_array[frame_info.stmt - 1];
     }
 
-    void setCurrentStatement(AST_stmt* stmt) { frame_info.stmt = stmt; }
+    void setCurrentStatement(AST_stmt* stmt) { frame_info.stmt = source_info->cfg->stmtIndex(stmt); }
 
     Box* getGlobals() {
         assert(frame_info.globals);
@@ -394,7 +394,7 @@ Box* ASTInterpreter::executeInner(ASTInterpreter& interpreter, CFGBlock* start_b
         for (AST_stmt* s : interpreter.current_block->body) {
             interpreter.setCurrentStatement(s);
             if (interpreter.jit)
-                interpreter.jit->emitSetCurrentInst(s);
+                interpreter.jit->emitSetCurrentInst(interpreter.frame_info.stmt);
             v = interpreter.visit_stmt(s);
         }
     }

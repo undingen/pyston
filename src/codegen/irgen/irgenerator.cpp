@@ -341,9 +341,14 @@ private:
 
     llvm::CallSite emitCall(const UnwindInfo& unw_info, llvm::Value* callee, const std::vector<llvm::Value*>& args,
                             ExceptionStyle target_exception_style) {
-        llvm::Value* stmt = unw_info.current_stmt ? embedRelocatablePtr(unw_info.current_stmt, g.llvm_aststmt_type_ptr)
-                                                  : getNullPtr(g.llvm_aststmt_type_ptr);
-        getBuilder()->CreateStore(stmt, irstate->getStmtVar());
+        if (unw_info.current_stmt) {
+            uint64_t stmt_index = irstate->getSourceInfo()->cfg->stmtIndex(unw_info.current_stmt);
+            getBuilder()->CreateStore(getConstantInt(stmt_index), irstate->getStmtVar());
+
+        } else
+            getBuilder()->CreateStore(getConstantInt(0), irstate->getStmtVar());
+
+
 
         if (target_exception_style == CXX && (unw_info.hasHandler() || irstate->getExceptionStyle() == CAPI)) {
             // Create the invoke:

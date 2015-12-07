@@ -116,6 +116,17 @@ public:
 
     void print(llvm::raw_ostream& stream = llvm::outs());
 
+    llvm::DenseMap<AST_stmt*, uint64_t> stmt_map;
+    std::vector<AST_stmt*> stmt_array;
+    uint64_t stmtIndex(AST_stmt* stmt) {
+        uint64_t& index = stmt_map[stmt];
+        if (!index) {
+            stmt_array.push_back(stmt);
+            index = stmt_array.size();
+        }
+        return index;
+    }
+
     bool hasVregsAssigned() { return has_vregs_assigned; }
     void assignVRegs(const ParamNames& param_names, ScopeInfo* scope_info);
 };

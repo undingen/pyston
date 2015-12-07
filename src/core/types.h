@@ -893,7 +893,7 @@ struct FrameInfo {
     // Current statement
     // Caution the llvm tier only updates this information on direct external calls but not for patchpoints.
     // This means if a patchpoint "current_stmt" info is available it must be used instead of this field.
-    AST_stmt* stmt;
+    unsigned long stmt;
     // This is either a module or a dict
     Box* globals;
 

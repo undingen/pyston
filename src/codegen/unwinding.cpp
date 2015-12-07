@@ -359,7 +359,7 @@ public:
                 return reinterpret_cast<AST_stmt*>(readLocation(locations[0]));
         }
         assert(getFrameInfo()->stmt);
-        return getFrameInfo()->stmt;
+        return md->source->cfg->stmt_array[getFrameInfo()->stmt - 1];
     }
 
     Box* getGlobals() {

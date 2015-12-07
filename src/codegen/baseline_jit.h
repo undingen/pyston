@@ -252,7 +252,7 @@ public:
     void emitReturn(RewriterVar* v);
     void emitSetAttr(AST_expr* node, RewriterVar* obj, BoxedString* s, RewriterVar* attr);
     void emitSetBlockLocal(InternedString s, RewriterVar* v);
-    void emitSetCurrentInst(AST_stmt* node);
+    void emitSetCurrentInst(uint64_t node);
     void emitSetExcInfo(RewriterVar* type, RewriterVar* value, RewriterVar* traceback);
     void emitSetGlobal(Box* global, BoxedString* s, RewriterVar* v);
     void emitSetItemName(BoxedString* s, RewriterVar* v);
