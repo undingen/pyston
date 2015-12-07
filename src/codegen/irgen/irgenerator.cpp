@@ -83,7 +83,7 @@ llvm::Value* IRGenState::getScratchSpace(int min_bytes) {
         new_scratch_space = new llvm::AllocaInst(g.i8, getConstantInt(min_bytes, g.i64), "scratch", &entry_block);
     } else {
         new_scratch_space = new llvm::AllocaInst(g.i8, getConstantInt(min_bytes, g.i64), "scratch",
-                                                 entry_block.getFirstInsertionPt());
+                                                 llvm::cast<llvm::Instruction>(vregs));
     }
 
     assert(new_scratch_space->isStaticAlloca());
@@ -227,6 +227,10 @@ void IRGenState::setupFrameInfoVar(llvm::Value* passed_closure, llvm::Value* pas
         }
 
     } else {
+        llvm::AllocaInst* al = builder.CreateAlloca(g.llvm_frame_info_type, NULL, "frame_info");
+        assert(al->isStaticAlloca());
+
+
         // The "normal" case
         assert(!vregs);
         getMD()->calculateNumVRegs();
@@ -240,9 +244,6 @@ void IRGenState::setupFrameInfoVar(llvm::Value* passed_closure, llvm::Value* pas
             vregs = vregs_alloca;
         } else
             vregs = getNullPtr(g.llvm_value_type_ptr_ptr);
-
-        llvm::AllocaInst* al = builder.CreateAlloca(g.llvm_frame_info_type, NULL, "frame_info");
-        assert(al->isStaticAlloca());
 
 
         // frame_info.exc.type = NULL
