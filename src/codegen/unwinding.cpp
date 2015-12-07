@@ -523,17 +523,19 @@ public:
 class PythonUnwindSession : public Box {
     ExcInfo exc_info;
     PythonStackExtractor pystack_extractor;
+    Box* prev_frame;
 
     Timer t;
 
 public:
     DEFAULT_CLASS_SIMPLE(unwind_session_cls);
 
-    PythonUnwindSession() : exc_info(NULL, NULL, NULL), t(/*min_usec=*/10000) {}
+    PythonUnwindSession() : exc_info(NULL, NULL, NULL), prev_frame(NULL), t(/*min_usec=*/10000) {}
 
     ExcInfo* getExcInfoStorage() { return &exc_info; }
 
     void begin() {
+        prev_frame = NULL;
         exc_info = ExcInfo(NULL, NULL, NULL);
         t.restart();
 
@@ -541,11 +543,17 @@ public:
         stat.log();
     }
     void end() {
+        prev_frame = NULL;
         static StatCounter stat("us_unwind_session");
         stat.log(t.end());
     }
 
     void handleCFrame(unw_cursor_t* cursor) {
+        if (prev_frame) {
+            deinitFrame((BoxedFrame*)prev_frame);
+            prev_frame = NULL;
+        }
+
         PythonFrameIteratorImpl frame_iter;
         bool found_frame = pystack_extractor.handleCFrame(cursor, &frame_iter);
         if (found_frame) {
@@ -555,7 +563,9 @@ public:
                 // TODO: shouldn't fetch this multiple times?
                 frame_iter.getCurrentStatement()->cxx_exception_count++;
                 auto line_info = lineInfoForFrame(&frame_iter);
-                exceptionAtLine(line_info, &exc_info.traceback);
+                prev_frame = getFrame(std::unique_ptr<PythonFrameIteratorImpl>(new PythonFrameIteratorImpl(frame_iter)),
+                                      false);
+                exceptionAtLine(line_info, &exc_info.traceback, prev_frame);
             }
         }
     }
@@ -725,7 +735,9 @@ Box* getTraceback() {
 
     Box* tb = None;
     unwindPythonStack([&](PythonFrameIteratorImpl* frame_iter) {
-        BoxedTraceback::here(lineInfoForFrame(frame_iter), &tb);
+        Box* frame
+            = getFrame(std::unique_ptr<PythonFrameIteratorImpl>(new PythonFrameIteratorImpl(*frame_iter)), false);
+        BoxedTraceback::here(lineInfoForFrame(frame_iter), &tb, frame);
         return false;
     });
 

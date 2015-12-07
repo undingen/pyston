@@ -398,6 +398,11 @@ Box* ASTInterpreter::executeInner(ASTInterpreter& interpreter, CFGBlock* start_b
             v = interpreter.visit_stmt(s);
         }
     }
+
+    BoxedFrame* frame = interpreter.getFrameInfo()->frame_obj;
+    if (frame)
+        deinitFrame(frame);
+
     return v.o;
 }
 
@@ -1855,6 +1860,8 @@ static Box* astInterpretDeoptInner(FunctionMetadata* md, AST_expr* after_expr, A
     }
 
     interpreter.setFrameInfo(frame_state.frame_info);
+    if (frame_state.frame_info && frame_state.frame_info->frame_obj)
+        updateFrameForDeopt(frame_state.frame_info->frame_obj);
 
     CFGBlock* start_block = NULL;
     AST_stmt* starting_statement = NULL;
