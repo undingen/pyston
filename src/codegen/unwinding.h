@@ -103,7 +103,7 @@ public:
     ~PythonFrameIterator();
 };
 
-PythonFrameIterator getPythonFrame(int depth);
+FrameInfo* getPythonFrame(int depth);
 
 // Fetches a writeable pointer to the frame-local excinfo object,
 // calculating it if necessary (from previous frames).

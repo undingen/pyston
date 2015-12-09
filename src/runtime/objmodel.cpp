@@ -121,6 +121,7 @@ static inline Box* callattrInternal3(Box* obj, BoxedString* attr, LookupScope sc
 }
 
 extern "C" Box* deopt(AST_expr* expr, Box* value) {
+    RELEASE_ASSERT(0, "deopt disabled...");
     STAT_TIMER(t0, "us_timer_deopt", 10);
 
     static StatCounter num_deopt("num_deopt");

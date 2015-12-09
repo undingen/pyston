@@ -523,7 +523,7 @@ public:
 class PythonUnwindSession : public Box {
     ExcInfo exc_info;
     PythonStackExtractor pystack_extractor;
-    Box* prev_frame;
+    FrameInfo* prev_frame;
 
     Timer t;
 
@@ -550,7 +550,8 @@ public:
 
     void handleCFrame(unw_cursor_t* cursor) {
         if (prev_frame) {
-            deinitFrame2((BoxedFrame*)prev_frame);
+            // printf("exc ");
+            deinitFrame(prev_frame);
             prev_frame = NULL;
         }
 
@@ -558,14 +559,16 @@ public:
         bool found_frame = pystack_extractor.handleCFrame(cursor, &frame_iter);
         if (found_frame) {
             frame_iter.getMD()->propagated_cxx_exceptions++;
-
+            // printf("exc found frame\n");
+            prev_frame = frame_iter.getFrameInfo();
             if (exceptionAtLineCheck()) {
                 // TODO: shouldn't fetch this multiple times?
                 frame_iter.getCurrentStatement()->cxx_exception_count++;
                 auto line_info = lineInfoForFrame(&frame_iter);
-                prev_frame = getFrame(std::unique_ptr<PythonFrameIteratorImpl>(new PythonFrameIteratorImpl(frame_iter)),
-                                      false);
-                exceptionAtLine(line_info, &exc_info.traceback, prev_frame);
+                // getFrame(frame_iter.getFrameInfo() /*,
+                //                      false*/);
+                // deinitFrame(frame_iter.getFrameInfo());
+                exceptionAtLine(line_info, &exc_info.traceback, getFrame(prev_frame));
             }
         }
     }
@@ -735,8 +738,7 @@ Box* getTraceback() {
 
     Box* tb = None;
     unwindPythonStack([&](PythonFrameIteratorImpl* frame_iter) {
-        Box* frame
-            = getFrame(std::unique_ptr<PythonFrameIteratorImpl>(new PythonFrameIteratorImpl(*frame_iter)), false);
+        Box* frame = getFrame(frame_iter->getFrameInfo() /*, false*/);
         BoxedTraceback::here(lineInfoForFrame(frame_iter), &tb, frame);
         return false;
     });
@@ -819,7 +821,8 @@ BoxedModule* getCurrentModule() {
     return md->source->parent_module;
 }
 
-PythonFrameIterator getPythonFrame(int depth) {
+FrameInfo* getPythonFrame(int depth) {
+    /*
     std::unique_ptr<PythonFrameIteratorImpl> rtn(nullptr);
     unwindPythonStack([&](PythonFrameIteratorImpl* frame_iter) {
         if (depth == 0) {
@@ -830,6 +833,19 @@ PythonFrameIterator getPythonFrame(int depth) {
         return false;
     });
     return PythonFrameIterator(std::move(rtn));
+    */
+    FrameInfo* frame_info = (FrameInfo*)cur_thread_state.frame_info;
+    while (depth > 0) {
+        if (!frame_info)
+            return NULL;
+        frame_info = frame_info->back;
+        --depth;
+    }
+    if (!frame_info)
+        return NULL;
+    assert(frame_info->globals);
+    assert(frame_info->md);
+    return frame_info;
 }
 
 PythonFrameIterator::~PythonFrameIterator() {
@@ -943,13 +959,12 @@ DeoptState getDeoptState() {
 }
 
 Box* fastLocalsToBoxedLocals() {
-    return getPythonFrame(0).fastLocalsToBoxedLocals();
+    return getPythonFrame(0)->getBoxedLocals();
 }
 
-Box* PythonFrameIterator::fastLocalsToBoxedLocals() {
-    assert(impl.get());
-
-    FunctionMetadata* md = impl->getMD();
+Box* FrameInfo::getBoxedLocals() {
+    FrameInfo* frame_info = this;
+    FunctionMetadata* md = frame_info->md;
     ScopeInfo* scope_info = md->source->getScopeInfo();
 
     if (scope_info->areLocalsFromModule()) {
@@ -959,18 +974,8 @@ Box* PythonFrameIterator::fastLocalsToBoxedLocals() {
         return md->source->parent_module->getAttrWrapper();
     }
 
-    BoxedDict* d;
-    FrameInfo* frame_info = impl->getFrameInfo();
+    BoxedDict* d = localsForInterpretedFrame(frame_info->vregs, md->source->cfg);
     BoxedClosure* closure = frame_info->passed_closure;
-    if (impl->getId().type == PythonFrameId::COMPILED) {
-        CompiledFunction* cf = impl->getCF();
-        assert(impl->getId().ip > cf->code_start);
-        d = localsForInterpretedFrame(frame_info->vregs, cf->md->source->cfg);
-    } else if (impl->getId().type == PythonFrameId::INTERPRETED) {
-        d = localsForInterpretedFrame((void*)impl->getId().bp);
-    } else {
-        abort();
-    }
 
     assert(frame_info);
     if (frame_info->boxedLocals == NULL) {
@@ -1013,6 +1018,11 @@ Box* PythonFrameIterator::fastLocalsToBoxedLocals() {
     }
 
     return frame_info->boxedLocals;
+}
+
+Box* PythonFrameIterator::fastLocalsToBoxedLocals() {
+    assert(impl.get());
+    return impl->getFrameInfo()->getBoxedLocals();
 }
 
 AST_stmt* PythonFrameIterator::getCurrentStatement() {

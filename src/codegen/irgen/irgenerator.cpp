@@ -174,6 +174,11 @@ template <typename Builder> static llvm::Value* getGlobalsGep(Builder& builder, 
     return builder.CreateConstInBoundsGEP2_32(v, 0, 6);
 }
 
+template <typename Builder> static llvm::Value* getMDGep(Builder& builder, llvm::Value* v) {
+    static_assert(offsetof(FrameInfo, md) == 64 + 16, "");
+    return builder.CreateConstInBoundsGEP2_32(v, 0, 8);
+}
+
 void IRGenState::setupFrameInfoVar(llvm::Value* passed_closure, llvm::Value* passed_globals,
                                    llvm::Value* frame_info_arg) {
     /*
@@ -273,6 +278,7 @@ void IRGenState::setupFrameInfoVar(llvm::Value* passed_closure, llvm::Value* pas
         builder.CreateStore(passed_globals, getGlobalsGep(builder, al));
         // set frame_info.vregs
         builder.CreateStore(vregs, getVRegsGep(builder, al));
+        builder.CreateStore(embedRelocatablePtr(getMD(), g.llvm_functionmetadata_type_ptr), getMDGep(builder, al));
 
         this->frame_info = al;
         this->globals = passed_globals;
@@ -437,6 +443,9 @@ private:
         }
         llvm::Function* patchpoint = this->getIntrinsic(intrinsic_id);
 
+        llvm::Value* stmt = unw_info.current_stmt ? embedRelocatablePtr(unw_info.current_stmt, g.llvm_aststmt_type_ptr)
+                                                  : getNullPtr(g.llvm_aststmt_type_ptr);
+        getBuilder()->CreateStore(stmt, irstate->getStmtVar());
         llvm::CallSite rtn = this->emitCall(unw_info, patchpoint, pp_args, target_exception_style);
         return rtn;
     }

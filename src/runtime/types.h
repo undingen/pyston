@@ -1136,7 +1136,7 @@ Box* codeForFunction(BoxedFunction*);
 Box* codeForFunctionMetadata(FunctionMetadata*);
 FunctionMetadata* metadataFromCode(Box* code);
 
-Box* getFrame(PythonFrameIterator it, bool exits);
+Box* getFrame(FrameInfo* frame_info);
 Box* getFrame(int depth, bool exits = false);
 void updateFrameForDeopt(BoxedFrame* frame);
 extern "C" void deinitFrame(FrameInfo* frame_info);

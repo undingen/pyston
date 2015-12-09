@@ -35,6 +35,8 @@ public:
         : line(std::move(line)), tb_next(tb_next), tb_frame(tb_frame) {
         if (!tb_frame)
             this->tb_frame = None;
+        else
+            assert(tb_frame->cls == frame_cls);
     }
 
     DEFAULT_CLASS(traceback_cls);

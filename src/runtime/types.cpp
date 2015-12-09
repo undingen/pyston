@@ -103,6 +103,7 @@ void FrameInfo::gcVisit(GCVisitor* visitor) {
     visitor->visit(&exc.type);
     visitor->visit(&exc.value);
     visitor->visit(&frame_obj);
+    visitor->visit(&back);
 }
 
 // Analogue of PyType_GenericAlloc (default tp_alloc), but should only be used for Pyston classes!

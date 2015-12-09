@@ -898,8 +898,11 @@ struct FrameInfo {
     Box* globals;
 
     FrameInfo* back;
+    FunctionMetadata* md;
 
-    FrameInfo(ExcInfo exc) : exc(exc), boxedLocals(NULL), frame_obj(0), passed_closure(0), vregs(0), stmt(0), globals(0), back(0) {}
+    Box* getBoxedLocals();
+
+    FrameInfo(ExcInfo exc) : exc(exc), boxedLocals(NULL), frame_obj(0), passed_closure(0), vregs(0), stmt(0), globals(0), back(0), md(0) {}
 
     void gcVisit(GCVisitor* visitor);
 };

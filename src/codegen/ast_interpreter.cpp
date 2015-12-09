@@ -243,7 +243,7 @@ ASTInterpreter::ASTInterpreter(FunctionMetadata* md, Box** vregs)
     scope_info = source_info->getScopeInfo();
     frame_info.vregs = vregs;
 
-    initFrame(&frame_info);
+    frame_info.md = md;
 
     assert(scope_info);
 }
@@ -341,6 +341,8 @@ Box* ASTInterpreter::execJITedBlock(CFGBlock* b) {
 Box* ASTInterpreter::executeInner(ASTInterpreter& interpreter, CFGBlock* start_block, AST_stmt* start_at) {
     Value v;
 
+    initFrame(interpreter.getFrameInfo());
+
     bool from_start = start_block == NULL && start_at == NULL;
 
     assert((start_block == NULL) == (start_at == NULL));
@@ -384,6 +386,7 @@ Box* ASTInterpreter::executeInner(ASTInterpreter& interpreter, CFGBlock* start_b
                 Box* rtn = interpreter.execJITedBlock(b);
                 if (interpreter.next_block)
                     continue;
+                deinitFrame(interpreter.getFrameInfo());
                 return rtn;
             }
         }
