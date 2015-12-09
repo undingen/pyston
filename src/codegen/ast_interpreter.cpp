@@ -401,9 +401,7 @@ Box* ASTInterpreter::executeInner(ASTInterpreter& interpreter, CFGBlock* start_b
         }
     }
 
-    BoxedFrame* frame = interpreter.getFrameInfo()->frame_obj;
-    if (frame)
-        deinitFrame(interpreter.getFrameInfo());
+    deinitFrame(interpreter.getFrameInfo());
 
     return v.o;
 }

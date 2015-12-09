@@ -235,7 +235,8 @@ extern "C" void initFrame(FrameInfo* frame_info) {
 
 extern "C" void deinitFrame(FrameInfo* frame_info) {
     BoxedFrame* frame = frame_info->frame_obj;
-    frame->handleExit(true);
+    if (frame)
+        frame->handleExit(true);
 }
 
 extern "C" void deinitFrame2(BoxedFrame* frame) {

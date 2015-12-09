@@ -2137,6 +2137,7 @@ private:
 
 
         if (!irstate->getCurFunction()->entry_descriptor) {
+            /*
             auto&& builder = *emitter.getBuilder();
             auto&& frame = builder.CreateLoad(getFrameObjGep(builder, irstate->getFrameInfoVar()));
 
@@ -2158,6 +2159,8 @@ private:
 
             cur_block = join_block;
             emitter.setCurrentBasicBlock(join_block);
+            */
+            emitter.createCall(unw_info, g.funcs.deinitFrame, irstate->getFrameInfoVar());
         }
 
         for (auto& p : symbol_table) {
