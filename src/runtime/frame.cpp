@@ -223,6 +223,7 @@ extern "C" void deinitFrame(FrameInfo* frame_info) {
 }*/
 
 void handleExit(BoxedFrame* frame) {
+    UNAVOIDABLE_STAT_TIMER(t0, "us_timer__handleExit");
     frame->handleExit();
 }
 

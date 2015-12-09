@@ -977,11 +977,12 @@ Box* FrameInfo::getBoxedLocals() {
     BoxedDict* d = localsForInterpretedFrame(frame_info->vregs, md->source->cfg);
     BoxedClosure* closure = frame_info->passed_closure;
 
+    bool new_locals = frame_info->boxedLocals == NULL;
     assert(frame_info);
     if (frame_info->boxedLocals == NULL) {
-        frame_info->boxedLocals = new BoxedDict();
+        // frame_info->boxedLocals = new BoxedDict();
     }
-    assert(gc::isValidGCObject(frame_info->boxedLocals));
+    // assert(gc::isValidGCObject(frame_info->boxedLocals));
 
     // Add the locals from the closure
     // TODO in a ClassDef scope, we aren't supposed to add these
@@ -1001,6 +1002,11 @@ Box* FrameInfo::getBoxedLocals() {
         } else {
             d->d.erase(boxedName);
         }
+    }
+
+    if (new_locals) {
+        frame_info->boxedLocals = d;
+        return d;
     }
 
     // Loop through all the values found above.

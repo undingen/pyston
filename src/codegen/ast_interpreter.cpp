@@ -1951,6 +1951,7 @@ FrameInfo* getFrameInfoForInterpretedFrame(void* frame_ptr) {
 
 BoxedDict* localsForInterpretedFrame(Box** vregs, CFG* cfg) {
     BoxedDict* rtn = new BoxedDict();
+    rtn->d.grow(cfg->sym_vreg_map_user_visible.size());
     for (auto& l : cfg->sym_vreg_map_user_visible) {
         Box* val = vregs[l.second];
         if (val) {
