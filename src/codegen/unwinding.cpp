@@ -962,6 +962,25 @@ Box* fastLocalsToBoxedLocals() {
     return getPythonFrame(0)->getBoxedLocals();
 }
 
+Box* FrameInfo::getVRegs() {
+    UNAVOIDABLE_STAT_TIMER(t0, "us_timer__getVRegs");
+    FrameInfo* frame_info = this;
+    FunctionMetadata* md = frame_info->md;
+    ScopeInfo* scope_info = md->source->getScopeInfo();
+
+    if (scope_info->areLocalsFromModule()) {
+        // TODO we should cache this in frame_info->locals or something so that locals()
+        // (and globals() too) will always return the same dict
+        RELEASE_ASSERT(md->source->scoping->areGlobalsFromModule(), "");
+        return md->source->parent_module->getAttrWrapper();
+    }
+
+    int vreg_count = md->source->cfg->sym_vreg_map_user_visible.size();
+    BoxedTuple* vregs = BoxedTuple::create(vreg_count);
+    memcpy(vregs->elts, frame_info->vregs, vreg_count * 8);
+    return vregs;
+}
+
 Box* FrameInfo::getBoxedLocals() {
     FrameInfo* frame_info = this;
     FunctionMetadata* md = frame_info->md;

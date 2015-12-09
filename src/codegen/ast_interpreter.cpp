@@ -1950,6 +1950,7 @@ FrameInfo* getFrameInfoForInterpretedFrame(void* frame_ptr) {
 }
 
 BoxedDict* localsForInterpretedFrame(Box** vregs, CFG* cfg) {
+    UNAVOIDABLE_STAT_TIMER(t0, "us_timer__localsForInterpretedFrame");
     BoxedDict* rtn = new BoxedDict();
     rtn->d.grow(cfg->sym_vreg_map_user_visible.size());
     for (auto& l : cfg->sym_vreg_map_user_visible) {

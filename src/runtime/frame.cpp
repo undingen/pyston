@@ -165,7 +165,7 @@ public:
         if (exited)
             return;
 
-        _locals = frame_info->getBoxedLocals();
+        _locals = frame_info->getVRegs();
         back(this, NULL);
         _stmt = frame_info->stmt;
 
