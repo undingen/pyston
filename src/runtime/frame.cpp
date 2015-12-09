@@ -199,6 +199,7 @@ void updateFrameForDeopt(BoxedFrame* frame) {
 }
 
 __thread int level = 0;
+/*
 extern "C" void initFrame(FrameInfo* frame_info) {
     UNAVOIDABLE_STAT_TIMER(t0, "us_timer__initFrame");
 
@@ -219,6 +220,10 @@ extern "C" void deinitFrame(FrameInfo* frame_info) {
     if (frame) {
         frame->handleExit();
     }
+}*/
+
+void handleExit(BoxedFrame* frame) {
+    frame->handleExit();
 }
 
 void setupFrame() {

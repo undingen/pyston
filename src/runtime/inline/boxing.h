@@ -43,6 +43,31 @@ extern "C" inline bool unboxBool(Box* b) {
     return b == True;
     // return static_cast<BoxedBool*>(b)->b;
 }
+
+extern "C" inline void initFrame(FrameInfo* frame_info) __attribute__((visibility("default")));
+extern "C" inline void initFrame(FrameInfo* frame_info) {
+    UNAVOIDABLE_STAT_TIMER(t0, "us_timer__initFrame");
+
+    // printf("initFrame %p %i\n", frame_info, ++level);
+    // printf("initFrame %i\n", ++level);
+    frame_info->back = (FrameInfo*)(cur_thread_state.frame_info);
+    cur_thread_state.frame_info = frame_info;
+}
+
+void handleExit(BoxedFrame*);
+
+extern "C" inline void deinitFrame(FrameInfo* frame_info) __attribute__((visibility("default")));
+extern "C" inline void deinitFrame(FrameInfo* frame_info) {
+    UNAVOIDABLE_STAT_TIMER(t0, "us_timer__deinitFrame");
+
+    // printf("deinitFrame %p %i\n", frame_info, --level);
+    // printf("deinitFrame %i\n", --level);
+    cur_thread_state.frame_info = (FrameInfo*)frame_info->back;
+    BoxedFrame* frame = frame_info->frame_obj;
+    if (frame) {
+        handleExit(frame);
+    }
+}
 }
 
 #endif
