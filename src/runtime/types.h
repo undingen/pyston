@@ -1139,7 +1139,9 @@ FunctionMetadata* metadataFromCode(Box* code);
 Box* getFrame(PythonFrameIterator it, bool exits);
 Box* getFrame(int depth, bool exits = false);
 void updateFrameForDeopt(BoxedFrame* frame);
-extern "C" void deinitFrame(BoxedFrame* frame);
+extern "C" void deinitFrame(FrameInfo* frame_info);
+extern "C" void deinitFrame2(BoxedFrame* frame);
+extern "C" void initFrame(FrameInfo* frame_info);
 
 inline BoxedString* boxString(llvm::StringRef s) {
     if (s.size() <= 1) {

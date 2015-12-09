@@ -550,7 +550,7 @@ public:
 
     void handleCFrame(unw_cursor_t* cursor) {
         if (prev_frame) {
-            deinitFrame((BoxedFrame*)prev_frame);
+            deinitFrame2((BoxedFrame*)prev_frame);
             prev_frame = NULL;
         }
 

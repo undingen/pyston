@@ -897,7 +897,9 @@ struct FrameInfo {
     // This is either a module or a dict
     Box* globals;
 
-    FrameInfo(ExcInfo exc) : exc(exc), boxedLocals(NULL), frame_obj(0), passed_closure(0), vregs(0), stmt(0), globals(0) {}
+    FrameInfo* back;
+
+    FrameInfo(ExcInfo exc) : exc(exc), boxedLocals(NULL), frame_obj(0), passed_closure(0), vregs(0), stmt(0), globals(0), back(0) {}
 
     void gcVisit(GCVisitor* visitor);
 };

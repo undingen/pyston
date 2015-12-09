@@ -276,10 +276,18 @@ void IRGenState::setupFrameInfoVar(llvm::Value* passed_closure, llvm::Value* pas
 
         this->frame_info = al;
         this->globals = passed_globals;
+
+        builder.CreateCall(g.funcs.initFrame, this->frame_info);
     }
 
     stmt = getStmtGep(builder, frame_info);
     builder.CreateStore(this->frame_info, al_pointer_to_frame_info);
+
+
+
+    // builder.CreateStore(this->frame_info, al_pointer_to_frame_info);
+
+
     // Create stackmap to make a pointer to the frame_info location known
     PatchpointInfo* info = PatchpointInfo::create(getCurFunction(), 0, 0, 0);
     std::vector<llvm::Value*> args;
@@ -2144,7 +2152,7 @@ private:
             builder.CreateCondBr(is_frame_null, join_block, if_frame_set);
             {
                 emitter.setCurrentBasicBlock(if_frame_set);
-                emitter.createCall(unw_info, g.funcs.deinitFrame, frame);
+                emitter.createCall(unw_info, g.funcs.deinitFrame, irstate->getFrameInfoVar());
                 builder.CreateBr(join_block);
             }
 

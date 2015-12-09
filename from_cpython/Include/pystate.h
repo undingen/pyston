@@ -111,6 +111,8 @@ typedef struct _ts {
 } PyThreadState;
 #endif
 typedef struct _ts {
+    void* frame_info;
+
     int recursion_depth;
     int gilstate_counter;
 

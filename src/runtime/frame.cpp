@@ -228,7 +228,17 @@ void updateFrameForDeopt(BoxedFrame* frame) {
     frame->it = getPythonFrame(0);
 }
 
-extern "C" void deinitFrame(BoxedFrame* frame) {
+extern "C" void initFrame(FrameInfo* frame_info) {
+    frame_info->back = (FrameInfo*)(cur_thread_state.frame_info);
+    cur_thread_state.frame_info = frame_info;
+}
+
+extern "C" void deinitFrame(FrameInfo* frame_info) {
+    BoxedFrame* frame = frame_info->frame_obj;
+    frame->handleExit(true);
+}
+
+extern "C" void deinitFrame2(BoxedFrame* frame) {
     frame->handleExit(true);
 }
 

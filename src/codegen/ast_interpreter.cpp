@@ -243,6 +243,8 @@ ASTInterpreter::ASTInterpreter(FunctionMetadata* md, Box** vregs)
     scope_info = source_info->getScopeInfo();
     frame_info.vregs = vregs;
 
+    initFrame(&frame_info);
+
     assert(scope_info);
 }
 
@@ -401,7 +403,7 @@ Box* ASTInterpreter::executeInner(ASTInterpreter& interpreter, CFGBlock* start_b
 
     BoxedFrame* frame = interpreter.getFrameInfo()->frame_obj;
     if (frame)
-        deinitFrame(frame);
+        deinitFrame(interpreter.getFrameInfo());
 
     return v.o;
 }
