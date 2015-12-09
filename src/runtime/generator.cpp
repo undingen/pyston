@@ -155,8 +155,9 @@ template <ExceptionStyle S> static bool generatorSendInternal(BoxedGenerator* se
     else
         self->prev_stack = StatTimer::swapStack(self->prev_stack);
 #endif
-
+    auto* b = cur_thread_state.frame_info;
     swapContext(&self->returnContext, self->context, (intptr_t)self);
+    cur_thread_state.frame_info = b;
 
 #if STAT_TIMERS
     self->prev_stack = StatTimer::swapStack(self->prev_stack);

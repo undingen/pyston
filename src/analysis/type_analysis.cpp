@@ -114,6 +114,8 @@ private:
         assert(old_type);
         assert(speculation != TypeAnalysis::NONE);
 
+        return old_type;
+
         if (speculated_cls != NULL && speculated_cls->is_constant) {
             CompilerType* speculated_type = unboxedType(typeFromClass(speculated_cls));
             if (!old_type->canConvertTo(speculated_type)) {

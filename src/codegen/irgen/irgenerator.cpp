@@ -2949,6 +2949,10 @@ public:
             emitter.setCurrentBasicBlock(capi_exc_dest);
             assert(!phi_node);
             phi_node = emitter.getBuilder()->CreatePHI(g.llvm_aststmt_type_ptr, 0);
+
+            llvm::Value* stmt = current_stmt ? embedRelocatablePtr(current_stmt, g.llvm_aststmt_type_ptr)
+                                             : getNullPtr(g.llvm_aststmt_type_ptr);
+            emitter.getBuilder()->CreateStore(stmt, irstate->getStmtVar());
             emitter.getBuilder()->CreateCall2(g.funcs.caughtCapiException, phi_node,
                                               embedRelocatablePtr(irstate->getSourceInfo(), g.i8_ptr));
 

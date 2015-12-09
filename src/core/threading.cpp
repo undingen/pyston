@@ -156,9 +156,9 @@ public:
             obj->gc_visit(v);
         }
 
-        FrameInfo* frame_info = (FrameInfo*)pub_state->frame_info;
-        if (frame_info)
-            frame_info->gcVisit(v);
+        //FrameInfo* frame_info = (FrameInfo*)pub_state->frame_info;
+        //if (frame_info)
+        //    frame_info->gcVisit(v);
     }
 };
 static std::unordered_map<pthread_t, ThreadStateInternal*> current_threads;
