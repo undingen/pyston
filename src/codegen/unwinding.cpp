@@ -673,6 +673,7 @@ template <typename Func> void unwindPythonStack(Func func) {
     }
 }
 
+/*
 static std::unique_ptr<PythonFrameIteratorImpl> getTopPythonFrame() {
     STAT_TIMER(t0, "us_timer_getTopPythonFrame", 10);
     std::unique_ptr<PythonFrameIteratorImpl> rtn(nullptr);
@@ -682,6 +683,7 @@ static std::unique_ptr<PythonFrameIteratorImpl> getTopPythonFrame() {
     });
     return rtn;
 }
+*/
 
 // To produce a traceback, we:
 //
@@ -797,21 +799,25 @@ void updateFrameExcInfoIfNeeded(ExcInfo* latest) {
 }
 
 FunctionMetadata* getTopPythonFunction() {
-    auto rtn = getTopPythonFrame();
-    if (!rtn)
+    FrameInfo* frame_info = (FrameInfo*)cur_thread_state.frame_info;
+    if (!frame_info)
         return NULL;
-    return getTopPythonFrame()->getMD();
+    return frame_info->md;
 }
 
 Box* getGlobals() {
-    auto it = getTopPythonFrame();
-    if (!it)
+    FrameInfo* frame_info = (FrameInfo*)cur_thread_state.frame_info;
+    if (!frame_info)
         return NULL;
-    return it->getGlobals();
+    return frame_info->globals;
 }
 
 Box* getGlobalsDict() {
-    return getTopPythonFrame()->getGlobalsDict();
+
+    Box* globals = getGlobals();
+    if (globals && PyModule_Check(globals))
+        globals = globals->getAttrWrapper();
+    return globals;
 }
 
 BoxedModule* getCurrentModule() {
@@ -1107,15 +1113,15 @@ PythonFrameIterator PythonFrameIterator::back() {
 }
 
 std::string getCurrentPythonLine() {
-    auto frame_iter = getTopPythonFrame();
+    auto frame_iter = (FrameInfo*)cur_thread_state.frame_info;
 
-    if (frame_iter.get()) {
+    if (frame_iter) {
         std::ostringstream stream;
 
-        auto* md = frame_iter->getMD();
+        auto* md = frame_iter->md;
         auto source = md->source.get();
 
-        auto current_stmt = frame_iter->getCurrentStatement();
+        auto current_stmt = frame_iter->stmt;
 
         stream << source->getFn()->c_str() << ":" << current_stmt->lineno;
         return stream.str();
