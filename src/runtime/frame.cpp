@@ -51,6 +51,7 @@ public:
     Box* _back;
     AST_stmt* _stmt;
 
+
     bool exited;
 
     void update() {}
@@ -160,20 +161,12 @@ public:
         return fi->frame_obj;
     }
 
-    void handleExit(bool should_update) {
+    void handleExit() {
         if (exited)
             return;
 
-        if (0 && should_update)
-            update();
-
         _locals = frame_info->getBoxedLocals();
-        if (!_back) {
-            if (!frame_info->back)
-                _back = None;
-            else
-                _back = BoxedFrame::boxFrame(frame_info->back);
-        }
+        back(this, NULL);
         _stmt = frame_info->stmt;
 
         exited = true;
@@ -182,10 +175,13 @@ public:
 
 
 Box* getFrame(FrameInfo* frame_info) {
+    UNAVOIDABLE_STAT_TIMER(t0, "us_timer__getFrame_frame_info");
     return BoxedFrame::boxFrame(frame_info);
 }
 
-Box* getFrame(int depth, bool exits) {
+Box* getFrame(int depth) {
+    UNAVOIDABLE_STAT_TIMER(t0, "us_timer__getFrame_depth");
+
     FrameInfo* frame_info = getPythonFrame(depth);
     if (!frame_info)
         return NULL;
@@ -193,8 +189,6 @@ Box* getFrame(int depth, bool exits) {
     // printf("getFrame %i %p\n", depth, frame_info);
 
     BoxedFrame* rtn = (BoxedFrame*)BoxedFrame::boxFrame(frame_info);
-    if (exits)
-        rtn->handleExit(/*!created_new*/ true);
     return rtn;
 }
 
@@ -206,6 +200,8 @@ void updateFrameForDeopt(BoxedFrame* frame) {
 
 __thread int level = 0;
 extern "C" void initFrame(FrameInfo* frame_info) {
+    UNAVOIDABLE_STAT_TIMER(t0, "us_timer__initFrame");
+
     // printf("initFrame %p %i\n", frame_info, ++level);
     // printf("initFrame %i\n", ++level);
     frame_info->back = (FrameInfo*)(cur_thread_state.frame_info);
@@ -214,20 +210,16 @@ extern "C" void initFrame(FrameInfo* frame_info) {
 
 
 extern "C" void deinitFrame(FrameInfo* frame_info) {
+    UNAVOIDABLE_STAT_TIMER(t0, "us_timer__deinitFrame");
+
     // printf("deinitFrame %p %i\n", frame_info, --level);
     // printf("deinitFrame %i\n", --level);
     cur_thread_state.frame_info = (FrameInfo*)frame_info->back;
     BoxedFrame* frame = frame_info->frame_obj;
     if (frame) {
-        frame->handleExit(true);
+        frame->handleExit();
     }
 }
-
-extern "C" void deinitFrame2(BoxedFrame* frame) {
-    RELEASE_ASSERT(0, "");
-    frame->handleExit(true);
-}
-
 
 void setupFrame() {
     frame_cls

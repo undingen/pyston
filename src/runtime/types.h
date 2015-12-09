@@ -1137,10 +1137,9 @@ Box* codeForFunctionMetadata(FunctionMetadata*);
 FunctionMetadata* metadataFromCode(Box* code);
 
 Box* getFrame(FrameInfo* frame_info);
-Box* getFrame(int depth, bool exits = false);
+Box* getFrame(int depth);
 void updateFrameForDeopt(BoxedFrame* frame);
 extern "C" void deinitFrame(FrameInfo* frame_info);
-extern "C" void deinitFrame2(BoxedFrame* frame);
 extern "C" void initFrame(FrameInfo* frame_info);
 
 inline BoxedString* boxString(llvm::StringRef s) {
