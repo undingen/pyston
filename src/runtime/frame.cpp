@@ -188,9 +188,10 @@ void updateFrameForDeopt(BoxedFrame* frame) {
 }
 
 __thread int level = 0;
-/*
+
+
 extern "C" void initFrame(FrameInfo* frame_info) {
-    UNAVOIDABLE_STAT_TIMER(t0, "us_timer__initFrame");
+    // UNAVOIDABLE_STAT_TIMER(t0, "us_timer__initFrame");
 
     // printf("initFrame %p %i\n", frame_info, ++level);
     // printf("initFrame %i\n", ++level);
@@ -198,18 +199,19 @@ extern "C" void initFrame(FrameInfo* frame_info) {
     cur_thread_state.frame_info = frame_info;
 }
 
+void handleExit(BoxedFrame*);
 
 extern "C" void deinitFrame(FrameInfo* frame_info) {
-    UNAVOIDABLE_STAT_TIMER(t0, "us_timer__deinitFrame");
+    // UNAVOIDABLE_STAT_TIMER(t0, "us_timer__deinitFrame");
 
     // printf("deinitFrame %p %i\n", frame_info, --level);
     // printf("deinitFrame %i\n", --level);
     cur_thread_state.frame_info = (FrameInfo*)frame_info->back;
     BoxedFrame* frame = frame_info->frame_obj;
     if (frame) {
-        frame->handleExit();
+        handleExit(frame);
     }
-}*/
+}
 
 void handleExit(BoxedFrame* frame) {
     UNAVOIDABLE_STAT_TIMER(t0, "us_timer__handleExit");

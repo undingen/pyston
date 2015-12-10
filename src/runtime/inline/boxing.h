@@ -44,6 +44,7 @@ extern "C" inline bool unboxBool(Box* b) {
     // return static_cast<BoxedBool*>(b)->b;
 }
 
+/*
 extern "C" inline void initFrame(FrameInfo* frame_info) __attribute__((visibility("default")));
 extern "C" inline void initFrame(FrameInfo* frame_info) {
     // UNAVOIDABLE_STAT_TIMER(t0, "us_timer__initFrame");
@@ -68,6 +69,7 @@ extern "C" inline void deinitFrame(FrameInfo* frame_info) {
         handleExit(frame);
     }
 }
+*/
 }
 
 #endif
