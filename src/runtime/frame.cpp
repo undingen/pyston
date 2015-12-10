@@ -31,30 +31,22 @@ class BoxedFrame : public Box {
 private:
     // Call boxFrame to get a BoxedFrame object.
     BoxedFrame(FrameInfo* frame_info) __attribute__((visibility("default")))
-    : frame_info(frame_info),
-      thread_id(PyThread_get_thread_ident()),
-      _globals(NULL),
-      _code(NULL),
-      _locals(NULL),
-      _back(NULL),
-      _stmt(NULL),
-      exited(false) {}
+    : frame_info(frame_info), _globals(NULL), _code(NULL), _locals(NULL), _back(NULL), _stmt(NULL) {
+        assert(frame_info);
+    }
 
 public:
     FrameInfo* frame_info;
-    long thread_id;
 
     Box* _globals;
     Box* _code;
-
     Box* _locals;
     Box* _back;
     AST_stmt* _stmt;
 
 
-    bool exited;
+    bool hasExited() const { return frame_info == NULL; }
 
-    void update() {}
 
     // cpython frame objects have the following attributes
 
@@ -94,18 +86,19 @@ public:
         v->visit(&f->_back);
     }
 
-    static void simpleDestructor(Box* b) { auto f = static_cast<BoxedFrame*>(b); }
-
     static Box* code(Box* obj, void*) {
         auto f = static_cast<BoxedFrame*>(obj);
+
+        if (!f->_code) {
+            f->_code = (Box*)f->frame_info->md->getCode();
+        }
         return f->_code;
     }
 
     static Box* locals(Box* obj, void*) {
         auto f = static_cast<BoxedFrame*>(obj);
-        f->update();
 
-        if (f->exited) {
+        if (f->hasExited()) {
             return f->_locals;
         }
 
@@ -123,8 +116,6 @@ public:
         if (f->_back)
             return f->_back;
 
-        f->update();
-
         if (!f->frame_info->back)
             f->_back = None;
         else
@@ -134,9 +125,8 @@ public:
 
     static Box* lineno(Box* obj, void*) {
         auto f = static_cast<BoxedFrame*>(obj);
-        f->update();
 
-        if (f->exited)
+        if (f->hasExited())
             return boxInt(f->_stmt->lineno);
 
         AST_stmt* stmt = f->frame_info->stmt;
@@ -154,7 +144,6 @@ public:
                 globals = globals->getAttrWrapper();
             BoxedFrame* f = fi->frame_obj = new BoxedFrame(fi);
             f->_globals = globals;
-            f->_code = (Box*)fi->md->getCode();
         }
         assert(fi->frame_obj->cls == frame_cls);
 
@@ -162,14 +151,14 @@ public:
     }
 
     void handleExit() {
-        if (exited)
+        if (hasExited())
             return;
 
         _locals = frame_info->getVRegs();
         back(this, NULL);
         _stmt = frame_info->stmt;
 
-        exited = true;
+        frame_info = NULL;
     }
 };
 
@@ -230,7 +219,6 @@ void handleExit(BoxedFrame* frame) {
 void setupFrame() {
     frame_cls
         = BoxedClass::create(type_cls, object_cls, &BoxedFrame::gchandler, 0, 0, sizeof(BoxedFrame), false, "frame");
-    frame_cls->tp_dealloc = BoxedFrame::simpleDestructor;
     frame_cls->has_safe_tp_dealloc = true;
 
     frame_cls->giveAttr("f_code", new (pyston_getset_cls) BoxedGetsetDescriptor(BoxedFrame::code, NULL, NULL));
