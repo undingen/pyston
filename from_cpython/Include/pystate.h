@@ -149,7 +149,7 @@ PyAPI_FUNC(int) PyThreadState_SetAsyncExc(long, PyObject *) PYSTON_NOEXCEPT;
 
 // Pyston change: use our internal name for this
 //PyAPI_DATA(PyThreadState *) _PyThreadState_Current;
-PyAPI_DATA(/*__thread*/ PyThreadState) cur_thread_state;
+PyAPI_DATA(__thread PyThreadState) cur_thread_state;
 #define _PyThreadState_Current (&cur_thread_state)
 
 #ifdef Py_DEBUG

@@ -37,7 +37,7 @@ namespace threading {
 std::unordered_set<PerThreadSetBase*> PerThreadSetBase::all_instances;
 
 extern "C" {
-/*__thread*/ PyThreadState cur_thread_state
+__thread PyThreadState cur_thread_state
     = { NULL, 0, 1, NULL, NULL, NULL, NULL }; // not sure if we need to explicitly request zero-initialization
 }
 
