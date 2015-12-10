@@ -44,9 +44,19 @@ extern "C" inline bool unboxBool(Box* b) {
     // return static_cast<BoxedBool*>(b)->b;
 }
 
+extern "C" uint64_t addr_cur_thread_state;
+
+extern "C" inline uint64_t get_fs() __attribute__((visibility("default")));
+extern "C" inline uint64_t get_fs() {
+    uint64_t fs = 0;
+    asm("mov %%fs:0x0, %0" : "=r"(fs)::);
+    return fs;
+}
+
 
 extern "C" inline void initFrame(FrameInfo* frame_info) __attribute__((visibility("default")));
 extern "C" inline void initFrame(FrameInfo* frame_info) {
+    /*
     static_assert(offsetof(FrameInfo, back) == 0x48, "");
     long addr = 0xfffffffffffffeb0;
     asm("mov %%fs:(%1), %%rcx       \n"
@@ -54,7 +64,12 @@ extern "C" inline void initFrame(FrameInfo* frame_info) {
         "mov %0,        %%fs:(%1) \n" ::"r"(frame_info),
         "r"(addr)
         : "%rcx");
+    */
+    FrameInfo** addr = (FrameInfo**)((char*)get_fs() + addr_cur_thread_state);
+    frame_info->back = *addr;
+    *addr = frame_info;
 }
+
 
 /*
 extern "C" inline void initFrame(FrameInfo* frame_info) __attribute__((visibility("default")));

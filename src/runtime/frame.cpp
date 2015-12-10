@@ -18,6 +18,7 @@
 #include "codegen/unwinding.h"
 #include "core/ast.h"
 #include "runtime/types.h"
+#include "runtime/inline/boxing.h"
 
 namespace pyston {
 
@@ -187,10 +188,25 @@ void updateFrameForDeopt(BoxedFrame* frame) {
     // frame->frame_info = getPythonFrame(0)->frame_info;
 }
 
-__thread int level = 0;
+uint64_t init_addr_cur_thread_state() {
+    return (uint64_t)&cur_thread_state.frame_info - get_fs();
+}
+
+
+
+extern "C" uint64_t addr_cur_thread_state = init_addr_cur_thread_state();
 
 /*
 extern "C" void initFrame(FrameInfo* frame_info) {
+    //long addr2 = 0;
+    //long fs = 0;
+    //asm("mov %%fs:0x0, %0" : "=r"(fs)::);
+
+    //asm("mov cur_thread_state, %%rax\n\nmov level, %%rax" : "=r"(addr2):: "%rax" );
+
+    //printf("%ld %ld\n", (uint64_t)&cur_thread_state.frame_info - (uint64_t)fs, addr_cur_thread_state);
+    //printf("%p %p %ld\n", &cur_thread_state.frame_info, &level, &cur_thread_state.frame_info - fs);
+    //printf("a: %lx %p %lx\n", addr_cur_thread_state, &cur_thread_state.frame_info, addr2);
     // UNAVOIDABLE_STAT_TIMER(t0, "us_timer__initFrame");
 
     // printf("initFrame %p %i\n", frame_info, ++level);
@@ -199,16 +215,14 @@ extern "C" void initFrame(FrameInfo* frame_info) {
 
     // frame_info->back = (FrameInfo*)(cur_thread_state.frame_info);
     // cur_thread_state.frame_info = frame_info;
-    static_assert(offsetof(FrameInfo, back) == 0x48, "");
-    long addr = 0xfffffffffffffeb0;
-    asm("mov %%fs:(%1), %%rcx       \n"
-        "mov %%rcx,     0x48(%0) \n"
-        "mov %0,        %%fs:(%1) \n" ::"r"(frame_info), "r"(addr) : "%rcx");
 
 
-
+    FrameInfo** addr = (FrameInfo**)((char*)get_fs() + addr_cur_thread_state);
+    frame_info->back = *addr;
+    *addr = frame_info;
 }
 */
+
 
 void handleExit(BoxedFrame*);
 
