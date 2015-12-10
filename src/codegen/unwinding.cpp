@@ -993,11 +993,9 @@ Box* FrameInfo::getBoxedLocals() {
     ScopeInfo* scope_info = md->source->getScopeInfo();
 
     if (scope_info->areLocalsFromModule()) {
-        if (frame_info->boxedLocals)
-
-            // TODO we should cache this in frame_info->locals or something so that locals()
-            // (and globals() too) will always return the same dict
-            RELEASE_ASSERT(md->source->scoping->areGlobalsFromModule(), "");
+        // TODO we should cache this in frame_info->locals or something so that locals()
+        // (and globals() too) will always return the same dict
+        RELEASE_ASSERT(md->source->scoping->areGlobalsFromModule(), "");
         return md->source->parent_module->getAttrWrapper();
     }
 

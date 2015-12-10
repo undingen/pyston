@@ -101,19 +101,17 @@ public:
         if (f->hasExited()) {
             return f->_locals;
         }
-
-        printf("\n -- l: --\n");
         return f->frame_info->getBoxedLocals();
     }
 
     static Box* globals(Box* obj, void*) {
         auto f = static_cast<BoxedFrame*>(obj);
+
         if (!f->_globals) {
             f->_globals = f->frame_info->globals;
             if (f->_globals && PyModule_Check(f->_globals))
                 f->_globals = f->_globals->getAttrWrapper();
         }
-
         return f->_globals;
     }
 
