@@ -993,21 +993,16 @@ Box* FrameInfo::getBoxedLocals() {
     ScopeInfo* scope_info = md->source->getScopeInfo();
 
     if (scope_info->areLocalsFromModule()) {
-        // TODO we should cache this in frame_info->locals or something so that locals()
-        // (and globals() too) will always return the same dict
-        RELEASE_ASSERT(md->source->scoping->areGlobalsFromModule(), "");
+        if (frame_info->boxedLocals)
+
+            // TODO we should cache this in frame_info->locals or something so that locals()
+            // (and globals() too) will always return the same dict
+            RELEASE_ASSERT(md->source->scoping->areGlobalsFromModule(), "");
         return md->source->parent_module->getAttrWrapper();
     }
 
     BoxedDict* d = localsForInterpretedFrame(frame_info->vregs, md->source->cfg);
     BoxedClosure* closure = frame_info->passed_closure;
-
-    bool new_locals = frame_info->boxedLocals == NULL;
-    assert(frame_info);
-    if (frame_info->boxedLocals == NULL) {
-        // frame_info->boxedLocals = new BoxedDict();
-    }
-    // assert(gc::isValidGCObject(frame_info->boxedLocals));
 
     // Add the locals from the closure
     // TODO in a ClassDef scope, we aren't supposed to add these
@@ -1029,17 +1024,20 @@ Box* FrameInfo::getBoxedLocals() {
         }
     }
 
-    if (new_locals) {
+    if (!frame_info->boxedLocals) {
         frame_info->boxedLocals = d;
         return d;
     }
+    assert(gc::isValidGCObject(frame_info->boxedLocals));
 
     // Loop through all the values found above.
     // TODO Right now d just has all the python variables that are *initialized*
     // But we also need to loop through all the uninitialized variables that we have
     // access to and delete them from the locals dict
-    if (frame_info->boxedLocals == dict_cls) {
-        ((BoxedDict*)frame_info->boxedLocals)->d.insert(d->d.begin(), d->d.end());
+    if (frame_info->boxedLocals->cls == dict_cls) {
+        for (auto&& new_elem : d->d) {
+            ((BoxedDict*)frame_info->boxedLocals)->d[new_elem.first] = new_elem.second;
+        }
     } else {
         for (const auto& p : *d) {
             Box* varname = p.first;

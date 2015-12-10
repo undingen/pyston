@@ -102,6 +102,7 @@ public:
             return f->_locals;
         }
 
+        printf("\n -- l: --\n");
         return f->frame_info->getBoxedLocals();
     }
 
