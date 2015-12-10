@@ -156,6 +156,7 @@ public:
         _locals = frame_info->getBoxedLocals();
         // _locals = frame_info->getVRegs();
         back(this, NULL);
+        code(this, NULL);
         globals(this, NULL);
         _stmt = frame_info->stmt;
 
