@@ -107,19 +107,24 @@ public:
 
     static Box* globals(Box* obj, void*) {
         auto f = static_cast<BoxedFrame*>(obj);
+        if (!f->_globals) {
+            f->_globals = f->frame_info->globals;
+            if (f->_globals && PyModule_Check(f->_globals))
+                f->_globals = f->_globals->getAttrWrapper();
+        }
+
         return f->_globals;
     }
 
     static Box* back(Box* obj, void*) {
         auto f = static_cast<BoxedFrame*>(obj);
 
-        if (f->_back)
-            return f->_back;
-
-        if (!f->frame_info->back)
-            f->_back = None;
-        else
-            f->_back = BoxedFrame::boxFrame(f->frame_info->back);
+        if (!f->_back) {
+            if (!f->frame_info->back)
+                f->_back = None;
+            else
+                f->_back = BoxedFrame::boxFrame(f->frame_info->back);
+        }
         return f->_back;
     }
 
@@ -137,16 +142,9 @@ public:
 
 
     static Box* boxFrame(FrameInfo* fi) {
-        if (fi->frame_obj == NULL) {
-            // auto md = it.getMD();
-            Box* globals = fi->globals;
-            if (globals && PyModule_Check(globals))
-                globals = globals->getAttrWrapper();
-            BoxedFrame* f = fi->frame_obj = new BoxedFrame(fi);
-            f->_globals = globals;
-        }
+        if (fi->frame_obj == NULL)
+            fi->frame_obj = new BoxedFrame(fi);
         assert(fi->frame_obj->cls == frame_cls);
-
         return fi->frame_obj;
     }
 
@@ -157,6 +155,7 @@ public:
         _locals = frame_info->getBoxedLocals();
         // _locals = frame_info->getVRegs();
         back(this, NULL);
+        globals(this, NULL);
         _stmt = frame_info->stmt;
 
         frame_info = NULL;
