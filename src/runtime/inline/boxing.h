@@ -44,6 +44,18 @@ extern "C" inline bool unboxBool(Box* b) {
     // return static_cast<BoxedBool*>(b)->b;
 }
 
+
+extern "C" inline void initFrame(FrameInfo* frame_info) __attribute__((visibility("default")));
+extern "C" inline void initFrame(FrameInfo* frame_info) {
+    static_assert(offsetof(FrameInfo, back) == 0x48, "");
+    long addr = 0xfffffffffffffeb0;
+    asm("mov %%fs:(%1), %%rcx       \n"
+        "mov %%rcx,     0x48(%0) \n"
+        "mov %0,        %%fs:(%1) \n" ::"r"(frame_info),
+        "r"(addr)
+        : "%rcx");
+}
+
 /*
 extern "C" inline void initFrame(FrameInfo* frame_info) __attribute__((visibility("default")));
 extern "C" inline void initFrame(FrameInfo* frame_info) {

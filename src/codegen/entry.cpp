@@ -392,6 +392,7 @@ void initCodegen() {
     llvm::InitializeNativeTarget();
     llvm::InitializeNativeTargetAsmPrinter();
     llvm::InitializeNativeTargetAsmParser();
+    llvm::InitializeAllAsmParsers();
 
     g.stdlib_module = loadStdlib();
 

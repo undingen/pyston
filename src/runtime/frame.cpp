@@ -189,15 +189,26 @@ void updateFrameForDeopt(BoxedFrame* frame) {
 
 __thread int level = 0;
 
-
+/*
 extern "C" void initFrame(FrameInfo* frame_info) {
     // UNAVOIDABLE_STAT_TIMER(t0, "us_timer__initFrame");
 
     // printf("initFrame %p %i\n", frame_info, ++level);
     // printf("initFrame %i\n", ++level);
-    frame_info->back = (FrameInfo*)(cur_thread_state.frame_info);
-    cur_thread_state.frame_info = frame_info;
+
+
+    // frame_info->back = (FrameInfo*)(cur_thread_state.frame_info);
+    // cur_thread_state.frame_info = frame_info;
+    static_assert(offsetof(FrameInfo, back) == 0x48, "");
+    long addr = 0xfffffffffffffeb0;
+    asm("mov %%fs:(%1), %%rcx       \n"
+        "mov %%rcx,     0x48(%0) \n"
+        "mov %0,        %%fs:(%1) \n" ::"r"(frame_info), "r"(addr) : "%rcx");
+
+
+
 }
+*/
 
 void handleExit(BoxedFrame*);
 
