@@ -41,7 +41,7 @@
 #include "runtime/ctxswitching.h"
 #include "runtime/objmodel.h"
 #include "runtime/generator.h"
-#include "runtime/traceback.h"
+//#include "runtime/traceback.h"
 #include "runtime/types.h"
 
 
@@ -723,13 +723,14 @@ Box* getTraceback() {
 
     Box* tb = None;
     for (FrameInfo* frame_info = getTopFrameInfo(); frame_info; frame_info = frame_info->back) {
-        BoxedTraceback::here(lineInfoForFrameInfo(frame_info), &tb, getFrame(frame_info));
+        PyTraceBack_HereTb(&tb, (struct _frame*)getFrame(frame_info));
+        // BoxedTraceback::here(lineInfoForFrameInfo(frame_info), &tb, getFrame(frame_info));
     }
 
     long us = _t.end();
     us_gettraceback.log(us);
 
-    return static_cast<BoxedTraceback*>(tb);
+    return tb;
 }
 
 ExcInfo* getFrameExcInfo() {
@@ -1061,7 +1062,7 @@ void _printStacktrace() {
     }
 
     recursive = true;
-    printTraceback(getTraceback());
+    PyTraceBack_Print(getTraceback(), sys_module->getattr(internStringMortal("stderr")));
     recursive = false;
 }
 

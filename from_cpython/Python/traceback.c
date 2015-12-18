@@ -97,7 +97,8 @@ newtracebackobject(PyTracebackObject *next, PyFrameObject *frame)
         tb->tb_next = next;
         Py_XINCREF(frame);
         tb->tb_frame = frame;
-        tb->tb_lasti = frame->f_lasti;
+        // tb->tb_lasti = frame->f_lasti;
+        tb->tb_lasti = 0;
         tb->tb_lineno = PyFrame_GetLineNumber(frame);
         PyObject_GC_Track(tb);
     }
@@ -114,6 +115,18 @@ PyTraceBack_Here(PyFrameObject *frame)
         return -1;
     tstate->curexc_traceback = (PyObject *)tb;
     Py_XDECREF(oldtb);
+    return 0;
+}
+
+int
+PyTraceBack_HereTb(PyObject **oldtb, PyFrameObject *frame)
+{
+    if (*oldtb == Py_None)
+        *oldtb = NULL;
+    PyTracebackObject *tb = newtracebackobject((PyTracebackObject *)*oldtb, frame);
+    if (tb == NULL)
+        return -1;
+    *oldtb = (PyObject *)tb;
     return 0;
 }
 
@@ -246,11 +259,13 @@ tb_printinternal(PyTracebackObject *tb, PyObject *f, long limit)
     }
     while (tb != NULL && err == 0) {
         if (depth <= limit) {
+            /*
             err = tb_displayline(f,
                 PyString_AsString(
                     tb->tb_frame->f_code->co_filename),
                 tb->tb_lineno,
                 PyString_AsString(tb->tb_frame->f_code->co_name));
+            */
         }
         depth--;
         tb = tb->tb_next;

@@ -7,6 +7,7 @@
 extern "C" {
 #endif
 
+#if 0
 typedef struct {
     int b_type;			/* what kind of block this is */
     int b_handler;		/* where to jump to find handler */
@@ -48,13 +49,18 @@ typedef struct _frame {
     PyTryBlock f_blockstack[CO_MAXBLOCKS]; /* for try and loop blocks */
     PyObject *f_localsplus[1];	/* locals+stack, dynamically sized */
 } PyFrameObject;
-
+#else
+typedef struct _PyTryBlock PyTryBlock;
+typedef struct _frame PyFrameObject;
+#endif
 
 /* Standard object interface */
 
-PyAPI_DATA(PyTypeObject) PyFrame_Type;
+//PyAPI_DATA(PyTypeObject) PyFrame_Type;
+PyAPI_DATA(PyTypeObject*) frame_cls;
+#define PyFrame_Type (*frame_cls)
 
-#define PyFrame_Check(op) ((op)->ob_type == &PyFrame_Type)
+#define PyFrame_Check(op) (((PyObject*)op)->ob_type == &PyFrame_Type)
 #define PyFrame_IsRestricted(f) \
 	((f)->f_builtins != (f)->f_tstate->interp->builtins)
 

@@ -28,7 +28,7 @@ namespace pyston {
 class Box;
 class BoxedDict;
 class BoxedModule;
-class BoxedTraceback;
+// class BoxedTraceback;
 struct FrameInfo;
 
 void registerDynamicEhFrame(uint64_t code_addr, size_t code_size, uint64_t eh_frame_addr, size_t eh_frame_size);

@@ -19,6 +19,8 @@ typedef struct _traceback {
 } PyTracebackObject;
 
 PyAPI_FUNC(int) PyTraceBack_Here(struct _frame *) PYSTON_NOEXCEPT;
+PyAPI_FUNC(int) PyTraceBack_HereTb(PyObject **oldtb, struct _frame *) PYSTON_NOEXCEPT;
+
 PyAPI_FUNC(int) PyTraceBack_Print(PyObject *, PyObject *) PYSTON_NOEXCEPT;
 PyAPI_FUNC(int) _Py_DisplaySourceLine(PyObject *, const char *, int, int) PYSTON_NOEXCEPT;
 

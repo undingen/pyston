@@ -189,6 +189,11 @@ extern "C" void deinitFrame(FrameInfo* frame_info) {
         frame->handleFrameExit();
 }
 
+extern "C" int PyFrame_GetLineNumber(struct PyFrameObject* _frame) {
+    BoxedFrame* frame = (BoxedFrame*)_frame;
+    return unboxInt(frame->lineno(frame, NULL));
+}
+
 void setupFrame() {
     frame_cls
         = BoxedClass::create(type_cls, object_cls, &BoxedFrame::gchandler, 0, 0, sizeof(BoxedFrame), false, "frame");
