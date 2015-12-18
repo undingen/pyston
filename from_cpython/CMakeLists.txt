@@ -114,6 +114,7 @@ file(GLOB_RECURSE STDPYTHON_SRCS Python
     Python-ast.c
     random.c
     structmember.c
+    traceback.c
     )
 
 # compile specified files in from_cpython/Python
