@@ -474,6 +474,25 @@ Box* generatorName(Box* _self, void* context) {
 void generatorDestructor(Box* b) {
     assert(isSubclass(b->cls, generator_cls));
     BoxedGenerator* self = static_cast<BoxedGenerator*>(b);
+    if (!self->entryExited && self->context->rip != (int64_t)generatorEntry) {
+        PyObject* res = NULL;
+        PyObject* error_type, *error_value, *error_traceback;
+        PyErr_Fetch(&error_type, &error_value, &error_traceback);
+
+        try {
+            res = generatorClose(self);
+        } catch (ExcInfo e) {
+            setCAPIException(e);
+        }
+
+        if (res == NULL)
+            PyErr_WriteUnraisable(self);
+        else
+            Py_DECREF(res);
+
+        /* Restore the saved exception. */
+        PyErr_Restore(error_type, error_value, error_traceback);
+    }
     freeGeneratorStack(self);
 }
 
@@ -482,7 +501,7 @@ void setupGenerator() {
         = BoxedClass::create(type_cls, object_cls, &BoxedGenerator::gcHandler, 0, offsetof(BoxedGenerator, weakreflist),
                              sizeof(BoxedGenerator), false, "generator");
     generator_cls->tp_dealloc = generatorDestructor;
-    generator_cls->has_safe_tp_dealloc = true;
+    // generator_cls->has_safe_tp_dealloc = true;
     generator_cls->giveAttr(
         "__iter__", new BoxedFunction(FunctionMetadata::create((void*)generatorIter, typeFromClass(generator_cls), 1)));
 
