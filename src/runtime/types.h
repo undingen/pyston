@@ -1150,11 +1150,15 @@ inline BoxedString* boxString(llvm::StringRef s) {
     return new (s.size()) BoxedString(s);
 }
 
-#define NUM_INTERNED_INTS 100
+#define MIN_INTERNED_INT -5  // inclusive
+#define MAX_INTERNED_INT 257 // exclusive
+#define NUM_INTERNED_INTS ((-MIN_INTERNED_INT) + MAX_INTERNED_INT)
+static_assert(MIN_INTERNED_INT < 0, "");
+
 extern BoxedInt* interned_ints[NUM_INTERNED_INTS];
 extern "C" inline Box* boxInt(int64_t n) {
-    if (0 <= n && n < NUM_INTERNED_INTS) {
-        return interned_ints[n];
+    if (n >= MIN_INTERNED_INT && n < MAX_INTERNED_INT) {
+        return interned_ints[(-MIN_INTERNED_INT) + n];
     }
     return new BoxedInt(n);
 }
