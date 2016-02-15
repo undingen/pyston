@@ -1,3 +1,5 @@
+// This file is originally from CPython 2.7, with modifications for Pyston
+
 /* List object implementation */
 
 #include "Python.h"
@@ -8,6 +10,8 @@
 #include <sys/types.h>          /* For size_t */
 #endif
 
+// Pyston:
+#if 0
 /* Ensure ob_item has room for at least newsize elements, and set
  * ob_size to newsize.  If newsize > ob_size on entry, the content
  * of the new slots at exit is undefined heap trash; it's the caller's
@@ -960,6 +964,8 @@ listpop(PyListObject *self, PyObject *args)
 
     return v;
 }
+// Pyston change:
+#endif
 
 /* Reverse a slice of a list in place, from lo up to (exclusive) hi. */
 static void
@@ -1020,6 +1026,7 @@ islt(PyObject *x, PyObject *y, PyObject *compare)
     Py_DECREF(res);
     return i < 0;
 }
+
 
 /* If COMPARE is NULL, calls PyObject_RichCompareBool with Py_LT, else calls
  * islt.  This avoids a layer of function call in the usual case, and
@@ -1880,7 +1887,8 @@ static void
 sortwrapper_dealloc(sortwrapperobject *);
 
 static PyTypeObject sortwrapper_type = {
-    PyVarObject_HEAD_INIT(&PyType_Type, 0)
+    // PyVarObject_HEAD_INIT(&PyType_Type, 0)
+    PyVarObject_HEAD_INIT(NULL, 0)
     "sortwrapper",                              /* tp_name */
     sizeof(sortwrapperobject),                  /* tp_basicsize */
     0,                                          /* tp_itemsize */
@@ -1997,7 +2005,8 @@ cmpwrapper_call(cmpwrapperobject *co, PyObject *args, PyObject *kwds)
 PyDoc_STRVAR(cmpwrapper_doc, "cmp() wrapper for sort with custom keys.");
 
 static PyTypeObject cmpwrapper_type = {
-    PyVarObject_HEAD_INIT(&PyType_Type, 0)
+    // PyVarObject_HEAD_INIT(&PyType_Type, 0)
+    PyVarObject_HEAD_INIT(NULL, 0)
     "cmpwrapper",                               /* tp_name */
     sizeof(cmpwrapperobject),                   /* tp_basicsize */
     0,                                          /* tp_itemsize */
@@ -2039,7 +2048,7 @@ build_cmpwrapper(PyObject *cmpfunc)
  * list will be some permutation of its input state (nothing is lost or
  * duplicated).
  */
-static PyObject *
+/*static*/ PyObject *
 listsort(PyListObject *self, PyObject *args, PyObject *kwds)
 {
     MergeState ms;
@@ -2225,6 +2234,7 @@ PyList_Sort(PyObject *v)
     return 0;
 }
 
+#if 0
 static PyObject *
 listreverse(PyListObject *self)
 {
@@ -3042,3 +3052,4 @@ listreviter_len(listreviterobject *it)
         len = 0;
     return PyLong_FromSsize_t(len);
 }
+#endif

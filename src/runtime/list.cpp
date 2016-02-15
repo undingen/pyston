@@ -834,6 +834,7 @@ extern "C" int PyList_Reverse(PyObject* v) noexcept {
     return 0;
 }
 
+#if 0
 class PyCmpComparer {
 private:
     Box* cmp;
@@ -916,7 +917,10 @@ Box* listSortFunc(BoxedList* self, Box* cmp, Box* key, Box** _args) {
     listSort(self, cmp, key, reverse);
     return None;
 }
+#endif
 
+
+#if 0
 extern "C" int PyList_Sort(PyObject* v) noexcept {
     if (v == NULL || !PyList_Check(v)) {
         PyErr_BadInternalCall();
@@ -932,6 +936,7 @@ extern "C" int PyList_Sort(PyObject* v) noexcept {
 
     return 0;
 }
+#endif
 
 extern "C" Box* PyList_GetSlice(PyObject* a, Py_ssize_t ilow, Py_ssize_t ihigh) noexcept {
     assert(PyList_Check(a));
@@ -1290,6 +1295,8 @@ void BoxedList::gcHandler(GCVisitor* v, Box* b) {
         v->visitRange(&l->elts->elts[0], &l->elts->elts[size]);
 }
 
+extern "C" PyObject* listsort(PyListObject* self, PyObject* args, PyObject* kwds) noexcept;
+
 void setupList() {
     static PySequenceMethods list_as_sequence;
     list_cls->tp_as_sequence = &list_as_sequence;
@@ -1361,10 +1368,11 @@ void setupList() {
     list_cls->giveAttr("__iadd__", new BoxedFunction(FunctionMetadata::create((void*)listIAdd, UNKNOWN, 2)));
     list_cls->giveAttr("__add__", new BoxedFunction(FunctionMetadata::create((void*)listAdd, UNKNOWN, 2)));
 
-    list_cls->giveAttr("sort",
-                       new BoxedFunction(FunctionMetadata::create((void*)listSortFunc, NONE, 4, false, false,
-                                                                  ParamNames({ "", "cmp", "key", "reverse" }, "", "")),
-                                         { None, None, False }));
+    // list_cls->giveAttr("sort",
+    //                   new BoxedFunction(FunctionMetadata::create((void*)listSortFunc, NONE, 4, false, false,
+    //                                                              ParamNames({ "", "cmp", "key", "reverse" }, "",
+    //                                                              "")),
+    //                                     { None, None, False }));
     list_cls->giveAttr("__contains__", new BoxedFunction(FunctionMetadata::create((void*)listContains, BOXED_BOOL, 2)));
 
     list_cls->giveAttr(
@@ -1378,6 +1386,15 @@ void setupList() {
     list_cls->giveAttr("reverse", new BoxedFunction(FunctionMetadata::create((void*)listReverse, NONE, 1)));
 
     list_cls->giveAttr("__hash__", None);
+
+
+    static PyMethodDef list_methods[] = {
+        { "sort", (PyCFunction)listsort, METH_VARARGS | METH_KEYWORDS, NULL },
+    };
+    for (auto& md : list_methods) {
+        list_cls->giveAttr(md.ml_name, new BoxedMethodDescriptor(&md, list_cls));
+    }
+
     list_cls->freeze();
     list_cls->tp_iter = listIter;
 

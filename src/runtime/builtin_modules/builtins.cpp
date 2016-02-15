@@ -426,16 +426,43 @@ Box* notimplementedRepr(Box* self) {
     return boxString("NotImplemented");
 }
 
-Box* sorted(Box* obj, Box* cmp, Box* key, Box** args) {
-    Box* reverse = args[0];
+static PyObject* builtin_sorted(PyObject* self, PyObject* args, PyObject* kwds) {
+    PyObject* newlist, *v, *seq, * compare = NULL, * keyfunc = NULL, *newargs;
+    PyObject* callable;
+    static const char* kwlist[] = { "iterable", "cmp", "key", "reverse", 0 };
+    int reverse;
 
-    BoxedList* rtn = new BoxedList();
-    for (Box* e : obj->pyElements()) {
-        listAppendInternal(rtn, e);
+    /* args 1-4 should match listsort in Objects/listobject.c */
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O|OOi:sorted", const_cast<char**>(kwlist), &seq, &compare, &keyfunc,
+                                     &reverse))
+        return NULL;
+
+    newlist = PySequence_List(seq);
+    if (newlist == NULL)
+        return NULL;
+
+    callable = PyObject_GetAttrString(newlist, "sort");
+    if (callable == NULL) {
+        Py_DECREF(newlist);
+        return NULL;
     }
 
-    listSort(rtn, cmp, key, reverse);
-    return rtn;
+    newargs = PyTuple_GetSlice(args, 1, 4);
+    if (newargs == NULL) {
+        Py_DECREF(newlist);
+        Py_DECREF(callable);
+        return NULL;
+    }
+
+    v = PyObject_Call(callable, newargs, kwds);
+    Py_DECREF(newargs);
+    Py_DECREF(callable);
+    if (v == NULL) {
+        Py_DECREF(newlist);
+        return NULL;
+    }
+    Py_DECREF(v);
+    return newlist;
 }
 
 Box* isinstance_func(Box* obj, Box* cls) {
@@ -2009,13 +2036,13 @@ void setupBuiltins() {
     enumerate_cls->tp_iter = PyObject_SelfIter;
     builtins_module->giveAttr("enumerate", enumerate_cls);
 
-
-    FunctionMetadata* sorted_func
-        = new FunctionMetadata(4, false, false, ParamNames({ "", "cmp", "key", "reverse" }, "", ""));
-    sorted_func->addVersion((void*)sorted, LIST, { UNKNOWN, UNKNOWN, UNKNOWN, UNKNOWN });
-    builtins_module->giveAttr(
-        "sorted", new BoxedBuiltinFunctionOrMethod(sorted_func, "sorted", { None, None, False }, NULL, sorted_doc));
-
+    /*
+        FunctionMetadata* sorted_func
+            = new FunctionMetadata(4, false, false, ParamNames({ "", "cmp", "key", "reverse" }, "", ""));
+        sorted_func->addVersion((void*)sorted, LIST, { UNKNOWN, UNKNOWN, UNKNOWN, UNKNOWN });
+        builtins_module->giveAttr(
+            "sorted", new BoxedBuiltinFunctionOrMethod(sorted_func, "sorted", { None, None, False }, NULL, sorted_doc));
+    */
     builtins_module->giveAttr("True", True);
     builtins_module->giveAttr("False", False);
 
@@ -2139,6 +2166,7 @@ void setupBuiltins() {
 
     static PyMethodDef builtin_methods[] = {
         { "print", (PyCFunction)builtin_print, METH_VARARGS | METH_KEYWORDS, print_doc },
+        { "sorted", (PyCFunction)builtin_sorted, METH_VARARGS | METH_KEYWORDS, sorted_doc },
     };
     for (auto& md : builtin_methods) {
         builtins_module->giveAttr(md.ml_name, new BoxedCApiFunction(&md, builtins_module, boxString("__builtin__")));
