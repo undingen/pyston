@@ -1288,8 +1288,8 @@ void BoxedList::gcHandler(GCVisitor* v, Box* b) {
     BoxedList* l = (BoxedList*)b;
     int size = l->size;
     int capacity = l->capacity;
-    assert(capacity >= size);
-    if (capacity)
+    assert(capacity >= size || capacity == -1);
+    if (capacity != 0)
         v->visit(&l->elts);
     if (size)
         v->visitRange(&l->elts->elts[0], &l->elts->elts[size]);

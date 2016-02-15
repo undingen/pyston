@@ -2066,6 +2066,14 @@ listsort(PyListObject *self, PyObject *args, PyObject *kwds)
     PyObject *key, *value, *kvpair;
     static char *kwlist[] = {"cmp", "key", "reverse", 0};
 
+    // Pyston change:
+    static int registed_types = 0;
+    if (!registed_types) {
+        PyType_Ready(&cmpwrapper_type);
+        PyType_Ready(&sortwrapper_type);
+        registed_types = 1;
+    }
+
     assert(self != NULL);
     assert (PyList_Check(self));
     if (args != NULL) {
@@ -2086,6 +2094,9 @@ listsort(PyListObject *self, PyObject *args, PyObject *kwds)
             return NULL;
     } else
         Py_XINCREF(compare);
+
+    // Pyston change:
+    PyObject* tmp_list= PyList_GetSlice((PyObject*)self, 0, self->ob_size);
 
     /* The list is temporarily made empty, so that mutations performed
      * by comparison functions can't affect the slice of memory we're
