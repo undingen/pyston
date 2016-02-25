@@ -859,7 +859,7 @@ static Box* typeCallInner(CallRewriteArgs* rewrite_args, ArgPassSpec argspec, Bo
     }
 
     if (cls->tp_new != object_cls->tp_new && cls->tp_new != slot_tp_new && cls->tp_new != BaseException->tp_new
-        && cls->tp_new != type_cls->tp_new && S == CXX) {
+        && cls->tp_new != type_cls->tp_new && S == CXX && !cls->is_pyston_class) {
         // Looks like we're calling an extension class and we're not going to be able to
         // separately rewrite the new + init calls.  But we can rewrite the fact that we
         // should just call the cpython version, which will end up working pretty well.
