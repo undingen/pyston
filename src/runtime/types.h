@@ -1120,6 +1120,7 @@ public:
 Box* objectSetattr(Box* obj, Box* attr, Box* value);
 
 Box* unwrapAttrWrapper(Box* b);
+void convertAttrWrapperToPrivateDict(Box* b);
 Box* attrwrapperKeys(Box* b);
 void attrwrapperDel(Box* b, llvm::StringRef attr);
 BoxedDict* attrwrapperToDict(Box* b);

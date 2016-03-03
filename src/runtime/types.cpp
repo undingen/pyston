@@ -1428,14 +1428,19 @@ static Box* typeSubDict(Box* obj, void* context) {
 }
 
 void Box::setDictBacked(Box* val) {
+    if (val->cls == attrwrapper_cls && unwrapAttrWrapper(val) == this)
+        return;
+
     assert(this->cls->instancesHaveHCAttrs());
 
-    RELEASE_ASSERT(val->cls == dict_cls || val->cls == attrwrapper_cls, "");
+    RELEASE_ASSERT(PyDict_Check(val) || val->cls == attrwrapper_cls, "");
+
+    HCAttrs* hcattrs = this->getHCAttrsPtr();
+    if (hcattrs->hcls->type != HiddenClass::DICT_BACKED)
+        convertAttrWrapperToPrivateDict(getAttrWrapper());
 
     auto new_attr_list = (HCAttrs::AttrList*)gc_alloc(sizeof(HCAttrs::AttrList) + sizeof(Box*), gc::GCKind::PRECISE);
     new_attr_list->attrs[0] = val;
-
-    HCAttrs* hcattrs = this->getHCAttrsPtr();
 
     hcattrs->hcls = HiddenClass::dict_backed;
     hcattrs->attr_list = new_attr_list;
@@ -1449,16 +1454,7 @@ static void typeSubSetDict(Box* obj, Box* val, void* context) {
     }
 
     if (obj->cls->instancesHaveHCAttrs()) {
-        RELEASE_ASSERT(PyDict_Check(val) || val->cls == attrwrapper_cls, "%s", val->cls->tp_name);
-
-        auto new_attr_list
-            = (HCAttrs::AttrList*)gc_alloc(sizeof(HCAttrs::AttrList) + sizeof(Box*), gc::GCKind::PRECISE);
-        new_attr_list->attrs[0] = val;
-
-        HCAttrs* hcattrs = obj->getHCAttrsPtr();
-
-        hcattrs->hcls = HiddenClass::dict_backed;
-        hcattrs->attr_list = new_attr_list;
+        obj->setDictBacked(val);
         return;
     }
 
@@ -2294,7 +2290,9 @@ public:
 // or PyModule_GetDict to return real dicts.
 class AttrWrapper : public Box {
 private:
+    // we could merge this two fields together because the are not allowed to be set at the same time
     Box* b;
+    Box* dict;
 
     void convertToDictBacked() {
         HCAttrs* attrs = this->b->getHCAttrsPtr();
@@ -2311,15 +2309,24 @@ private:
         b->setDictBacked(d);
     }
 
-    bool isDictBacked() { return b->getHCAttrsPtr()->hcls->type == HiddenClass::DICT_BACKED; }
+    bool isDictBacked() {
+        if (dict)
+            return dict;
+
+        return b->getHCAttrsPtr()->hcls->type == HiddenClass::DICT_BACKED;
+    }
 
     Box* getDictBacking() {
+        if (dict)
+            return dict;
+
         assert(isDictBacked());
         return b->getHCAttrsPtr()->attr_list->attrs[0];
     }
 
+
 public:
-    AttrWrapper(Box* b) : b(b) {
+    AttrWrapper(Box* b) : b(b), dict(NULL) {
         assert(b->cls->instancesHaveHCAttrs());
 
         // We currently don't support creating an attrwrapper around a dict-backed object,
@@ -2335,11 +2342,20 @@ public:
 
     Box* getUnderlying() { return b; }
 
+    void convertToPrivateDict() {
+        RELEASE_ASSERT(!dict, "");
+        RELEASE_ASSERT(b, "");
+
+        dict = AttrWrapper::copy(this);
+        b = NULL;
+    }
+
     static void gcHandler(GCVisitor* v, Box* b) {
         Box::gcHandler(v, b);
 
         AttrWrapper* aw = (AttrWrapper*)b;
         v->visit(&aw->b);
+        v->visit(&aw->dict);
     }
 
     static Box* setitem(Box* _self, Box* _key, Box* value) {
@@ -2351,8 +2367,10 @@ public:
 
         if (self->isDictBacked()) {
             static BoxedString* setitem_str = internStringImmortal("__setitem__");
-            return callattrInternal<CXX, NOT_REWRITABLE>(self->getDictBacking(), setitem_str, LookupScope::CLASS_ONLY,
-                                                         NULL, ArgPassSpec(2), _key, value, NULL, NULL, NULL);
+            Box* tmp = self->getDictBacking();
+            assert(tmp != self);
+            return callattrInternal<CXX, NOT_REWRITABLE>(tmp, setitem_str, LookupScope::CLASS_ONLY, NULL,
+                                                         ArgPassSpec(2), _key, value, NULL, NULL, NULL);
         }
 
         assert(_key->cls == str_cls);
@@ -2408,7 +2426,16 @@ public:
         RELEASE_ASSERT(_self->cls == attrwrapper_cls, "");
         AttrWrapper* self = static_cast<AttrWrapper*>(_self);
 
-        _key = coerceUnicodeToStr<CXX>(_key);
+        if (_key->cls != str_cls)
+            self->convertToDictBacked();
+
+        if (self->isDictBacked()) {
+            static BoxedString* get_str = internStringImmortal("get");
+            Box* tmp = self->getDictBacking();
+            assert(tmp != self);
+            return callattrInternal<CXX, NOT_REWRITABLE>(tmp, get_str, LookupScope::CLASS_ONLY, NULL, ArgPassSpec(2),
+                                                         _key, def, NULL, NULL, NULL);
+        }
 
         RELEASE_ASSERT(_key->cls == str_cls, "");
         BoxedString* key = static_cast<BoxedString*>(_key);
@@ -2424,9 +2451,16 @@ public:
         RELEASE_ASSERT(_self->cls == attrwrapper_cls, "");
         AttrWrapper* self = static_cast<AttrWrapper*>(_self);
 
-        _key = coerceUnicodeToStr<S>(_key);
-        if (S == CAPI && !_key)
-            return NULL;
+        if (_key->cls != str_cls)
+            self->convertToDictBacked();
+
+        if (self->isDictBacked()) {
+            static BoxedString* getitem_str = internStringImmortal("__getitem__");
+            Box* tmp = self->getDictBacking();
+            assert(tmp != self);
+            return callattrInternal<S, NOT_REWRITABLE>(tmp, getitem_str, LookupScope::CLASS_ONLY, NULL, ArgPassSpec(1),
+                                                       _key, NULL, NULL, NULL, NULL);
+        }
 
         RELEASE_ASSERT(_key->cls == str_cls, "");
         BoxedString* key = static_cast<BoxedString*>(_key);
@@ -2446,7 +2480,16 @@ public:
         RELEASE_ASSERT(_self->cls == attrwrapper_cls, "");
         AttrWrapper* self = static_cast<AttrWrapper*>(_self);
 
-        _key = coerceUnicodeToStr<CXX>(_key);
+        if (_key->cls != str_cls)
+            self->convertToDictBacked();
+
+        if (self->isDictBacked()) {
+            static BoxedString* pop_str = internStringImmortal("pop");
+            Box* tmp = self->getDictBacking();
+            assert(tmp != self);
+            return callattrInternal<CXX, NOT_REWRITABLE>(tmp, pop_str, LookupScope::CLASS_ONLY, NULL, ArgPassSpec(2),
+                                                       _key, default_, NULL, NULL, NULL);
+        }
 
         RELEASE_ASSERT(_key->cls == str_cls, "");
         BoxedString* key = static_cast<BoxedString*>(_key);
@@ -2467,7 +2510,16 @@ public:
         RELEASE_ASSERT(_self->cls == attrwrapper_cls, "");
         AttrWrapper* self = static_cast<AttrWrapper*>(_self);
 
-        _key = coerceUnicodeToStr<CXX>(_key);
+        if (_key->cls != str_cls)
+            self->convertToDictBacked();
+
+        if (self->isDictBacked()) {
+            static BoxedString* delitem_str = internStringImmortal("__delitem__");
+            Box* tmp = self->getDictBacking();
+            assert(tmp != self);
+            return callattrInternal<CXX, NOT_REWRITABLE>(tmp, delitem_str, LookupScope::CLASS_ONLY, NULL, ArgPassSpec(1),
+                                                       _key, NULL, NULL, NULL, NULL);
+        }
 
         RELEASE_ASSERT(_key->cls == str_cls, "");
         BoxedString* key = static_cast<BoxedString*>(_key);
@@ -2484,12 +2536,18 @@ public:
         RELEASE_ASSERT(_self->cls == attrwrapper_cls, "");
         AttrWrapper* self = static_cast<AttrWrapper*>(_self);
 
+        if (self->isDictBacked()) {
+            static BoxedString* repr_str = internStringImmortal("__repr__");
+            Box* tmp = self->getDictBacking();
+            assert(tmp != self);
+            return callattrInternal<CXX, NOT_REWRITABLE>(tmp, repr_str, LookupScope::CLASS_ONLY, NULL, ArgPassSpec(0),
+                                                       NULL, NULL, NULL, NULL, NULL);
+        }
+
         std::string O("");
         llvm::raw_string_ostream os(O);
-
-        os << "attrwrapper({";
-
         HCAttrs* attrs = self->b->getHCAttrsPtr();
+        os << "attrwrapper({";
         RELEASE_ASSERT(attrs->hcls->type == HiddenClass::NORMAL || attrs->hcls->type == HiddenClass::SINGLETON, "");
         bool first = true;
         for (const auto& p : attrs->hcls->getStrAttrOffsets()) {
@@ -2508,9 +2566,16 @@ public:
         RELEASE_ASSERT(_self->cls == attrwrapper_cls, "");
         AttrWrapper* self = static_cast<AttrWrapper*>(_self);
 
-        _key = coerceUnicodeToStr<S>(_key);
-        if (S == CAPI && !_key)
-            return NULL;
+        if (_key->cls != str_cls)
+            self->convertToDictBacked();
+
+        if (self->isDictBacked()) {
+            static BoxedString* contains_str = internStringImmortal("__contains__");
+            Box* tmp = self->getDictBacking();
+            assert(tmp != self);
+            return callattrInternal<S, NOT_REWRITABLE>(tmp, contains_str, LookupScope::CLASS_ONLY, NULL, ArgPassSpec(1),
+                                                       _key, NULL, NULL, NULL, NULL);
+        }
 
         RELEASE_ASSERT(_key->cls == str_cls, "");
         BoxedString* key = static_cast<BoxedString*>(_key);
@@ -2537,6 +2602,15 @@ public:
         RELEASE_ASSERT(_self->cls == attrwrapper_cls, "");
         AttrWrapper* self = static_cast<AttrWrapper*>(_self);
 
+        if (self->isDictBacked()) {
+            static BoxedString* keys_str = internStringImmortal("keys");
+            Box* tmp = self->getDictBacking();
+            assert(tmp != self);
+            return callattrInternal<CXX, NOT_REWRITABLE>(tmp, keys_str, LookupScope::CLASS_ONLY, NULL, ArgPassSpec(0),
+                                                       NULL, NULL, NULL, NULL, NULL);
+        }
+
+
         BoxedList* rtn = new BoxedList();
 
         HCAttrs* attrs = self->b->getHCAttrsPtr();
@@ -2551,6 +2625,14 @@ public:
         RELEASE_ASSERT(_self->cls == attrwrapper_cls, "");
         AttrWrapper* self = static_cast<AttrWrapper*>(_self);
 
+        if (self->isDictBacked()) {
+            static BoxedString* values_str = internStringImmortal("values");
+            Box* tmp = self->getDictBacking();
+            assert(tmp != self);
+            return callattrInternal<CXX, NOT_REWRITABLE>(tmp, values_str, LookupScope::CLASS_ONLY, NULL, ArgPassSpec(0),
+                                                       NULL, NULL, NULL, NULL, NULL);
+        }
+
         BoxedList* rtn = new BoxedList();
 
         HCAttrs* attrs = self->b->getHCAttrsPtr();
@@ -2564,6 +2646,14 @@ public:
     static Box* items(Box* _self) {
         RELEASE_ASSERT(_self->cls == attrwrapper_cls, "");
         AttrWrapper* self = static_cast<AttrWrapper*>(_self);
+
+        if (self->isDictBacked()) {
+            static BoxedString* items_str = internStringImmortal("items");
+            Box* tmp = self->getDictBacking();
+            assert(tmp != self);
+            return callattrInternal<CXX, NOT_REWRITABLE>(tmp, items_str, LookupScope::CLASS_ONLY, NULL, ArgPassSpec(0),
+                                                       NULL, NULL, NULL, NULL, NULL);
+        }
 
         BoxedList* rtn = new BoxedList();
 
@@ -2595,6 +2685,12 @@ public:
         RELEASE_ASSERT(_self->cls == attrwrapper_cls, "");
         AttrWrapper* self = static_cast<AttrWrapper*>(_self);
 
+        if (self->isDictBacked()) {
+            static BoxedString* copy_str = internStringImmortal("copy");
+            return callattrInternal<CXX, NOT_REWRITABLE>(self->getDictBacking(), copy_str, LookupScope::CLASS_ONLY,
+                                                         NULL, ArgPassSpec(0), NULL, NULL, NULL, NULL, NULL);
+        }
+
         BoxedDict* rtn = new BoxedDict();
 
         HCAttrs* attrs = self->b->getHCAttrsPtr();
@@ -2608,6 +2704,12 @@ public:
     static Box* clear(Box* _self) {
         RELEASE_ASSERT(_self->cls == attrwrapper_cls, "");
         AttrWrapper* self = static_cast<AttrWrapper*>(_self);
+
+        if (self->isDictBacked()) {
+            static BoxedString* clear_str = internStringImmortal("clear");
+            return callattrInternal<CXX, NOT_REWRITABLE>(self->getDictBacking(), clear_str, LookupScope::CLASS_ONLY,
+                                                         NULL, ArgPassSpec(0), NULL, NULL, NULL, NULL, NULL);
+        }
 
         HCAttrs* attrs = self->b->getHCAttrsPtr();
         RELEASE_ASSERT(attrs->hcls->type == HiddenClass::NORMAL || attrs->hcls->type == HiddenClass::SINGLETON, "");
@@ -2625,6 +2727,12 @@ public:
         RELEASE_ASSERT(_self->cls == attrwrapper_cls, "");
         AttrWrapper* self = static_cast<AttrWrapper*>(_self);
 
+        if (self->isDictBacked()) {
+            static BoxedString* len_str = internStringImmortal("__len__");
+            return callattrInternal<CXX, NOT_REWRITABLE>(self->getDictBacking(), len_str, LookupScope::CLASS_ONLY, NULL,
+                                                         ArgPassSpec(0), NULL, NULL, NULL, NULL, NULL);
+        }
+
         HCAttrs* attrs = self->b->getHCAttrsPtr();
         RELEASE_ASSERT(attrs->hcls->type == HiddenClass::NORMAL || attrs->hcls->type == HiddenClass::SINGLETON, "");
         return boxInt(attrs->hcls->getStrAttrOffsets().size());
@@ -2638,6 +2746,12 @@ public:
         assert(!kwargs || kwargs->cls == dict_cls);
 
         RELEASE_ASSERT(args->size() <= 1, ""); // should throw a TypeError
+
+        if (self->isDictBacked()) {
+            static BoxedString* update_str = internStringImmortal("update");
+            return callattrInternal<CXX, NOT_REWRITABLE>(self->getDictBacking(), update_str, LookupScope::CLASS_ONLY, NULL,
+                                                         ArgPassSpec(0, 0, true, true), args, kwargs, NULL, NULL, NULL);
+        }
 
         auto handle = [&](Box* _container) {
             if (_container->cls == attrwrapper_cls) {
@@ -2783,6 +2897,11 @@ extern "C" PyObject* PyObject_GetAttrWrapper(PyObject* obj) noexcept {
 Box* unwrapAttrWrapper(Box* b) {
     assert(b->cls == attrwrapper_cls);
     return static_cast<AttrWrapper*>(b)->getUnderlying();
+}
+
+void convertAttrWrapperToPrivateDict(Box* b) {
+    RELEASE_ASSERT(b->cls == attrwrapper_cls, "");
+    static_cast<AttrWrapper*>(b)->convertToPrivateDict();
 }
 
 Box* attrwrapperKeys(Box* b) {
