@@ -1430,12 +1430,17 @@ static Box* typeSubDict(Box* obj, void* context) {
 void Box::setDictBacked(Box* val) {
     assert(this->cls->instancesHaveHCAttrs());
 
-    RELEASE_ASSERT(val->cls == dict_cls || val->cls == attrwrapper_cls, "");
+    RELEASE_ASSERT(PyDict_Check(val) || val->cls == attrwrapper_cls, "");
+
+    HCAttrs* hcattrs = this->getHCAttrsPtr();
+    if (hcattrs->hcls->type != HiddenClass::DICT_BACKED) {
+        BoxedDict* olddict = (BoxedDict*)getAttrWrapper();
+        olddict->convertToDict();
+    }
+
 
     auto new_attr_list = (HCAttrs::AttrList*)gc_alloc(sizeof(HCAttrs::AttrList) + sizeof(Box*), gc::GCKind::PRECISE);
     new_attr_list->attrs[0] = val;
-
-    HCAttrs* hcattrs = this->getHCAttrsPtr();
 
     hcattrs->hcls = HiddenClass::dict_backed;
     hcattrs->attr_list = new_attr_list;
@@ -1449,16 +1454,7 @@ static void typeSubSetDict(Box* obj, Box* val, void* context) {
     }
 
     if (obj->cls->instancesHaveHCAttrs()) {
-        RELEASE_ASSERT(PyDict_Check(val) || val->cls == attrwrapper_cls, "%s", val->cls->tp_name);
-
-        auto new_attr_list
-            = (HCAttrs::AttrList*)gc_alloc(sizeof(HCAttrs::AttrList) + sizeof(Box*), gc::GCKind::PRECISE);
-        new_attr_list->attrs[0] = val;
-
-        HCAttrs* hcattrs = obj->getHCAttrsPtr();
-
-        hcattrs->hcls = HiddenClass::dict_backed;
-        hcattrs->attr_list = new_attr_list;
+        obj->setDictBacked(val);
         return;
     }
 
@@ -2320,6 +2316,7 @@ private:
 
 public:
     AttrWrapper(Box* b) : b(b) {
+        RELEASE_ASSERT(0, "");
         assert(b->cls->instancesHaveHCAttrs());
 
         // We currently don't support creating an attrwrapper around a dict-backed object,
@@ -2760,7 +2757,9 @@ Box* Box::getAttrWrapper() {
 
     int offset = hcls->getAttrwrapperOffset();
     if (offset == -1) {
-        Box* aw = new AttrWrapper(this);
+        BoxedDict* aw = new BoxedDict();
+        aw->b = this;
+        // Box* aw = new AttrWrapper(this);
         if (hcls->type == HiddenClass::NORMAL) {
             auto new_hcls = hcls->getAttrwrapperChild();
             appendNewHCAttr(aw, NULL);
@@ -4307,7 +4306,7 @@ BoxedModule* createModule(BoxedString* name, const char* fn, const char* doc) {
     } else {
         module = new BoxedModule();
         moduleInit(module, name, boxString(doc ? doc : ""));
-        d->d[name] = module;
+        PyDict_SetItem(d, name, module);
     }
 
     if (fn)

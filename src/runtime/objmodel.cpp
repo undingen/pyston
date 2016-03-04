@@ -751,12 +751,7 @@ template <Rewritable rewritable> Box* Box::getattr(BoxedString* attr, GetattrRew
             REWRITE_ABORTED("");
 
         BoxedDict* d = getDict();
-
-        auto it = d->d.find(attr);
-        if (it == d->d.end()) {
-            return NULL;
-        }
-        return it->second;
+        return d->getOrNull(attr);
     }
 
     if (rewrite_args)
@@ -916,7 +911,7 @@ void Box::setattr(BoxedString* attr, Box* val, SetattrRewriteArgs* rewrite_args)
 
     if (cls->instancesHaveDictAttrs()) {
         BoxedDict* d = getDict();
-        d->d[attr] = val;
+        PyDict_SetItem(d, attr, val);
         return;
     }
 
@@ -5590,7 +5585,7 @@ void Box::delattr(BoxedString* attr, DelattrRewriteArgs* rewrite_args) {
 
     if (cls->instancesHaveDictAttrs()) {
         BoxedDict* d = getDict();
-        d->d.erase(attr);
+        PyDict_DelItem(d, attr);
         return;
     }
 
@@ -6168,10 +6163,10 @@ extern "C" void delGlobal(Box* globals, BoxedString* name) {
         assert(globals->cls == dict_cls);
         BoxedDict* d = static_cast<BoxedDict*>(globals);
 
-        auto it = d->d.find(name);
+        Box* r = d->getOrNull(name);
         assert(name->data()[name->size()] == '\0');
-        assertNameDefined(it != d->d.end(), name->data(), NameError, false /* local_var_msg */);
-        d->d.erase(it);
+        assertNameDefined(r, name->data(), NameError, false /* local_var_msg */);
+        PyDict_DelItem(r, (name));
     }
 }
 
@@ -6234,10 +6229,9 @@ extern "C" Box* getGlobal(Box* globals, BoxedString* name) {
             rewriter.reset(NULL);
             REWRITE_ABORTED("Rewriting not implemented for getGlobals with a dict globals yet");
 
-            auto it = d->d.find(name);
-            if (it != d->d.end()) {
-                return it->second;
-            }
+            Box* rtn = d->getOrNull(name);
+            if (rtn)
+                return rtn;
         }
 
         static StatCounter stat_builtins("getglobal_builtins");
@@ -6280,11 +6274,7 @@ Box* getFromGlobals(Box* globals, BoxedString* name) {
     if (globals->cls == module_cls) {
         return globals->getattr(name);
     } else if (globals->cls == dict_cls) {
-        auto d = static_cast<BoxedDict*>(globals)->d;
-        auto it = d.find(name);
-        if (it != d.end())
-            return it->second;
-        return NULL;
+        return static_cast<BoxedDict*>(globals)->getOrNull(name);
     } else {
         RELEASE_ASSERT(0, "%s", globals->cls->tp_name);
     }
@@ -6300,7 +6290,7 @@ extern "C" void setGlobal(Box* globals, BoxedString* name, Box* value) {
         setattr(static_cast<BoxedModule*>(globals), name, value);
     } else {
         RELEASE_ASSERT(globals->cls == dict_cls, "%s", globals->cls->tp_name);
-        static_cast<BoxedDict*>(globals)->d[name] = value;
+        PyDict_SetItem(globals, name, value);
     }
 }
 
@@ -6379,12 +6369,9 @@ extern "C" Box* boxedLocalsGet(Box* boxedLocals, BoxedString* attr, Box* globals
     assert(boxedLocals != NULL);
 
     if (boxedLocals->cls == dict_cls) {
-        auto& d = static_cast<BoxedDict*>(boxedLocals)->d;
-        auto it = d.find(attr);
-        if (it != d.end()) {
-            Box* value = it->second;
+        Box* value = static_cast<BoxedDict*>(boxedLocals)->getOrNull(attr);
+        if (value)
             return value;
-        }
     } else {
         try {
             return getitem(boxedLocals, attr);
@@ -6402,15 +6389,16 @@ extern "C" Box* boxedLocalsGet(Box* boxedLocals, BoxedString* attr, Box* globals
     return getGlobal(globals, attr);
 }
 
-extern "C" void boxedLocalsDel(Box* boxedLocals, BoxedString* attr) {
-    assert(boxedLocals != NULL);
-    RELEASE_ASSERT(boxedLocals->cls == dict_cls, "we don't support non-dict here yet");
-    auto& d = static_cast<BoxedDict*>(boxedLocals)->d;
-    auto it = d.find(attr);
-    if (it == d.end()) {
+extern "C" void boxedLocalsDel(Box* _boxedLocals, BoxedString* attr) {
+    assert(_boxedLocals != NULL);
+    RELEASE_ASSERT(_boxedLocals->cls == dict_cls, "we don't support non-dict here yet");
+    BoxedDict* boxedLocals = (BoxedDict*)_boxedLocals;
+
+    Box* value = boxedLocals->getOrNull(attr);
+    if (!value) {
         assert(attr->data()[attr->size()] == '\0');
         assertNameDefined(0, attr->data(), NameError, false /* local_var_msg */);
     }
-    d.erase(it);
+    PyDict_DelItem(boxedLocals, attr);
 }
 }

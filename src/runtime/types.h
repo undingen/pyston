@@ -771,17 +771,14 @@ public:
                              /* MinSize= */ 8> DictMap;
 
     DictMap d;
+    Box* b;
 
-    BoxedDict() __attribute__((visibility("default"))) {}
+    BoxedDict() __attribute__((visibility("default"))) : b(NULL) {}
 
     DEFAULT_CLASS_SIMPLE(dict_cls);
 
-    Box* getOrNull(Box* k) {
-        const auto& p = d.find(BoxAndHash(k));
-        if (p != d.end())
-            return p->second;
-        return NULL;
-    }
+    Box* getOrNull(Box* k);
+    void convertToDict();
 
     class iterator {
     private:
@@ -800,8 +797,14 @@ public:
         Box* first() const { return it->first.value; }
     };
 
-    iterator begin() { return iterator(d.begin()); }
-    iterator end() { return iterator(d.end()); }
+    iterator begin() {
+        RELEASE_ASSERT(!b, "");
+        return iterator(d.begin());
+    }
+    iterator end() {
+        RELEASE_ASSERT(!b, "");
+        return iterator(d.end());
+    }
 
     static void gcHandler(GCVisitor* v, Box* b);
     static void dealloc(Box* b) noexcept;

@@ -34,7 +34,7 @@ namespace pyston {
 
 static void removeModule(BoxedString* name) {
     BoxedDict* d = getSysModulesDict();
-    d->d.erase(name);
+    PyDict_DelItem(d, name);
 }
 
 extern "C" PyObject* PyImport_GetModuleDict(void) noexcept {
@@ -221,7 +221,7 @@ BoxedModule* importCExtension(BoxedString* full_name, const std::string& last_na
     checkAndThrowCAPIException();
 
     BoxedDict* sys_modules = getSysModulesDict();
-    Box* _m = sys_modules->d[full_name];
+    Box* _m = sys_modules->getOrNull(full_name);
     RELEASE_ASSERT(_m, "dynamic module not initialized properly");
     assert(_m->cls == module_cls);
 

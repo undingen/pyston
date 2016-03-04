@@ -619,7 +619,7 @@ class BoxedString;
 class Box {
 private:
     BoxedDict** getDictPtr();
-
+public:
     // Appends a new value to the hcattrs array.
     void appendNewHCAttr(Box* val, SetattrRewriteArgs* rewrite_args);
 
@@ -671,6 +671,7 @@ public:
     Box* hasnextOrNullIC();
 
     friend class AttrWrapper;
+    friend class BoxedDict;
 
     static void gcHandler(GCVisitor* v, Box* b);
 };
