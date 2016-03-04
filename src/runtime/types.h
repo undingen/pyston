@@ -782,29 +782,49 @@ public:
 
     class iterator {
     private:
+        BoxedDict* d;
+        typedef llvm::DenseMap<BoxedString*, int>::const_iterator BoxIterator;
         DictMap::iterator it;
+        BoxIterator it_box;
 
     public:
-        iterator(DictMap::iterator it) : it(std::move(it)) {}
+        iterator(BoxedDict* d, DictMap::iterator it) : d(d), it(std::move(it)) {}
+        iterator(BoxedDict* d, BoxIterator it_box) : d(d), it_box(std::move(it_box)) {}
 
-        bool operator!=(const iterator& rhs) const { return it != rhs.it; }
-        bool operator==(const iterator& rhs) const { return it == rhs.it; }
+        bool operator!=(const iterator& rhs) const {
+            if (d->b)
+                return it_box != rhs.it_box;
+            return it != rhs.it;
+        }
+        bool operator==(const iterator& rhs) const {
+            if (d->b)
+                return it_box == rhs.it_box;
+            return it == rhs.it;
+        }
         iterator& operator++() {
-            ++it;
+            if (d->b)
+                ++it_box;
+            else
+                ++it;
             return *this;
         }
-        std::pair<Box*, Box*> operator*() const { return std::make_pair(it->first.value, it->second); }
-        Box* first() const { return it->first.value; }
+        std::pair<Box*, Box*> operator*() const { return std::make_pair(first(), second()); }
+        Box* first() const {
+            if (d->b)
+                return it_box->first;
+            return it->first.value;
+        }
+        Box* second() const {
+            if (d->b) {
+                HCAttrs* attrs = d->b->getHCAttrsPtr();
+                return attrs->attr_list->attrs[it_box->second];
+            }
+            return it->second;
+        }
     };
 
-    iterator begin() {
-        RELEASE_ASSERT(!b, "");
-        return iterator(d.begin());
-    }
-    iterator end() {
-        RELEASE_ASSERT(!b, "");
-        return iterator(d.end());
-    }
+    iterator begin();
+    iterator end();
 
     static void gcHandler(GCVisitor* v, Box* b);
     static void dealloc(Box* b) noexcept;

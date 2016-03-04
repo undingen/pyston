@@ -831,6 +831,23 @@ extern "C" Box* dictInit(BoxedDict* self, BoxedTuple* args, BoxedDict* kwargs) {
     return None;
 }
 
+BoxedDict::iterator BoxedDict::begin() {
+    if (b) {
+        HCAttrs* attrs = b->getHCAttrsPtr();
+        RELEASE_ASSERT(attrs->hcls->type == HiddenClass::NORMAL || attrs->hcls->type == HiddenClass::SINGLETON, "");
+        return BoxedDict::iterator(this, attrs->hcls->getStrAttrOffsets().begin());
+    }
+    return BoxedDict::iterator(this, d.begin());
+}
+BoxedDict::iterator BoxedDict::end() {
+    if (b) {
+        HCAttrs* attrs = b->getHCAttrsPtr();
+        RELEASE_ASSERT(attrs->hcls->type == HiddenClass::NORMAL || attrs->hcls->type == HiddenClass::SINGLETON, "");
+        return iterator(this, attrs->hcls->getStrAttrOffsets().end());
+    }
+    return BoxedDict::iterator(this, d.end());
+}
+
 void BoxedDict::gcHandler(GCVisitor* v, Box* b) {
     assert(PyDict_Check(b));
 
