@@ -1369,7 +1369,7 @@ static Box* typeCallInner(CallRewriteArgs* rewrite_args, ArgPassSpec argspec, Bo
 Box* typeCall(Box* obj, BoxedTuple* vararg, BoxedDict* kwargs) {
     assert(vararg->cls == tuple_cls);
 
-    bool pass_kwargs = (kwargs && kwargs->d.size());
+    bool pass_kwargs = (kwargs && PyDict_Size(kwargs));
 
     int n = vararg->size();
     int args_to_pass = n + 1 + (pass_kwargs ? 1 : 0); // 1 for obj, 1 for kwargs
@@ -1430,12 +1430,17 @@ static Box* typeSubDict(Box* obj, void* context) {
 void Box::setDictBacked(Box* val) {
     assert(this->cls->instancesHaveHCAttrs());
 
-    RELEASE_ASSERT(val->cls == dict_cls || val->cls == attrwrapper_cls, "");
+    RELEASE_ASSERT(PyDict_Check(val) || val->cls == attrwrapper_cls, "");
+
+    HCAttrs* hcattrs = this->getHCAttrsPtr();
+    if (hcattrs->hcls->type != HiddenClass::DICT_BACKED) {
+        BoxedDict* olddict = (BoxedDict*)getAttrWrapper();
+        olddict->convertToDict();
+    }
+
 
     auto new_attr_list = (HCAttrs::AttrList*)gc_alloc(sizeof(HCAttrs::AttrList) + sizeof(Box*), gc::GCKind::PRECISE);
     new_attr_list->attrs[0] = val;
-
-    HCAttrs* hcattrs = this->getHCAttrsPtr();
 
     hcattrs->hcls = HiddenClass::dict_backed;
     hcattrs->attr_list = new_attr_list;
@@ -1449,16 +1454,7 @@ static void typeSubSetDict(Box* obj, Box* val, void* context) {
     }
 
     if (obj->cls->instancesHaveHCAttrs()) {
-        RELEASE_ASSERT(PyDict_Check(val) || val->cls == attrwrapper_cls, "%s", val->cls->tp_name);
-
-        auto new_attr_list
-            = (HCAttrs::AttrList*)gc_alloc(sizeof(HCAttrs::AttrList) + sizeof(Box*), gc::GCKind::PRECISE);
-        new_attr_list->attrs[0] = val;
-
-        HCAttrs* hcattrs = obj->getHCAttrsPtr();
-
-        hcattrs->hcls = HiddenClass::dict_backed;
-        hcattrs->attr_list = new_attr_list;
+        obj->setDictBacked(val);
         return;
     }
 
@@ -2305,7 +2301,7 @@ private:
 
         RELEASE_ASSERT(attrs->hcls->type == HiddenClass::NORMAL || attrs->hcls->type == HiddenClass::SINGLETON, "");
         for (const auto& p : attrs->hcls->getStrAttrOffsets()) {
-            d->d[p.first] = attrs->attr_list->attrs[p.second];
+            // d->d[p.first] = attrs->attr_list->attrs[p.second];
         }
 
         b->setDictBacked(d);
@@ -2320,6 +2316,7 @@ private:
 
 public:
     AttrWrapper(Box* b) : b(b) {
+        RELEASE_ASSERT(0, "");
         assert(b->cls->instancesHaveHCAttrs());
 
         // We currently don't support creating an attrwrapper around a dict-backed object,
@@ -2600,7 +2597,7 @@ public:
         HCAttrs* attrs = self->b->getHCAttrsPtr();
         RELEASE_ASSERT(attrs->hcls->type == HiddenClass::NORMAL || attrs->hcls->type == HiddenClass::SINGLETON, "");
         for (const auto& p : attrs->hcls->getStrAttrOffsets()) {
-            rtn->d[p.first] = attrs->attr_list->attrs[p.second];
+            // rtn->d[p.first] = attrs->attr_list->attrs[p.second];
         }
         return rtn;
     }
@@ -2615,7 +2612,7 @@ public:
         // Clear the attrs array:
         new ((void*)attrs) HCAttrs(root_hcls);
         // Add the existing attrwrapper object (ie self) back as the attrwrapper:
-        self->b->appendNewHCAttr(self, NULL);
+        self->b->getHCAttrsPtr()->appendNewHCAttr(self);
         attrs->hcls = attrs->hcls->getAttrwrapperChild();
 
         return None;
@@ -2760,15 +2757,15 @@ Box* Box::getAttrWrapper() {
 
     int offset = hcls->getAttrwrapperOffset();
     if (offset == -1) {
-        Box* aw = new AttrWrapper(this);
+        BoxedDict* aw = BoxedDict::createAttrWrapper(this);
         if (hcls->type == HiddenClass::NORMAL) {
             auto new_hcls = hcls->getAttrwrapperChild();
-            appendNewHCAttr(aw, NULL);
+            attrs->appendNewHCAttr(aw);
             attrs->hcls = new_hcls;
             return aw;
         } else {
             assert(hcls->type == HiddenClass::SINGLETON);
-            appendNewHCAttr(aw, NULL);
+            attrs->appendNewHCAttr(aw);
             hcls->appendAttrwrapper();
             return aw;
         }
@@ -4307,7 +4304,7 @@ BoxedModule* createModule(BoxedString* name, const char* fn, const char* doc) {
     } else {
         module = new BoxedModule();
         moduleInit(module, name, boxString(doc ? doc : ""));
-        d->d[name] = module;
+        PyDict_SetItem(d, name, module);
     }
 
     if (fn)

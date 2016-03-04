@@ -23,8 +23,8 @@ namespace pyston {
 class BoxedDictIterator : public Box {
 public:
     BoxedDict* d;
-    BoxedDict::DictMap::iterator it;
-    const BoxedDict::DictMap::iterator itEnd;
+    BoxedDict::iterator it;
+    const BoxedDict::iterator itEnd;
 
     BoxedDictIterator(BoxedDict* d);
 

@@ -853,7 +853,7 @@ DeoptState getDeoptState() {
                     continue;
 
                 ASSERT(gc::isValidGCObject(v), "%p", v);
-                d->d[p.first.getBox()] = v;
+                PyDict_SetItem(d, p.first.getBox(), v);
             }
 
             for (const auto& p : cf->location_map->names) {
@@ -877,7 +877,7 @@ DeoptState getDeoptState() {
                     Box* v = e->type->deserializeFromFrame(vals);
                     // printf("%s: (pp id %ld) %p\n", p.first().c_str(), e._debug_pp_id, v);
                     ASSERT(gc::isValidGCObject(v), "%p", v);
-                    d->d[boxString(p.first())] = v;
+                    PyDict_SetItem(d, boxString(p.first()), v);
                 }
             }
         } else {
@@ -901,12 +901,13 @@ Box* fastLocalsToBoxedLocals() {
 
 static BoxedDict* localsForFrame(Box** vregs, CFG* cfg) {
     BoxedDict* rtn = new BoxedDict();
-    rtn->d.grow(cfg->sym_vreg_map_user_visible.size());
+    // rtn->d.grow(cfg->sym_vreg_map_user_visible.size());
     for (auto& l : cfg->sym_vreg_map_user_visible) {
         Box* val = vregs[l.second];
         if (val) {
             assert(gc::isValidGCObject(val));
-            rtn->d[l.first.getBox()] = val;
+            // rtn->d[l.first.getBox()] = val;
+            PyDict_SetItem(rtn, l.first.getBox(), val);
         }
     }
     return rtn;
@@ -943,9 +944,9 @@ Box* FrameInfo::updateBoxedLocals() {
         Box* val = closure->elts[derefInfo.offset];
         Box* boxedName = name.getBox();
         if (val != NULL) {
-            d->d[boxedName] = val;
+            PyDict_SetItem(d, boxedName, val);
         } else {
-            d->d.erase(boxedName);
+            PyDict_DelItem(d, boxedName);
         }
     }
 
@@ -961,9 +962,7 @@ Box* FrameInfo::updateBoxedLocals() {
     // access to and delete them from the locals dict
     if (frame_info->boxedLocals->cls == dict_cls) {
         BoxedDict* boxed_locals = (BoxedDict*)frame_info->boxedLocals;
-        for (auto&& new_elem : d->d) {
-            boxed_locals->d[new_elem.first] = new_elem.second;
-        }
+        PyDict_Update(boxed_locals, d);
     } else {
         for (const auto& p : *d) {
             Box* varname = p.first;

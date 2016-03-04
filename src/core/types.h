@@ -603,6 +603,12 @@ public:
     AttrList* attr_list;
 
     HCAttrs(HiddenClass* hcls = root_hcls) : hcls(hcls), attr_list(nullptr) {}
+
+    // Appends a new value to the hcattrs array.
+    void appendNewHCAttr(Box* val, SetattrRewriteArgs* rewrite_args, int attrs_offset);
+    void appendNewHCAttr(Box* val) {
+        appendNewHCAttr(val, NULL, 0);
+    }
 };
 static_assert(sizeof(HCAttrs) == sizeof(struct _hcattrs), "");
 
@@ -619,9 +625,6 @@ class BoxedString;
 class Box {
 private:
     BoxedDict** getDictPtr();
-
-    // Appends a new value to the hcattrs array.
-    void appendNewHCAttr(Box* val, SetattrRewriteArgs* rewrite_args);
 
 public:
     // Add a no-op constructor to make sure that we don't zero-initialize cls
@@ -671,6 +674,7 @@ public:
     Box* hasnextOrNullIC();
 
     friend class AttrWrapper;
+    friend class BoxedDict;
 
     static void gcHandler(GCVisitor* v, Box* b);
 };

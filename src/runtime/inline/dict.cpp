@@ -19,7 +19,7 @@
 
 namespace pyston {
 
-BoxedDictIterator::BoxedDictIterator(BoxedDict* d) : d(d), it(d->d.begin()), itEnd(d->d.end()) {
+BoxedDictIterator::BoxedDictIterator(BoxedDict* d) : d(d), it(d->begin()), itEnd(d->end()) {
 }
 
 Box* dict_iter(Box* s) noexcept {
@@ -66,11 +66,11 @@ Box* dictiter_next(Box* s) noexcept {
 
     Box* rtn = nullptr;
     if (self->cls == &PyDictIterKey_Type) {
-        rtn = self->it->first.value;
+        rtn = self->it.first();
     } else if (self->cls == &PyDictIterValue_Type) {
-        rtn = self->it->second;
+        rtn = self->it.second();
     } else if (self->cls == &PyDictIterItem_Type) {
-        rtn = BoxedTuple::create({ self->it->first.value, self->it->second });
+        rtn = BoxedTuple::create({ self->it.first(), self->it.second() });
     } else {
         RELEASE_ASSERT(0, "");
     }

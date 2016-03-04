@@ -751,12 +751,7 @@ template <Rewritable rewritable> Box* Box::getattr(BoxedString* attr, GetattrRew
             REWRITE_ABORTED("");
 
         BoxedDict* d = getDict();
-
-        auto it = d->d.find(attr);
-        if (it == d->d.end()) {
-            return NULL;
-        }
-        return it->second;
+        return d->getOrNull(attr);
     }
 
     if (rewrite_args)
@@ -767,9 +762,8 @@ template <Rewritable rewritable> Box* Box::getattr(BoxedString* attr, GetattrRew
 template Box* Box::getattr<REWRITABLE>(BoxedString*, GetattrRewriteArgs*);
 template Box* Box::getattr<NOT_REWRITABLE>(BoxedString*, GetattrRewriteArgs*);
 
-void Box::appendNewHCAttr(Box* new_attr, SetattrRewriteArgs* rewrite_args) {
-    assert(cls->instancesHaveHCAttrs());
-    HCAttrs* attrs = getHCAttrsPtr();
+void HCAttrs::appendNewHCAttr(Box* new_attr, SetattrRewriteArgs* rewrite_args, int attrs_offset) {
+    HCAttrs* attrs = this;
     HiddenClass* hcls = attrs->hcls;
 
     assert(hcls->type == HiddenClass::NORMAL || hcls->type == HiddenClass::SINGLETON);
@@ -788,12 +782,12 @@ void Box::appendNewHCAttr(Box* new_attr, SetattrRewriteArgs* rewrite_args) {
     } else {
         attrs->attr_list = (HCAttrs::AttrList*)gc::gc_realloc(attrs->attr_list, new_size);
         if (rewrite_args) {
-            if (cls->attrs_offset < 0) {
+            if (attrs_offset < 0) {
                 REWRITE_ABORTED("");
                 rewrite_args = NULL;
             } else {
                 RewriterVar* r_oldarray
-                    = rewrite_args->obj->getAttr(cls->attrs_offset + offsetof(HCAttrs, attr_list), Location::forArg(0));
+                    = rewrite_args->obj->getAttr(attrs_offset + offsetof(HCAttrs, attr_list), Location::forArg(0));
                 RewriterVar* r_newsize = rewrite_args->rewriter->loadConst(new_size, Location::forArg(1));
                 r_new_array2 = rewrite_args->rewriter->call(true, (void*)gc::gc_realloc, r_oldarray, r_newsize);
             }
@@ -802,7 +796,7 @@ void Box::appendNewHCAttr(Box* new_attr, SetattrRewriteArgs* rewrite_args) {
 
     if (rewrite_args) {
         r_new_array2->setAttr(numattrs * sizeof(Box*) + offsetof(HCAttrs::AttrList, attrs), rewrite_args->attrval);
-        rewrite_args->obj->setAttr(cls->attrs_offset + offsetof(HCAttrs, attr_list), r_new_array2);
+        rewrite_args->obj->setAttr(attrs_offset + offsetof(HCAttrs, attr_list), r_new_array2);
 
         rewrite_args->out_success = true;
     }
@@ -889,7 +883,7 @@ void Box::setattr(BoxedString* attr, Box* val, SetattrRewriteArgs* rewrite_args)
             // make sure we don't need to rearrange the attributes
             assert(new_hcls->getStrAttrOffsets().lookup(attr) == hcls->attributeArraySize());
 
-            this->appendNewHCAttr(val, rewrite_args);
+            attrs->appendNewHCAttr(val, rewrite_args, cls->attrs_offset);
             attrs->hcls = new_hcls;
 
             if (rewrite_args) {
@@ -907,7 +901,7 @@ void Box::setattr(BoxedString* attr, Box* val, SetattrRewriteArgs* rewrite_args)
             assert(!rewrite_args || !rewrite_args->out_success);
             rewrite_args = NULL;
 
-            this->appendNewHCAttr(val, NULL);
+            attrs->appendNewHCAttr(val);
             hcls->appendAttribute(attr);
         }
 
@@ -916,7 +910,7 @@ void Box::setattr(BoxedString* attr, Box* val, SetattrRewriteArgs* rewrite_args)
 
     if (cls->instancesHaveDictAttrs()) {
         BoxedDict* d = getDict();
-        d->d[attr] = val;
+        PyDict_SetItem(d, attr, val);
         return;
     }
 
@@ -3292,12 +3286,12 @@ static int placeKeyword(const ParamNames* param_names, llvm::SmallVector<bool, 8
     }
 
     if (okwargs) {
-        Box*& v = okwargs->d[kw_name];
+        Box* v = okwargs->getOrNull(kw_name);
         if (v) {
             raiseExcHelper(TypeError, "%.200s() got multiple values for keyword argument '%s'", func_name_cb(),
                            kw_name->c_str());
         }
-        v = kw_val;
+        PyDict_SetItem(okwargs, kw_name, kw_val);
         return -1;
     } else {
         raiseExcHelper(TypeError, "%.200s() got an unexpected keyword argument '%s'", func_name_cb(), kw_name->c_str());
@@ -3661,7 +3655,7 @@ void rearrangeArgumentsInternal(ParamReceiveSpec paramspec, const ParamNames* pa
 
             if (!param_names || !param_names->takes_param_names) {
                 assert(!rewrite_args); // would need to add it to r_kwargs
-                okwargs->d[(*keyword_names)[i]] = kw_val;
+                PyDict_SetItem(okwargs, (*keyword_names)[i], kw_val);
                 continue;
             }
 
@@ -3699,7 +3693,7 @@ void rearrangeArgumentsInternal(ParamReceiveSpec paramspec, const ParamNames* pa
         BoxedDict* d_kwargs = static_cast<BoxedDict*>(kwargs);
 
         BoxedDict* okwargs = NULL;
-        if (d_kwargs->d.size()) {
+        if (PyDict_Size(d_kwargs)) {
             okwargs = get_okwargs();
 
             if (!okwargs && (!param_names || !param_names->takes_param_names))
@@ -3722,12 +3716,12 @@ void rearrangeArgumentsInternal(ParamReceiveSpec paramspec, const ParamNames* pa
                 assert(!rewrite_args && "would need to make sure that this didn't need to go into r_kwargs");
                 assert(okwargs);
 
-                Box*& v = okwargs->d[p.first];
+                Box* v = okwargs->getOrNull(p.first);
                 if (v) {
                     raiseExcHelper(TypeError, "%s() got multiple values for keyword argument '%s'", func_name_cb(),
                                    s->data());
                 }
-                v = p.second;
+                PyDict_SetItem(okwargs, p.first, p.second);
                 assert(!rewrite_args);
             }
         }
@@ -5590,7 +5584,7 @@ void Box::delattr(BoxedString* attr, DelattrRewriteArgs* rewrite_args) {
 
     if (cls->instancesHaveDictAttrs()) {
         BoxedDict* d = getDict();
-        d->d.erase(attr);
+        PyDict_DelItem(d, attr);
         return;
     }
 
@@ -6168,10 +6162,10 @@ extern "C" void delGlobal(Box* globals, BoxedString* name) {
         assert(globals->cls == dict_cls);
         BoxedDict* d = static_cast<BoxedDict*>(globals);
 
-        auto it = d->d.find(name);
+        Box* r = d->getOrNull(name);
         assert(name->data()[name->size()] == '\0');
-        assertNameDefined(it != d->d.end(), name->data(), NameError, false /* local_var_msg */);
-        d->d.erase(it);
+        assertNameDefined(r, name->data(), NameError, false /* local_var_msg */);
+        PyDict_DelItem(d, name);
     }
 }
 
@@ -6234,10 +6228,9 @@ extern "C" Box* getGlobal(Box* globals, BoxedString* name) {
             rewriter.reset(NULL);
             REWRITE_ABORTED("Rewriting not implemented for getGlobals with a dict globals yet");
 
-            auto it = d->d.find(name);
-            if (it != d->d.end()) {
-                return it->second;
-            }
+            Box* rtn = d->getOrNull(name);
+            if (rtn)
+                return rtn;
         }
 
         static StatCounter stat_builtins("getglobal_builtins");
@@ -6280,11 +6273,7 @@ Box* getFromGlobals(Box* globals, BoxedString* name) {
     if (globals->cls == module_cls) {
         return globals->getattr(name);
     } else if (globals->cls == dict_cls) {
-        auto d = static_cast<BoxedDict*>(globals)->d;
-        auto it = d.find(name);
-        if (it != d.end())
-            return it->second;
-        return NULL;
+        return static_cast<BoxedDict*>(globals)->getOrNull(name);
     } else {
         RELEASE_ASSERT(0, "%s", globals->cls->tp_name);
     }
@@ -6300,7 +6289,7 @@ extern "C" void setGlobal(Box* globals, BoxedString* name, Box* value) {
         setattr(static_cast<BoxedModule*>(globals), name, value);
     } else {
         RELEASE_ASSERT(globals->cls == dict_cls, "%s", globals->cls->tp_name);
-        static_cast<BoxedDict*>(globals)->d[name] = value;
+        PyDict_SetItem(globals, name, value);
     }
 }
 
@@ -6379,12 +6368,9 @@ extern "C" Box* boxedLocalsGet(Box* boxedLocals, BoxedString* attr, Box* globals
     assert(boxedLocals != NULL);
 
     if (boxedLocals->cls == dict_cls) {
-        auto& d = static_cast<BoxedDict*>(boxedLocals)->d;
-        auto it = d.find(attr);
-        if (it != d.end()) {
-            Box* value = it->second;
+        Box* value = static_cast<BoxedDict*>(boxedLocals)->getOrNull(attr);
+        if (value)
             return value;
-        }
     } else {
         try {
             return getitem(boxedLocals, attr);
@@ -6402,15 +6388,16 @@ extern "C" Box* boxedLocalsGet(Box* boxedLocals, BoxedString* attr, Box* globals
     return getGlobal(globals, attr);
 }
 
-extern "C" void boxedLocalsDel(Box* boxedLocals, BoxedString* attr) {
-    assert(boxedLocals != NULL);
-    RELEASE_ASSERT(boxedLocals->cls == dict_cls, "we don't support non-dict here yet");
-    auto& d = static_cast<BoxedDict*>(boxedLocals)->d;
-    auto it = d.find(attr);
-    if (it == d.end()) {
+extern "C" void boxedLocalsDel(Box* _boxedLocals, BoxedString* attr) {
+    assert(_boxedLocals != NULL);
+    RELEASE_ASSERT(_boxedLocals->cls == dict_cls, "we don't support non-dict here yet");
+    BoxedDict* boxedLocals = (BoxedDict*)_boxedLocals;
+
+    Box* value = boxedLocals->getOrNull(attr);
+    if (!value) {
         assert(attr->data()[attr->size()] == '\0');
         assertNameDefined(0, attr->data(), NameError, false /* local_var_msg */);
     }
-    d.erase(it);
+    PyDict_DelItem(boxedLocals, attr);
 }
 }

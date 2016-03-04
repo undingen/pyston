@@ -1467,7 +1467,7 @@ Value ASTInterpreter::visit_dict(AST_Dict* node) {
     for (size_t i = 0; i < node->keys.size(); ++i) {
         Value v = visit_expr(node->values[i]);
         Value k = visit_expr(node->keys[i]);
-        dict->d[k.o] = v.o;
+        PyDict_SetItem(dict, k.o, v.o);
 
         values.push_back(v);
         keys.push_back(k);
@@ -1627,12 +1627,11 @@ void ASTInterpreterJitInterface::delNameHelper(void* _interpreter, InternedStrin
     Box* boxed_locals = interpreter->frame_info.boxedLocals;
     assert(boxed_locals != NULL);
     if (boxed_locals->cls == dict_cls) {
-        auto& d = static_cast<BoxedDict*>(boxed_locals)->d;
-        auto it = d.find(name.getBox());
-        if (it == d.end()) {
+        Box* rtn = static_cast<BoxedDict*>(boxed_locals)->getOrNull(name.getBox());
+        if (!rtn) {
             assertNameDefined(0, name.c_str(), NameError, false /* local_var_msg */);
         }
-        d.erase(it);
+        PyDict_DelItem(boxed_locals, name.getBox());
     } else if (boxed_locals->cls == attrwrapper_cls) {
         attrwrapperDel(boxed_locals, name);
     } else {

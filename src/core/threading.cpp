@@ -747,7 +747,7 @@ extern "C" PyObject *_PyThread_CurrentFrames(void) noexcept {
             FrameInfo* frame_info = (FrameInfo*)pair.second->public_thread_state->frame_info;
             Box* frame = getFrame(frame_info);
             assert(frame);
-            result->d[boxInt(pair.first)] = frame;
+            PyDict_SetItem(result, boxInt(pair.first), frame);
         }
         return result;
    } catch (ExcInfo) {

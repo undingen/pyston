@@ -114,7 +114,7 @@ BoxedSet* makeNewSet(BoxedClass* cls, Box* container) {
                 rtn->s.insert(elt);
             }
         } else if (PyDict_CheckExact(container)) {
-            for (auto&& elt : ((BoxedDict*)container)->d) {
+            for (auto&& elt : *((BoxedDict*)container)) {
                 rtn->s.insert(elt.first);
             }
         } else {
@@ -183,7 +183,7 @@ Box* setInit(Box* _self, Box* container, BoxedDict* kwargs) {
             self->s.insert(elt);
         }
     } else if (PyDict_CheckExact(container)) {
-        for (auto&& elt : ((BoxedDict*)container)->d) {
+        for (auto&& elt : *((BoxedDict*)container)) {
             self->s.insert(elt.first);
         }
 
@@ -448,7 +448,7 @@ static void _setDifferenceUpdate(BoxedSet* self, BoxedTuple* args) {
                 self->s.erase(elt);
             }
         } else if (PyDict_CheckExact(container)) {
-            for (auto&& elt : ((BoxedDict*)container)->d) {
+            for (auto&& elt : *((BoxedDict*)container)) {
                 self->s.erase(elt.first);
             }
         } else {

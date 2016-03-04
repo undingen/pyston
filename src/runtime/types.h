@@ -769,39 +769,73 @@ class BoxedDict : public Box {
 public:
     typedef pyston::DenseMap<BoxAndHash, Box*, BoxAndHash::Comparisons, detail::DenseMapPair<BoxAndHash, Box*>,
                              /* MinSize= */ 8> DictMap;
+    Box* b;           // set if we should use the HCAttrs of a Box* (aka attrwrapper replacement)
+    HCAttrs* hcattrs; // set if we use HCAttr storage
+    DictMap* d;       // set if we use a real dict
 
-    DictMap d;
-
-    BoxedDict() __attribute__((visibility("default"))) {}
+    BoxedDict() __attribute__((visibility("default"))) : b(NULL), hcattrs(NULL), d(NULL) {}
+    static BoxedDict* createAttrWrapper(Box* b) {
+        BoxedDict* rtn = new BoxedDict;
+        rtn->b = b;
+        return rtn;
+    }
 
     DEFAULT_CLASS_SIMPLE(dict_cls);
 
-    Box* getOrNull(Box* k) {
-        const auto& p = d.find(BoxAndHash(k));
-        if (p != d.end())
-            return p->second;
-        return NULL;
+    Box* getOrNull(Box* k);
+    void convertToDict();
+
+    HCAttrs* getHCAttrs() {
+        if (b) {
+            return b->getHCAttrsPtr();
+        }
+        return hcattrs;
     }
 
     class iterator {
     private:
+        BoxedDict* d;
+        typedef llvm::DenseMap<BoxedString*, int>::const_iterator BoxIterator;
         DictMap::iterator it;
+        BoxIterator it_box;
 
     public:
-        iterator(DictMap::iterator it) : it(std::move(it)) {}
+        iterator(BoxedDict* d, DictMap::iterator it) : d(d), it(std::move(it)) {}
+        iterator(BoxedDict* d, BoxIterator it_box) : d(d), it_box(std::move(it_box)) {}
 
-        bool operator!=(const iterator& rhs) const { return it != rhs.it; }
-        bool operator==(const iterator& rhs) const { return it == rhs.it; }
+        bool operator!=(const iterator& rhs) const {
+            if (d->getHCAttrs())
+                return it_box != rhs.it_box;
+            return it != rhs.it;
+        }
+        bool operator==(const iterator& rhs) const {
+            if (d->getHCAttrs())
+                return it_box == rhs.it_box;
+            return it == rhs.it;
+        }
         iterator& operator++() {
-            ++it;
+            if (d->getHCAttrs())
+                ++it_box;
+            else
+                ++it;
             return *this;
         }
-        std::pair<Box*, Box*> operator*() const { return std::make_pair(it->first.value, it->second); }
-        Box* first() const { return it->first.value; }
+        std::pair<Box*, Box*> operator*() const { return std::make_pair(first(), second()); }
+        Box* first() const {
+            if (d->getHCAttrs())
+                return it_box->first;
+            return it->first.value;
+        }
+        Box* second() const {
+            HCAttrs* attrs = d->getHCAttrs();
+            if (attrs)
+                return attrs->attr_list->attrs[it_box->second];
+            return it->second;
+        }
     };
 
-    iterator begin() { return iterator(d.begin()); }
-    iterator end() { return iterator(d.end()); }
+    iterator begin();
+    iterator end();
 
     static void gcHandler(GCVisitor* v, Box* b);
     static void dealloc(Box* b) noexcept;
