@@ -37,7 +37,7 @@ BoxedClass* dictiteritem_cls = NULL;
 }
 
 Box* dictRepr(BoxedDict* self) {
-    RELEASE_ASSERT(!self->b, "");
+    RELEASE_ASSERT(!self->getHCClass(), "");
 
     std::vector<char> chars;
     int status = Py_ReprEnter((PyObject*)self);
@@ -90,26 +90,27 @@ Box* dictCopy(BoxedDict* self) {
     if (!PyDict_Check(self))
         raiseExcHelper(TypeError, "descriptor 'copy' requires a 'dict' object but received a '%s'", getTypeName(self));
 
-    if (self->b) {
+    HCAttrs* attrs = self->getHCClass();
+    if (attrs) {
         BoxedDict* rtn = new BoxedDict();
-        HCAttrs* attrs = self->b->getHCAttrsPtr();
         RELEASE_ASSERT(attrs->hcls->type == HiddenClass::NORMAL || attrs->hcls->type == HiddenClass::SINGLETON, "");
         for (const auto& p : attrs->hcls->getStrAttrOffsets()) {
-            rtn->d[p.first] = attrs->attr_list->attrs[p.second];
+            PyDict_SetItem(rtn, p.first, attrs->attr_list->attrs[p.second]);
         }
         return rtn;
     }
 
     BoxedDict* r = new BoxedDict();
-    r->d = self->d;
+    r->d = new BoxedDict::DictMap;
+    *r->d = *self->d;
     return r;
 }
 
 Box* dictItems(BoxedDict* self) {
     BoxedList* rtn = new BoxedList();
 
-    if (self->b) {
-        HCAttrs* attrs = self->b->getHCAttrsPtr();
+    HCAttrs* attrs = self->getHCClass();
+    if (attrs) {
         RELEASE_ASSERT(attrs->hcls->type == HiddenClass::NORMAL || attrs->hcls->type == HiddenClass::SINGLETON, "");
         for (const auto& p : attrs->hcls->getStrAttrOffsets()) {
             BoxedTuple* t = BoxedTuple::create({ p.first, attrs->attr_list->attrs[p.second] });
@@ -118,7 +119,7 @@ Box* dictItems(BoxedDict* self) {
         return rtn;
     }
 
-    rtn->ensure(self->d.size());
+    rtn->ensure(self->d->size());
     for (const auto& p : *self) {
         BoxedTuple* t = BoxedTuple::create({ p.first, p.second });
         listAppendInternal(rtn, t);
@@ -128,9 +129,9 @@ Box* dictItems(BoxedDict* self) {
 }
 
 Box* dictValues(BoxedDict* self) {
-    if (self->b) {
+    HCAttrs* attrs = self->getHCClass();
+    if (attrs) {
         BoxedList* rtn = new BoxedList();
-        HCAttrs* attrs = self->b->getHCAttrsPtr();
         RELEASE_ASSERT(attrs->hcls->type == HiddenClass::NORMAL || attrs->hcls->type == HiddenClass::SINGLETON, "");
         for (const auto& p : attrs->hcls->getStrAttrOffsets()) {
             listAppend(rtn, attrs->attr_list->attrs[p.second]);
@@ -139,7 +140,7 @@ Box* dictValues(BoxedDict* self) {
     }
 
     BoxedList* rtn = new BoxedList();
-    rtn->ensure(self->d.size());
+    rtn->ensure(self->d->size());
     for (const auto& p : *self) {
         listAppendInternal(rtn, p.second);
     }
@@ -149,9 +150,9 @@ Box* dictValues(BoxedDict* self) {
 Box* dictKeys(BoxedDict* self) {
     RELEASE_ASSERT(PyDict_Check(self), "");
 
-    if (self->b) {
+    HCAttrs* attrs = self->getHCClass();
+    if (attrs) {
         BoxedList* rtn = new BoxedList();
-        HCAttrs* attrs = self->b->getHCAttrsPtr();
         RELEASE_ASSERT(attrs->hcls->type == HiddenClass::NORMAL || attrs->hcls->type == HiddenClass::SINGLETON, "");
         for (const auto& p : attrs->hcls->getStrAttrOffsets()) {
             listAppend(rtn, p.first);
@@ -160,7 +161,7 @@ Box* dictKeys(BoxedDict* self) {
     }
 
     BoxedList* rtn = new BoxedList();
-    rtn->ensure(self->d.size());
+    rtn->ensure(self->d->size());
     for (const auto& p : *self) {
         listAppendInternal(rtn, p.first);
     }
@@ -213,29 +214,29 @@ extern "C" Py_ssize_t PyDict_Size(PyObject* op) noexcept {
     RELEASE_ASSERT(PyDict_Check(op), "");
     BoxedDict* self = (BoxedDict*)op;
 
-    if (self->b) {
-        HCAttrs* attrs = self->b->getHCAttrsPtr();
+    HCAttrs* attrs = self->getHCClass();
+    if (attrs) {
         RELEASE_ASSERT(attrs->hcls->type == HiddenClass::NORMAL || attrs->hcls->type == HiddenClass::SINGLETON, "");
         return attrs->hcls->getStrAttrOffsets().size();
     }
-    return self->d.size();
+    return self->d->size();
 }
 
 extern "C" void PyDict_Clear(PyObject* op) noexcept {
     RELEASE_ASSERT(PyDict_Check(op), "");
-
     BoxedDict* self = (BoxedDict*)op;
-    if (self->b) {
-        HCAttrs* attrs = self->b->getHCAttrsPtr();
+
+    HCAttrs* attrs = self->getHCClass();
+    if (attrs) {
         RELEASE_ASSERT(attrs->hcls->type == HiddenClass::NORMAL || attrs->hcls->type == HiddenClass::SINGLETON, "");
         // Clear the attrs array:
         new ((void*)attrs) HCAttrs(root_hcls);
         // Add the existing attrwrapper object (ie self) back as the attrwrapper:
-        self->b->appendNewHCAttr(self, NULL);
+        attrs->appendNewHCAttr(self);
         attrs->hcls = attrs->hcls->getAttrwrapperChild();
         return;
     }
-    self->d.clear();
+    self->d->clear();
 }
 
 extern "C" PyObject* PyDict_Copy(PyObject* o) noexcept {
@@ -361,6 +362,8 @@ extern "C" int PyDict_SetItemString(PyObject* mp, const char* key, PyObject* ite
 }
 
 extern "C" PyObject* PyDict_GetItem(PyObject* dict, PyObject* key) noexcept {
+    if (!dict)
+        return NULL;
     ASSERT(PyDict_Check(dict) || dict->cls == attrwrapper_cls, "%s", getTypeName(dict));
     if (PyDict_Check(dict)) {
         BoxedDict* d = static_cast<BoxedDict*>(dict);
@@ -388,7 +391,7 @@ extern "C" int PyDict_Next(PyObject* op, Py_ssize_t* ppos, PyObject** pkey, PyOb
     assert(PyDict_Check(op));
     BoxedDict* self = static_cast<BoxedDict*>(op);
 
-    RELEASE_ASSERT(!self->b, "");
+    RELEASE_ASSERT(!self->getHCClass(), "");
 
     // Callers of PyDict_New() provide a pointer to some storage for this function to use, in
     // the form of a Py_ssize_t* -- ie they allocate a Py_ssize_t on their stack, and let us use
@@ -409,12 +412,12 @@ extern "C" int PyDict_Next(PyObject* op, Py_ssize_t* ppos, PyObject** pkey, PyOb
     // Clients are supposed to zero-initialize *ppos:
     if (*it_ptr == NULL) {
         *it_ptr = (iterator*)malloc(sizeof(iterator));
-        **it_ptr = self->d.begin();
+        **it_ptr = self->d->begin();
     }
 
     iterator* it = *it_ptr;
 
-    if (*it == self->d.end()) {
+    if (*it == self->d->end()) {
         free(it);
         return 0;
     }
@@ -428,15 +431,26 @@ extern "C" int PyDict_Next(PyObject* op, Py_ssize_t* ppos, PyObject** pkey, PyOb
 }
 
 Box* BoxedDict::getOrNull(Box* k) {
-    if (b) {
+    HCAttrs* attrs = getHCClass();
+    if (attrs) {
         Box* _key = coerceUnicodeToStr<CAPI>(k);
         RELEASE_ASSERT(_key->cls == str_cls, "");
         BoxedString* key = static_cast<BoxedString*>(_key);
         internStringMortalInplace(key);
-        return b->getattr(key);
+
+        HiddenClass* hcls = attrs->hcls;
+        assert(hcls->type == HiddenClass::NORMAL || hcls->type == HiddenClass::SINGLETON);
+
+        int offset = hcls->getOffset(key);
+        if (offset == -1)
+            return NULL;
+        return attrs->attr_list->attrs[offset];
     }
-    const auto& p = d.find(BoxAndHash(k));
-    if (p != d.end())
+    if (!d)
+        return NULL;
+
+    const auto& p = d->find(BoxAndHash(k));
+    if (p != d->end())
         return p->second;
     return NULL;
 }
@@ -455,30 +469,70 @@ extern "C" PyObject* PyDict_GetItemString(PyObject* dict, const char* key) noexc
 }
 
 void BoxedDict::convertToDict() {
-    RELEASE_ASSERT(b, "");
-    HCAttrs* attrs = b->getHCAttrsPtr();
+    HCAttrs* attrs = getHCClass();
+    RELEASE_ASSERT(!d, "");
     // d.ensure(attrs->hcls->getStrAttrOffsets().size());
     RELEASE_ASSERT(attrs->hcls->type == HiddenClass::NORMAL || attrs->hcls->type == HiddenClass::SINGLETON, "");
+    d = new DictMap;
     for (const auto& p : attrs->hcls->getStrAttrOffsets()) {
-        d[p.first] = attrs->attr_list->attrs[p.second];
+        (*d)[p.first] = attrs->attr_list->attrs[p.second];
     }
     b = NULL;
+    hcattrs = NULL;
 }
 
 Box* dictSetitem(BoxedDict* self, Box* k, Box* v) {
-    // dump(k);
-    if (self->b) {
+    HCAttrs* attrs = self->getHCClass();
+    if (!self->d && !attrs) {
+        if (k->cls == str_cls)
+            attrs = self->hcattrs = new HCAttrs;
+        else
+            self->d = new BoxedDict::DictMap;
+    }
+
+    if (attrs) {
         if (k->cls == str_cls) {
             RELEASE_ASSERT(k->cls == str_cls, "");
             BoxedString* key = static_cast<BoxedString*>(k);
             internStringMortalInplace(key);
-            self->b->setattr(key, v, NULL);
+
+            HiddenClass* hcls = attrs->hcls;
+            assert(hcls->type == HiddenClass::NORMAL || hcls->type == HiddenClass::SINGLETON);
+
+            int offset = hcls->getOffset(key);
+            if (offset >= 0) {
+                assert(offset < hcls->attributeArraySize());
+                Box* prev = attrs->attr_list->attrs[offset];
+                attrs->attr_list->attrs[offset] = v;
+
+
+                assert(PyDict_GetItem(self, key) == v);
+                return None;
+            }
+
+            assert(offset == -1);
+
+            if (hcls->type == HiddenClass::NORMAL) {
+                HiddenClass* new_hcls = hcls->getOrMakeChild(key);
+                // make sure we don't need to rearrange the attributes
+                assert(new_hcls->getStrAttrOffsets().lookup(key) == hcls->attributeArraySize());
+
+                attrs->appendNewHCAttr(v);
+                attrs->hcls = new_hcls;
+            } else {
+                assert(hcls->type == HiddenClass::SINGLETON);
+                attrs->appendNewHCAttr(v);
+                hcls->appendAttribute(key);
+            }
+            assert(PyDict_GetItem(self, key) == v);
             return None;
         }
 
         self->convertToDict();
     }
-    self->d[k] = v;
+    (*self->d)[k] = v;
+
+    assert(PyDict_GetItem(self, k) == v);
     return None;
 }
 
@@ -487,15 +541,43 @@ Box* dictDelitem(BoxedDict* self, Box* k) {
         raiseExcHelper(TypeError, "descriptor '__delitem__' requires a 'dict' object but received a '%s'",
                        getTypeName(self));
 
-    RELEASE_ASSERT(!self->b, "");
-
-    auto it = self->d.find(k);
-    if (it == self->d.end()) {
+    if (!self->getOrNull(k)) {
         raiseExcHelper(KeyError, k);
     }
 
-    self->d.erase(it);
+    HCAttrs* attrs = self->getHCClass();
+    if (attrs) {
+        HiddenClass* hcls = attrs->hcls;
+        assert(hcls->type == HiddenClass::NORMAL || hcls->type == HiddenClass::SINGLETON);
 
+        Box* _key = coerceUnicodeToStr<CAPI>(k);
+        RELEASE_ASSERT(_key->cls == str_cls, "");
+        BoxedString* key = static_cast<BoxedString*>(_key);
+        internStringMortalInplace(key);
+
+        // The order of attributes is pertained as delAttrToMakeHC constructs
+        // the new HiddenClass by invoking getOrMakeChild in the prevous order
+        // of remaining attributes
+        int num_attrs = hcls->attributeArraySize();
+        int offset = hcls->getOffset(key);
+        assert(offset >= 0);
+        Box** start = attrs->attr_list->attrs;
+        memmove(start + offset, start + offset + 1, (num_attrs - offset - 1) * sizeof(Box*));
+
+        if (hcls->type == HiddenClass::NORMAL) {
+            HiddenClass* new_hcls = hcls->delAttrToMakeHC(key);
+            attrs->hcls = new_hcls;
+        } else {
+            assert(hcls->type == HiddenClass::SINGLETON);
+            hcls->delAttribute(key);
+        }
+
+        // guarantee the size of the attr_list equals the number of attrs
+        int new_size = sizeof(HCAttrs::AttrList) + sizeof(Box*) * (num_attrs - 1);
+        attrs->attr_list = (HCAttrs::AttrList*)gc::gc_realloc(attrs->attr_list, new_size);
+        return None;
+    }
+    self->d->erase(k);
     return None;
 }
 
@@ -557,16 +639,16 @@ Box* dictPopitem(BoxedDict* self) {
         raiseExcHelper(TypeError, "descriptor 'popitem' requires a 'dict' object but received a '%s'",
                        getTypeName(self));
 
-    RELEASE_ASSERT(!self->b, "");
+    RELEASE_ASSERT(!self->getHCClass(), "");
 
-    auto it = self->d.begin();
-    if (it == self->d.end()) {
+    auto it = self->d->begin();
+    if (it == self->d->end()) {
         raiseExcHelper(KeyError, "popitem(): dictionary is empty");
     }
 
     Box* key = it->first.value;
     Box* value = it->second;
-    self->d.erase(it);
+    self->d->erase(it);
 
     auto rtn = BoxedTuple::create({ key, value });
     return rtn;
@@ -592,8 +674,8 @@ Box* dictSetdefault(BoxedDict* self, Box* k, Box* v) {
     if (rtn)
         return rtn;
 
-    RELEASE_ASSERT(!self->b, "");
-    self->d.insert(std::make_pair(k_hash, v));
+    RELEASE_ASSERT(!self->getHCClass(), "");
+    self->d->insert(std::make_pair(k_hash, v));
     return v;
 }
 
@@ -640,7 +722,7 @@ Box* dictFromkeys(Box* cls, Box* iterable, Box* default_value) {
     auto rtn = new BoxedDict();
     if (PyAnySet_Check(iterable)) {
         for (auto&& elt : ((BoxedSet*)iterable)->s) {
-            rtn->d.insert(std::make_pair(elt, default_value));
+            dictSetitem(rtn, elt.value, default_value);
         }
     } else {
         for (Box* e : iterable->pyElements()) {
@@ -667,12 +749,12 @@ Box* dictEq(BoxedDict* self, Box* _rhs) {
     if (PyDict_Size(self) != PyDict_Size(rhs))
         return False;
 
-    RELEASE_ASSERT(!self->b, "");
-    RELEASE_ASSERT(!rhs->b, "");
+    RELEASE_ASSERT(!self->getHCClass(), "");
+    RELEASE_ASSERT(!rhs->getHCClass(), "");
 
-    for (const auto& p : self->d) {
-        auto it = rhs->d.find(p.first);
-        if (it == rhs->d.end())
+    for (const auto& p : *self->d) {
+        auto it = rhs->d->find(p.first);
+        if (it == rhs->d->end())
             return False;
         if (!PyEq()(p.second, it->second))
             return False;
@@ -706,13 +788,13 @@ extern "C" Box* dictNew(Box* _cls, BoxedTuple* args, BoxedDict* kwargs) {
 void dictMerge(BoxedDict* self, Box* other) {
     if (PyDict_Check(other)) {
         BoxedDict* other_dict = (BoxedDict*)other;
-        if (other_dict->b) {
-            HCAttrs* attrs = other_dict->b->getHCAttrsPtr();
+        HCAttrs* attrs = other_dict->getHCClass();
+        if (attrs) {
             RELEASE_ASSERT(attrs->hcls->type == HiddenClass::NORMAL || attrs->hcls->type == HiddenClass::SINGLETON, "");
             for (const auto& p : attrs->hcls->getStrAttrOffsets())
                 dictSetitem(self, p.first, attrs->attr_list->attrs[p.second]);
         } else {
-            for (const auto& p : other_dict->d)
+            for (const auto& p : *other_dict->d)
                 dictSetitem(self, p.first.value, p.second);
         }
         return;
@@ -803,7 +885,7 @@ Box* dictUpdate(BoxedDict* self, BoxedTuple* args, BoxedDict* kwargs) {
         }
     }
 
-    if (kwargs && kwargs->d.size())
+    if (kwargs && PyDict_Size(kwargs))
         dictMerge(self, kwargs);
 
     return None;
@@ -811,7 +893,7 @@ Box* dictUpdate(BoxedDict* self, BoxedTuple* args, BoxedDict* kwargs) {
 
 extern "C" Box* dictInit(BoxedDict* self, BoxedTuple* args, BoxedDict* kwargs) {
     int args_sz = args->size();
-    int kwargs_sz = kwargs ? kwargs->d.size() : 0;
+    int kwargs_sz = kwargs ? PyDict_Size(kwargs) : 0;
 
     // CPython accepts a single positional and keyword arguments, in any combination
     if (args_sz > 1)
@@ -823,29 +905,28 @@ extern "C" Box* dictInit(BoxedDict* self, BoxedTuple* args, BoxedDict* kwargs) {
         // handle keyword arguments by merging (possibly over positional entries per CPy)
         assert(kwargs->cls == dict_cls);
 
-        RELEASE_ASSERT(!kwargs->b, "");
-        for (const auto& p : kwargs->d)
-            self->d[p.first] = p.second;
+        for (const auto& p : *kwargs)
+            dictSetitem(self, p.first, p.second);
     }
 
     return None;
 }
 
 BoxedDict::iterator BoxedDict::begin() {
-    if (b) {
-        HCAttrs* attrs = b->getHCAttrsPtr();
+    HCAttrs* attrs = getHCClass();
+    if (attrs) {
         RELEASE_ASSERT(attrs->hcls->type == HiddenClass::NORMAL || attrs->hcls->type == HiddenClass::SINGLETON, "");
         return BoxedDict::iterator(this, attrs->hcls->getStrAttrOffsets().begin());
     }
-    return BoxedDict::iterator(this, d.begin());
+    return BoxedDict::iterator(this, d->begin());
 }
 BoxedDict::iterator BoxedDict::end() {
-    if (b) {
-        HCAttrs* attrs = b->getHCAttrsPtr();
+    HCAttrs* attrs = getHCClass();
+    if (attrs) {
         RELEASE_ASSERT(attrs->hcls->type == HiddenClass::NORMAL || attrs->hcls->type == HiddenClass::SINGLETON, "");
         return iterator(this, attrs->hcls->getStrAttrOffsets().end());
     }
-    return BoxedDict::iterator(this, d.end());
+    return BoxedDict::iterator(this, d->end());
 }
 
 void BoxedDict::gcHandler(GCVisitor* v, Box* b) {
@@ -855,8 +936,11 @@ void BoxedDict::gcHandler(GCVisitor* v, Box* b) {
 
     BoxedDict* d = (BoxedDict*)b;
 
-    if (d->b) {
-        v->visit(&d->b);
+    HCAttrs* attrs = d->getHCClass();
+    if (attrs) {
+        v->visit(&attrs->hcls);
+        if (attrs->attr_list)
+            v->visit(&attrs->attr_list);
         return;
     }
 
@@ -939,7 +1023,9 @@ static int dict_print(PyObject* mp, FILE* fp, int flags) noexcept {
 
 void BoxedDict::dealloc(Box* b) noexcept {
     assert(PyDict_Check(b));
-    static_cast<BoxedDict*>(b)->d.freeAllMemory();
+    BoxedDict* d = (BoxedDict*)b;
+    if (d->d)
+        d->d->freeAllMemory();
 }
 
 // We use cpythons dictview implementation from dictobject.c

@@ -769,16 +769,25 @@ class BoxedDict : public Box {
 public:
     typedef pyston::DenseMap<BoxAndHash, Box*, BoxAndHash::Comparisons, detail::DenseMapPair<BoxAndHash, Box*>,
                              /* MinSize= */ 8> DictMap;
-
-    DictMap d;
+    // DictMap d;
     Box* b;
+    HCAttrs* hcattrs;
+    DictMap* d;
 
-    BoxedDict() __attribute__((visibility("default"))) : b(NULL) {}
+    BoxedDict() __attribute__((visibility("default"))) : b(NULL), hcattrs(NULL), d(NULL) {}
 
     DEFAULT_CLASS_SIMPLE(dict_cls);
 
     Box* getOrNull(Box* k);
     void convertToDict();
+
+    HCAttrs* getHCClass() {
+        if (b) {
+            return b->getHCAttrsPtr();
+        }
+        return hcattrs;
+    }
+
 
     class iterator {
     private:

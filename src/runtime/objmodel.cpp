@@ -762,9 +762,8 @@ template <Rewritable rewritable> Box* Box::getattr(BoxedString* attr, GetattrRew
 template Box* Box::getattr<REWRITABLE>(BoxedString*, GetattrRewriteArgs*);
 template Box* Box::getattr<NOT_REWRITABLE>(BoxedString*, GetattrRewriteArgs*);
 
-void Box::appendNewHCAttr(Box* new_attr, SetattrRewriteArgs* rewrite_args) {
-    assert(cls->instancesHaveHCAttrs());
-    HCAttrs* attrs = getHCAttrsPtr();
+void HCAttrs::appendNewHCAttr(Box* new_attr, SetattrRewriteArgs* rewrite_args, int attrs_offset) {
+    HCAttrs* attrs = this;
     HiddenClass* hcls = attrs->hcls;
 
     assert(hcls->type == HiddenClass::NORMAL || hcls->type == HiddenClass::SINGLETON);
@@ -783,12 +782,12 @@ void Box::appendNewHCAttr(Box* new_attr, SetattrRewriteArgs* rewrite_args) {
     } else {
         attrs->attr_list = (HCAttrs::AttrList*)gc::gc_realloc(attrs->attr_list, new_size);
         if (rewrite_args) {
-            if (cls->attrs_offset < 0) {
+            if (attrs_offset < 0) {
                 REWRITE_ABORTED("");
                 rewrite_args = NULL;
             } else {
                 RewriterVar* r_oldarray
-                    = rewrite_args->obj->getAttr(cls->attrs_offset + offsetof(HCAttrs, attr_list), Location::forArg(0));
+                    = rewrite_args->obj->getAttr(attrs_offset + offsetof(HCAttrs, attr_list), Location::forArg(0));
                 RewriterVar* r_newsize = rewrite_args->rewriter->loadConst(new_size, Location::forArg(1));
                 r_new_array2 = rewrite_args->rewriter->call(true, (void*)gc::gc_realloc, r_oldarray, r_newsize);
             }
@@ -797,7 +796,7 @@ void Box::appendNewHCAttr(Box* new_attr, SetattrRewriteArgs* rewrite_args) {
 
     if (rewrite_args) {
         r_new_array2->setAttr(numattrs * sizeof(Box*) + offsetof(HCAttrs::AttrList, attrs), rewrite_args->attrval);
-        rewrite_args->obj->setAttr(cls->attrs_offset + offsetof(HCAttrs, attr_list), r_new_array2);
+        rewrite_args->obj->setAttr(attrs_offset + offsetof(HCAttrs, attr_list), r_new_array2);
 
         rewrite_args->out_success = true;
     }
@@ -884,7 +883,7 @@ void Box::setattr(BoxedString* attr, Box* val, SetattrRewriteArgs* rewrite_args)
             // make sure we don't need to rearrange the attributes
             assert(new_hcls->getStrAttrOffsets().lookup(attr) == hcls->attributeArraySize());
 
-            this->appendNewHCAttr(val, rewrite_args);
+            attrs->appendNewHCAttr(val, rewrite_args, cls->attrs_offset);
             attrs->hcls = new_hcls;
 
             if (rewrite_args) {
@@ -902,7 +901,7 @@ void Box::setattr(BoxedString* attr, Box* val, SetattrRewriteArgs* rewrite_args)
             assert(!rewrite_args || !rewrite_args->out_success);
             rewrite_args = NULL;
 
-            this->appendNewHCAttr(val, NULL);
+            attrs->appendNewHCAttr(val);
             hcls->appendAttribute(attr);
         }
 
@@ -3287,12 +3286,12 @@ static int placeKeyword(const ParamNames* param_names, llvm::SmallVector<bool, 8
     }
 
     if (okwargs) {
-        Box*& v = okwargs->d[kw_name];
+        Box* v = okwargs->getOrNull(kw_name);
         if (v) {
             raiseExcHelper(TypeError, "%.200s() got multiple values for keyword argument '%s'", func_name_cb(),
                            kw_name->c_str());
         }
-        v = kw_val;
+        PyDict_SetItem(okwargs, kw_name, kw_val);
         return -1;
     } else {
         raiseExcHelper(TypeError, "%.200s() got an unexpected keyword argument '%s'", func_name_cb(), kw_name->c_str());
@@ -3656,7 +3655,7 @@ void rearrangeArgumentsInternal(ParamReceiveSpec paramspec, const ParamNames* pa
 
             if (!param_names || !param_names->takes_param_names) {
                 assert(!rewrite_args); // would need to add it to r_kwargs
-                okwargs->d[(*keyword_names)[i]] = kw_val;
+                PyDict_SetItem(okwargs, (*keyword_names)[i], kw_val);
                 continue;
             }
 
@@ -3694,7 +3693,7 @@ void rearrangeArgumentsInternal(ParamReceiveSpec paramspec, const ParamNames* pa
         BoxedDict* d_kwargs = static_cast<BoxedDict*>(kwargs);
 
         BoxedDict* okwargs = NULL;
-        if (d_kwargs->d.size()) {
+        if (PyDict_Size(d_kwargs)) {
             okwargs = get_okwargs();
 
             if (!okwargs && (!param_names || !param_names->takes_param_names))
@@ -3717,12 +3716,12 @@ void rearrangeArgumentsInternal(ParamReceiveSpec paramspec, const ParamNames* pa
                 assert(!rewrite_args && "would need to make sure that this didn't need to go into r_kwargs");
                 assert(okwargs);
 
-                Box*& v = okwargs->d[p.first];
+                Box* v = okwargs->getOrNull(p.first);
                 if (v) {
                     raiseExcHelper(TypeError, "%s() got multiple values for keyword argument '%s'", func_name_cb(),
                                    s->data());
                 }
-                v = p.second;
+                PyDict_SetItem(okwargs, p.first, p.second);
                 assert(!rewrite_args);
             }
         }

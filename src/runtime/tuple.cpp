@@ -340,7 +340,7 @@ extern "C" Box* tupleNew(Box* _cls, BoxedTuple* args, BoxedDict* kwargs) {
                        getNameOfClass(cls));
 
     int args_sz = args->size();
-    int kwargs_sz = kwargs ? kwargs->d.size() : 0;
+    int kwargs_sz = kwargs ? PyDict_Size(kwargs) : 0;
 
     if (args_sz + kwargs_sz > 1)
         raiseExcHelper(TypeError, "tuple() takes at most 1 argument (%d given)", args_sz + kwargs_sz);
@@ -352,11 +352,11 @@ extern "C" Box* tupleNew(Box* _cls, BoxedTuple* args, BoxedDict* kwargs) {
             elements = args->elts[0];
         } else {
             assert(kwargs_sz);
-            auto const seq = *(kwargs->d.begin());
-            auto const kw = static_cast<BoxedString*>(seq.first.value);
+            auto const seq = kwargs->begin();
+            auto const kw = static_cast<BoxedString*>(seq.first());
 
             if (kw->s() == "sequence")
-                elements = seq.second;
+                elements = seq.second();
             else
                 raiseExcHelper(TypeError, "'%s' is an invalid keyword argument for this function", kw->data());
         }

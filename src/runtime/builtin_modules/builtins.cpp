@@ -166,11 +166,12 @@ Box* min_max(Box* arg0, BoxedTuple* args, BoxedDict* kwargs, int opid) {
     Box* container;
     Box* extremVal;
 
-    if (kwargs && kwargs->d.size()) {
+    int kwargs_size = PyDict_Size(kwargs);
+    if (kwargs && kwargs_size > 0) {
         static BoxedString* key_str = static_cast<BoxedString*>(PyString_InternFromString("key"));
-        auto it = kwargs->d.find(key_str);
-        if (it != kwargs->d.end() && kwargs->d.size() == 1) {
-            key_func = it->second;
+        Box* val = kwargs->getOrNull(key_str);
+        if (val && kwargs_size == 1) {
+            key_func = val;
         } else {
             if (opid == Py_LT)
                 raiseExcHelper(TypeError, "min() got an unexpected keyword argument");

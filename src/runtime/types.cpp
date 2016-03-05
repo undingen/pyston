@@ -1369,7 +1369,7 @@ static Box* typeCallInner(CallRewriteArgs* rewrite_args, ArgPassSpec argspec, Bo
 Box* typeCall(Box* obj, BoxedTuple* vararg, BoxedDict* kwargs) {
     assert(vararg->cls == tuple_cls);
 
-    bool pass_kwargs = (kwargs && kwargs->d.size());
+    bool pass_kwargs = (kwargs && PyDict_Size(kwargs));
 
     int n = vararg->size();
     int args_to_pass = n + 1 + (pass_kwargs ? 1 : 0); // 1 for obj, 1 for kwargs
@@ -2301,7 +2301,7 @@ private:
 
         RELEASE_ASSERT(attrs->hcls->type == HiddenClass::NORMAL || attrs->hcls->type == HiddenClass::SINGLETON, "");
         for (const auto& p : attrs->hcls->getStrAttrOffsets()) {
-            d->d[p.first] = attrs->attr_list->attrs[p.second];
+            // d->d[p.first] = attrs->attr_list->attrs[p.second];
         }
 
         b->setDictBacked(d);
@@ -2597,7 +2597,7 @@ public:
         HCAttrs* attrs = self->b->getHCAttrsPtr();
         RELEASE_ASSERT(attrs->hcls->type == HiddenClass::NORMAL || attrs->hcls->type == HiddenClass::SINGLETON, "");
         for (const auto& p : attrs->hcls->getStrAttrOffsets()) {
-            rtn->d[p.first] = attrs->attr_list->attrs[p.second];
+            // rtn->d[p.first] = attrs->attr_list->attrs[p.second];
         }
         return rtn;
     }
@@ -2612,7 +2612,7 @@ public:
         // Clear the attrs array:
         new ((void*)attrs) HCAttrs(root_hcls);
         // Add the existing attrwrapper object (ie self) back as the attrwrapper:
-        self->b->appendNewHCAttr(self, NULL);
+        self->b->getHCAttrsPtr()->appendNewHCAttr(self);
         attrs->hcls = attrs->hcls->getAttrwrapperChild();
 
         return None;
@@ -2762,12 +2762,12 @@ Box* Box::getAttrWrapper() {
         // Box* aw = new AttrWrapper(this);
         if (hcls->type == HiddenClass::NORMAL) {
             auto new_hcls = hcls->getAttrwrapperChild();
-            appendNewHCAttr(aw, NULL);
+            attrs->appendNewHCAttr(aw);
             attrs->hcls = new_hcls;
             return aw;
         } else {
             assert(hcls->type == HiddenClass::SINGLETON);
-            appendNewHCAttr(aw, NULL);
+            attrs->appendNewHCAttr(aw);
             hcls->appendAttrwrapper();
             return aw;
         }
