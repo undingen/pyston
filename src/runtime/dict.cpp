@@ -442,12 +442,19 @@ extern "C" int PyDict_Next(PyObject* op, Py_ssize_t* ppos, PyObject** pkey, PyOb
 
 Box* BoxedDict::getOrNull(Box* k) {
     HCAttrs* attrs = getHCClass();
+
+
+    Box* _key = NULL;
     if (attrs) {
-        Box* _key = coerceUnicodeToStr<CAPI>(k);
-        if (!_key || !PyString_Check(k)) {
+        _key = coerceUnicodeToStr<CAPI>(k);
+        if (!_key || _key->cls != str_cls) {
             PyErr_Clear();
-            return NULL;
+            convertToDict();
+            attrs = NULL;
         }
+    }
+
+    if (attrs) {
         RELEASE_ASSERT(_key->cls == str_cls, "");
         BoxedString* key = static_cast<BoxedString*>(_key);
         internStringMortalInplace(key);
