@@ -94,8 +94,16 @@ Box* dictCopy(BoxedDict* self) {
     if (attrs) {
         BoxedDict* rtn = new BoxedDict();
         RELEASE_ASSERT(attrs->hcls->type == HiddenClass::NORMAL || attrs->hcls->type == HiddenClass::SINGLETON, "");
-        for (const auto& p : attrs->hcls->getStrAttrOffsets()) {
-            PyDict_SetItem(rtn, p.first, attrs->attr_list->attrs[p.second]);
+        if (attrs->hcls->type == HiddenClass::SINGLETON) {
+            rtn->hcattrs = new HCAttrs(attrs->hcls);
+            int numattrs = attrs->hcls->attributeArraySize();
+            int new_size = sizeof(HCAttrs::AttrList) + sizeof(Box*) * (numattrs);
+            rtn->hcattrs->attr_list = (HCAttrs::AttrList*)gc_alloc(new_size, gc::GCKind::PRECISE);
+            memcpy(rtn->hcattrs->attr_list, attrs->attr_list->attrs, new_size);
+        } else {
+            for (const auto& p : attrs->hcls->getStrAttrOffsets()) {
+                PyDict_SetItem(rtn, p.first, attrs->attr_list->attrs[p.second]);
+            }
         }
         return rtn;
     }
@@ -241,13 +249,16 @@ extern "C" void PyDict_Clear(PyObject* op) noexcept {
 
     HCAttrs* attrs = self->getHCClass();
     if (attrs) {
-        RELEASE_ASSERT(attrs->hcls->type == HiddenClass::NORMAL || attrs->hcls->type == HiddenClass::SINGLETON, "");
-        // Clear the attrs array:
-        new ((void*)attrs) HCAttrs(root_hcls);
-        // Add the existing attrwrapper object (ie self) back as the attrwrapper:
-        attrs->appendNewHCAttr(self);
-        attrs->hcls = attrs->hcls->getAttrwrapperChild();
-        return;
+        if (self->b) {
+            RELEASE_ASSERT(attrs->hcls->type == HiddenClass::NORMAL || attrs->hcls->type == HiddenClass::SINGLETON, "");
+            // Clear the attrs array:
+            new ((void*)attrs) HCAttrs(root_hcls);
+            // Add the existing attrwrapper object (ie self) back as the attrwrapper:
+            attrs->appendNewHCAttr(self);
+            attrs->hcls = attrs->hcls->getAttrwrapperChild();
+            return;
+        }
+        self->hcattrs = NULL;
     }
     if (self->d)
         self->d->clear();
@@ -442,8 +453,6 @@ extern "C" int PyDict_Next(PyObject* op, Py_ssize_t* ppos, PyObject** pkey, PyOb
 
 Box* BoxedDict::getOrNull(Box* k) {
     HCAttrs* attrs = getHCClass();
-
-
     Box* _key = NULL;
     if (attrs) {
         _key = coerceUnicodeToStr<CAPI>(k);

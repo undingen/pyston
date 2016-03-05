@@ -6165,7 +6165,7 @@ extern "C" void delGlobal(Box* globals, BoxedString* name) {
         Box* r = d->getOrNull(name);
         assert(name->data()[name->size()] == '\0');
         assertNameDefined(r, name->data(), NameError, false /* local_var_msg */);
-        PyDict_DelItem(r, (name));
+        PyDict_DelItem(d, name);
     }
 }
 
