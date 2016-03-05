@@ -166,8 +166,8 @@ Box* min_max(Box* arg0, BoxedTuple* args, BoxedDict* kwargs, int opid) {
     Box* container;
     Box* extremVal;
 
-    int kwargs_size = PyDict_Size(kwargs);
-    if (kwargs && kwargs_size > 0) {
+    int kwargs_size = kwargs ? PyDict_Size(kwargs) : 0;
+    if (kwargs_size > 0) {
         static BoxedString* key_str = static_cast<BoxedString*>(PyString_InternFromString("key"));
         Box* val = kwargs->getOrNull(key_str);
         if (val && kwargs_size == 1) {

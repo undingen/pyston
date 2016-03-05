@@ -801,17 +801,17 @@ public:
         iterator(BoxedDict* d, BoxIterator it_box) : d(d), it_box(std::move(it_box)) {}
 
         bool operator!=(const iterator& rhs) const {
-            if (d->b)
+            if (d->getHCClass())
                 return it_box != rhs.it_box;
             return it != rhs.it;
         }
         bool operator==(const iterator& rhs) const {
-            if (d->b)
+            if (d->getHCClass())
                 return it_box == rhs.it_box;
             return it == rhs.it;
         }
         iterator& operator++() {
-            if (d->b)
+            if (d->getHCClass())
                 ++it_box;
             else
                 ++it;
@@ -819,15 +819,14 @@ public:
         }
         std::pair<Box*, Box*> operator*() const { return std::make_pair(first(), second()); }
         Box* first() const {
-            if (d->b)
+            if (d->getHCClass())
                 return it_box->first;
             return it->first.value;
         }
         Box* second() const {
-            if (d->b) {
-                HCAttrs* attrs = d->b->getHCAttrsPtr();
+            HCAttrs* attrs = d->getHCClass();
+            if (attrs)
                 return attrs->attr_list->attrs[it_box->second];
-            }
             return it->second;
         }
     };
