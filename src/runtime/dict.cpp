@@ -227,9 +227,6 @@ Box* dictLen(BoxedDict* self) {
 }
 
 extern "C" Py_ssize_t PyDict_Size(PyObject* op) noexcept {
-    if (op->cls == attrwrapper_cls)
-        return PyObject_Size(op);
-
     RELEASE_ASSERT(PyDict_Check(op), "");
     BoxedDict* self = (BoxedDict*)op;
 
@@ -265,11 +262,8 @@ extern "C" void PyDict_Clear(PyObject* op) noexcept {
 }
 
 extern "C" PyObject* PyDict_Copy(PyObject* o) noexcept {
-    RELEASE_ASSERT(PyDict_Check(o) || o->cls == attrwrapper_cls, "");
+    RELEASE_ASSERT(PyDict_Check(o), "");
     try {
-        if (o->cls == attrwrapper_cls)
-            return attrwrapperToDict(o);
-
         return dictCopy(static_cast<BoxedDict*>(o));
     } catch (ExcInfo e) {
         setCAPIException(e);
@@ -356,7 +350,7 @@ Box* dictSetitem(BoxedDict* self, Box* k, Box* v);
 // The performance should hopefully be comparable to the CPython fast case, since we can use
 // runtimeICs.
 extern "C" int PyDict_SetItem(PyObject* mp, PyObject* _key, PyObject* _item) noexcept {
-    ASSERT(PyDict_Check(mp) || mp->cls == attrwrapper_cls, "%s", getTypeName(mp));
+    ASSERT(PyDict_Check(mp), "%s", getTypeName(mp));
 
     assert(mp);
     BoxedDict* b = static_cast<BoxedDict*>(mp);
@@ -387,7 +381,7 @@ extern "C" int PyDict_SetItemString(PyObject* mp, const char* key, PyObject* ite
 }
 
 extern "C" PyObject* PyDict_GetItem(PyObject* dict, PyObject* key) noexcept {
-    ASSERT(PyDict_Check(dict) || dict->cls == attrwrapper_cls, "%s", getTypeName(dict));
+    ASSERT(PyDict_Check(dict), "%s", getTypeName(dict));
     if (PyDict_Check(dict)) {
         BoxedDict* d = static_cast<BoxedDict*>(dict);
         return d->getOrNull(key);
@@ -486,9 +480,6 @@ Box* BoxedDict::getOrNull(Box* k) {
 }
 
 extern "C" PyObject* PyDict_GetItemString(PyObject* dict, const char* key) noexcept {
-    if (dict->cls == attrwrapper_cls)
-        return unwrapAttrWrapper(dict)->getattr(internStringMortal(key));
-
     Box* key_s;
     try {
         key_s = boxString(key);
@@ -628,7 +619,7 @@ static int dict_ass_sub(PyDictObject* mp, PyObject* v, PyObject* w) noexcept {
 }
 
 extern "C" int PyDict_DelItem(PyObject* op, PyObject* key) noexcept {
-    ASSERT(PyDict_Check(op) || op->cls == attrwrapper_cls, "%s", getTypeName(op));
+    ASSERT(PyDict_Check(op), "%s", getTypeName(op));
     try {
         dictDelitem((BoxedDict*)op, key);
         return 0;
@@ -718,19 +709,6 @@ Box* dictContains(BoxedDict* self, Box* k) {
 extern "C" int PyDict_Contains(PyObject* op, PyObject* key) noexcept {
 
     try {
-        if (op->cls == attrwrapper_cls) {
-            if (key->cls == str_cls) {
-                BoxedString* key_str = (BoxedString*)key;
-                internStringMortalInplace(key_str);
-                return unwrapAttrWrapper(op)->hasattr(key_str);
-            }
-
-            Box* rtn = PyObject_CallMethod(op, "__contains__", "O", key);
-            if (!rtn)
-                return -1;
-            return rtn == True;
-        }
-
         BoxedDict* mp = (BoxedDict*)op;
         assert(PyDict_Check(mp));
         return mp->getOrNull(key) ? 1 : 0;
@@ -764,9 +742,6 @@ Box* dictEq(BoxedDict* self, Box* _rhs) {
     if (!PyDict_Check(self))
         raiseExcHelper(TypeError, "descriptor '__eq__' requires a 'dict' object but received a '%s'",
                        getTypeName(self));
-
-    if (_rhs->cls == attrwrapper_cls)
-        _rhs = attrwrapperToDict(_rhs);
 
     if (!PyDict_Check(_rhs))
         return NotImplemented;
@@ -834,13 +809,9 @@ void dictMerge(BoxedDict* self, Box* other) {
     }
 
     Box* keys;
-    if (other->cls == attrwrapper_cls) {
-        keys = attrwrapperKeys(other);
-    } else {
-        static BoxedString* keys_str = internStringImmortal("keys");
-        CallattrFlags callattr_flags{.cls_only = false, .null_on_nonexistent = true, .argspec = ArgPassSpec(0) };
-        keys = callattr(other, keys_str, callattr_flags, NULL, NULL, NULL, NULL, NULL);
-    }
+    static BoxedString* keys_str = internStringImmortal("keys");
+    CallattrFlags callattr_flags{.cls_only = false, .null_on_nonexistent = true, .argspec = ArgPassSpec(0) };
+    keys = callattr(other, keys_str, callattr_flags, NULL, NULL, NULL, NULL, NULL);
     assert(keys);
 
     for (Box* k : keys->pyElements()) {
@@ -880,14 +851,6 @@ void dictMergeFromSeq2(BoxedDict* self, Box* other) {
 extern "C" int PyDict_Merge(PyObject* a, PyObject* b, int override_) noexcept {
     try {
         if (a == NULL || !PyDict_Check(a) || b == NULL) {
-            if (a && b && a->cls == attrwrapper_cls) {
-                RELEASE_ASSERT(PyDict_Check(b) && override_ == 1, "");
-                for (auto&& item : *(BoxedDict*)b) {
-                    setitem(a, item.first, item.second);
-                }
-                return 0;
-            }
-
             PyErr_BadInternalCall();
             return -1;
         }

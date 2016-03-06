@@ -1801,9 +1801,7 @@ static PyObject* builtin_eval(PyObject* self, PyObject* args) noexcept {
         PyErr_SetString(PyExc_TypeError, "locals must be a mapping");
         return NULL;
     }
-    // Pyston change:
-    // if (globals != Py_None && !PyDict_Check(globals)) {
-    if (globals != Py_None && !PyDict_Check(globals) && globals->cls != attrwrapper_cls) {
+    if (globals != Py_None && !PyDict_Check(globals)) {
         PyErr_SetString(PyExc_TypeError, PyMapping_Check(globals)
                                              ? "globals must be a real dict; try eval(expr, {}, mapping)"
                                              : "globals must be a dict");

@@ -480,11 +480,6 @@ static void pickGlobalsAndLocals(Box*& globals, Box*& locals) {
         globals = getGlobals();
 
     BoxedModule* module = getCurrentModule();
-    if (globals && globals->cls == attrwrapper_cls && unwrapAttrWrapper(globals) == module)
-        globals = module;
-
-    if (globals->cls == attrwrapper_cls)
-        globals = unwrapAttrWrapper(globals);
 
     assert(globals && (globals->cls == module_cls || globals->cls == dict_cls));
 
@@ -551,7 +546,7 @@ Box* exec(Box* boxedCode, Box* globals, Box* locals, FutureFlags caller_future_f
         raiseExcHelper(TypeError, "exec: arg 1 must be a string, file, or code object");
     }
 
-    if (!PyDict_Check(globals) && globals->cls != attrwrapper_cls) {
+    if (!PyDict_Check(globals)) {
         raiseExcHelper(TypeError, "exec: arg 2 must be a dictionary or None");
     }
     if (!PyMapping_Check(locals))

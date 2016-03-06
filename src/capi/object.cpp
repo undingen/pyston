@@ -162,8 +162,6 @@ static PyObject* _specialized_dir_module(PyObject* obj) noexcept {
     if (dict != NULL) {
         if (PyDict_Check(dict))
             result = PyDict_Keys(dict);
-        else if (dict->cls == attrwrapper_cls)
-            result = attrwrapperKeys(dict);
         else {
             char* name = PyModule_GetName(obj);
             if (name)
@@ -188,10 +186,6 @@ static PyObject* _generic_dir(PyObject* obj) noexcept {
     if (dict == NULL) {
         PyErr_Clear();
         dict = PyDict_New();
-    } else if (dict->cls == attrwrapper_cls) {
-        auto new_dict = PyDict_New();
-        PyDict_Update(new_dict, dict);
-        dict = new_dict;
     } else if (!PyDict_Check(dict)) {
         Py_DECREF(dict);
         dict = PyDict_New();

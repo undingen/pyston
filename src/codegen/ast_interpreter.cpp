@@ -1632,8 +1632,6 @@ void ASTInterpreterJitInterface::delNameHelper(void* _interpreter, InternedStrin
             assertNameDefined(0, name.c_str(), NameError, false /* local_var_msg */);
         }
         PyDict_DelItem(boxed_locals, name.getBox());
-    } else if (boxed_locals->cls == attrwrapper_cls) {
-        attrwrapperDel(boxed_locals, name);
     } else {
         RELEASE_ASSERT(0, "%s", boxed_locals->cls->tp_name);
     }

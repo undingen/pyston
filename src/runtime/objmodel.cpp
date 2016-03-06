@@ -6265,11 +6265,6 @@ extern "C" Box* getGlobal(Box* globals, BoxedString* name) {
 }
 
 Box* getFromGlobals(Box* globals, BoxedString* name) {
-    if (globals->cls == attrwrapper_cls) {
-        globals = unwrapAttrWrapper(globals);
-        RELEASE_ASSERT(globals->cls == module_cls, "%s", globals->cls->tp_name);
-    }
-
     if (globals->cls == module_cls) {
         return globals->getattr(name);
     } else if (globals->cls == dict_cls) {
@@ -6280,11 +6275,6 @@ Box* getFromGlobals(Box* globals, BoxedString* name) {
 }
 
 extern "C" void setGlobal(Box* globals, BoxedString* name, Box* value) {
-    if (globals->cls == attrwrapper_cls) {
-        globals = unwrapAttrWrapper(globals);
-        RELEASE_ASSERT(globals->cls == module_cls, "%s", globals->cls->tp_name);
-    }
-
     if (globals->cls == module_cls) {
         setattr(static_cast<BoxedModule*>(globals), name, value);
     } else {

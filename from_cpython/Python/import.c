@@ -2356,9 +2356,7 @@ get_parent(PyObject *globals, char *buf, Py_ssize_t *p_buflen, int level)
     PyObject *pkgname, *modname, *modpath, *modules, *parent;
     int orig_level = level;
 
-    // Pyston change: support attrwrapper as globals
-    // if (globals == NULL || !PyDict_Check(globals) || !level)
-    if (globals == NULL || (!PyDict_Check(globals) && globals->ob_type != &PyAttrWrapper_Type) || !level)
+    if (globals == NULL || !PyDict_Check(globals) || !level)
         return Py_None;
 
     if (namestr == NULL) {
@@ -2920,9 +2918,7 @@ PyImport_Import(PyObject *module_name)
     }
 
     /* Get the __import__ function from the builtins */
-    // Pyston change: add support for attrwrapper
-    // if (PyDict_Check(builtins)) {
-    if (PyDict_Check(builtins) || builtins->ob_type == &PyAttrWrapper_Type) {
+    if (PyDict_Check(builtins)) {
         import = PyObject_GetItem(builtins, import_str);
         if (import == NULL)
             PyErr_SetObject(PyExc_KeyError, import_str);

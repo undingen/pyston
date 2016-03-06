@@ -2722,14 +2722,6 @@ save(Picklerobject *self, PyObject *args, int pers_save)
         }
         break;
 
-    // Pyston change: add support for attrwrapper
-    case 'a':
-        if (type == &PyAttrWrapper_Type) {
-            res = save_dict(self, args);
-            goto finally;
-        }
-        break;
-
     case 'i':
         if (type == &PyInstance_Type) {
             res = save_inst(self, args);
