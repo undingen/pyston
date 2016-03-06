@@ -573,6 +573,8 @@ Box* dictDelitem(BoxedDict* self, Box* k) {
 
     HCAttrs* attrs = self->getHCAttrs();
     if (attrs) {
+        self->convertToDict();
+        /*
         HiddenClass* hcls = attrs->hcls;
         assert(hcls->type == HiddenClass::NORMAL || hcls->type == HiddenClass::SINGLETON);
 
@@ -602,6 +604,7 @@ Box* dictDelitem(BoxedDict* self, Box* k) {
         int new_size = sizeof(HCAttrs::AttrList) + sizeof(Box*) * (num_attrs - 1);
         attrs->attr_list = (HCAttrs::AttrList*)gc::gc_realloc(attrs->attr_list, new_size);
         return None;
+        */
     }
     self->d->erase(k);
     return None;
