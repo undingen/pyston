@@ -928,11 +928,14 @@ void BoxedDict::gcHandler(GCVisitor* v, Box* b) {
 
     BoxedDict* d = (BoxedDict*)b;
 
-    HCAttrs* attrs = d->getHCAttrs();
-    if (attrs) {
-        v->visit(&attrs->hcls);
-        if (attrs->attr_list)
-            v->visit(&attrs->attr_list);
+    if (d->b) {
+        v->visit(&d->b);
+        return;
+    }
+    if (d->hcattrs) {
+        auto* hcattrs = d->hcattrs;
+        v->visit(&hcattrs->hcls);
+        v->visit(&hcattrs->attr_list);
         return;
     }
 
