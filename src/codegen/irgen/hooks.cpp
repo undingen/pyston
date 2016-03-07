@@ -479,6 +479,12 @@ static void pickGlobalsAndLocals(Box*& globals, Box*& locals) {
     if (globals == NULL)
         globals = getGlobals();
 
+    if (globals && globals->cls == dict_cls) {
+        BoxedDict* globals_dict = (BoxedDict*)globals;
+        if (globals_dict->b)
+            globals = globals_dict->b;
+    }
+
     BoxedModule* module = getCurrentModule();
 
     assert(globals && (globals->cls == module_cls || globals->cls == dict_cls));
