@@ -769,11 +769,10 @@ class BoxedDict : public Box {
 public:
     typedef pyston::DenseMap<BoxAndHash, Box*, BoxAndHash::Comparisons, detail::DenseMapPair<BoxAndHash, Box*>,
                              /* MinSize= */ 8> DictMap;
-    Box* b;           // set if we should use the HCAttrs of a Box* (aka attrwrapper replacement)
-    HCAttrs* hcattrs; // set if we use HCAttr storage
-    DictMap* d;       // set if we use a real dict
+    DictMap d; // set if we use a real dict
+    Box* b;    // set if we should use the HCAttrs of a Box* (aka attrwrapper replacement)
 
-    BoxedDict() __attribute__((visibility("default"))) : b(NULL), hcattrs(NULL), d(NULL) {}
+    BoxedDict() __attribute__((visibility("default"))) : b(NULL) {}
     static BoxedDict* createAttrWrapper(Box* b) {
         BoxedDict* rtn = new BoxedDict;
         rtn->b = b;
@@ -789,7 +788,7 @@ public:
         if (b) {
             return b->getHCAttrsPtr();
         }
-        return hcattrs;
+        return NULL;
     }
 
     class iterator {
