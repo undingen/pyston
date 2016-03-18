@@ -306,12 +306,6 @@ private:
     }
 
     void* visit_call(AST_Call* node) override {
-        // our llvm codegen static type system code currently only handles callattrs
-        if (node->func->type != AST_TYPE::Attribute && node->func->type != AST_TYPE::ClsAttribute)
-            return UNKNOWN;
-
-        CompilerType* func = getType(node->func);
-
         std::vector<CompilerType*> arg_types;
         for (int i = 0; i < node->args.size(); i++) {
             arg_types.push_back(getType(node->args[i]));
@@ -330,7 +324,13 @@ private:
             return UNKNOWN;
         }
 
-        CompilerType* rtn_type = func->callType(ArgPassSpec(arg_types.size()), arg_types, NULL);
+        CompilerType* rtn_type = UNKNOWN;
+
+        // our llvm codegen static type system code currently only handles callattrs
+        if (node->func->type == AST_TYPE::Attribute || node->func->type == AST_TYPE::ClsAttribute) {
+            CompilerType* func = getType(node->func);
+            rtn_type = func->callType(ArgPassSpec(arg_types.size()), arg_types, NULL);
+        }
 
         // Should be unboxing things before getting here; would like to assert, though
         // we haven't specialized all of the stdlib.
