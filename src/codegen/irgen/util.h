@@ -37,6 +37,7 @@ llvm::Constant* embedConstantPtr(const void* addr, llvm::Type*);
 llvm::Constant* getConstantInt(int64_t val);
 llvm::Constant* getConstantDouble(double val);
 llvm::Constant* getConstantInt(int64_t val, llvm::Type*);
+llvm::Constant* getConstantStr(llvm::StringRef str);
 llvm::Constant* getNullPtr(llvm::Type* t);
 
 void clearRelocatableSymsMap();

@@ -177,6 +177,11 @@ llvm::Constant* getConstantInt(int64_t n) {
     return getConstantInt(n, g.i64);
 }
 
+llvm::Constant* getConstantStr(llvm::StringRef str) {
+    RELEASE_ASSERT(0, "");
+    return llvm::ConstantDataArray::getString(g.context, str);
+}
+
 llvm::Constant* getConstantDouble(double val) {
     return llvm::ConstantFP::get(g.double_, val);
 }

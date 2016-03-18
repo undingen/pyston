@@ -1166,16 +1166,14 @@ public:
     }
 
     void setattr(IREmitter& emitter, const OpInfo& info, VAR* var, BoxedString* attr, CompilerVariable* v) override {
-        llvm::CallSite call
-            = emitter.createCall3(info.unw_info, g.funcs.raiseAttributeErrorStr, embedConstantPtr("int", g.i8_ptr),
-                                  embedConstantPtr(attr->data(), g.i8_ptr), getConstantInt(attr->size(), g.i64));
+        llvm::CallSite call = emitter.createCall3(info.unw_info, g.funcs.raiseAttributeErrorStr, getConstantStr("int"),
+                                                  getConstantStr(attr->s()), getConstantInt(attr->size(), g.i64));
         call.setDoesNotReturn();
     }
 
     void delattr(IREmitter& emitter, const OpInfo& info, VAR* var, BoxedString* attr) override {
-        llvm::CallSite call
-            = emitter.createCall3(info.unw_info, g.funcs.raiseAttributeErrorStr, embedConstantPtr("int", g.i8_ptr),
-                                  embedConstantPtr(attr->data(), g.i8_ptr), getConstantInt(attr->size(), g.i64));
+        llvm::CallSite call = emitter.createCall3(info.unw_info, g.funcs.raiseAttributeErrorStr, getConstantStr("int"),
+                                                  getConstantStr(attr->s()), getConstantInt(attr->size(), g.i64));
         call.setDoesNotReturn();
     }
 
@@ -1199,8 +1197,7 @@ public:
     }
 
     CompilerVariable* len(IREmitter& emitter, const OpInfo& info, VAR* var) override {
-        llvm::CallSite call
-            = emitter.createCall(info.unw_info, g.funcs.raiseNotIterableError, embedConstantPtr("int", g.i8_ptr));
+        llvm::CallSite call = emitter.createCall(info.unw_info, g.funcs.raiseNotIterableError, getConstantStr("int"));
         call.setDoesNotReturn();
         return makeInt(llvm::UndefValue::get(g.i64));
     }
@@ -1331,8 +1328,7 @@ public:
     }
 
     CompilerVariable* contains(IREmitter& emitter, const OpInfo& info, VAR* var, CompilerVariable* lhs) override {
-        llvm::CallSite call
-            = emitter.createCall(info.unw_info, g.funcs.raiseNotIterableError, embedConstantPtr("int", g.i8_ptr));
+        llvm::CallSite call = emitter.createCall(info.unw_info, g.funcs.raiseNotIterableError, getConstantStr("int"));
         call.setDoesNotReturn();
         return new ConcreteCompilerVariable(BOOL, llvm::UndefValue::get(BOOL->llvmType()), true);
     }
@@ -1443,14 +1439,14 @@ public:
 
     void setattr(IREmitter& emitter, const OpInfo& info, VAR* var, BoxedString* attr, CompilerVariable* v) override {
         llvm::CallSite call
-            = emitter.createCall3(info.unw_info, g.funcs.raiseAttributeErrorStr, embedConstantPtr("float", g.i8_ptr),
+            = emitter.createCall3(info.unw_info, g.funcs.raiseAttributeErrorStr, getConstantStr("float"),
                                   embedConstantPtr(attr->data(), g.i8_ptr), getConstantInt(attr->size(), g.i64));
         call.setDoesNotReturn();
     }
 
     void delattr(IREmitter& emitter, const OpInfo& info, VAR* var, BoxedString* attr) override {
         llvm::CallSite call
-            = emitter.createCall3(info.unw_info, g.funcs.raiseAttributeErrorStr, embedConstantPtr("float", g.i8_ptr),
+            = emitter.createCall3(info.unw_info, g.funcs.raiseAttributeErrorStr, getConstantStr("float"),
                                   embedConstantPtr(attr->data(), g.i8_ptr), getConstantInt(attr->size(), g.i64));
         call.setDoesNotReturn();
     }
@@ -1598,8 +1594,7 @@ public:
     }
 
     CompilerVariable* contains(IREmitter& emitter, const OpInfo& info, VAR* var, CompilerVariable* lhs) override {
-        llvm::CallSite call
-            = emitter.createCall(info.unw_info, g.funcs.raiseNotIterableError, embedConstantPtr("float", g.i8_ptr));
+        llvm::CallSite call = emitter.createCall(info.unw_info, g.funcs.raiseNotIterableError, getConstantStr("float"));
         call.setDoesNotReturn();
         return new ConcreteCompilerVariable(BOOL, llvm::UndefValue::get(BOOL->llvmType()), true);
     }
@@ -2091,7 +2086,7 @@ public:
                     static llvm::FunctionType* ft = llvm::FunctionType::get(
                         g.llvm_value_type_ptr, { g.llvm_value_type_ptr, g.i64, g.i64 }, false);
                     llvm::Value* r = emitter.createCall3(
-                        info.unw_info, embedConstantPtr((void*)PySequence_GetSlice, ft->getPointerTo()),
+                        info.unw_info, embedRelocatablePtr((void*)PySequence_GetSlice, ft->getPointerTo()),
                         var->getValue(), start, stop);
                     emitter.checkAndPropagateCapiException(info.unw_info, r, getNullPtr(g.llvm_value_type_ptr));
 
@@ -2437,9 +2432,9 @@ public:
         }
 
         ASSERT(other_type == UNKNOWN || other_type == BOXED_BOOL, "%s", other_type->debugName().c_str());
-        llvm::Value* boxed = emitter.getBuilder()->CreateSelect(i1FromBool(emitter, var),
-                                                                embedConstantPtr(True, g.llvm_value_type_ptr),
-                                                                embedConstantPtr(False, g.llvm_value_type_ptr));
+        llvm::Value* boxed = emitter.getBuilder()->CreateSelect(
+            i1FromBool(emitter, var), embedRelocatablePtr(True, g.llvm_value_type_ptr, "cTrue"),
+            embedRelocatablePtr(False, g.llvm_value_type_ptr, "cFalse"));
         return new ConcreteCompilerVariable(other_type, boxed, true);
     }
 
@@ -2473,8 +2468,7 @@ public:
     }
 
     CompilerVariable* contains(IREmitter& emitter, const OpInfo& info, VAR* var, CompilerVariable* lhs) override {
-        llvm::CallSite call
-            = emitter.createCall(info.unw_info, g.funcs.raiseNotIterableError, embedConstantPtr("bool", g.i8_ptr));
+        llvm::CallSite call = emitter.createCall(info.unw_info, g.funcs.raiseNotIterableError, getConstantStr("bool"));
         call.setDoesNotReturn();
         return new ConcreteCompilerVariable(BOOL, llvm::UndefValue::get(BOOL->llvmType()), true);
     }
@@ -2616,12 +2610,12 @@ public:
 
                     if (target_exception_style == CAPI) {
                         llvm::CallSite call = emitter.createCall(info.unw_info, g.funcs.raiseIndexErrorStrCapi,
-                                                                 embedConstantPtr("tuple", g.i8_ptr), CAPI);
+                                                                 getConstantStr("tuple"), CAPI);
                         emitter.checkAndPropagateCapiException(info.unw_info, getNullPtr(g.llvm_value_type_ptr),
                                                                getNullPtr(g.llvm_value_type_ptr));
                     } else {
                         llvm::CallSite call = emitter.createCall(info.unw_info, g.funcs.raiseIndexErrorStr,
-                                                                 embedConstantPtr("tuple", g.i8_ptr), CXX);
+                                                                 getConstantStr("tuple"), CXX);
                         call.setDoesNotReturn();
                     }
                     return undefVariable();

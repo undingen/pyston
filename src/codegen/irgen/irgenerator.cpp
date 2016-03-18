@@ -2081,11 +2081,10 @@ private:
         _setVRegIfUserVisible(target->id, []() { return getNullPtr(g.llvm_value_type_ptr); });
 
         if (symbol_table.count(target->id) == 0) {
-            llvm::CallSite call
-                = emitter.createCall(unw_info, g.funcs.assertNameDefined,
-                                     { getConstantInt(0, g.i1), embedConstantPtr(target->id.c_str(), g.i8_ptr),
-                                       embedRelocatablePtr(NameError, g.llvm_class_type_ptr),
-                                       getConstantInt(true /*local_error_msg*/, g.i1) });
+            llvm::CallSite call = emitter.createCall(unw_info, g.funcs.assertNameDefined,
+                                                     { getConstantInt(0, g.i1), getConstantStr(target->id),
+                                                       embedRelocatablePtr(NameError, g.llvm_class_type_ptr),
+                                                       getConstantInt(true /*local_error_msg*/, g.i1) });
             call.setDoesNotReturn();
             return;
         }
@@ -2095,7 +2094,7 @@ private:
 
         if (is_defined_var) {
             emitter.createCall(unw_info, g.funcs.assertNameDefined,
-                               { i1FromBool(emitter, is_defined_var), embedConstantPtr(target->id.c_str(), g.i8_ptr),
+                               { i1FromBool(emitter, is_defined_var), getConstantStr(target->id),
                                  embedRelocatablePtr(NameError, g.llvm_class_type_ptr),
                                  getConstantInt(true /*local_error_msg*/, g.i1) });
             _popFake(defined_name);
