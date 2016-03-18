@@ -306,6 +306,10 @@ private:
     }
 
     void* visit_call(AST_Call* node) override {
+        // our llvm codegen static type system code currently only handles callattrs
+        if (node->func->type != AST_TYPE::Attribute && node->func->type != AST_TYPE::ClsAttribute)
+            return UNKNOWN;
+
         CompilerType* func = getType(node->func);
 
         std::vector<CompilerType*> arg_types;
