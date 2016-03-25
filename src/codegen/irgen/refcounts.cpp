@@ -23,6 +23,7 @@
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/IR/Verifier.h"
 #include "llvm/Target/TargetMachine.h"
 
 #include "codegen/codegen.h"
@@ -526,6 +527,9 @@ void RefcountTracker::addRefcounts(IRGenState* irstate) {
     if (VERBOSITY() >= 2) {
         fprintf(stderr, "Before refcounts:\n");
         fprintf(stderr, "\033[35m");
+
+        llvm::verifyFunction(*f);
+
         dumpPrettyIR(f);
         fprintf(stderr, "\033[0m");
     }

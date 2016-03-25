@@ -819,7 +819,7 @@ public:
                    num_evaluations, 1.0 * num_evaluations / starting_types.size());
         }
 
-        if (VERBOSITY("types") >= 3) {
+        if (1 || VERBOSITY("types") >= 3) {
             for (const auto& p : starting_types) {
                 auto b = p.first;
                 printf("Types at beginning of block %d:\n", b->idx);

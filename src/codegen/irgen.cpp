@@ -854,7 +854,12 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
                 if (blocks.count(bpred) == 0)
                     continue;
 
+                llvm::BasicBlock* bb = llvm_exit_blocks[b->predecessors[j]];
                 auto terminator = llvm_exit_blocks[b->predecessors[j]]->getTerminator();
+                if (!terminator) {
+                    bb->dump();
+                    bb->getParent()->dump();
+                }
                 if (llvm::isa<llvm::UnreachableInst>(terminator))
                     continue;
 

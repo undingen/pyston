@@ -361,6 +361,7 @@ private:
     IRGenerator* irgenerator;
 
     void emitPendingCallsCheck(llvm::BasicBlock* exc_dest) {
+        return;
         auto&& builder = *getBuilder();
 
         llvm::GlobalVariable* pendingcalls_to_do_gv = g.cur_module->getGlobalVariable("_pendingcalls_to_do");
@@ -500,6 +501,8 @@ private:
 
         pp_args.insert(pp_args.end(), ic_stackmap_args.begin(), ic_stackmap_args.end());
 
+        int inital_args = pp_args.size();
+
         irgenerator->addFrameStackmapArgs(info, pp_args);
 
         llvm::Intrinsic::ID intrinsic_id;
@@ -515,6 +518,11 @@ private:
         }
         llvm::Function* patchpoint = this->getIntrinsic(intrinsic_id);
         llvm::CallSite rtn = this->emitCall(unw_info, patchpoint, pp_args, target_exception_style);
+
+        for (int i=inital_args; i<pp_args.size(); ++i) {
+             refConsumed(pp_args[i], rtn.getInstruction());
+        }
+
         return rtn;
     }
 
@@ -622,8 +630,10 @@ public:
         ICSetupInfo* pp = createDeoptIC();
         llvm::Value* v
             = createIC(pp, (void*)pyston::deopt, { embedRelocatablePtr(node, g.llvm_astexpr_type_ptr), node_value },
-                       UnwindInfo(current_stmt, NULL));
-        return getBuilder()->CreateIntToPtr(v, g.llvm_value_type_ptr);
+                       UnwindInfo(current_stmt, NO_CXX_INTERCEPTION));
+        llvm::Value* rtn = getBuilder()->CreateIntToPtr(v, g.llvm_value_type_ptr);
+        setType(rtn, RefType::OWNED);
+        return rtn;
     }
 
     void checkAndPropagateCapiException(const UnwindInfo& unw_info, llvm::Value* returned_val, llvm::Value* exc_val,
@@ -808,7 +818,9 @@ private:
         curblock = deopt_bb;
         emitter.getBuilder()->SetInsertPoint(curblock);
         llvm::Value* v = emitter.createDeopt(current_statement, (AST_expr*)node, node_value);
-        emitter.getBuilder()->CreateRet(v);
+        llvm::Instruction* ret_inst = emitter.getBuilder()->CreateRet(v);
+        irstate->getRefcounts()->refConsumed(v, ret_inst);
+
 
         curblock = success_bb;
         emitter.getBuilder()->SetInsertPoint(curblock);
@@ -891,7 +903,7 @@ private:
                     // local symbols will not throw.
                     emitter.getBuilder()->CreateUnreachable();
                     exc_type = exc_value = exc_tb = emitter.getNone();
-                    endBlock(DEAD);
+                    // endBlock(DEAD);
                 }
 
                 // clear this out to signal that we consumed them:

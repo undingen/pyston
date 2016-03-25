@@ -197,7 +197,7 @@ void ASTInterpreter::addSymbol(InternedString name, Box* value, bool allow_dupli
     assert(getSymVRegMap().count(name));
     if (!allow_duplicates)
         assert(vregs[getSymVRegMap()[name]] == NULL);
-    vregs[getSymVRegMap()[name]] = value;
+    vregs[getSymVRegMap()[name]] = incref(value);
 }
 
 void ASTInterpreter::setGenerator(Box* gen) {
@@ -858,6 +858,7 @@ Value ASTInterpreter::visit_invoke(AST_Invoke* node) {
 Value ASTInterpreter::visit_clsAttribute(AST_ClsAttribute* node) {
     Value obj = visit_expr(node->value);
     BoxedString* attr = node->attr.getBox();
+    AUTO_DECREF(obj.o);
     return Value(getclsattr(obj.o, attr), jit ? jit->emitGetClsAttr(obj, attr) : NULL);
 }
 
@@ -892,8 +893,7 @@ Value ASTInterpreter::visit_langPrimitive(AST_LangPrimitive* node) {
         assert(ast_str->str_type == AST_Str::STR);
         const std::string& name = ast_str->str_data;
         assert(name.size());
-        BoxedString* name_boxed = source_info->parent_module->getStringConstant(name, true);
-        AUTO_DECREF(name_boxed);
+        BORROWED(BoxedString*) name_boxed = source_info->parent_module->getStringConstant(name, true);
 
         if (jit)
             v.var = jit->emitImportFrom(module, name_boxed);

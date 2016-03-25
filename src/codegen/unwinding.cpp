@@ -785,10 +785,8 @@ DeoptState getDeoptState() {
     bool found = false;
     unwindPythonStack([&](PythonFrameIteratorImpl* frame_iter) {
         BoxedDict* d;
-        BoxedClosure* closure;
         CompiledFunction* cf;
         if (frame_iter->getId().type == PythonFrameId::COMPILED) {
-            assert(0 && "check refcounting");
             d = new BoxedDict();
 
             cf = frame_iter->getCF();
