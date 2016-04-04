@@ -90,10 +90,12 @@ class JitFragmentWriter;
 //
 // Basic layout of generated code block is:
 // entry_code:
+//      push   %rbp                 ; setup stack frame using a frame pointer
+//      mov    %rsp,%rbp
 //      push   %r14                 ; save r14
 //      push   %r13                 ; save r13
-//      sub    $0x118,%rsp          ; setup scratch, 0x118 = scratch_size + 16 = space for two func args passed on the
-//                                                                               stack + 8 byte for stack alignment
+//      sub    $0x110,%rsp          ; setup scratch, 0x118 = scratch_size + 16 = space for two func args passed on the
+//                                                                               stack
 //      mov    %rdi,%r13            ; copy the pointer to ASTInterpreter instance into r13
 //      mov    %rdx,%r14            ; copy the pointer to the vregs array into r14
 //      jmpq   *0x8(%rsi)           ; jump to block->code
@@ -106,9 +108,10 @@ class JitFragmentWriter;
 //      cmp    %rax,%rcx            ; rax == True
 //      jne    end_side_exit
 //      movabs $0x215bb60,%rax      ; rax = CFGBlock* to interpret next (rax is the 1. return reg)
-//      add    $0x118,%rsp          ; restore stack pointer
+//      add    $0x110,%rsp          ; restore stack pointer
 //      pop    %r13                 ; restore r13
 //      pop    %r14                 ; restore r14
+//      pop    %rbp                 ; restore base pointer
 //      ret                         ; exit to the interpreter which will interpret the specified CFGBLock*
 //    end_side_exit:
 //      ....
@@ -119,9 +122,10 @@ class JitFragmentWriter;
 //      xor    %eax,%eax            ; rax contains the next block to interpret.
 //                                    in this case 0 which means we are finished
 //      movabs $0x1270014108,%rdx   ; rdx must contain the Box* value to return
-//      add    $0x118,%rsp          ; restore stack pointer
+//      add    $0x110,%rsp          ; restore stack pointer
 //      pop    %r13                 ; restore r13
 //      pop    %r14                 ; restore r14
+//      pop    %rbp                 ; restore base pointer
 //      ret
 //
 // nth_JitFragment:
@@ -137,7 +141,7 @@ public:
 
     // scratch size + space for passing additional args on the stack without having to adjust the SP when calling
     // functions with more than 6 args.
-    static constexpr int sp_adjustment = scratch_size + num_stack_args * 8 + 8 /* = alignment */;
+    static constexpr int sp_adjustment = scratch_size + num_stack_args * 8;
 
 private:
     // the memory block contains the EH frame directly followed by the generated machine code.

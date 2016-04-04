@@ -43,14 +43,14 @@ static llvm::DenseMap<CFGBlock*, std::vector<void*>> block_patch_locations;
 //   char scratch[256+16];
 //   foo(scratch);
 // }
-//
-// It omits the frame pointer but saves r13 and r14
+// with -O3 -fno-omit-frame-pointer
+// It uses the frame pointer and saves r13 and r14
 // use 'objdump -s -j .eh_frame <obj.file>' to dump it
 const unsigned char eh_info[]
     = { 0x14, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x7a, 0x52, 0x00, 0x01, 0x78, 0x10,
         0x01, 0x1b, 0x0c, 0x07, 0x08, 0x90, 0x01, 0x00, 0x00, 0x1c, 0x00, 0x00, 0x00, 0x1c, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x00, 0x42, 0x0e, 0x10, 0x42,
-        0x0e, 0x18, 0x47, 0x0e, 0xb0, 0x02, 0x8d, 0x03, 0x8e, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00 };
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x28, 0x00, 0x00, 0x00, 0x00, 0x41, 0x0e, 0x10, 0x86,
+        0x02, 0x43, 0x0d, 0x06, 0x4b, 0x8d, 0x04, 0x8e, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 static_assert(JitCodeBlock::num_stack_args == 2, "have to update EH table!");
 static_assert(JitCodeBlock::scratch_size == 256, "have to update EH table!");
 
@@ -70,9 +70,11 @@ JitCodeBlock::JitCodeBlock(llvm::StringRef name)
     uint8_t* code = a.curInstPointer();
 
     // emit prolog
+    a.push(assembler::RBP);
+    a.mov(assembler::RSP, assembler::RBP);
     a.push(assembler::R14);
     a.push(assembler::R13);
-    static_assert(sp_adjustment % 16 == 8, "stack isn't aligned");
+    static_assert(sp_adjustment % 16 == 0, "stack isn't aligned");
     a.sub(assembler::Immediate(sp_adjustment), assembler::RSP);
     a.mov(assembler::RDI, assembler::R13);                                // interpreter pointer
     a.mov(assembler::RDX, assembler::R14);                                // vreg array
@@ -809,6 +811,7 @@ void JitFragmentWriter::_emitJump(CFGBlock* b, RewriterVar* block_next, int& siz
         assembler->add(assembler::Immediate(JitCodeBlock::sp_adjustment), assembler::RSP);
         assembler->pop(assembler::R13);
         assembler->pop(assembler::R14);
+        assembler->pop(assembler::RBP);
         assembler->retq();
 
         // make sure we have at least 'min_patch_size' of bytes available.
@@ -842,6 +845,7 @@ void JitFragmentWriter::_emitOSRPoint() {
         assembler->add(assembler::Immediate(JitCodeBlock::sp_adjustment), assembler::RSP);
         assembler->pop(assembler::R13);
         assembler->pop(assembler::R14);
+        assembler->pop(assembler::RBP);
         assembler->retq();
     }
     interp->bumpUse();
@@ -936,6 +940,7 @@ void JitFragmentWriter::_emitReturn(RewriterVar* return_val) {
     assembler->add(assembler::Immediate(JitCodeBlock::sp_adjustment), assembler::RSP);
     assembler->pop(assembler::R13);
     assembler->pop(assembler::R14);
+    assembler->pop(assembler::RBP);
     assembler->retq();
     return_val->bumpUse();
 }
