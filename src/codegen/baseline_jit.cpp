@@ -527,6 +527,9 @@ void JitFragmentWriter::emitRaise0() {
 
 void JitFragmentWriter::emitRaise3(RewriterVar* arg0, RewriterVar* arg1, RewriterVar* arg2) {
     call(false, (void*)raise3, arg0, arg1, arg2);
+    arg0->refConsumed();
+    arg1->refConsumed();
+    arg2->refConsumed();
 }
 
 void JitFragmentWriter::emitEndBlock() {
@@ -556,6 +559,9 @@ void JitFragmentWriter::emitSetCurrentInst(AST_stmt* node) {
 
 void JitFragmentWriter::emitSetExcInfo(RewriterVar* type, RewriterVar* value, RewriterVar* traceback) {
     call(false, (void*)ASTInterpreterJitInterface::setExcInfoHelper, getInterp(), type, value, traceback);
+    type->refConsumed();
+    value->refConsumed();
+    traceback->refConsumed();
 }
 
 void JitFragmentWriter::emitSetGlobal(Box* global, BoxedString* s, STOLEN(RewriterVar*) v) {
@@ -697,6 +703,11 @@ int JitFragmentWriter::finishCompilation() {
         std::unique_ptr<ICInfo> pp
             = registerCompiledPatchpoint(start_addr, slowpath_start, initialization_info.continue_addr,
                                          slowpath_rtn_addr, pp_info.ic.get(), pp_info.stack_info, LiveOutSet());
+        if (pp_info.decref_info.size()) {
+            addCustomEHEntry((uint64_t)slowpath_rtn_addr, pp_info.decref_info);
+            pp->decref_info_add.insert(picked_slot->ic->decref_info_add.end(),
+                                                    pp_info.decref_info.begin(), pp_info.decref_info.end());
+        }
         pp->associateNodeWithICInfo(pp_info.node);
         pp.release();
     }
@@ -866,7 +877,7 @@ Box* JitFragmentWriter::runtimeCallHelper(Box* obj, ArgPassSpec argspec, TypeRec
 void JitFragmentWriter::_emitGetLocal(RewriterVar* val_var, const char* name) {
     assembler::Register var_reg = val_var->getInReg();
     assembler->test(var_reg, var_reg);
-    val_var->bumpUse();
+
 
     {
         assembler::ForwardJump jnz(*assembler, assembler::COND_NOT_ZERO);
@@ -876,6 +887,7 @@ void JitFragmentWriter::_emitGetLocal(RewriterVar* val_var, const char* name) {
     }
 
     _incref(val_var);
+    val_var->bumpUse();
 }
 
 void JitFragmentWriter::_emitJump(CFGBlock* b, RewriterVar* block_next, ExitInfo& exit_info) {
@@ -982,8 +994,10 @@ void JitFragmentWriter::_emitPPCall(RewriterVar* result, void* func_addr, llvm::
 
     assertConsistent();
 
+    auto&& decref_info = getDecrefLocation();
+
     StackInfo stack_info(pp_scratch_size, pp_scratch_location);
-    pp_infos.emplace_back(PPInfo{ func_addr, pp_start, pp_end, std::move(setup_info), stack_info, ast_node });
+    pp_infos.emplace_back(PPInfo{ func_addr, pp_start, pp_end, std::move(setup_info), stack_info, ast_node, std::move(decref_info) });
 
     assert(vars_by_location.count(assembler::RAX) == 0);
     result->initializeInReg(assembler::RAX);

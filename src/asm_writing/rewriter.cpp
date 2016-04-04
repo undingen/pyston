@@ -542,7 +542,8 @@ void Rewriter::_incref(RewriterVar* var, int num_refs) {
                 //llvm::ArrayRef<RewriterVar*>());
 #ifdef Py_REF_DEBUG
     //assembler->trap();
-    assembler->incq(assembler::Immediate(&_Py_RefTotal));
+    for (int i=0; i<num_refs; ++i)
+        assembler->incq(assembler::Immediate(&_Py_RefTotal));
 #endif
     auto reg = var->getInReg();
 
@@ -603,7 +604,7 @@ void Rewriter::_xdecref(RewriterVar* var) {
     //assembler->trap();
 
     this->_call(NULL, true, (void*)Helper::xdecref, llvm::ArrayRef<RewriterVar*>(&var, 1),
-                llvm::ArrayRef<RewriterVar*>(NULL, (size_t)0));
+                llvm::ArrayRef<RewriterVar*>(NULL, (size_t)0), false);
 
     // Doesn't call bumpUse, since this function is designed to be callable from other emitting functions.
     // (ie the caller should call bumpUse)
@@ -977,7 +978,7 @@ RewriterVar* Rewriter::call(bool has_side_effects, void* func_addr, const Rewrit
     // Hack: explicitly order the closure arguments so they pad nicer
     addAction([args_size, xmm_args_size, has_side_effects, this, result, func_addr, _args, _args_xmm]() {
         this->_call(result, has_side_effects, func_addr, llvm::ArrayRef<RewriterVar*>(_args, args_size),
-                    llvm::ArrayRef<RewriterVar*>(_args_xmm, xmm_args_size));
+                    llvm::ArrayRef<RewriterVar*>(_args_xmm, xmm_args_size), has_side_effects);
         for (int i = 0; i < args_size; i++)
             _args[i]->bumpUse();
         for (int i = 0; i < xmm_args_size; i++)
@@ -1137,7 +1138,7 @@ void Rewriter::_setupCall(bool has_side_effects, llvm::ArrayRef<RewriterVar*> ar
 }
 
 void Rewriter::_call(RewriterVar* result, bool has_side_effects, void* func_addr, llvm::ArrayRef<RewriterVar*> args,
-                     llvm::ArrayRef<RewriterVar*> args_xmm) {
+                     llvm::ArrayRef<RewriterVar*> args_xmm, bool can_throw) {
     if (LOG_IC_ASSEMBLY) assembler->comment("_call");
 
     // RewriterVarUsage scratch = createNewVar(Location::any());
@@ -1162,6 +1163,8 @@ void Rewriter::_call(RewriterVar* result, bool has_side_effects, void* func_addr
     // make sure setupCall doesn't use R11
     assert(vars_by_location.count(assembler::R11) == 0);
 
+    uint64_t call_offset;
+
     uint64_t asm_address = (uint64_t)assembler->curInstPointer() + 5;
     uint64_t real_asm_address = asm_address + (uint64_t)rewrite->getSlotStart() - (uint64_t)assembler->startAddr();
     int64_t offset = (int64_t)((uint64_t)func_addr - real_asm_address);
@@ -1169,9 +1172,17 @@ void Rewriter::_call(RewriterVar* result, bool has_side_effects, void* func_addr
         const_loader.loadConstIntoReg((uint64_t)func_addr, r);
         assembler->callq(r);
     } else {
+
         assembler->call(assembler::Immediate(offset));
         assert(assembler->hasFailed() || asm_address == (uint64_t)assembler->curInstPointer());
     }
+
+
+    if (1 || can_throw) {
+        call_offset = assembler->bytesWritten();
+        emitDecrefInfo(call_offset);
+    }
+
 
     if (!failed) {
         assert(vars_by_location.count(assembler::RAX) == 0);
@@ -1183,6 +1194,28 @@ void Rewriter::_call(RewriterVar* result, bool has_side_effects, void* func_addr
 
     if (result)
         result->releaseIfNoUses();
+}
+
+std::vector<Location> Rewriter::getDecrefLocation() {
+    std::vector<Location> eh_decrefs;
+    for (RewriterVar& var : vars) {
+        if (var.locations.size() && var.needsDecref()) {
+            // TODO: add code to handle other location types
+            Location l = *var.locations.begin();
+            if (l.type == Location::Scratch) {
+                assert(indirectFor(l).offset % 8 == 0);
+                eh_decrefs.push_back(Location(Location::Stack, indirectFor(l).offset / 8));
+            } else
+                RELEASE_ASSERT(0, "not implemented");
+        }
+    }
+    return eh_decrefs;
+}
+
+void Rewriter::emitDecrefInfo(int call_offset) {
+    std::vector<Location> eh_decrefs = getDecrefLocation();
+    uint64_t ip = (uint64_t)rewrite->getSlotStart() + call_offset;
+    decref_info.emplace_back(std::make_pair(ip, std::move(eh_decrefs)));
 }
 
 void Rewriter::abort() {
@@ -1257,6 +1290,10 @@ void RewriterVar::_release() {
 void RewriterVar::refConsumed() {
     num_refs_consumed++;
     last_refconsumed_numuses = uses.size();
+}
+
+bool RewriterVar::needsDecref() {
+    return reftype == RefType::OWNED && !this->refHandedOff();
 }
 
 void RewriterVar::bumpUse() {
@@ -1531,7 +1568,7 @@ void Rewriter::commit() {
     }
 #endif
 
-    rewrite->commit(this, std::move(gc_references));
+    rewrite->commit(this, std::move(gc_references), std::move(decref_info));
 
     if (assembler->hasFailed()) {
         on_assemblyfail();

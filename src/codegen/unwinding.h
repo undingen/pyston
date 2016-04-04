@@ -97,6 +97,9 @@ ExcInfo* getFrameExcInfo();
 // but just as slow if it's not.
 void updateFrameExcInfoIfNeeded(ExcInfo* latest);
 
+void addCustomEHEntry(uint64_t ip, std::vector<class Location> location);
+void removeCustomEHEntry(uint64_t ip);
+
 struct FrameStackState {
     // This includes all # variables (but not the ! ones).
     // Therefore, it's not the same as the BoxedLocals.

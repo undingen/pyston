@@ -27,6 +27,7 @@
 
 #include "asm_writing/assembler.h"
 #include "asm_writing/icinfo.h"
+#include "asm_writing/types.h"
 #include "core/threading.h"
 #include "core/types.h"
 
@@ -40,82 +41,6 @@ class ICSlotRewrite;
 class ICInvalidator;
 
 class RewriterVar;
-
-struct Location {
-public:
-    enum LocationType : uint8_t {
-        Register,
-        XMMRegister,
-        Stack,
-        Scratch, // stack location, relative to the scratch start
-
-        // For representing constants that fit in 32-bits, that can be encoded as immediates
-        AnyReg,        // special type for use when specifying a location as a destination
-        None,          // special type that represents the lack of a location, ex where a "ret void" gets returned
-        Uninitialized, // special type for an uninitialized (and invalid) location
-    };
-
-public:
-    LocationType type;
-
-    union {
-        // only valid if type==Register; uses X86 numbering, not dwarf numbering.
-        // also valid if type==XMMRegister
-        int32_t regnum;
-        // only valid if type==Stack; this is the offset from bottom of the original frame.
-        // ie argument #6 will have a stack_offset of 0, #7 will have a stack offset of 8, etc
-        int32_t stack_offset;
-        // only valid if type == Scratch; offset from the beginning of the scratch area
-        int32_t scratch_offset;
-
-        int32_t _data;
-    };
-
-    constexpr Location() noexcept : type(Uninitialized), _data(-1) {}
-    constexpr Location(const Location& r) = default;
-    Location& operator=(const Location& r) = default;
-
-    constexpr Location(LocationType type, int32_t data) : type(type), _data(data) {}
-
-    constexpr Location(assembler::Register reg) : type(Register), regnum(reg.regnum) {}
-
-    constexpr Location(assembler::XMMRegister reg) : type(XMMRegister), regnum(reg.regnum) {}
-
-    constexpr Location(assembler::GenericRegister reg)
-        : type(reg.type == assembler::GenericRegister::GP ? Register : reg.type == assembler::GenericRegister::XMM
-                                                                           ? XMMRegister
-                                                                           : None),
-          regnum(reg.type == assembler::GenericRegister::GP ? reg.gp.regnum : reg.xmm.regnum) {}
-
-    assembler::Register asRegister() const;
-    assembler::XMMRegister asXMMRegister() const;
-    bool isClobberedByCall() const;
-
-    static constexpr Location any() { return Location(AnyReg, 0); }
-    static constexpr Location none() { return Location(None, 0); }
-    static Location forArg(int argnum);
-    static Location forXMMArg(int argnum);
-
-    bool operator==(const Location rhs) const { return this->asInt() == rhs.asInt(); }
-
-    bool operator!=(const Location rhs) const { return !(*this == rhs); }
-
-    bool operator<(const Location& rhs) const { return this->asInt() < rhs.asInt(); }
-
-    uint64_t asInt() const { return (int)type + ((uint64_t)_data << 4); }
-
-    void dump() const;
-};
-static_assert(sizeof(Location) <= 8, "");
-}
-
-namespace std {
-template <> struct hash<pyston::Location> {
-    size_t operator()(const pyston::Location p) const { return p.asInt(); }
-};
-}
-
-namespace pyston {
 
 // Replacement for unordered_map<Location, T>
 template <class T> class LocMap {
@@ -277,6 +202,7 @@ private:
     bool isDoneUsing() { return next_use == uses.size(); }
     bool hasScratchAllocation() const { return scratch_allocation.second > 0; }
     void resetHasScratchAllocation() { scratch_allocation = std::make_pair(0, 0); }
+    bool needsDecref();
 
     // Indicates if this variable is an arg, and if so, what location the arg is from.
     bool is_arg;
@@ -496,6 +422,7 @@ protected:
     bool added_changing_action;
     bool marked_inside_ic;
     std::vector<void*> gc_references;
+    std::vector<std::pair<uint64_t, std::vector<Location>>> decref_info;
 
     bool done_guarding;
     bool isDoneGuarding() {
@@ -544,7 +471,7 @@ protected:
                     Location preserve = Location::any());
     // _call does not call bumpUse on its arguments:
     void _call(RewriterVar* result, bool has_side_effects, void* func_addr, llvm::ArrayRef<RewriterVar*> args,
-               llvm::ArrayRef<RewriterVar*> args_xmm);
+               llvm::ArrayRef<RewriterVar*> args_xmm, bool can_throw);
     void _add(RewriterVar* result, RewriterVar* a, int64_t b, Location dest);
     int _allocate(RewriterVar* result, int n);
     void _allocateAndCopy(RewriterVar* result, RewriterVar* array, int n);
@@ -624,6 +551,9 @@ public:
 #else
     void comment(const llvm::Twine& msg) {}
 #endif
+
+    std::vector<Location> getDecrefLocation();
+    void emitDecrefInfo(int call_offset);
 
     void trap();
     RewriterVar* loadConst(int64_t val, Location loc = Location::any());

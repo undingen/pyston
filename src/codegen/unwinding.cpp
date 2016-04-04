@@ -29,6 +29,7 @@
 #include "llvm/Object/ObjectFile.h"
 
 #include "asm_writing/types.h"
+#include "asm_writing/rewriter.h"
 #include "analysis/scoping_analysis.h"
 #include "codegen/ast_interpreter.h"
 #include "codegen/codegen.h"
@@ -429,6 +430,9 @@ static inline unw_word_t get_cursor_ip(unw_cursor_t* cursor) {
 static inline unw_word_t get_cursor_bp(unw_cursor_t* cursor) {
     return get_cursor_reg(cursor, UNW_TDEP_BP);
 }
+static inline unw_word_t get_cursor_sp(unw_cursor_t* cursor) {
+    return get_cursor_reg(cursor, UNW_TDEP_SP);
+}
 
 // if the given ip/bp correspond to a jitted frame or
 // ASTInterpreter::execute_inner frame, return true and return the
@@ -507,6 +511,38 @@ static FrameInfo* getTopFrameInfo() {
     return (FrameInfo*)cur_thread_state.frame_info;
 }
 
+llvm::DenseMap<uint64_t /*ip*/, std::vector<Location>> custom_eh;
+void executeCustomEH(unw_cursor_t* cursor) {
+    unw_word_t ip = get_cursor_ip(cursor);
+    // printf("searching for: %p\n", (void*)ip);
+    auto it = custom_eh.find(ip);
+    if (it == custom_eh.end())
+        return;
+
+    // printf("found entry: %p num actions: %d\n", (void*)ip, (int)it->second.size());
+    for (Location& l : it->second) {
+        unw_word_t reg_value;
+        if (l.type == Location::Stack) {
+            unw_word_t sp = get_cursor_sp(cursor);
+            reg_value = ((unw_word_t*)sp)[l.stack_offset];
+        } else {
+            assert(0 && "not implemented");
+        }
+
+        Box* b = (Box*)reg_value;
+        Py_XDECREF(b);
+    }
+}
+void addCustomEHEntry(uint64_t ip, std::vector<Location> location) {
+    // printf("+ addCustomEHEntry %p num: %ld\n", (void*)ip, location.size());
+    assert(!custom_eh.count(ip));
+    custom_eh[ip] = std::forward<std::vector<Location>>(location);
+}
+void removeCustomEHEntry(uint64_t ip) {
+    // printf("- removeCustomEHEntry %p\n", (void*)ip);
+    custom_eh.erase(ip);
+}
+
 class PythonUnwindSession {
     ExcInfo exc_info;
     PythonStackExtractor pystack_extractor;
@@ -538,6 +574,8 @@ public:
             deinitFrame(prev_frame_info);
             prev_frame_info = NULL;
         }
+
+        executeCustomEH(cursor);
 
         PythonFrameIteratorImpl frame_iter;
         bool found_frame = pystack_extractor.handleCFrame(cursor, &frame_iter);

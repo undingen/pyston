@@ -471,7 +471,7 @@ void ASTInterpreter::doStore(AST_Name* node, STOLEN(Value) value) {
         bool closure = vst == ScopeInfo::VarScopeType::CLOSURE;
         if (jit) {
             if (!closure) {
-                bool is_live = source_info->getLiveness()->isLiveAtEnd(name, current_block);
+                bool is_live = 1 || source_info->getLiveness()->isLiveAtEnd(name, current_block);
                 if (is_live)
                     jit->emitSetLocal(name, node->vreg, closure, value);
                 else
@@ -1635,7 +1635,7 @@ Value ASTInterpreter::visit_name(AST_Name* node) {
             if (jit) {
                 bool is_live = false;
                 if (node->lookup_type == ScopeInfo::VarScopeType::FAST)
-                    is_live = source_info->getLiveness()->isLiveAtEnd(node->id, current_block);
+                    is_live = 1 || source_info->getLiveness()->isLiveAtEnd(node->id, current_block);
 
                 if (is_live)
                     v.var = jit->emitGetLocal(node->id, node->vreg);
@@ -1799,7 +1799,7 @@ void ASTInterpreterJitInterface::pendingCallsCheckHelper() {
 #endif
 }
 
-void ASTInterpreterJitInterface::setExcInfoHelper(void* _interpreter, Box* type, Box* value, Box* traceback) {
+void ASTInterpreterJitInterface::setExcInfoHelper(void* _interpreter, STOLEN(Box*) type, STOLEN(Box*) value, STOLEN(Box*) traceback) {
     ASTInterpreter* interpreter = (ASTInterpreter*)_interpreter;
     setFrameExcInfo(interpreter->getFrameInfo(), type, value, traceback);
 }

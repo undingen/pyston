@@ -199,6 +199,7 @@ private:
         std::unique_ptr<ICSetupInfo> ic;
         StackInfo stack_info;
         AST* node;
+        std::vector<Location> decref_info;
     };
 
     llvm::SmallVector<PPInfo, 8> pp_infos;
