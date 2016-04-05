@@ -27,6 +27,7 @@
 
 #include "asm_writing/assembler.h"
 #include "asm_writing/icinfo.h"
+#include "asm_writing/types.h"
 #include "core/threading.h"
 #include "core/types.h"
 
@@ -202,6 +203,7 @@ private:
     bool isDoneUsing() { return next_use == uses.size(); }
     bool hasScratchAllocation() const { return scratch_allocation.second > 0; }
     void resetHasScratchAllocation() { scratch_allocation = std::make_pair(0, 0); }
+    bool needsDecref();
 
     // Indicates if this variable is an arg, and if so, what location the arg is from.
     bool is_arg;
@@ -421,6 +423,7 @@ protected:
     bool added_changing_action;
     bool marked_inside_ic;
     std::vector<void*> gc_references;
+    std::vector<std::pair<uint64_t, std::vector<Location>>> decref_info;
 
     bool done_guarding;
     bool isDoneGuarding() {
@@ -549,6 +552,7 @@ public:
 #else
     void comment(const llvm::Twine& msg) {}
 #endif
+    std::vector<Location> getDecrefLocations();
 
     void trap();
     RewriterVar* loadConst(int64_t val, Location loc = Location::any());

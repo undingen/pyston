@@ -23,6 +23,7 @@
 #include "asm_writing/assembler.h"
 #include "asm_writing/mc_writer.h"
 #include "codegen/patchpoints.h"
+#include "codegen/unwinding.h"
 #include "core/common.h"
 #include "core/options.h"
 #include "core/types.h"
@@ -53,6 +54,10 @@ void ICInvalidator::invalidateAll() {
 
 void ICSlotInfo::clear() {
     ic->clear(this);
+    for (auto&& e : decref_info) {
+        removeCustomEHEntry(e.first);
+    }
+    decref_info.clear();
 }
 
 ICSlotRewrite::ICSlotRewrite(ICInfo* ic, const char* debug_name)
@@ -85,7 +90,8 @@ uint8_t* ICSlotRewrite::getSlotStart() {
 // Map of gc pointers -> number of ics that point tot hem.
 static llvm::DenseMap<void*, int> ic_gc_references;
 
-void ICSlotRewrite::commit(CommitHook* hook, std::vector<void*> gc_references) {
+void ICSlotRewrite::commit(CommitHook* hook, std::vector<void*> gc_references,
+                           std::vector<std::pair<uint64_t, std::vector<Location>>> decref_info) {
     bool still_valid = true;
     for (int i = 0; i < dependencies.size(); i++) {
         int orig_version = dependencies[i].second;
@@ -137,6 +143,25 @@ void ICSlotRewrite::commit(CommitHook* hook, std::vector<void*> gc_references) {
     if (ic->times_rewritten == IC_MEGAMORPHIC_THRESHOLD) {
         static StatCounter megamorphic_ics("megamorphic_ics");
         megamorphic_ics.log();
+    }
+
+    // deregister old decref infos
+    for (auto e : ic->decref_info) {
+        removeCustomEHEntry(e);
+    }
+    ic->decref_info.clear();
+
+    // register new decref info
+    for (auto e : decref_info) {
+        // merge in locations of parent
+        auto merged_locations = e.second;
+        merged_locations.insert(merged_locations.end(), ic->ic_global_decref_info.begin(),
+                                ic->ic_global_decref_info.end());
+        if (merged_locations.empty())
+            continue;
+
+        ic->decref_info.push_back(e.first);
+        addCustomEHEntry(e.first, merged_locations);
     }
 
     llvm::sys::Memory::InvalidateInstructionCache(slot_start, ic->getSlotSize());

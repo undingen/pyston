@@ -44,6 +44,7 @@ public:
     int num_inside; // the number of stack frames that are currently inside this slot
 
     std::vector<void*> gc_references;
+    llvm::SmallVector<std::pair<uint64_t, std::vector<Location>>, 2> decref_info;
 
     void clear();
 };
@@ -85,7 +86,8 @@ public:
     ICSlotInfo* prepareEntry();
 
     void addDependenceOn(ICInvalidator&);
-    void commit(CommitHook* hook, std::vector<void*> gc_references);
+    void commit(CommitHook* hook, std::vector<void*> gc_references,
+                std::vector<std::pair<uint64_t, std::vector<Location>>> decref_info);
     void abort();
 
     const ICInfo* getICInfo() { return ic; }
@@ -117,6 +119,11 @@ private:
     int retry_in, retry_backoff;
     int times_rewritten;
 
+public:
+    llvm::SmallVector<uint64_t, 2> decref_info;
+    std::vector<Location> ic_global_decref_info;
+
+private:
     // for ICSlotRewrite:
     ICSlotInfo* pickEntryForRewrite(const char* debug_name);
 

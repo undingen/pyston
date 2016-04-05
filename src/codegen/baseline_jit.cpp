@@ -734,6 +734,12 @@ int JitFragmentWriter::finishCompilation() {
         std::unique_ptr<ICInfo> pp
             = registerCompiledPatchpoint(start_addr, slowpath_start, initialization_info.continue_addr,
                                          slowpath_rtn_addr, pp_info.ic.get(), pp_info.stack_info, LiveOutSet());
+        if (!pp_info.decref_info.empty()) {
+            // register slowpath decref info
+            addCustomEHEntry((uint64_t)slowpath_rtn_addr, pp_info.decref_info);
+            pp->ic_global_decref_info.insert(pp->ic_global_decref_info.end(), pp_info.decref_info.begin(),
+                                             pp_info.decref_info.end());
+        }
         pp->associateNodeWithICInfo(pp_info.node);
         pp.release();
     }
@@ -1023,7 +1029,9 @@ void JitFragmentWriter::_emitPPCall(RewriterVar* result, void* func_addr, llvm::
     assertConsistent();
 
     StackInfo stack_info(pp_scratch_size, pp_scratch_location);
-    pp_infos.emplace_back(PPInfo{ func_addr, pp_start, pp_end, std::move(setup_info), stack_info, ast_node });
+    auto&& decref_info = getDecrefLocations();
+    pp_infos.emplace_back(
+        PPInfo{ func_addr, pp_start, pp_end, std::move(setup_info), stack_info, ast_node, std::move(decref_info) });
 
     assert(vars_by_location.count(assembler::RAX) == 0);
     result->initializeInReg(assembler::RAX);

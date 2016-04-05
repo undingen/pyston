@@ -1178,6 +1178,12 @@ void Rewriter::_call(RewriterVar* result, bool has_side_effects, void* func_addr
         assert(assembler->hasFailed() || asm_address == (uint64_t)assembler->curInstPointer());
     }
 
+    // TODO: we don't need to generate the decref info for calls which can't throw
+    std::vector<Location> eh_decrefs = getDecrefLocations();
+    auto call_offset = assembler->bytesWritten();
+    uint64_t ip = (uint64_t)rewrite->getSlotStart() + call_offset;
+    decref_info.emplace_back(std::make_pair(ip, std::move(eh_decrefs)));
+
     if (!failed) {
         assert(vars_by_location.count(assembler::RAX) == 0);
 
@@ -1188,6 +1194,24 @@ void Rewriter::_call(RewriterVar* result, bool has_side_effects, void* func_addr
 
     if (result)
         result->releaseIfNoUses();
+}
+
+std::vector<Location> Rewriter::getDecrefLocations() {
+    std::vector<Location> eh_decrefs;
+    for (RewriterVar& var : vars) {
+        if (var.locations.size() && var.needsDecref()) {
+            // TODO: add code to handle other location types and choose best location if there are several
+            Location l = *var.locations.begin();
+            if (l.type == Location::Scratch) {
+                // convert to stack based location because later on we may not know the offset of the scratch area from
+                // the SP.
+                assert(indirectFor(l).offset % 8 == 0);
+                eh_decrefs.push_back(Location(Location::Stack, indirectFor(l).offset / 8));
+            } else
+                RELEASE_ASSERT(0, "not implemented");
+        }
+    }
+    return eh_decrefs;
 }
 
 void Rewriter::abort() {
@@ -1262,6 +1286,10 @@ void RewriterVar::_release() {
 void RewriterVar::refConsumed() {
     num_refs_consumed++;
     last_refconsumed_numuses = uses.size();
+}
+
+bool RewriterVar::needsDecref() {
+    return reftype == RefType::OWNED && !this->refHandedOff();
 }
 
 void RewriterVar::bumpUse() {
@@ -1538,7 +1566,7 @@ void Rewriter::commit() {
     }
 #endif
 
-    rewrite->commit(this, std::move(gc_references));
+    rewrite->commit(this, std::move(gc_references), std::move(decref_info));
 
     if (assembler->hasFailed()) {
         on_assemblyfail();
