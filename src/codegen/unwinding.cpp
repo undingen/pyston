@@ -513,32 +513,27 @@ static FrameInfo* getTopFrameInfo() {
 llvm::DenseMap<uint64_t /*ip*/, std::vector<Location>> decref_info;
 void executeDecrefs(unw_cursor_t* cursor) {
     unw_word_t ip = get_cursor_ip(cursor);
-    printf("searching for: %p\n", (void*)ip);
     auto it = decref_info.find(ip);
     if (it == decref_info.end())
         return;
 
-    // printf("found entry: %p num actions: %d\n", (void*)ip, (int)it->second.size());
     for (Location& l : it->second) {
-        unw_word_t reg_value;
+        Box* b = NULL;
         if (l.type == Location::Stack) {
             unw_word_t sp = get_cursor_sp(cursor);
-            reg_value = ((unw_word_t*)sp)[l.stack_offset];
+            b = ((Box**)sp)[l.stack_offset];
         } else {
-            assert(0 && "not implemented");
+            RELEASE_ASSERT(0, "not implemented");
         }
 
-        Box* b = (Box*)reg_value;
         Py_XDECREF(b);
     }
 }
 void addDecrefInfoEntry(uint64_t ip, std::vector<Location> location) {
     assert(!decref_info.count(ip) && "why is there already an entry??");
-    printf("- addDecrefInfoEntry %p\n", (void*)ip);
     decref_info[ip] = std::move(location);
 }
 void removeDecrefInfoEntry(uint64_t ip) {
-    printf("- removeDecrefInfoEntry %p\n", (void*)ip);
     decref_info.erase(ip);
 }
 
