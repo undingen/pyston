@@ -54,9 +54,6 @@ void ICInvalidator::invalidateAll() {
 
 void ICSlotInfo::clear() {
     ic->clear(this);
-    for (auto&& e : decref_info) {
-        removeCustomEHEntry(e.first);
-    }
     decref_info.clear();
 }
 
@@ -146,10 +143,7 @@ void ICSlotRewrite::commit(CommitHook* hook, std::vector<void*> gc_references,
     }
 
     // deregister old decref infos
-    for (auto e : ic->decref_info) {
-        removeCustomEHEntry(e);
-    }
-    ic->decref_info.clear();
+    ic_entry->decref_info.clear();
 
     // register new decref info
     for (auto e : decref_info) {
@@ -160,8 +154,7 @@ void ICSlotRewrite::commit(CommitHook* hook, std::vector<void*> gc_references,
         if (merged_locations.empty())
             continue;
 
-        ic->decref_info.push_back(e.first);
-        addCustomEHEntry(e.first, merged_locations);
+        ic_entry->decref_info.emplace_back(e.first, std::move(merged_locations));
     }
 
     llvm::sys::Memory::InvalidateInstructionCache(slot_start, ic->getSlotSize());
@@ -241,7 +234,8 @@ void deregisterGCTrackedICInfo(ICInfo* ic) {
 
 ICInfo::ICInfo(void* start_addr, void* slowpath_rtn_addr, void* continue_addr, StackInfo stack_info, int num_slots,
                int slot_size, llvm::CallingConv::ID calling_conv, LiveOutSet _live_outs,
-               assembler::GenericRegister return_register, TypeRecorder* type_recorder)
+               assembler::GenericRegister return_register, TypeRecorder* type_recorder,
+               std::vector<Location> ic_global_decref_info)
     : next_slot_to_try(0),
       stack_info(stack_info),
       num_slots(num_slots),
@@ -253,12 +247,15 @@ ICInfo::ICInfo(void* start_addr, void* slowpath_rtn_addr, void* continue_addr, S
       retry_in(0),
       retry_backoff(1),
       times_rewritten(0),
+      ic_global_decref_info(std::move(ic_global_decref_info)),
       start_addr(start_addr),
       slowpath_rtn_addr(slowpath_rtn_addr),
       continue_addr(continue_addr) {
     for (int i = 0; i < num_slots; i++) {
         slots.emplace_back(this, i);
     }
+    if (slowpath_rtn_addr && this->ic_global_decref_info.size())
+        slowpath_decref_info = DecrefInfoRegister((uint64_t)slowpath_rtn_addr, this->ic_global_decref_info);
 
 #if MOVING_GC
     assert(ics_list.count(this) == 0);
@@ -271,9 +268,22 @@ ICInfo::~ICInfo() {
 #endif
 }
 
+
+DecrefInfoRegister::DecrefInfoRegister(uint64_t ip, std::vector<Location> locations) : ip(ip) {
+    addDecrefInfoEntry(ip, std::move(locations));
+}
+
+void DecrefInfoRegister::reset() {
+    if (ip) {
+        removeDecrefInfoEntry(ip);
+        ip = 0;
+    }
+}
+
 std::unique_ptr<ICInfo> registerCompiledPatchpoint(uint8_t* start_addr, uint8_t* slowpath_start_addr,
                                                    uint8_t* continue_addr, uint8_t* slowpath_rtn_addr,
-                                                   const ICSetupInfo* ic, StackInfo stack_info, LiveOutSet live_outs) {
+                                                   const ICSetupInfo* ic, StackInfo stack_info, LiveOutSet live_outs,
+                                                   std::vector<Location> decref_info) {
     assert(slowpath_start_addr - start_addr >= ic->num_slots * ic->slot_size);
     assert(slowpath_rtn_addr > slowpath_start_addr);
     assert(slowpath_rtn_addr <= start_addr + ic->totalSize());
@@ -309,8 +319,9 @@ std::unique_ptr<ICInfo> registerCompiledPatchpoint(uint8_t* start_addr, uint8_t*
         writer.jmp(JumpDestination::fromStart(slowpath_start_addr - start));
     }
 
-    ICInfo* icinfo = new ICInfo(start_addr, slowpath_rtn_addr, continue_addr, stack_info, ic->num_slots, ic->slot_size,
-                                ic->getCallingConvention(), std::move(live_outs), return_register, ic->type_recorder);
+    ICInfo* icinfo
+        = new ICInfo(start_addr, slowpath_rtn_addr, continue_addr, stack_info, ic->num_slots, ic->slot_size,
+                     ic->getCallingConvention(), std::move(live_outs), return_register, ic->type_recorder, decref_info);
 
     assert(!ics_by_return_addr.count(slowpath_rtn_addr));
     ics_by_return_addr[slowpath_rtn_addr] = icinfo;

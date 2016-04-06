@@ -35,6 +35,23 @@ class ICInvalidator;
 #define IC_INVALDITION_HEADER_SIZE 6
 #define IC_MEGAMORPHIC_THRESHOLD 100
 
+struct DecrefInfoRegister {
+    uint64_t ip;
+
+    DecrefInfoRegister() : ip(0) {}
+    DecrefInfoRegister(uint64_t ip, std::vector<Location> locations);
+
+    // we only allow moves
+    DecrefInfoRegister(DecrefInfoRegister&& other) : ip(0) { std::swap(other.ip, ip); }
+    DecrefInfoRegister& operator=(DecrefInfoRegister&& other) {
+        std::swap(other.ip, ip);
+        return *this;
+    }
+    ~DecrefInfoRegister() { reset(); }
+
+    void reset();
+};
+
 struct ICSlotInfo {
 public:
     ICSlotInfo(ICInfo* ic, int idx) : ic(ic), idx(idx), num_inside(0) {}
@@ -44,7 +61,7 @@ public:
     int num_inside; // the number of stack frames that are currently inside this slot
 
     std::vector<void*> gc_references;
-    llvm::SmallVector<std::pair<uint64_t, std::vector<Location>>, 2> decref_info;
+    std::vector<DecrefInfoRegister> decref_info;
 
     void clear();
 };
@@ -119,8 +136,7 @@ private:
     int retry_in, retry_backoff;
     int times_rewritten;
 
-public:
-    llvm::SmallVector<uint64_t, 2> decref_info;
+    DecrefInfoRegister slowpath_decref_info;
     std::vector<Location> ic_global_decref_info;
 
 private:
@@ -130,7 +146,8 @@ private:
 public:
     ICInfo(void* start_addr, void* slowpath_rtn_addr, void* continue_addr, StackInfo stack_info, int num_slots,
            int slot_size, llvm::CallingConv::ID calling_conv, LiveOutSet live_outs,
-           assembler::GenericRegister return_register, TypeRecorder* type_recorder);
+           assembler::GenericRegister return_register, TypeRecorder* type_recorder,
+           std::vector<Location> ic_global_decref_info);
     ~ICInfo();
     void* const start_addr, *const slowpath_rtn_addr, *const continue_addr;
 
@@ -161,9 +178,10 @@ void deregisterGCTrackedICInfo(ICInfo* ic);
 
 class ICSetupInfo;
 struct CompiledFunction;
-std::unique_ptr<ICInfo> registerCompiledPatchpoint(uint8_t* start_addr, uint8_t* slowpath_start_addr,
-                                                   uint8_t* continue_addr, uint8_t* slowpath_rtn_addr,
-                                                   const ICSetupInfo*, StackInfo stack_info, LiveOutSet live_outs);
+std::unique_ptr<ICInfo>
+registerCompiledPatchpoint(uint8_t* start_addr, uint8_t* slowpath_start_addr, uint8_t* continue_addr,
+                           uint8_t* slowpath_rtn_addr, const ICSetupInfo*, StackInfo stack_info, LiveOutSet live_outs,
+                           std::vector<Location> ic_global_decref_info = std::vector<Location>());
 void deregisterCompiledPatchpoint(ICInfo* ic);
 
 ICInfo* getICInfo(void* rtn_addr);

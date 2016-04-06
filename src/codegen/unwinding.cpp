@@ -430,7 +430,7 @@ static inline unw_word_t get_cursor_bp(unw_cursor_t* cursor) {
     return get_cursor_reg(cursor, UNW_TDEP_BP);
 }
 static inline unw_word_t get_cursor_sp(unw_cursor_t* cursor) {
-    return get_cursor_reg(cursor, UNW_TDEP_SP);
+    return get_cursor_reg(cursor, UNW_REG_SP);
 }
 
 // if the given ip/bp correspond to a jitted frame or
@@ -510,12 +510,12 @@ static FrameInfo* getTopFrameInfo() {
     return (FrameInfo*)cur_thread_state.frame_info;
 }
 
-llvm::DenseMap<uint64_t /*ip*/, std::vector<Location>> custom_eh;
-void executeCustomEH(unw_cursor_t* cursor) {
+llvm::DenseMap<uint64_t /*ip*/, std::vector<Location>> decref_info;
+void executeDecrefs(unw_cursor_t* cursor) {
     unw_word_t ip = get_cursor_ip(cursor);
-    // printf("searching for: %p\n", (void*)ip);
-    auto it = custom_eh.find(ip);
-    if (it == custom_eh.end())
+    printf("searching for: %p\n", (void*)ip);
+    auto it = decref_info.find(ip);
+    if (it == decref_info.end())
         return;
 
     // printf("found entry: %p num actions: %d\n", (void*)ip, (int)it->second.size());
@@ -532,14 +532,14 @@ void executeCustomEH(unw_cursor_t* cursor) {
         Py_XDECREF(b);
     }
 }
-void addCustomEHEntry(uint64_t ip, std::vector<Location> location) {
-    // printf("+ addCustomEHEntry %p num: %ld\n", (void*)ip, location.size());
-    assert(!custom_eh.count(ip));
-    custom_eh[ip] = std::forward<std::vector<Location>>(location);
+void addDecrefInfoEntry(uint64_t ip, std::vector<Location> location) {
+    assert(!decref_info.count(ip) && "why is there already an entry??");
+    printf("- addDecrefInfoEntry %p\n", (void*)ip);
+    decref_info[ip] = std::move(location);
 }
-void removeCustomEHEntry(uint64_t ip) {
-    // printf("- removeCustomEHEntry %p\n", (void*)ip);
-    custom_eh.erase(ip);
+void removeDecrefInfoEntry(uint64_t ip) {
+    printf("- removeDecrefInfoEntry %p\n", (void*)ip);
+    decref_info.erase(ip);
 }
 
 
@@ -575,7 +575,7 @@ public:
             prev_frame_info = NULL;
         }
 
-        executeCustomEH(cursor);
+        executeDecrefs(cursor);
 
         PythonFrameIteratorImpl frame_iter;
         bool found_frame = pystack_extractor.handleCFrame(cursor, &frame_iter);

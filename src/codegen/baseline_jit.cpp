@@ -112,7 +112,8 @@ std::unique_ptr<JitFragmentWriter> JitCodeBlock::newFragment(CFGBlock* block, in
     long fragment_offset = a.bytesWritten() - patch_jump_offset;
     long bytes_left = a.bytesLeft() + patch_jump_offset;
     std::unique_ptr<ICInfo> ic_info(new ICInfo(fragment_start, nullptr, nullptr, stack_info, 1, bytes_left,
-                                               llvm::CallingConv::C, live_outs, assembler::RAX, 0));
+                                               llvm::CallingConv::C, live_outs, assembler::RAX, 0,
+                                               std::vector<Location>()));
     std::unique_ptr<ICSlotRewrite> rewrite(new ICSlotRewrite(ic_info.get(), ""));
 
     return std::unique_ptr<JitFragmentWriter>(new JitFragmentWriter(
@@ -731,15 +732,9 @@ int JitFragmentWriter::finishCompilation() {
         uint8_t* slowpath_start = initialization_info.slowpath_start;
         uint8_t* slowpath_rtn_addr = initialization_info.slowpath_rtn_addr;
 
-        std::unique_ptr<ICInfo> pp
-            = registerCompiledPatchpoint(start_addr, slowpath_start, initialization_info.continue_addr,
-                                         slowpath_rtn_addr, pp_info.ic.get(), pp_info.stack_info, LiveOutSet());
-        if (!pp_info.decref_info.empty()) {
-            // register slowpath decref info
-            addCustomEHEntry((uint64_t)slowpath_rtn_addr, pp_info.decref_info);
-            pp->ic_global_decref_info.insert(pp->ic_global_decref_info.end(), pp_info.decref_info.begin(),
-                                             pp_info.decref_info.end());
-        }
+        std::unique_ptr<ICInfo> pp = registerCompiledPatchpoint(
+            start_addr, slowpath_start, initialization_info.continue_addr, slowpath_rtn_addr, pp_info.ic.get(),
+            pp_info.stack_info, LiveOutSet(), std::move(pp_info.decref_info));
         pp->associateNodeWithICInfo(pp_info.node);
         pp.release();
     }
