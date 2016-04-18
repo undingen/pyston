@@ -517,6 +517,7 @@ void executeDecrefs(unw_cursor_t* cursor) {
     if (it == decref_infos.end())
         return;
 
+    printf("executing decrefs %d\n", (int)it->second.size());
     for (Location& l : it->second) {
         Box* b = NULL;
         if (l.type == Location::Stack) {

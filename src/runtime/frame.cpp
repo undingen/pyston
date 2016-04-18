@@ -170,7 +170,12 @@ public:
 
     static void dealloc(Box* b) noexcept {
         BoxedFrame* f = static_cast<BoxedFrame*>(b);
+        //printf("frame::dealloc\n");
 
+        if(0 && f->frame_info) {
+            deinitFrame(f->frame_info);
+            f->frame_info = NULL;
+        }
         _PyObject_GC_UNTRACK(f);
         clear(b);
         f->cls->tp_free(b);

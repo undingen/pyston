@@ -657,12 +657,15 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
 
             if (source->is_generator)
                 names.insert(source->getInternedStrings().get(PASSED_GENERATOR_NAME));
+            printf("laalalala\n");
 
             for (const InternedString& s : names) {
                 // printf("adding guessed phi for %s\n", s.c_str());
                 ConcreteCompilerType* type = getTypeAtBlockStart(types, s, block);
                 llvm::PHINode* phi
                     = emitter->getBuilder()->CreatePHI(type->llvmType(), block->predecessors.size(), s.s());
+                if (s.s() == PASSED_GENERATOR_NAME)
+                    printf("generator name: %d\n", type->getBoxType() == type);
                 if (type->getBoxType() == type)
                     irstate->getRefcounts()->setType(phi, RefType::OWNED);
                 ConcreteCompilerVariable* var = new ConcreteCompilerVariable(type, phi);
