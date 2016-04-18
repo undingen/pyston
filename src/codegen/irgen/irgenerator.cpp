@@ -60,7 +60,8 @@ IRGenState::IRGenState(FunctionMetadata* md, CompiledFunction* cf, SourceInfo* s
       globals(NULL),
       vregs(NULL),
       stmt(NULL),
-      scratch_size(0) {
+      scratch_size(0),
+      passed_generator(0) {
     assert(cf->func);
     assert(!cf->md); // in this case don't need to pass in sourceinfo
 }
@@ -185,8 +186,8 @@ template <typename Builder> static llvm::Value* getMDGep(Builder& builder, llvm:
     return builder.CreateConstInBoundsGEP2_32(v, 0, 9);
 }
 
-void IRGenState::setupFrameInfoVar(llvm::Value* passed_closure, llvm::Value* passed_globals,
-                                   llvm::Value* frame_info_arg) {
+void IRGenState::setupFrameInfoVar(llvm::Value* passed_closure, llvm::Value* passed_generator,
+                                   llvm::Value* passed_globals, llvm::Value* frame_info_arg) {
     /*
         There is a matrix of possibilities here.
 
@@ -226,6 +227,7 @@ void IRGenState::setupFrameInfoVar(llvm::Value* passed_closure, llvm::Value* pas
 
         // The OSR case
         this->frame_info = frame_info_arg;
+        this->passed_generator = passed_generator;
 
         // use vrags array from the interpreter
         vregs = builder.CreateLoad(getVRegsGep(builder, frame_info_arg));
@@ -295,6 +297,7 @@ void IRGenState::setupFrameInfoVar(llvm::Value* passed_closure, llvm::Value* pas
 
         this->frame_info = al;
         this->globals = passed_globals;
+        this->passed_generator = passed_generator;
 
         builder.CreateCall(g.funcs.initFrame, this->frame_info);
     }
@@ -1536,16 +1539,12 @@ private:
     }
 
     CompilerVariable* evalYield(AST_Yield* node, const UnwindInfo& unw_info) {
-        CompilerVariable* generator = symbol_table[internString(PASSED_GENERATOR_NAME)];
-        assert(generator);
-        ConcreteCompilerVariable* convertedGenerator = generator->makeConverted(emitter, generator->getBoxType());
-
-
+        assert(irstate->passed_generator);
         CompilerVariable* value = node->value ? evalExpr(node->value, unw_info) : emitter.getNone();
         ConcreteCompilerVariable* convertedValue = value->makeConverted(emitter, value->getBoxType());
 
         llvm::Value* rtn
-            = emitter.createCall2(unw_info, g.funcs.yield, convertedGenerator->getValue(), convertedValue->getValue());
+            = emitter.createCall2(unw_info, g.funcs.yield, irstate->passed_generator, convertedValue->getValue());
         emitter.setType(rtn, RefType::OWNED);
 
         return new ConcreteCompilerVariable(UNKNOWN, rtn);
@@ -2857,7 +2856,7 @@ public:
             emitter.setType(globals, RefType::BORROWED);
         }
 
-        irstate->setupFrameInfoVar(passed_closure, globals);
+        irstate->setupFrameInfoVar(passed_closure, generator, globals);
 
         if (scope_info->takesClosure()) {
             symbol_table[internString(PASSED_CLOSURE_NAME)]
@@ -2872,8 +2871,10 @@ public:
                 = new ConcreteCompilerVariable(getCreatedClosureType(), new_closure);
         }
 
-        if (irstate->getSourceInfo()->is_generator)
-            symbol_table[internString(PASSED_GENERATOR_NAME)] = new ConcreteCompilerVariable(GENERATOR, generator);
+        if (irstate->getSourceInfo()->is_generator) {
+            // symbol_table[internString(PASSED_GENERATOR_NAME)] = new ConcreteCompilerVariable(GENERATOR, generator);
+            // assert(0);
+        }
 
         std::vector<llvm::Value*> python_parameters;
         for (int i = 0; i < arg_types.size(); i++) {

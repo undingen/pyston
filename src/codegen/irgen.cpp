@@ -371,6 +371,7 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
     }
 
     llvm::Value* osr_frame_info_arg = NULL;
+    llvm::Value* passed_generator_arg = NULL;
 
     // the function entry block, where we add the type guards [no guards anymore]
     llvm::BasicBlock* osr_entry_block = NULL;
@@ -443,6 +444,14 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
                 assert(p.first.s() == FRAME_INFO_PTR_NAME);
                 osr_frame_info_arg = from_arg;
                 // Don't add the frame info to the symbol table since we will store it separately:
+                continue;
+            }
+
+            if (from_arg->getType() == g.llvm_generator_type_ptr) {
+                assert(p.first.s() == PASSED_GENERATOR_NAME);
+                irstate->getRefcounts()->setType(from_arg, RefType::BORROWED);
+                passed_generator_arg = from_arg;
+                // Don't add the generator to the symbol table since we will store it separately:
                 continue;
             }
 
@@ -608,12 +617,15 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
             assert(osr_entry_block);
             assert(phis);
 
-            irstate->setupFrameInfoVarOSR(osr_frame_info_arg);
+            irstate->setupFrameInfoVarOSR(passed_generator_arg, osr_frame_info_arg);
 
             for (const auto& p : entry_descriptor->args) {
                 // Don't add the frame info to the symbol table since we will store it separately
                 // (we manually added it during the calculation of osr_syms):
                 if (p.first.s() == FRAME_INFO_PTR_NAME)
+                    continue;
+
+                if (p.first.s() == PASSED_GENERATOR_NAME)
                     continue;
 
                 ConcreteCompilerType* analyzed_type = getTypeAtBlockStart(types, p.first, block);
@@ -655,8 +667,10 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
             if (source->getScopeInfo()->takesClosure())
                 names.insert(source->getInternedStrings().get(PASSED_CLOSURE_NAME));
 
-            if (source->is_generator)
+            if (source->is_generator) {
+                assert(0 && "not sure if this is correct");
                 names.insert(source->getInternedStrings().get(PASSED_GENERATOR_NAME));
+            }
 
             for (const InternedString& s : names) {
                 // printf("adding guessed phi for %s\n", s.c_str());
@@ -873,7 +887,8 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
                 llvm::Value* val = v->getValue();
                 llvm_phi->addIncoming(v->getValue(), llvm_exit_blocks[b->predecessors[j]]);
 
-                if (v->getType()->getBoxType() == v->getType()) {
+                if (v->getType()->getBoxType() == v->getType()
+                    && v->getType()->getBoxType()->debugName() != "generator") {
                     // llvm::outs() << *v->getValue() << " is getting consumed by phi " << *llvm_phi << '\n';
                     assert(llvm::isa<llvm::BranchInst>(terminator));
                     irstate->getRefcounts()->refConsumed(v->getValue(), terminator);
