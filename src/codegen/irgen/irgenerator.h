@@ -75,9 +75,11 @@ private:
     llvm::Value* globals;
     llvm::Value* vregs;
     llvm::Value* stmt;
+
     int scratch_size;
 
 public:
+    llvm::Value* passed_generator;
     IRGenState(FunctionMetadata* md, CompiledFunction* cf, SourceInfo* source_info, std::unique_ptr<PhiAnalysis> phis,
                ParamNames* param_names, GCBuilder* gc, llvm::MDNode* func_dbg_info, RefcountTracker* refcount_tracker);
     ~IRGenState();
@@ -93,9 +95,11 @@ public:
 
     GCBuilder* getGC() { return gc; }
 
-    void setupFrameInfoVar(llvm::Value* passed_closure, llvm::Value* passed_globals,
+    void setupFrameInfoVar(llvm::Value* passed_closure, llvm::Value* passed_generator, llvm::Value* passed_globals,
                            llvm::Value* frame_info_arg = NULL);
-    void setupFrameInfoVarOSR(llvm::Value* frame_info_arg) { return setupFrameInfoVar(NULL, NULL, frame_info_arg); }
+    void setupFrameInfoVarOSR(llvm::Value* passed_generator, llvm::Value* frame_info_arg) {
+        return setupFrameInfoVar(NULL, passed_generator, NULL, frame_info_arg);
+    }
 
     llvm::Value* getScratchSpace(int min_bytes);
     llvm::Value* getFrameInfoVar();
