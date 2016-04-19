@@ -249,7 +249,8 @@ ASTInterpreter::ASTInterpreter(FunctionMetadata* md, Box** vregs, int num_vregs,
         frame_info = *deopt_frame_info;
         for (int i = 0; i < deopt_frame_info->num_vregs; ++i)
             Py_XDECREF(deopt_frame_info->vregs[i]);
-        memset(deopt_frame_info, 0, sizeof(*deopt_frame_info));
+        // We are taking responsibility for calling deinit:
+        deopt_frame_info->disableDeinit(&this->frame_info);
     }
 
     frame_info.vregs = vregs;
@@ -1848,7 +1849,7 @@ const void* interpreter_instr_addr = (void*)&executeInnerAndSetupFrame;
 extern "C" Box* executeInnerFromASM(ASTInterpreter& interpreter, CFGBlock* start_block, AST_stmt* start_at) {
     initFrame(interpreter.getFrameInfo());
     Box* rtn = ASTInterpreter::executeInner(interpreter, start_block, start_at);
-    deinitFrame(interpreter.getFrameInfo());
+    deinitFrameMaybe(interpreter.getFrameInfo());
     return rtn;
 }
 
@@ -2011,10 +2012,9 @@ extern "C" Box* astInterpretDeoptFromASM(FunctionMetadata* md, AST_expr* after_e
         memset(vregs, 0, sizeof(Box*) * num_vregs);
     }
 
-    // We need to remove the old python frame created in the LLVM tier otherwise we would have a duplicate frame because
-    // the interpreter will set the new state before executing the first statement.
+    // caution: don't move this lines further down because ASTInterpreter::ASTInterpert will modify the frame info!
     RELEASE_ASSERT(cur_thread_state.frame_info == frame_state.frame_info, "");
-    cur_thread_state.frame_info = frame_state.frame_info->back;
+    FrameInfo* caller_of_deopted_func = frame_state.frame_info->back;
 
     ASTInterpreter interpreter(md, vregs, num_vregs, frame_state.frame_info);
 
@@ -2083,6 +2083,9 @@ extern "C" Box* astInterpretDeoptFromASM(FunctionMetadata* md, AST_expr* after_e
         assert(starting_statement);
     }
 
+    // We need to remove the old python frame created in the LLVM tier otherwise we would have a duplicate frame because
+    // the interpreter will set the new state before executing the first statement.
+    cur_thread_state.frame_info = caller_of_deopted_func;
     Box* v = ASTInterpreter::execute(interpreter, start_block, starting_statement);
     return v ? v : incref(None);
 }
