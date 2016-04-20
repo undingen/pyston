@@ -655,7 +655,8 @@ void RefcountTracker::addRefcounts(IRGenState* irstate) {
             return;
 
         bool ok_type = false;
-        if (s->elements().size() >= 2 + REFCOUNT_IDX && s->elements()[REFCOUNT_IDX] == g.i64 && s->elements()[REFCOUNT_IDX + 1] == g.llvm_class_type_ptr) {
+        if (s->elements().size() >= 2 + REFCOUNT_IDX && s->elements()[REFCOUNT_IDX] == g.i64
+            && s->elements()[REFCOUNT_IDX + 1] == g.llvm_class_type_ptr) {
             // printf("This looks likes a class\n");
             ok_type = true;
         }
