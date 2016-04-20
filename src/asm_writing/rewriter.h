@@ -248,6 +248,7 @@ public:
     }
 #endif
 
+    void refUsed();
     Rewriter* getRewriter() { return rewriter; }
 
     friend class Rewriter;

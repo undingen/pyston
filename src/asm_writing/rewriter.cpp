@@ -1323,6 +1323,11 @@ void RewriterVar::releaseIfNoUses() {
     }
 }
 
+void RewriterVar::refUsed() {
+    // TODO: This is a pretty silly implementation that might prevent other optimizations?
+    rewriter->addAction([=]() { this->bumpUse(); }, { this }, ActionType::NORMAL);
+}
+
 void Rewriter::commit() {
     STAT_TIMER(t0, "us_timer_rewriter", 10);
 
@@ -2075,6 +2080,9 @@ assembler::Register RewriterVar::initializeInReg(Location l) {
 
     assembler::Register reg = rewriter->allocReg(l);
     l = Location(reg);
+
+    if (rewriter->failed)
+        return reg;
 
     // Add this to vars_by_locations
     RewriterVar*& var = rewriter->vars_by_location[l];
