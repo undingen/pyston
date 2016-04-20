@@ -969,7 +969,6 @@ redirect:
 void
 PyObject_Free(void *p)
 {
-    return;
     poolp pool;
     block *lastfree;
     poolp next, prev;
