@@ -118,22 +118,29 @@ BoxedSet* makeNewSet(BoxedClass* cls, Box* container) {
     assert(isSubclass(cls, frozenset_cls) || isSubclass(cls, set_cls));
 
     BoxedSet* rtn = new (cls) BoxedSet();
-
-    if (container) {
-        if (PyAnySet_Check(container)) {
-            for (auto&& elt : ((BoxedSet*)container)->s) {
-                rtn->s.insert(incref(elt));
-            }
-        } else if (PyDict_CheckExact(container)) {
-            for (auto&& elt : ((BoxedDict*)container)->d) {
-                rtn->s.insert(incref(elt.first));
-            }
-        } else {
-            for (auto elt : container->pyElements()) {
-                _setAddStolen(rtn, elt);
+    try {
+        if (container) {
+            if (PyAnySet_Check(container)) {
+                for (auto&& elt : ((BoxedSet*)container)->s) {
+                    rtn->s.insert(incref(elt));
+                }
+            } else if (PyDict_CheckExact(container)) {
+                for (auto&& elt : ((BoxedDict*)container)->d) {
+                    rtn->s.insert(incref(elt.first));
+                }
+            } else {
+                for (auto elt : container->pyElements()) {
+                    AUTO_DECREF(elt);
+                    _setAddStolen(rtn, elt);
+                    Py_INCREF(elt);
+                }
             }
         }
+    } catch (ExcInfo e) {
+        Py_DECREF(rtn);
+        throw e;
     }
+
     return rtn;
 }
 
@@ -221,7 +228,9 @@ Box* setInit(Box* _self, Box* container, BoxedDict* kwargs) {
 
     } else {
         for (auto elt : container->pyElements()) {
+            AUTO_DECREF(elt);
             _setAddStolen(self, elt);
+            Py_INCREF(elt);
         }
     }
 
@@ -303,13 +312,19 @@ static BoxedSet* setIntersection2(BoxedSet* self, Box* container) {
     RELEASE_ASSERT(PyAnySet_Check(self), "");
 
     BoxedSet* rtn = makeNewSet(self->cls, NULL);
-    for (auto elt : container->pyElements()) {
-        if (self->s.count(elt)) {
-            _setAddStolen(rtn, elt);
-        } else {
-            Py_DECREF(elt);
+    try {
+        for (auto elt : container->pyElements()) {
+            AUTO_DECREF(elt);
+            if (self->s.count(elt)) {
+                _setAddStolen(rtn, elt);
+                Py_INCREF(elt);
+            }
         }
+    } catch (ExcInfo e) {
+        Py_DECREF(rtn);
+        throw e;
     }
+
     return rtn;
 }
 
@@ -467,7 +482,9 @@ Box* setUpdate(BoxedSet* self, BoxedTuple* args) {
             }
         } else {
             for (auto e : l->pyElements()) {
+                AUTO_DECREF(e);
                 _setAddStolen(self, e);
+                Py_INCREF(e);
             }
         }
     }
@@ -480,14 +497,21 @@ Box* setUnion(BoxedSet* self, BoxedTuple* args) {
         raiseExcHelper(TypeError, "descriptor 'union' requires a 'set' object but received a '%s'", getTypeName(self));
 
     BoxedSet* rtn = makeNewSet(self->cls, self);
-    for (auto&& p : self->s)
-        _setAdd(rtn, p);
+    try {
+        for (auto&& p : self->s)
+            _setAdd(rtn, p);
 
-    for (auto container : args->pyElements()) {
-        AUTO_DECREF(container);
-        for (auto elt : container->pyElements()) {
-            _setAddStolen(rtn, elt);
+        for (auto container : args->pyElements()) {
+            AUTO_DECREF(container);
+            for (auto elt : container->pyElements()) {
+                AUTO_DECREF(elt);
+                _setAddStolen(rtn, elt);
+                Py_INCREF(elt);
+            }
         }
+    } catch (ExcInfo e) {
+        Py_DECREF(rtn);
+        throw e;
     }
 
     return rtn;
@@ -528,7 +552,12 @@ Box* setDifference(BoxedSet* self, BoxedTuple* args) {
                        getTypeName(self));
 
     BoxedSet* rtn = makeNewSet(self->cls, self);
-    _setDifferenceUpdate(rtn, args);
+    try {
+        _setDifferenceUpdate(rtn, args);
+    } catch (ExcInfo e) {
+        Py_DECREF(rtn);
+        throw e;
+    }
     return rtn;
 }
 
@@ -548,7 +577,12 @@ Box* setSymmetricDifference(BoxedSet* self, Box* other) {
                        getTypeName(self));
 
     BoxedSet* rtn = makeNewSet(self->cls, self);
-    _setSymmetricDifferenceUpdate(rtn, other);
+    try {
+        _setSymmetricDifferenceUpdate(rtn, other);
+    } catch (ExcInfo e) {
+        Py_DECREF(rtn);
+        throw e;
+    }
     return rtn;
 }
 
