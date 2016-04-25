@@ -25,7 +25,7 @@
 #ifndef NDEBUG
 #define Py_REF_DEBUG
 #define PYMALLOC_DEBUG
-#define Py_TRACE_REFS
+// #define Py_TRACE_REFS
 #endif
 
 // These include orders come from CPython:

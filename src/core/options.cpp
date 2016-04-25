@@ -30,7 +30,7 @@ bool LOG_BJIT_ASSEMBLY = 0;
 bool FORCE_INTERPRETER = false;
 bool FORCE_OPTIMIZE = false;
 bool ENABLE_INTERPRETER = true;
-bool ENABLE_BASELINEJIT = true;
+bool ENABLE_BASELINEJIT = false;
 
 bool CONTINUE_AFTER_FATAL = false;
 bool SHOW_DISASM = false;
