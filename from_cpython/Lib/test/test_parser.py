@@ -1,4 +1,3 @@
-# expected: reffail
 import parser
 import unittest
 import sys
