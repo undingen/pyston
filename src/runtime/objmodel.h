@@ -196,8 +196,8 @@ Box* processDescriptorOrNull(Box* obj, Box* inst, Box* owner);
 
 template <ExceptionStyle S, Rewritable rewritable>
 Box* callCLFunc(FunctionMetadata* f, CallRewriteArgs* rewrite_args, int num_output_args, BoxedClosure* closure,
-                BoxedGenerator* generator, Box* globals, Box* oarg1, Box* oarg2, Box* oarg3,
-                Box** oargs) noexcept(S == CAPI);
+                BoxedGenerator* generator, Box* globals, Box* oarg1, Box* oarg2, Box* oarg3, Box** oargs,
+                llvm::ArrayRef<RewriterVar*> additional_args) noexcept(S == CAPI);
 
 static const char* objectNewParameterTypeErrorMsg() {
     if (PY_VERSION_HEX >= version_hex(2, 7, 4)) {
