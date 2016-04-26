@@ -4739,6 +4739,17 @@ Box* callFunc(BoxedFunctionBase* func, CallRewriteArgs* rewrite_args, ArgPassSpe
         res = createGenerator(func, arg1, arg2, arg3, oargs);
 
         if (rewrite_args) {
+            llvm::SmallVector<RewriterVar*, 8> additional_args;
+            if (rewrite_args && num_output_args > 3) {
+                for (int i = 0; i < num_output_args - 3; i++) {
+                    if (oargs_owned[i]) {
+                        assert(0);
+                        additional_args.push_back(
+                            rewrite_args->args->getAttr(i * sizeof(Box*))->setType(RefType::OWNED));
+                    }
+                }
+            }
+
             RewriterVar* r_arg1 = num_output_args >= 1 ? rewrite_args->arg1 : rewrite_args->rewriter->loadConst(0);
             RewriterVar* r_arg2 = num_output_args >= 2 ? rewrite_args->arg2 : rewrite_args->rewriter->loadConst(0);
             RewriterVar* r_arg3 = num_output_args >= 3 ? rewrite_args->arg3 : rewrite_args->rewriter->loadConst(0);
@@ -4749,13 +4760,19 @@ Box* callFunc(BoxedFunctionBase* func, CallRewriteArgs* rewrite_args, ArgPassSpe
 
             rewrite_args->out_success = true;
         }
-    } else {
-        res = callCLFunc<S, rewritable>(md, rewrite_args, num_output_args, closure, NULL, func->globals, arg1, arg2,
-                                        arg3, oargs);
-    }
 
-    if (rewrite_args && num_output_args > 3)
-        decrefOargs(rewrite_args->args, oargs_owned, num_output_args - 3);
+    } else {
+        llvm::SmallVector<RewriterVar*, 8> additional_args;
+        if (rewrite_args && num_output_args > 3) {
+            for (int i = 0; i < num_output_args - 3; i++) {
+                if (oargs_owned[i]) {
+                    additional_args.push_back(rewrite_args->args->getAttr(i * sizeof(Box*))->setType(RefType::OWNED));
+                }
+            }
+        }
+        res = callCLFunc<S, rewritable>(md, rewrite_args, num_output_args, closure, NULL, func->globals, arg1, arg2,
+                                        arg3, oargs, additional_args);
+    }
 
     return res;
 }
@@ -4849,8 +4866,8 @@ static Box* capiCallCxxHelper(Box* (*func_ptr)(void*, void*, void*, void*, void*
 
 template <ExceptionStyle S, Rewritable rewritable>
 Box* callCLFunc(FunctionMetadata* md, CallRewriteArgs* rewrite_args, int num_output_args, BoxedClosure* closure,
-                BoxedGenerator* generator, Box* globals, Box* oarg1, Box* oarg2, Box* oarg3,
-                Box** oargs) noexcept(S == CAPI) {
+                BoxedGenerator* generator, Box* globals, Box* oarg1, Box* oarg2, Box* oarg3, Box** oargs,
+                llvm::ArrayRef<RewriterVar*> additional_args) noexcept(S == CAPI) {
     if (rewritable == NOT_REWRITABLE) {
         assert(!rewrite_args);
         rewrite_args = NULL;
@@ -4914,6 +4931,10 @@ Box* callCLFunc(FunctionMetadata* md, CallRewriteArgs* rewrite_args, int num_out
                     rewrite_args->args->refUsed();
             }
 
+            for (auto&& a : additional_args) {
+                a->refUsed();
+            }
+
             rewrite_args->out_success = true;
         }
 
@@ -4956,6 +4977,10 @@ Box* callCLFunc(FunctionMetadata* md, CallRewriteArgs* rewrite_args, int num_out
             arg_vec.push_back(rewrite_args->args);
 
         rewrite_args->out_rtn = rewrite_args->rewriter->call(true, func_ptr, arg_vec)->setType(RefType::OWNED);
+        for (auto&& a : additional_args) {
+            a->refUsed();
+        }
+
         if (S == CXX && chosen_cf->exception_style == CAPI)
             rewrite_args->rewriter->checkAndThrowCAPIException(rewrite_args->out_rtn);
 
@@ -5013,16 +5038,20 @@ Box* callCLFunc(FunctionMetadata* md, CallRewriteArgs* rewrite_args, int num_out
 // force instantiation:
 template Box* callCLFunc<CAPI, REWRITABLE>(FunctionMetadata* f, CallRewriteArgs* rewrite_args, int num_output_args,
                                            BoxedClosure* closure, BoxedGenerator* generator, Box* globals, Box* oarg1,
-                                           Box* oarg2, Box* oarg3, Box** oargs);
+                                           Box* oarg2, Box* oarg3, Box** oargs,
+                                           llvm::ArrayRef<RewriterVar*> additional_args);
 template Box* callCLFunc<CXX, REWRITABLE>(FunctionMetadata* f, CallRewriteArgs* rewrite_args, int num_output_args,
                                           BoxedClosure* closure, BoxedGenerator* generator, Box* globals, Box* oarg1,
-                                          Box* oarg2, Box* oarg3, Box** oargs);
+                                          Box* oarg2, Box* oarg3, Box** oargs,
+                                          llvm::ArrayRef<RewriterVar*> additional_args);
 template Box* callCLFunc<CAPI, NOT_REWRITABLE>(FunctionMetadata* f, CallRewriteArgs* rewrite_args, int num_output_args,
                                                BoxedClosure* closure, BoxedGenerator* generator, Box* globals,
-                                               Box* oarg1, Box* oarg2, Box* oarg3, Box** oargs);
+                                               Box* oarg1, Box* oarg2, Box* oarg3, Box** oargs,
+                                               llvm::ArrayRef<RewriterVar*> additional_args);
 template Box* callCLFunc<CXX, NOT_REWRITABLE>(FunctionMetadata* f, CallRewriteArgs* rewrite_args, int num_output_args,
                                               BoxedClosure* closure, BoxedGenerator* generator, Box* globals,
-                                              Box* oarg1, Box* oarg2, Box* oarg3, Box** oargs);
+                                              Box* oarg1, Box* oarg2, Box* oarg3, Box** oargs,
+                                              llvm::ArrayRef<RewriterVar*> additional_args);
 
 static void getclassname(PyObject* klass, char* buf, int bufsize) noexcept {
     PyObject* name;
