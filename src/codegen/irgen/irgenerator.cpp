@@ -1575,7 +1575,8 @@ private:
         CompilerVariable* created_closure = NULL;
         if (scope_info->takesClosure()) {
             if (irstate->getScopeInfo()->createsClosure()) {
-                created_closure = symbol_table[internString(CREATED_CLOSURE_NAME)];
+                created_closure = new ConcreteCompilerVariable(getCreatedClosureType(), irstate->getCreatedClosure());
+                // created_closure = symbol_table[internString(CREATED_CLOSURE_NAME)];
             } else {
                 assert(irstate->getScopeInfo()->passesThroughClosure());
                 created_closure = symbol_table[internString(PASSED_CLOSURE_NAME)];
@@ -1639,7 +1640,8 @@ private:
 
         if (takes_closure) {
             if (irstate->getScopeInfo()->createsClosure()) {
-                created_closure = symbol_table[internString(CREATED_CLOSURE_NAME)];
+                created_closure = new ConcreteCompilerVariable(getCreatedClosureType(), irstate->getCreatedClosure());
+                // created_closure = symbol_table[internString(CREATED_CLOSURE_NAME)];
             } else {
                 assert(irstate->getScopeInfo()->passesThroughClosure());
                 created_closure = symbol_table[internString(PASSED_CLOSURE_NAME)];
@@ -1942,7 +1944,9 @@ private:
                 size_t offset = scope_info->getClosureOffset(name);
 
                 // This is basically `closure->elts[offset] = val;`
-                CompilerVariable* closure = symbol_table[internString(CREATED_CLOSURE_NAME)];
+                // CompilerVariable* closure = symbol_table[internString(CREATED_CLOSURE_NAME)];
+                CompilerVariable* closure
+                    = new ConcreteCompilerVariable(getCreatedClosureType(), irstate->getCreatedClosure());
                 llvm::Value* closureValue = closure->makeConverted(emitter, CLOSURE)->getValue();
                 llvm::Value* gep = getClosureElementGep(emitter, closureValue, offset);
                 if (prev) {
@@ -2866,8 +2870,9 @@ public:
             llvm::Value* new_closure = emitter.getBuilder()->CreateCall2(
                 g.funcs.createClosure, passed_closure, getConstantInt(scope_info->getClosureSize(), g.i64));
             emitter.setType(new_closure, RefType::OWNED);
-            symbol_table[internString(CREATED_CLOSURE_NAME)]
-                = new ConcreteCompilerVariable(getCreatedClosureType(), new_closure);
+            irstate->created_closure = new_closure;
+            // symbol_table[internString(CREATED_CLOSURE_NAME)]
+            //    = new ConcreteCompilerVariable(getCreatedClosureType(), new_closure);
         }
 
         if (irstate->getSourceInfo()->is_generator) {

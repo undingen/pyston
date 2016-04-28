@@ -80,6 +80,7 @@ private:
 
 public:
     llvm::Value* passed_generator;
+    llvm::Value* created_closure;
     IRGenState(FunctionMetadata* md, CompiledFunction* cf, SourceInfo* source_info, std::unique_ptr<PhiAnalysis> phis,
                ParamNames* param_names, GCBuilder* gc, llvm::MDNode* func_dbg_info, RefcountTracker* refcount_tracker);
     ~IRGenState();
@@ -106,6 +107,7 @@ public:
     llvm::Value* getBoxedLocalsVar();
     llvm::Value* getVRegsVar();
     llvm::Value* getStmtVar();
+    llvm::Value* getCreatedClosure() { return created_closure; }
 
     ConcreteCompilerType* getReturnType() { return cf->getReturnType(); }
 

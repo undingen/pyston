@@ -100,13 +100,14 @@ void generatorEntry(BoxedGenerator* g) {
 
             // call body of the generator
             BoxedFunctionBase* func = g->function;
-            KEEP_ALIVE(func);
+            // KEEP_ALIVE(func); the generator own g->function
 
             Box** args = g->args ? &g->args->elts[0] : nullptr;
             auto r = callCLFunc<ExceptionStyle::CXX, NOT_REWRITABLE>(func->md, nullptr, func->md->numReceivedArgs(),
                                                                      func->closure, g, func->globals, g->arg1, g->arg2,
                                                                      g->arg3, args, {});
-            assert(r == None);
+            // currently lamdas can return something different than None
+            // assert(r == None);
             Py_DECREF(r);
         } catch (ExcInfo e) {
             // unhandled exception: propagate the exception to the caller
