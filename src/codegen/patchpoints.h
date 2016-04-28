@@ -163,6 +163,7 @@ public:
 
     static PatchpointInfo* create(CompiledFunction* parent_cf, const ICSetupInfo* icinfo, int num_ic_stackmap_args,
                                   void* func_addr);
+    static PatchpointInfo* find(long id);
     static void* getSlowpathAddr(unsigned int pp_id);
 };
 

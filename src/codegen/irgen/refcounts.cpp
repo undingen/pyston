@@ -341,6 +341,49 @@ void addDecrefs(llvm::Value* v, bool nullable, int num_refs, llvm::Instruction* 
 #endif
 }
 
+static bool isCalledValuePP(llvm::CallInst* call) {
+    llvm::Function* func = call->getCalledFunction();
+    if (!func)
+        return false;
+
+    if (!func->isIntrinsic())
+        return false;
+
+    if (func->getIntrinsicID() == llvm::Intrinsic::experimental_patchpoint_i64
+        || func->getIntrinsicID() == llvm::Intrinsic::experimental_patchpoint_void
+        || func->getIntrinsicID() == llvm::Intrinsic::experimental_patchpoint_double) {
+        // func->dump();
+        return true;
+    }
+    return false;
+    /*
+        llvm::Value* called_value = call->getCalledValue()->stripPointerCasts();
+        if (!called_value)
+            return false;
+
+        called_value->dump();
+        printf("id %d %d\n", (int)llvm::isa<llvm::Function>(called_value), (int)(call->getCalledFunction() != 0));
+        if (llvm::isa<llvm::BitCastInst>(called_value)) {
+            assert(0);
+            called_value = llvm::cast<llvm::CastInst>(called_value)->getOperand(0);
+        }
+        return false;
+        //assert(0);
+
+        llvm::IntrinsicInst* ii = llvm::dyn_cast<llvm::IntrinsicInst>(call);
+        if (!ii)
+            return false;
+        assert(0);
+        if (ii->getIntrinsicID() == llvm::Intrinsic::experimental_patchpoint_i64
+            || ii->getIntrinsicID() == llvm::Intrinsic::experimental_patchpoint_void
+            || ii->getIntrinsicID() == llvm::Intrinsic::experimental_patchpoint_double) {
+            assert(0);
+            return true;
+        }
+        return false;
+    */
+}
+
 void addCXXFixup(llvm::Instruction* inst, const llvm::SmallVector<llvm::TrackingVH<llvm::Value>, 4>& to_decref,
                  RefcountTracker* rt) {
     // inst->getParent()->getParent()->dump();
@@ -351,6 +394,20 @@ void addCXXFixup(llvm::Instruction* inst, const llvm::SmallVector<llvm::Tracking
     assert(llvm::isa<llvm::CallInst>(inst));
 
     llvm::CallInst* call = llvm::cast<llvm::CallInst>(inst);
+
+
+    bool is_pp = isCalledValuePP(call);
+    if (is_pp) {
+        llvm::Value* id_value = call->getArgOperand(0);
+        assert(llvm::isa<ConstantInt>(id_value));
+        auto id = llvm::cast<ConstantInt>(id_value)->getZExtValue();
+
+        auto icinfo = PatchpointInfo::find(id)->getICInfo();
+
+        printf("%d %p num: %d\n", (int)id, icinfo, (int)to_decref.size());
+        // i->dump();
+        // call->dump();
+    }
 
     llvm::BasicBlock* cur_block = inst->getParent();
     llvm::BasicBlock* continue_block = cur_block->splitBasicBlock(inst);

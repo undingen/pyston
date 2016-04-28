@@ -355,6 +355,11 @@ PatchpointInfo* PatchpointInfo::create(CompiledFunction* parent_cf, const ICSetu
     return r;
 }
 
+PatchpointInfo* PatchpointInfo::find(long id) {
+    RELEASE_ASSERT(new_patchpoints.size() > id, "");
+    return new_patchpoints[id].first;
+}
+
 void* PatchpointInfo::getSlowpathAddr(unsigned int pp_id) {
     RELEASE_ASSERT(pp_id < new_patchpoints.size(), "");
     return new_patchpoints[pp_id].second;
