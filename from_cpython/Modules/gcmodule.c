@@ -1285,6 +1285,18 @@ gc_get_referrers(PyObject *self, PyObject *args)
     return result;
 }
 
+void _gc_print_referrers(PyObject *obj) {
+    PyObject* arg = PyTuple_Pack(1, obj);
+    PyListObject* res = (PyListObject*)gc_get_referrers(NULL, arg);
+    for (int i = 0; i<PyList_Size((PyObject*)res); ++i) {
+        printf("%p %s\n", res->ob_item[i], res->ob_item[i]->ob_type->tp_name);
+    }
+    Py_DECREF(res);
+    Py_DECREF(arg);
+}
+
+
+
 /* Append obj to list; return true if error (out of memory), false if OK. */
 static int
 referentsvisit(PyObject *obj, PyObject *list)
@@ -1320,6 +1332,16 @@ gc_get_referents(PyObject *self, PyObject *args)
         }
     }
     return result;
+}
+
+void _gc_print_referents(PyObject *obj) {
+    PyObject* arg = PyTuple_Pack(1, obj);
+    PyListObject* res = (PyListObject*)gc_get_referents(NULL, arg);
+    for (int i = 0; i<PyList_Size((PyObject*)res); ++i) {
+        printf("%p %s\n", res->ob_item[i], res->ob_item[i]->ob_type->tp_name);
+    }
+    Py_DECREF(res);
+    Py_DECREF(arg);
 }
 
 PyDoc_STRVAR(gc_get_objects__doc__,
