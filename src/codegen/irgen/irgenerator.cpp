@@ -1543,8 +1543,21 @@ private:
         CompilerVariable* value = node->value ? evalExpr(node->value, unw_info) : emitter.getNone();
         ConcreteCompilerVariable* convertedValue = value->makeConverted(emitter, value->getBoxType());
 
-        llvm::Instruction* rtn
-            = emitter.createCall2(unw_info, g.funcs.yield, irstate->passed_generator, convertedValue->getValue());
+        std::vector<llvm::Value*> args;
+        args.push_back(irstate->passed_generator);
+        args.push_back(convertedValue->getValue());
+        args.push_back(getConstantInt(0, g.i32));
+        for (auto&& p : symbol_table) {
+            if (isIsDefinedName(p.first))
+                continue;
+            ConcreteCompilerVariable* var = p.second->makeConverted(emitter, p.second->getConcreteType());
+            args.push_back(var->getValue());
+        }
+        // args.push_back(irstate->passed_generator);
+
+        args[2] = getConstantInt(args.size() - 3, g.i32);
+
+        llvm::Instruction* rtn = emitter.createCall(unw_info, g.funcs.yield, args);
         emitter.refConsumed(convertedValue->getValue(), rtn);
         emitter.setType(rtn, RefType::OWNED);
 

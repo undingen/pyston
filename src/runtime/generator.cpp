@@ -100,7 +100,8 @@ void generatorEntry(BoxedGenerator* g) {
 
             // call body of the generator
             BoxedFunctionBase* func = g->function;
-            KEEP_ALIVE(func);
+            // unnecessary because the generator owns g->function
+            // KEEP_ALIVE(func);
 
             Box** args = g->args ? &g->args->elts[0] : nullptr;
             auto r = callCLFunc<ExceptionStyle::CXX, NOT_REWRITABLE>(func->md, nullptr, func->md->numReceivedArgs(),
@@ -332,7 +333,7 @@ Box* generatorHasnext(Box* s) {
 }
 
 
-extern "C" Box* yield(BoxedGenerator* obj, STOLEN(Box*) value) {
+extern "C" Box* yield(BoxedGenerator* obj, STOLEN(Box*) value, int num_live_values, ...) {
     STAT_TIMER(t0, "us_timer_generator_switching", 0);
 
     assert(obj->cls == generator_cls);
@@ -342,6 +343,16 @@ extern "C" Box* yield(BoxedGenerator* obj, STOLEN(Box*) value) {
 
     threading::popGenerator();
 
+    llvm::SmallVector<Box*, 8> live_values;
+    live_values.reserve(num_live_values);
+    va_list ap;
+    va_start(ap, num_live_values);
+    for (int i = 0; i < num_live_values; ++i) {
+        live_values.push_back(va_arg(ap, Box*));
+    }
+    va_end(ap);
+
+
     FrameInfo* generator_frame_info = (FrameInfo*)cur_thread_state.frame_info;
     // a generator will only switch back (yield/unhandled exception) to its caller when it is one frame away from the
     // caller
@@ -350,9 +361,11 @@ extern "C" Box* yield(BoxedGenerator* obj, STOLEN(Box*) value) {
     // reset current frame to the caller tops frame --> removes the frame the generator added
     cur_thread_state.frame_info = self->top_caller_frame_info;
     obj->paused_frame_info = generator_frame_info;
+    obj->live_values = live_values;
     swapContext(&self->context, self->returnContext, 0);
     FrameInfo* top_new_caller_frame_info = (FrameInfo*)cur_thread_state.frame_info;
     obj->paused_frame_info = NULL;
+    obj->live_values = llvm::ArrayRef<Box*>();
 
     // the caller of the generator can change between yield statements that means we can't just restore the top of the
     // frame to the point before the yield instead we have to update it.
@@ -640,6 +653,10 @@ static int generator_traverse(BoxedGenerator* self, visitproc visit, void* arg) 
         int r = frameinfo_traverse(self->paused_frame_info, visit, arg);
         if (r)
             return r;
+    }
+
+    for (auto e : self->live_values) {
+        Py_VISIT(e);
     }
 
     int numArgs = self->function->md->numReceivedArgs();
