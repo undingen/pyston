@@ -40,6 +40,7 @@
 #include "runtime/types.h"
 #include "runtime/util.h"
 
+
 namespace pyston {
 
 static int numSuccessors(llvm::BasicBlock* b) {
@@ -754,6 +755,18 @@ void RefcountTracker::addRefcounts(IRGenState* irstate) {
             invokes.push_back(ii);
     }
 
+    std::vector<llvm::CallInst*> yields;
+    std::unordered_map<llvm::CallInst*, std::vector<llvm::TrackingVH<llvm::Value>>> yields_map;
+    for (auto&& II : llvm::inst_range(f)) {
+        llvm::Instruction* inst = &II;
+        if (llvm::isa<llvm::CallInst>(inst)) {
+            llvm::CallInst* ii = llvm::cast<llvm::CallInst>(inst);
+            if (ii->getCalledValue() != g.funcs.yield)
+                continue;
+            yields.push_back(ii);
+        }
+    }
+
     while (llvm::BasicBlock* bb = orderer.pop()) {
         // errs() << "DETERMINISM: Processing " << bb->getName() << '\n';
         llvm::BasicBlock& BB = *bb;
@@ -805,6 +818,20 @@ void RefcountTracker::addRefcounts(IRGenState* irstate) {
                 }
             }
 
+            bool has_yield = false;
+            llvm::CallInst* yield = NULL;
+            for (auto&& i : BB) {
+                if (!llvm::isa<llvm::CallInst>(&i))
+                    continue;
+                llvm::CallInst* ii = llvm::cast<llvm::CallInst>(&i);
+                if (ii->getCalledValue() != g.funcs.yield)
+                    continue;
+                has_yield = true;
+                yield = ii;
+
+                break;
+            }
+
             llvm::SmallVector<std::pair<BlockMap*, llvm::BasicBlock*>, 4> successor_info;
             for (auto SBB : successors) {
                 successor_info.emplace_back(&states[SBB].ending_refs, SBB);
@@ -854,8 +881,46 @@ void RefcountTracker::addRefcounts(IRGenState* irstate) {
                 else
                     assert(state.starting_refs.count(v) == 0);
             }
+
+
+            if (yield) {
+                for (auto v : tracked_values) {
+                    // hash = hash * 31 + std::hash<llvm::StringRef>()(v->getName());
+                    assert(rt->vars.count(v));
+                    const auto refstate = rt->vars.lookup(v);
+
+                    int min_refs = 0;
+
+                    if (refstate.reftype == RefType::OWNED)
+                        min_refs = std::max(1, min_refs);
+
+                    for (auto&& s_info : successor_info) {
+                        int this_refs = 0;
+                        if (this_refs < min_refs) {
+                            assert(refstate.reftype == RefType::OWNED);
+                            auto& vv = yields_map[yield];
+                            if (std::find(vv.begin(), vv.end(), v) == vv.end())
+                                vv.push_back(v);
+                        }
+                    }
+                }
+            }
+
             // errs() << "DETERMINISM: tracked value name hash: " << hash << '\n';
         }
+
+        /*
+                llvm::outs() << "\n\n";
+                for (auto&& yield : yields_map) {
+                    //assert(0);
+                    llvm::outs() << "yield: ";
+                    yield.first->dump();
+                    for (auto&& refs : yield.second) {
+                        refs->dump();
+                    }
+                    llvm::outs() << "\n";
+                }
+        */
 
         state.ending_refs = state.starting_refs;
 
@@ -895,6 +960,7 @@ void RefcountTracker::addRefcounts(IRGenState* irstate) {
                 continue;
 
 
+
             // If we are about to insert a CXX fixup, do the increfs after the call, rather than trying to push
             // them before the call and having to insert decrefs on the fixup path.
             if (rt->may_throw.count(&I)) {
@@ -913,6 +979,25 @@ void RefcountTracker::addRefcounts(IRGenState* irstate) {
 
                 for (auto v : to_erase)
                     state.ending_refs.erase(v);
+            }
+
+            if (0 && llvm::isa<llvm::CallInst>(inst)
+                && llvm::cast<llvm::CallInst>(inst)->getCalledValue() == g.funcs.yield) {
+                assert(rt->may_throw.count(inst));
+                llvm::CallInst* ii = llvm::cast<llvm::CallInst>(inst);
+                llvm::outs() << "\n";
+
+
+                for (auto&& e : state.decrefs) {
+                    llvm::outs() << "\tdecrefs ";
+                    e.operand->dump();
+                }
+                for (auto&& e : state.ending_refs) {
+                    llvm::outs() << "\tending_refs ";
+                    e.first->dump();
+                }
+
+                llvm::outs() << "\n";
             }
 
             llvm::DenseMap<llvm::Value*, int> num_consumed_by_inst;
@@ -1017,7 +1102,6 @@ void RefcountTracker::addRefcounts(IRGenState* irstate) {
             }
         }
 
-
         // Invokes are special.  Handle them here by treating them as if they happened in their normal-dest block.
         for (InvokeInst* ii : invokes) {
             const auto&& rstate = rt->vars.lookup(ii);
@@ -1088,6 +1172,28 @@ void RefcountTracker::addRefcounts(IRGenState* irstate) {
     }
 
     ASSERT(states.size() == f->size(), "We didn't process all nodes...");
+    /*
+    for (auto&& yield : yields_map) {
+        llvm::CallInst* call = yield.first;
+        printf("%d\n", call->getNumArgOperands());
+        assert(call->getNumArgOperands() == 3);
+
+        llvm::SmallVector<llvm::Value*, 8> args;
+
+        args.push_back(call->getArgOperand(0));
+        args.push_back(call->getArgOperand(1));
+
+        args.push_back(getConstantInt(yield.second.size(), g.i32));
+        for (auto&& refs : yield.second) {
+            //args.push_back(refs);
+        }
+
+
+        llvm::CallInst* new_call = llvm::CallInst::Create(g.funcs.yield, args);
+        call->replaceAllUsesWith(new_call);
+        call->eraseFromParent();
+    }
+     * */
 
     // Note: we iterate over the basicblocks in the order they appear in the llvm function;
     // iterating over states directly is nondeterministic.
@@ -1130,10 +1236,44 @@ void RefcountTracker::addRefcounts(IRGenState* irstate) {
             addDecrefs(op.operand, op.nullable, op.num_refs, insertion_pt);
         }
 
+        /*
+        for (CallInst* ii : yields) {
+            const RefcountState&& rstate = rt->vars.lookup(ii);
+            assert(0);
+        }
+        */
+
+        for (auto&& i : *bb) {
+            if (llvm::isa<llvm::CallInst>(&i) && llvm::cast<llvm::CallInst>(&i)->getCalledValue() == g.funcs.yield) {
+                llvm::CallInst* ii = llvm::cast<llvm::CallInst>(&i);
+                if (yields_map.count(ii) && yields_map[ii].size()) {
+                    llvm::CallInst* call = ii;
+                    assert(call->getNumArgOperands() == 3);
+
+                    llvm::SmallVector<llvm::Value*, 8> args;
+
+                    args.push_back(call->getArgOperand(0));
+                    args.push_back(call->getArgOperand(1));
+
+                    args.push_back(getConstantInt(yields_map[ii].size(), g.i32));
+                    for (auto&& refs : yields_map[ii]) {
+                        args.push_back(refs);
+                    }
+
+                    llvm::CallInst* new_call = llvm::CallInst::Create(g.funcs.yield, args, llvm::Twine(), call);
+                    call->replaceAllUsesWith(new_call);
+                    call->eraseFromParent();
+                    break;
+                }
+            }
+        }
+
         for (auto&& fixup : state.cxx_fixups) {
+            assert(!yields_map.count((llvm::CallInst*)fixup.inst));
             addCXXFixup(fixup.inst, fixup.to_decref, rt);
         }
     }
+    // f->dump();
 
     long us = _t.end();
     static StatCounter us_refcounting("us_compiling_irgen_refcounting");

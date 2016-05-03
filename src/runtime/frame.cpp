@@ -288,8 +288,12 @@ int frameinfo_traverse(FrameInfo* frame_info, visitproc visit, void* arg) noexce
     Py_VISIT(frame_info->frame_obj);
 
     if (frame_info->vregs) {
+        // printf("frameinfo_traverse\n");
         int num_vregs = frame_info->num_vregs;
         for (int i = 0; i < num_vregs; i++) {
+            if (0 && frame_info->vregs[i])
+                printf(" f: %p %d %s\n", frame_info->vregs[i], (int)frame_info->vregs[i]->ob_refcnt,
+                       frame_info->vregs[i]->cls->tp_name);
             Py_VISIT(frame_info->vregs[i]);
         }
     }

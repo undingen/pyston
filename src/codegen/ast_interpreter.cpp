@@ -996,7 +996,7 @@ Value ASTInterpreter::visit_yield(AST_Yield* node) {
     Value value = node->value ? visit_expr(node->value) : getNone();
     assert(generator && generator->cls == generator_cls);
 
-    return Value(yield(generator, value.o), jit ? jit->emitYield(value) : NULL);
+    return Value(yield_exc(generator, value.o), jit ? jit->emitYield(value) : NULL);
 }
 
 Value ASTInterpreter::visit_stmt(AST_stmt* node) {

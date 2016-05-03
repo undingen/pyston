@@ -332,8 +332,75 @@ Box* generatorHasnext(Box* s) {
     return boxBool(generatorHasnextUnboxed(s));
 }
 
+extern "C" Box* yield(BoxedGenerator* obj, STOLEN(Box*) value, int num_live_values, ...) noexcept {
+    try {
+        STAT_TIMER(t0, "us_timer_generator_switching", 0);
 
-extern "C" Box* yield(BoxedGenerator* obj, STOLEN(Box*) value, int num_live_values, ...) {
+        assert(obj->cls == generator_cls);
+        BoxedGenerator* self = static_cast<BoxedGenerator*>(obj);
+        assert(!self->returnValue);
+        self->returnValue = value;
+
+        threading::popGenerator();
+
+        llvm::SmallVector<Box*, 8> live_values;
+        live_values.reserve(num_live_values);
+        va_list ap;
+        va_start(ap, num_live_values);
+        for (int i = 0; i < num_live_values; ++i) {
+            live_values.push_back(va_arg(ap, Box*));
+        }
+        va_end(ap);
+
+
+        FrameInfo* generator_frame_info = (FrameInfo*)cur_thread_state.frame_info;
+        // a generator will only switch back (yield/unhandled exception) to its caller when it is one frame away from
+        // the
+        // caller
+        assert(self->top_caller_frame_info == generator_frame_info->back);
+
+        // reset current frame to the caller tops frame --> removes the frame the generator added
+        cur_thread_state.frame_info = self->top_caller_frame_info;
+        obj->paused_frame_info = generator_frame_info;
+        obj->live_values = live_values;
+        swapContext(&self->context, self->returnContext, 0);
+        FrameInfo* top_new_caller_frame_info = (FrameInfo*)cur_thread_state.frame_info;
+        obj->paused_frame_info = NULL;
+        obj->live_values = llvm::ArrayRef<Box*>();
+
+        // the caller of the generator can change between yield statements that means we can't just restore the top of
+        // the
+        // frame to the point before the yield instead we have to update it.
+        if (top_new_caller_frame_info != self->top_caller_frame_info) {
+            // caller changed
+            self->top_caller_frame_info = top_new_caller_frame_info;
+            generator_frame_info->back = top_new_caller_frame_info;
+            if (generator_frame_info->frame_obj)
+                frameInvalidateBack(generator_frame_info->frame_obj);
+        }
+        cur_thread_state.frame_info = generator_frame_info;
+
+        threading::pushGenerator(obj, obj->stack_begin, obj->returnContext);
+
+        // if the generator receives a exception from the caller we have to throw it
+        if (self->exception.type) {
+            ExcInfo e = self->exception;
+            self->exception = ExcInfo(NULL, NULL, NULL);
+            Py_CLEAR(self->returnValue);
+            throw e;
+        }
+
+        Box* r = self->returnValue;
+        self->returnValue = NULL;
+        return r;
+
+    } catch (ExcInfo e) {
+        setCAPIException(e);
+        return NULL;
+    }
+}
+
+extern "C" Box* yield_exc(BoxedGenerator* obj, STOLEN(Box*) value, int num_live_values, ...) {
     STAT_TIMER(t0, "us_timer_generator_switching", 0);
 
     assert(obj->cls == generator_cls);
@@ -505,8 +572,14 @@ extern "C" int PyGen_NeedsFinalizing(PyGenObject* gen) noexcept {
     // CPython has some optimizations for not needing to finalize generators that haven't exited, but
     // which are guaranteed to not need any special cleanups.
     // For now just say anything still in-progress needs finalizing.
-    return (bool)self->paused_frame_info;
+    if (!(bool)self->paused_frame_info)
+        return false;
 
+    return true;
+    // TODO: is this safe? no
+    printf("%p needs finalizer call? %s\n", self,
+           self->paused_frame_info->stmt->type == AST_TYPE::Invoke ? "yes" : "no");
+    return self->paused_frame_info->stmt->type == AST_TYPE::Invoke;
 #if 0
     int i;
     PyFrameObject* f = gen->gi_frame;
@@ -536,6 +609,7 @@ static PyObject* gen_close(PyGenObject* gen, PyObject* args) {
 }
 
 static void gen_del(PyObject* self) {
+    // printf("gen_del\n");
     PyObject* res;
     PyObject* error_type, *error_value, *error_traceback;
     BoxedGenerator* gen = (BoxedGenerator*)self;
@@ -656,6 +730,8 @@ static int generator_traverse(BoxedGenerator* self, visitproc visit, void* arg) 
     }
 
     for (auto e : self->live_values) {
+        if (0 && e)
+            printf("e: %p %d %s\n", e, (int)e->ob_refcnt, e->cls->tp_name);
         Py_VISIT(e);
     }
 

@@ -1543,23 +1543,40 @@ private:
         CompilerVariable* value = node->value ? evalExpr(node->value, unw_info) : emitter.getNone();
         ConcreteCompilerVariable* convertedValue = value->makeConverted(emitter, value->getBoxType());
 
+
+        llvm::FunctionType* FTy
+            = llvm::cast<llvm::FunctionType>(llvm::cast<llvm::PointerType>(g.funcs.yield->getType())->getElementType());
+
         std::vector<llvm::Value*> args;
         args.push_back(irstate->passed_generator);
         args.push_back(convertedValue->getValue());
-        args.push_back(getConstantInt(0, g.i32));
+#if 0
+        args.push_back(NULL /* dummy */);
         for (auto&& p : symbol_table) {
-            if (isIsDefinedName(p.first))
+            if (isIsDefinedName(p.first)) {
+                assert(0);
+                continue;
+            }
+            if (0 && PASSED_CLOSURE_NAME == p.first.s())
                 continue;
             ConcreteCompilerVariable* var = p.second->makeConverted(emitter, p.second->getConcreteType());
             args.push_back(var->getValue());
         }
-        // args.push_back(irstate->passed_generator);
-
         args[2] = getConstantInt(args.size() - 3, g.i32);
+#else
+        args.push_back(getConstantInt(0, g.i32));
+#endif
 
-        llvm::Instruction* rtn = emitter.createCall(unw_info, g.funcs.yield, args);
+        llvm::Instruction* rtn
+            = emitter.createCall(unw_info, g.funcs.yield, args, CAPI, getNullPtr(g.llvm_value_type_ptr));
         emitter.refConsumed(convertedValue->getValue(), rtn);
         emitter.setType(rtn, RefType::OWNED);
+        emitter.setNullable(rtn, true);
+
+        llvm::BasicBlock* starting_block = emitter.currentBasicBlock();
+        llvm::BasicBlock* continue_bb = emitter.createBasicBlock("continue_after_yield");
+        emitter.getBuilder()->CreateBr(continue_bb);
+        emitter.setCurrentBasicBlock(continue_bb);
 
         return new ConcreteCompilerVariable(UNKNOWN, rtn);
     }
