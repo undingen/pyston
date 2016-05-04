@@ -29,7 +29,7 @@ void setupGenerator();
 void generatorEntry(BoxedGenerator* g);
 Context* getReturnContextForGeneratorFrame(void* frame_addr);
 
-extern "C" Box* yield_exc(BoxedGenerator* obj, STOLEN(Box*) value, int num_live_values = 0, ...);
+extern "C" Box* yield_exc(BoxedGenerator* obj, STOLEN(Box*) value, llvm::ArrayRef<Box*> live_values = {});
 extern "C" Box* yield(BoxedGenerator* obj, STOLEN(Box*) value, int num_live_values = 0, ...) noexcept;
 extern "C" BoxedGenerator* createGenerator(BoxedFunctionBase* function, Box* arg1, Box* arg2, Box* arg3, Box** args);
 }

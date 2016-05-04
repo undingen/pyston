@@ -1246,7 +1246,8 @@ void RefcountTracker::addRefcounts(IRGenState* irstate) {
         for (auto&& i : *bb) {
             if (llvm::isa<llvm::CallInst>(&i) && llvm::cast<llvm::CallInst>(&i)->getCalledValue() == g.funcs.yield) {
                 llvm::CallInst* ii = llvm::cast<llvm::CallInst>(&i);
-                if (yields_map.count(ii) && yields_map[ii].size()) {
+#if 0
+                if (yields_map.count(ii) /*&& yields_map[ii].size()*/) {
                     llvm::CallInst* call = ii;
                     assert(call->getNumArgOperands() == 3);
 
@@ -1254,6 +1255,10 @@ void RefcountTracker::addRefcounts(IRGenState* irstate) {
 
                     args.push_back(call->getArgOperand(0));
                     args.push_back(call->getArgOperand(1));
+
+                    printf("state.decrefs %d\n", (int)state.decrefs.size());
+                    assert(0);
+                    assert(state.decrefs.size() == yields_map[ii].size());
 
                     args.push_back(getConstantInt(yields_map[ii].size(), g.i32));
                     for (auto&& refs : yields_map[ii]) {
@@ -1265,6 +1270,43 @@ void RefcountTracker::addRefcounts(IRGenState* irstate) {
                     call->eraseFromParent();
                     break;
                 }
+#else
+                llvm::CallInst* call = ii;
+                assert(call->getNumArgOperands() == 3);
+
+                llvm::SmallVector<llvm::Value*, 8> args;
+
+                args.push_back(call->getArgOperand(0));
+                args.push_back(call->getArgOperand(1));
+
+
+                args.push_back(/* dummy */ NULL);
+                // printf("decrefs: \n");
+                for (auto&& op : state.decrefs) {
+                    // op.operand->dump();
+                    // op.insertion_inst->dump();
+                    // printf("%s\n", op.insertion_inst == call ? "adding" : "skipping");
+
+                    bool should_insert = true;
+                    for (auto&& iiii : *bb) {
+                        if (&iiii == op.insertion_inst) {
+                            should_insert = false;
+                            break;
+                        } else if (&iiii == call) {
+                            break;
+                        }
+                    }
+
+                    if (should_insert && op.operand != call)
+                        args.push_back(op.operand);
+                }
+                args[2] = getConstantInt(args.size() - 3, g.i32);
+
+                llvm::CallInst* new_call = llvm::CallInst::Create(g.funcs.yield, args, llvm::Twine(), call);
+                call->replaceAllUsesWith(new_call);
+                call->eraseFromParent();
+                break;
+#endif
             }
         }
 
