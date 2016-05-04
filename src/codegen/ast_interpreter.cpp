@@ -785,10 +785,8 @@ Box* ASTInterpreter::doOSR(AST_Jump* node) {
         return nullptr;
     }
 
-    if (generator) {
-        // we only borrow the generator
-        sorted_symbol_table[source_info->getInternedStrings().get(PASSED_GENERATOR_NAME)] = generator;
-    }
+    if (generator)
+        sorted_symbol_table[source_info->getInternedStrings().get(PASSED_GENERATOR_NAME)] = incref(generator);
 
     if (frame_info.passed_closure)
         sorted_symbol_table[source_info->getInternedStrings().get(PASSED_CLOSURE_NAME)]
