@@ -107,7 +107,7 @@ void generatorEntry(BoxedGenerator* g) {
             auto r = callCLFunc<ExceptionStyle::CXX, NOT_REWRITABLE>(func->md, nullptr, func->md->numReceivedArgs(),
                                                                      func->closure, g, func->globals, g->arg1, g->arg2,
                                                                      g->arg3, args, {});
-            assert(r == None);
+            // assert(r == None);
             Py_DECREF(r);
         } catch (ExcInfo e) {
             // unhandled exception: propagate the exception to the caller
@@ -516,8 +516,8 @@ extern "C" int PyGen_NeedsFinalizing(PyGenObject* gen) noexcept {
 
     return true;
     // TODO: is this safe? no
-    printf("%p needs finalizer call? %s\n", self,
-           self->paused_frame_info->stmt->type == AST_TYPE::Invoke ? "yes" : "no");
+    // printf("%p needs finalizer call? %s\n", self,
+    //       self->paused_frame_info->stmt->type == AST_TYPE::Invoke ? "yes" : "no");
     return self->paused_frame_info->stmt->type == AST_TYPE::Invoke;
 #if 0
     int i;

@@ -871,6 +871,8 @@ void RefcountTracker::addRefcounts(IRGenState* irstate) {
                             RefOp({ v, refstate.nullable, this_refs - min_refs, NULL, s_info.second, bb }));
                     } else if (this_refs < min_refs) {
                         assert(refstate.reftype == RefType::OWNED);
+                        // llvm::outs() << "adding decref: ";
+                        // v->dump();
                         state.decrefs.push_back(
                             RefOp({ v, refstate.nullable, min_refs - this_refs, NULL, s_info.second, bb }));
                     }
@@ -884,6 +886,7 @@ void RefcountTracker::addRefcounts(IRGenState* irstate) {
 
 
             if (yield) {
+                yields_map[yield];
                 for (auto v : tracked_values) {
                     // hash = hash * 31 + std::hash<llvm::StringRef>()(v->getName());
                     assert(rt->vars.count(v));
@@ -945,6 +948,8 @@ void RefcountTracker::addRefcounts(IRGenState* irstate) {
                     }
 
                     if (state.ending_refs[inst] < starting_refs) {
+                        // llvm::outs() << "adding decref2: ";
+                        // inst->dump();
                         assert(rstate.reftype == RefType::OWNED);
                         state.decrefs.push_back(RefOp({ inst, rstate.nullable, starting_refs - state.ending_refs[inst],
                                                         insertion_pt, insertion_block, insertion_from_block }));
@@ -1051,6 +1056,8 @@ void RefcountTracker::addRefcounts(IRGenState* irstate) {
                                     //"Can't add decrefs after this function...");
                                     assert(rt->may_throw.count(&I));
                                 } else {
+                                    // llvm::outs() << "adding decref3: ";
+                                    // op->dump();
                                     state.decrefs.push_back(
                                         RefOp({ op, rt->vars.lookup(op).nullable, 1, next, NULL, NULL }));
                                 }
@@ -1270,7 +1277,7 @@ void RefcountTracker::addRefcounts(IRGenState* irstate) {
                     call->eraseFromParent();
                     break;
                 }
-#else
+#elif 0
                 llvm::CallInst* call = ii;
                 assert(call->getNumArgOperands() == 3);
 
@@ -1281,7 +1288,7 @@ void RefcountTracker::addRefcounts(IRGenState* irstate) {
 
 
                 args.push_back(/* dummy */ NULL);
-                // printf("decrefs: \n");
+                printf("decrefs: %d\n", (int)state.decrefs.size());
                 for (auto&& op : state.decrefs) {
                     // op.operand->dump();
                     // op.insertion_inst->dump();
@@ -1310,12 +1317,156 @@ void RefcountTracker::addRefcounts(IRGenState* irstate) {
             }
         }
 
+        /*
+                for (auto&& i : *bb) {
+                    if (llvm::isa<llvm::CallInst>(&i) && llvm::cast<llvm::CallInst>(&i)->getCalledValue() ==
+           g.funcs.yield) {
+                        llvm::CallInst* ii = llvm::cast<llvm::CallInst>(&i);
+                        for (auto e : state.ending_refs) {
+                            if (rt->vars.lookup(e.first).reftype == RefType::OWNED) {
+                                llvm::outs() << " e " << e.second << " ";
+                                e.first->dump();
+                            }
+
+                        }
+                    }
+                }
+        */
         for (auto&& fixup : state.cxx_fixups) {
             assert(!yields_map.count((llvm::CallInst*)fixup.inst));
             addCXXFixup(fixup.inst, fixup.to_decref, rt);
         }
     }
-    // f->dump();
+// f->dump();
+
+#if 0
+    for (auto&& e : yields_map) {
+        /*
+        llvm::outs() << "yield map entry " << (int)e.second.size() << "\n";
+        for (auto&& v : e.second) {
+            llvm::outs() << "\t";
+            v->dump();
+        }
+        */
+
+
+        llvm::CallInst* call = e.first;
+        assert(call->getNumArgOperands() == 3);
+
+        llvm::SmallVector<llvm::Value*, 8> args;
+
+        args.push_back(call->getArgOperand(0));
+        args.push_back(call->getArgOperand(1));
+        args.push_back(/* dummy */ NULL);
+        //printf("decrefs: %d\n", (int)e.second.size());
+        for (auto&& op : e.second) {
+            // op.operand->dump();
+            // op.insertion_inst->dump();
+            // printf("%s\n", op.insertion_inst == call ? "adding" : "skipping");
+
+            args.push_back(op);
+            /*
+            bool should_insert = true;
+
+            for (auto&& iiii : *bb) {
+                if (&iiii == op.insertion_inst) {
+                    should_insert = false;
+                    break;
+                } else if (&iiii == call) {
+                    break;
+                }
+            }
+
+
+            if (should_insert && op.operand != call)
+                args.push_back(op.operand);
+            */
+        }
+        args[2] = getConstantInt(args.size() - 3, g.i32);
+
+        llvm::CallInst* new_call = llvm::CallInst::Create(g.funcs.yield, args, llvm::Twine(), call);
+        call->replaceAllUsesWith(new_call);
+        call->eraseFromParent();
+    }
+#else
+    for (auto&& e : yields_map) {
+        auto&& state = states[e.first->getParent()];
+
+        /*
+        llvm::outs() << "yield map entry " << (int)e.second.size() << "\n";
+        for (auto&& v : e.second) {
+            llvm::outs() << "\t";
+            v->dump();
+        }
+        */
+
+
+        llvm::CallInst* call = e.first;
+        assert(call->getNumArgOperands() == 3);
+
+        llvm::SmallVector<llvm::Value*, 8> args;
+
+        args.push_back(call->getArgOperand(0));
+        args.push_back(call->getArgOperand(1));
+        args.push_back(/* dummy */ NULL);
+// printf("decrefs: %d\n", (int)e.second.size());
+
+#if 1
+        int num_new_method = 0;
+        // llvm::outs() << "new method\n";
+        std::unordered_set<Value*> values;
+        /*
+        for (auto e : state.starting_refs) {
+            if (1 || rt->vars.lookup(e.first).reftype == RefType::OWNED) {
+                // llvm::outs() << " e " << e.second << " ";
+                // e.first->dump();
+                //++num_new_method;
+                //args.push_back(e.first);
+                values.insert(e.first);
+            }
+        }*/
+
+        for (auto e : state.ending_refs) {
+            if (rt->vars.lookup(e.first).reftype == RefType::OWNED) {
+                // llvm::outs() << " e " << e.second << " ";
+                // e.first->dump();
+                //++num_new_method;
+                // args.push_back(e.first);
+                if (call->getArgOperand(1) != e.first)
+                    values.insert(e.first);
+            }
+        }
+
+        num_new_method = values.size();
+        for (auto e : values) {
+            args.push_back(e);
+        }
+
+/*
+llvm::outs() << "old method\n";
+for (auto e: e.second) {
+    llvm::outs() << " e2 ";
+    e->dump();
+}
+*/
+// RELEASE_ASSERT(num_new_method >= e.second.size(), "%d %d", num_new_method, (int)e.second.size());
+#else
+        for (auto e : e.second) {
+            args.push_back(e);
+        }
+#endif
+
+        // printf("new vs old: %d %d\n", (int)num_new_method, (int)e.second.size());
+
+        args[2] = getConstantInt(args.size() - 3, g.i32);
+
+        llvm::CallInst* new_call = llvm::CallInst::Create(g.funcs.yield, args, llvm::Twine(), call);
+        call->replaceAllUsesWith(new_call);
+        call->eraseFromParent();
+    }
+
+#endif
+
 
     long us = _t.end();
     static StatCounter us_refcounting("us_compiling_irgen_refcounting");

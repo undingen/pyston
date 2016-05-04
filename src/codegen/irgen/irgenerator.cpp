@@ -1548,6 +1548,11 @@ private:
         args.push_back(convertedValue->getValue());
         args.push_back(getConstantInt(0, g.i32));
 
+        // put the yield call at the beginning of a new basic block to make it easier for the refcounting inserter.
+        llvm::BasicBlock* yield_block = emitter.createBasicBlock("yield_block");
+        emitter.getBuilder()->CreateBr(yield_block);
+        emitter.setCurrentBasicBlock(yield_block);
+
         llvm::Instruction* rtn
             = emitter.createCall(unw_info, g.funcs.yield, args, CAPI, getNullPtr(g.llvm_value_type_ptr));
         emitter.refConsumed(convertedValue->getValue(), rtn);
