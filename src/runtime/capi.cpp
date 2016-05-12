@@ -1875,7 +1875,8 @@ Box* BoxedCApiFunction::tppCall(Box* _self, CallRewriteArgs* rewrite_args, ArgPa
         rewrite_args->out_success = true;
     }
 
-    checkAndThrowCAPIException();
+    if (!rtn)
+        checkAndThrowCAPIException();
     assert(rtn && "should have set + thrown an exception!");
     return rtn;
 }
