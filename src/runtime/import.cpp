@@ -182,7 +182,7 @@ BoxedModule* importCExtension(BoxedString* full_name, const std::string& last_na
     // if we load a foreign C extension we can't check that _Py_RefTotal == 0
     if (!llvm::StringRef(path).endswith("from_cpython/Lib/" + last_name + ".pyston.so"))
         imported_foreign_cextension = true;
-    imported_foreign_cextension = true; // HACK: disable it always for now
+    // imported_foreign_cextension = true; // HACK: disable it always for now
 #endif
 
     return incref(m);
