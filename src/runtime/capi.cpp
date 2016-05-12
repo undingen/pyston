@@ -1723,6 +1723,8 @@ Box* BoxedCApiFunction::tppCall(Box* _self, CallRewriteArgs* rewrite_args, ArgPa
         }
     }
 
+    assert(!PyErr_Occurred() && "we call checkAndThrowCAPIException at the end of this function");
+
     STAT_TIMER(t0, "us_timer_boxedcapifunction__call__", 10);
 
     BoxedCApiFunction* self = static_cast<BoxedCApiFunction*>(_self);
@@ -1868,7 +1870,8 @@ Box* BoxedCApiFunction::tppCall(Box* _self, CallRewriteArgs* rewrite_args, ArgPa
     }
 
     if (rewrite_args) {
-        rewrite_args->rewriter->checkAndThrowCAPIException(rewrite_args->out_rtn);
+        // we can't just check the return value because some extensions return None and still set an exception
+        rewrite_args->rewriter->call(true, (void*)checkAndThrowCAPIException);
         rewrite_args->out_success = true;
     }
 
