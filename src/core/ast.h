@@ -21,6 +21,7 @@
 #include <stdint.h>
 #include <string>
 #include <vector>
+#include <sys/mman.h>
 
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_ostream.h"
@@ -165,8 +166,13 @@ class StmtVisitor;
 class SliceVisitor;
 class AST_keyword;
 
+
+
 class AST {
 public:
+
+
+
     virtual ~AST() {}
 
     const AST_TYPE::AST_TYPE type;
@@ -188,6 +194,18 @@ public:
 #endif
     AST(AST_TYPE::AST_TYPE type, uint32_t lineno, uint32_t col_offset = 0)
         : type(type), lineno(lineno), col_offset(col_offset) {}
+
+    static void* operator new(std::size_t sz)
+    {
+        static void* memaddr = NULL;
+        if (unlikely(!memaddr)) {
+            memaddr = (void*)mmap(NULL, 1024*1024*50, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS|MAP_32BIT, -1, 0);
+        }
+        void* addr = memaddr;
+        memaddr = (char*)addr + ((sz+15)&~0xFul);
+        return addr;
+    }
+    void operator delete(void* memory) {}
 };
 
 class AST_expr : public AST {
