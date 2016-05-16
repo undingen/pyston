@@ -599,7 +599,7 @@ new_arena(void)
     assert(arenaobj->address == 0);
 #ifdef ARENAS_USE_MMAP
     arenaobj->address = (uptr)mmap(NULL, ARENA_SIZE, PROT_READ|PROT_WRITE,
-                                   MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+                                   MAP_PRIVATE|MAP_ANONYMOUS|MAP_32BIT, -1, 0);
 #else
     arenaobj->address = (uptr)malloc(ARENA_SIZE);
 #endif    
