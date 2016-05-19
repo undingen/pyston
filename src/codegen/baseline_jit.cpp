@@ -215,7 +215,7 @@ RewriterVar* JitFragmentWriter::emitCallattr(AST_expr* node, RewriterVar* obj, B
     if (keyword_names)
         call_args.push_back(imm(keyword_names));
 
-    auto r = emitPPCall((void*)callattr, call_args, 2, 640, node, type_recorder).first->setType(RefType::OWNED);
+    auto r = emitPPCall((void*)callattr, call_args, 2, 640 / 2, node, type_recorder).first->setType(RefType::OWNED);
     for (int i = 3; i < args.size(); i++) {
         args[i]->refUsed();
     }
@@ -366,7 +366,7 @@ RewriterVar* JitFragmentWriter::emitExceptionMatches(RewriterVar* v, RewriterVar
 }
 
 RewriterVar* JitFragmentWriter::emitGetAttr(RewriterVar* obj, BoxedString* s, AST_expr* node) {
-    return emitPPCall((void*)getattr, { obj, imm(s) }, 2, 512, node, getTypeRecorderForNode(node))
+    return emitPPCall((void*)getattr, { obj, imm(s) }, 2, 512 / 2, node, getTypeRecorderForNode(node))
         .first->setType(RefType::OWNED);
 }
 
@@ -398,7 +398,7 @@ RewriterVar* JitFragmentWriter::emitGetBoxedLocals() {
 }
 
 RewriterVar* JitFragmentWriter::emitGetClsAttr(RewriterVar* obj, BoxedString* s) {
-    return emitPPCall((void*)getclsattr, { obj, imm(s) }, 2, 512).first->setType(RefType::OWNED);
+    return emitPPCall((void*)getclsattr, { obj, imm(s) }, 2, 512 / 2).first->setType(RefType::OWNED);
 }
 
 RewriterVar* JitFragmentWriter::emitGetGlobal(Box* global, BoxedString* s) {
@@ -410,11 +410,11 @@ RewriterVar* JitFragmentWriter::emitGetGlobal(Box* global, BoxedString* s) {
     RewriterVar* args[] = { NULL, NULL };
     args[0] = imm(global);
     args[1] = imm(s);
-    return emitPPCall((void*)getGlobal, args, 2, 512).first->setType(RefType::OWNED);
+    return emitPPCall((void*)getGlobal, args, 2, 512 / 2).first->setType(RefType::OWNED);
 }
 
 RewriterVar* JitFragmentWriter::emitGetItem(AST_expr* node, RewriterVar* value, RewriterVar* slice) {
-    return emitPPCall((void*)getitem, { value, slice }, 2, 512, node).first->setType(RefType::OWNED);
+    return emitPPCall((void*)getitem, { value, slice }, 2, 512 / 2, node).first->setType(RefType::OWNED);
 }
 
 RewriterVar* JitFragmentWriter::emitGetLocal(InternedString s, int vreg) {
@@ -493,7 +493,7 @@ RewriterVar* JitFragmentWriter::emitRuntimeCall(AST_expr* node, RewriterVar* obj
     if (keyword_names)
         call_args.push_back(imm(keyword_names));
 
-    auto r = emitPPCall((void*)runtimeCall, call_args, 2, 640, node, type_recorder).first->setType(RefType::OWNED);
+    auto r = emitPPCall((void*)runtimeCall, call_args, 2, 640 / 2, node, type_recorder).first->setType(RefType::OWNED);
     for (int i = 3; i < args.size(); i++) {
         args[i]->refUsed();
     }
@@ -546,16 +546,16 @@ RewriterVar* JitFragmentWriter::emitYield(RewriterVar* v) {
 }
 
 void JitFragmentWriter::emitDelAttr(RewriterVar* target, BoxedString* attr) {
-    emitPPCall((void*)delattr, { target, imm(attr) }, 1, 512).first;
+    emitPPCall((void*)delattr, { target, imm(attr) }, 1, 512 / 2).first;
 }
 
 void JitFragmentWriter::emitDelGlobal(BoxedString* name) {
     RewriterVar* globals = getInterp()->getAttr(ASTInterpreterJitInterface::getGlobalsOffset());
-    emitPPCall((void*)delGlobal, { globals, imm(name) }, 1, 512).first;
+    emitPPCall((void*)delGlobal, { globals, imm(name) }, 1, 512 / 2).first;
 }
 
 void JitFragmentWriter::emitDelItem(RewriterVar* target, RewriterVar* slice) {
-    emitPPCall((void*)delitem, { target, slice }, 1, 512).first;
+    emitPPCall((void*)delitem, { target, slice }, 1, 512 / 2).first;
 }
 
 void JitFragmentWriter::emitDelName(InternedString name) {
@@ -632,7 +632,7 @@ void JitFragmentWriter::emitReturn(RewriterVar* v) {
 }
 
 void JitFragmentWriter::emitSetAttr(AST_expr* node, RewriterVar* obj, BoxedString* s, STOLEN(RewriterVar*) attr) {
-    auto rtn = emitPPCall((void*)setattr, { obj, imm(s), attr }, 2, 512, node);
+    auto rtn = emitPPCall((void*)setattr, { obj, imm(s), attr }, 2, 512 / 2, node);
     attr->refConsumed(rtn.second);
 }
 
@@ -657,12 +657,12 @@ void JitFragmentWriter::emitSetExcInfo(RewriterVar* type, RewriterVar* value, Re
 }
 
 void JitFragmentWriter::emitSetGlobal(Box* global, BoxedString* s, STOLEN(RewriterVar*) v) {
-    auto rtn = emitPPCall((void*)setGlobal, { imm(global), imm(s), v }, 2, 512);
+    auto rtn = emitPPCall((void*)setGlobal, { imm(global), imm(s), v }, 2, 512 / 2);
     v->refConsumed(rtn.second);
 }
 
 void JitFragmentWriter::emitSetItem(RewriterVar* target, RewriterVar* slice, RewriterVar* value) {
-    emitPPCall((void*)setitem, { target, slice, value }, 2, 512);
+    emitPPCall((void*)setitem, { target, slice, value }, 2, 512 / 2);
 }
 
 void JitFragmentWriter::emitSetItemName(BoxedString* s, RewriterVar* v) {
