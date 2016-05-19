@@ -56,8 +56,12 @@ static_assert(JitCodeBlock::scratch_size == 256, "have to update EH table!");
 
 constexpr int code_size = JitCodeBlock::memory_size - sizeof(eh_info);
 
+char* myalloc(int size) {
+    return (char*)mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_32BIT, -1, 0);
+}
+
 JitCodeBlock::JitCodeBlock(llvm::StringRef name)
-    : memory(new uint8_t[memory_size]),
+    : memory((uint8_t*)myalloc(memory_size)),
       entry_offset(0),
       a(memory.get() + sizeof(eh_info), code_size),
       is_currently_writing(false),

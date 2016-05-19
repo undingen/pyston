@@ -14,6 +14,8 @@
 
 #include "codegen/memmgr.h"
 
+#include <sys/mman.h>
+
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ExecutionEngine/RTDyldMemoryManager.h"
 #include "llvm/ExecutionEngine/RuntimeDyld.h"
@@ -35,7 +37,11 @@ namespace pyston {
 
 class PystonMemoryManager : public RTDyldMemoryManager {
 public:
-    PystonMemoryManager() {}
+    PystonMemoryManager() {
+        CodeMem.Near = sys::MemoryBlock((void*)0x1FFF0000, 0);
+        RWDataMem.Near = sys::MemoryBlock((void*)0x2FFF0000, 0);
+        RODataMem.Near = sys::MemoryBlock((void*)0x3FFF0000, 0);
+    }
     ~PystonMemoryManager() override;
 
     uint8_t* allocateCodeSection(uintptr_t Size, unsigned Alignment, unsigned SectionID,
@@ -116,8 +122,11 @@ uint8_t* PystonMemoryManager::allocateSection(MemoryGroup& MemGroup, uintptr_t S
     // FIXME: Initialize the Near member for each memory group to avoid
     // interleaving.
     llvm_error_code ec;
-    sys::MemoryBlock MB = sys::Memory::allocateMappedMemory(RequiredSize, &MemGroup.Near,
-                                                            sys::Memory::MF_READ | sys::Memory::MF_WRITE, ec);
+    sys::MemoryBlock MB = sys::MemoryBlock(
+        mmap(NULL, RequiredSize, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_32BIT, -1, 0), RequiredSize);
+    /*sys::Memory::allocateMappedMemory(RequiredSize, &MemGroup.Near,
+                                                            sys::Memory::MF_READ | sys::Memory::MF_WRITE, ec);*/
+    assert(((unsigned long)MB.base() & (1ul << 32) - 1) == (unsigned long)MB.base());
     if (ec) {
         // FIXME: Add error propogation to the interface.
         return NULL;
