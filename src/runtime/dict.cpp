@@ -222,7 +222,7 @@ extern "C" void PyDict_Clear(PyObject* op) noexcept {
         Py_DECREF(p.first);
         Py_DECREF(p.second);
     }
-    static_cast<BoxedDict*>(op)->d.freeAllMemory();
+    static_cast<BoxedDict*>(op)->d.shrink_and_clear();
 }
 
 Box* dictClear(BoxedDict* self) {

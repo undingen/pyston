@@ -970,8 +970,8 @@ inline BoxAndHash& incref(BoxAndHash& b) {
 
 class BoxedDict : public Box {
 public:
-    typedef pyston::DenseMap<BoxAndHash, Box*, BoxAndHash::Comparisons, detail::DenseMapPair<BoxAndHash, Box*>,
-                             /* MinSize= */ 8> DictMap;
+    typedef pyston::SmallDenseMap<BoxAndHash, Box*, 8, BoxAndHash::Comparisons, detail::DenseMapPair<BoxAndHash, Box*>>
+        DictMap;
 
     DictMap d;
 
