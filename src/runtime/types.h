@@ -1008,18 +1008,17 @@ public:
     iterator begin() { return iterator(d.begin()); }
     iterator end() { return iterator(d.end()); }
 
+
+
     void* operator new(size_t size) __attribute__((visibility("default"))) {
         assert(size == sizeof(BoxedDict));
 
-        BoxedDict* d = NULL;
-        if (likely(numfree)) {
-            d = free_list[--numfree];
-            assert(Py_TYPE(d) == &PyDict_Type);
-            _Py_NewReference((PyObject*)d);
-        } else {
-            d = PyObject_GC_New(BoxedDict, &PyDict_Type);
-            assert(d != NULL);
-        }
+        if (unlikely(!numfree))
+            fill_free_list();
+
+        BoxedDict* d = free_list[--numfree];
+        assert(Py_TYPE(d) == &PyDict_Type);
+        _Py_NewReference((PyObject*)d);
 
         _PyObject_GC_TRACK(d);
         return d;
@@ -1034,6 +1033,9 @@ public:
     static int clear(Box* self) noexcept;
 
     friend int PyDict_ClearFreeList() noexcept;
+
+private:
+    static void fill_free_list() noexcept;
 };
 static_assert(sizeof(BoxedDict) == sizeof(PyDictObject), "");
 

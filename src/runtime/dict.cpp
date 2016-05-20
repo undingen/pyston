@@ -922,6 +922,18 @@ void BoxedDict::dealloc(Box* b) noexcept {
         b->cls->tp_free(b);
 }
 
+void BoxedDict::fill_free_list() noexcept {
+    assert(numfree == 0);
+    const int num_entries = std::min(16, PyDict_MAXFREELIST);
+    for (int i = 0; i < num_entries; ++i) {
+        BoxedDict* d = (BoxedDict*)_PyObject_GC_Malloc(sizeof(BoxedDict));
+        assert(d != NULL);
+        d->cls = dict_cls;
+        free_list[i] = d;
+    }
+    numfree = num_entries;
+}
+
 extern "C" void PyDict_Fini() noexcept {
     while (BoxedDict::numfree) {
         Box* op = BoxedDict::free_list[--BoxedDict::numfree];
