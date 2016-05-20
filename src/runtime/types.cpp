@@ -4759,6 +4759,7 @@ extern "C" void Py_Finalize() noexcept {
 
     PyImport_Cleanup();
     _PyImport_Fini();
+    PyDict_Fini();
 
 #ifdef Py_REF_DEBUG
     IN_SHUTDOWN = true;
@@ -4883,7 +4884,6 @@ extern "C" void Py_Finalize() noexcept {
         _PyObject_DebugMallocStats();
 #endif
 #endif
-
     teardownCodegen();
 
 #ifdef Py_REF_DEBUG

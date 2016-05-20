@@ -968,16 +968,18 @@ inline BoxAndHash& incref(BoxAndHash& b) {
     return b;
 }
 
+#define PyDict_MAXFREELIST 80
 class BoxedDict : public Box {
 public:
+    static BoxedDict* free_list[PyDict_MAXFREELIST];
+    static int numfree;
+
     typedef pyston::SmallDenseMap<BoxAndHash, Box*, 8, BoxAndHash::Comparisons, detail::DenseMapPair<BoxAndHash, Box*>>
         DictMap;
 
     DictMap d;
 
     BoxedDict() __attribute__((visibility("default"))) {}
-
-    DEFAULT_CLASS_SIMPLE(dict_cls, true);
 
     BORROWED(Box*) getOrNull(Box* k) {
         const auto& p = d.find(BoxAndHash(k));
@@ -1006,9 +1008,32 @@ public:
     iterator begin() { return iterator(d.begin()); }
     iterator end() { return iterator(d.end()); }
 
+    void* operator new(size_t size) __attribute__((visibility("default"))) {
+        assert(size == sizeof(BoxedDict));
+
+        BoxedDict* d = NULL;
+        if (likely(numfree)) {
+            d = free_list[--numfree];
+            assert(Py_TYPE(d) == &PyDict_Type);
+            _Py_NewReference((PyObject*)d);
+        } else {
+            d = PyObject_GC_New(BoxedDict, &PyDict_Type);
+            assert(d != NULL);
+        }
+
+        _PyObject_GC_TRACK(d);
+        return d;
+    }
+
+    void* operator new(size_t size, BoxedClass* cls) __attribute__((visibility("default"))) {
+        return Box::operator new(size, cls);
+    }
+
     static void dealloc(Box* b) noexcept;
     static int traverse(Box* self, visitproc visit, void* arg) noexcept;
     static int clear(Box* self) noexcept;
+
+    friend int PyDict_ClearFreeList() noexcept;
 };
 static_assert(sizeof(BoxedDict) == sizeof(PyDictObject), "");
 

@@ -29,6 +29,9 @@
 
 namespace pyston {
 
+BoxedDict* BoxedDict::free_list[PyDict_MAXFREELIST];
+int BoxedDict::numfree;
+
 extern "C" {
 BoxedClass* dictiterkey_cls = NULL;
 BoxedClass* dictitervalue_cls = NULL;
@@ -222,6 +225,7 @@ extern "C" void PyDict_Clear(PyObject* op) noexcept {
         Py_DECREF(p.first);
         Py_DECREF(p.second);
     }
+    static_cast<BoxedDict*>(op)->d.clear();
     static_cast<BoxedDict*>(op)->d.shrink_and_clear();
 }
 
@@ -710,6 +714,8 @@ extern "C" Box* dictNew(Box* _cls, BoxedTuple* args, BoxedDict* kwargs) {
         raiseExcHelper(TypeError, "dict.__new__(%s): %s is not a subtype of dict", getNameOfClass(cls),
                        getNameOfClass(cls));
 
+    if (cls == dict_cls)
+        return new BoxedDict();
     return new (cls) BoxedDict();
 }
 
@@ -908,7 +914,20 @@ void BoxedDict::dealloc(Box* b) noexcept {
 
     BoxedDict::clear(b);
 
-    b->cls->tp_free(b);
+    BoxedDict* d = (BoxedDict*)b;
+
+    if (numfree < PyDict_MAXFREELIST && PyDict_CheckExact(d))
+        free_list[numfree++] = d;
+    else
+        b->cls->tp_free(b);
+}
+
+extern "C" void PyDict_Fini() noexcept {
+    while (BoxedDict::numfree) {
+        Box* op = BoxedDict::free_list[--BoxedDict::numfree];
+        assert(PyDict_CheckExact(op));
+        PyObject_GC_Del(op);
+    }
 }
 
 int BoxedDict::traverse(PyObject* op, visitproc visit, void* arg) noexcept {
