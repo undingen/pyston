@@ -16,6 +16,7 @@
 
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/DenseSet.h>
+#include <sys/mman.h>
 
 #include "codegen/irgen/hooks.h"
 #include "codegen/memmgr.h"
@@ -56,8 +57,13 @@ static_assert(JitCodeBlock::scratch_size == 256, "have to update EH table!");
 
 constexpr int code_size = JitCodeBlock::memory_size - sizeof(eh_info);
 
+uint8_t* JitCodeBlock::allocBlock() {
+    static_assert((memory_size % 4096) == 0, "");
+    return (uint8_t*)mmap(NULL, memory_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_32BIT, -1, 0);
+}
+
 JitCodeBlock::JitCodeBlock(llvm::StringRef name)
-    : memory(new uint8_t[memory_size]),
+    : memory(allocBlock()),
       entry_offset(0),
       a(memory.get() + sizeof(eh_info), code_size),
       is_currently_writing(false),

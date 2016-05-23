@@ -157,6 +157,9 @@ public:
     bool shouldCreateNewBlock() const { return asm_failed || a.bytesLeft() < 128; }
     void fragmentAbort(bool not_enough_space);
     void fragmentFinished(int bytes_witten, int num_bytes_overlapping, void* next_fragment_start, ICInfo& ic_info);
+
+private:
+    static uint8_t* allocBlock();
 };
 
 class JitFragmentWriter : public Rewriter {
