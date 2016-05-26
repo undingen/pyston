@@ -358,10 +358,11 @@ extern "C" int PyDict_SetItemString(PyObject* mp, const char* key, PyObject* ite
 
 extern "C" BORROWED(PyObject*) PyDict_GetItem(PyObject* dict, PyObject* key) noexcept {
     ASSERT(PyDict_Check(dict) || dict->cls == attrwrapper_cls, "%s", getTypeName(dict));
+    bool is_dict = PyDict_Check(dict);
     auto&& tstate = _PyThreadState_Current;
     bool restore_exc = tstate != NULL && tstate->curexc_type != NULL;
 
-    if (PyDict_Check(dict)) {
+    if (is_dict) {
         BoxedDict* d = static_cast<BoxedDict*>(dict);
 
         PyObject* err_type, *err_value, *err_tb;
