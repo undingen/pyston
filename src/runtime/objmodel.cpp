@@ -56,6 +56,16 @@
 #define DEBUG 0
 #endif
 
+namespace std {
+using ActionKey = std::tuple<void*, void*, int, bool>;
+template <> struct hash<ActionKey> {
+    std::size_t operator()(const ActionKey& k) const {
+        return hash<void*>()(std::get<0>(k)) ^ hash<void*>()(std::get<1>(k)) ^ hash<int>()(std::get<2>(k))
+               ^ hash<bool>()(std::get<3>(k));
+    }
+};
+}
+
 namespace pyston {
 
 static const std::string iter_str("__iter__");
@@ -5558,7 +5568,8 @@ Box* binopInternal(Box* lhs, Box* rhs, int op_type, BinopRewriteArgs* rewrite_ar
         r_rhs_cls->addAttrGuard(offsetof(BoxedClass, tp_mro), (intptr_t)rhs->cls->tp_mro);
     }
 
-    static std::map<std::tuple<Box*, Box*, int, bool>, int> should_rewrite_later;
+
+    static std::unordered_map<std::ActionKey, int> should_rewrite_later;
 
     auto&& inplace_func = [&]() {
         // XXX I think we need to make sure that we keep these strings alive?
@@ -5576,8 +5587,8 @@ Box* binopInternal(Box* lhs, Box* rhs, int op_type, BinopRewriteArgs* rewrite_ar
         return binopInternalHelper<rewritable>(rewrite_args, op_name, lhs, rhs, r_lhs, r_rhs);
     };
 
-    int& action = should_rewrite_later[std::make_tuple(lhs, rhs, op_type, (bool)inplace)];
-    if (action == 1) {
+    int& action = should_rewrite_later[std::make_tuple((void*)lhs, (void*)rhs, op_type, (bool)inplace)];
+    if (likely(action == 1)) {
         return normal_func();
     } else if (action == 2) {
         return reverse_func();
