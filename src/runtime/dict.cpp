@@ -358,22 +358,30 @@ extern "C" int PyDict_SetItemString(PyObject* mp, const char* key, PyObject* ite
 
 extern "C" BORROWED(PyObject*) PyDict_GetItem(PyObject* dict, PyObject* key) noexcept {
     ASSERT(PyDict_Check(dict) || dict->cls == attrwrapper_cls, "%s", getTypeName(dict));
+    auto&& tstate = _PyThreadState_Current;
+    bool restore_exc = tstate != NULL && tstate->curexc_type != NULL;
+
     if (PyDict_Check(dict)) {
         BoxedDict* d = static_cast<BoxedDict*>(dict);
 
-        /* preserve the existing exception */
         PyObject* err_type, *err_value, *err_tb;
-        PyErr_Fetch(&err_type, &err_value, &err_tb);
-        Box* b = d->getOrNull(key);
-        /* ignore errors */
-        PyErr_Restore(err_type, err_value, err_tb);
+        if (unlikely(restore_exc)) /* preserve the existing exception */
+            PyErr_Fetch(&err_type, &err_value, &err_tb);
+
+        Box* b = NULL;
+        try {
+            b = d->getOrNull(key);
+        } catch (ExcInfo e) {
+            e.clear();
+            assert(!PyErr_Occurred());
+        }
+        if (unlikely(restore_exc)) /* ignore errors */
+            PyErr_Restore(err_type, err_value, err_tb);
         return b;
     }
 
     assert(dict->cls == attrwrapper_cls);
-
-    auto&& tstate = _PyThreadState_Current;
-    if (tstate != NULL && tstate->curexc_type != NULL) {
+    if (unlikely(restore_exc)) {
         /* preserve the existing exception */
         PyObject* err_type, *err_value, *err_tb;
         PyErr_Fetch(&err_type, &err_value, &err_tb);
