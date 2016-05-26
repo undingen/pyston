@@ -396,16 +396,14 @@ RewriterVar* JitFragmentWriter::emitGetClsAttr(RewriterVar* obj, BoxedString* s)
     return emitPPCall((void*)getclsattr, { obj, imm(s) }, 2, 512).first->setType(RefType::OWNED);
 }
 
-RewriterVar* JitFragmentWriter::emitGetGlobal(Box* global, BoxedString* s) {
+RewriterVar* JitFragmentWriter::emitGetGlobal(BoxedString* s) {
     if (s->s() == "None") {
         RewriterVar* r = imm(None)->setType(RefType::BORROWED);
         return r;
     }
 
-    RewriterVar* args[] = { NULL, NULL };
-    args[0] = imm(global);
-    args[1] = imm(s);
-    return emitPPCall((void*)getGlobal, args, 2, 512).first->setType(RefType::OWNED);
+    RewriterVar* globals = getInterp()->getAttr(ASTInterpreterJitInterface::getGlobalsOffset());
+    return emitPPCall((void*)getGlobal, { globals, imm(s) }, 2, 512).first->setType(RefType::OWNED);
 }
 
 RewriterVar* JitFragmentWriter::emitGetItem(AST_expr* node, RewriterVar* value, RewriterVar* slice) {
@@ -546,7 +544,9 @@ void JitFragmentWriter::emitDelAttr(RewriterVar* target, BoxedString* attr) {
 
 void JitFragmentWriter::emitDelGlobal(BoxedString* name) {
     RewriterVar* globals = getInterp()->getAttr(ASTInterpreterJitInterface::getGlobalsOffset());
-    emitPPCall((void*)delGlobal, { globals, imm(name) }, 1, 512).first;
+    // does not get rewriten yet
+    // emitPPCall((void*)delGlobal, { globals, imm(name) }, 1, 512).first;
+    call(false, (void*)delGlobal, globals, imm(name));
 }
 
 void JitFragmentWriter::emitDelItem(RewriterVar* target, RewriterVar* slice) {
@@ -647,8 +647,13 @@ void JitFragmentWriter::emitSetExcInfo(RewriterVar* type, RewriterVar* value, Re
     traceback->refConsumed();
 }
 
-void JitFragmentWriter::emitSetGlobal(Box* global, BoxedString* s, STOLEN(RewriterVar*) v) {
-    auto rtn = emitPPCall((void*)setGlobal, { imm(global), imm(s), v }, 2, 512);
+void JitFragmentWriter::emitSetGlobal(BoxedString* s, STOLEN(RewriterVar*) v, bool are_globals_from_module) {
+    RewriterVar* globals = getInterp()->getAttr(ASTInterpreterJitInterface::getGlobalsOffset());
+    std::pair<RewriterVar*, RewriterAction*> rtn;
+    if (are_globals_from_module)
+        rtn = emitPPCall((void*)setattr, { globals, imm(s), v }, 1, 256);
+    else
+        rtn = emitPPCall((void*)setGlobal, { globals, imm(s), v }, 1, 256);
     v->refConsumed(rtn.second);
 }
 
