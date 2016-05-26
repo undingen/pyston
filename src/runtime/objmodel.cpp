@@ -5542,9 +5542,7 @@ Box* binopInternal(Box* lhs, Box* rhs, int op_type, BinopRewriteArgs* rewrite_ar
         }
     }
 
-    if (!can_patchpoint)
-        rewrite_args = NULL;
-
+    assert(can_patchpoint);
     RewriterVar* r_lhs = NULL;
     RewriterVar* r_rhs = NULL;
     if (rewrite_args) {
@@ -5571,6 +5569,8 @@ Box* binopInternal(Box* lhs, Box* rhs, int op_type, BinopRewriteArgs* rewrite_ar
         }
     }
 
+    static std::set<std::tuple<Box*, Box*, int, bool>> should_rewrite_later;
+
     bool should_try_reverse = true;
     if (lhs->cls != rhs->cls && isSubclass(rhs->cls, lhs->cls)) {
         should_try_reverse = false;
@@ -5584,7 +5584,14 @@ Box* binopInternal(Box* lhs, Box* rhs, int op_type, BinopRewriteArgs* rewrite_ar
     }
 
     BORROWED(BoxedString*)op_name = getOpName(op_type);
-    Box* lrtn = binopInternalHelper<rewritable>(rewrite_args, op_name, lhs, rhs, r_lhs, r_rhs);
+    bool is_inside_set = rewrite_args && should_rewrite_later.count(std::make_tuple(lhs, rhs, op_type, (bool)inplace));
+    Box* lrtn = NULL;
+    if (is_inside_set) {
+        BinopRewriteArgs* dummy = NULL;
+        lrtn = binopInternalHelper<rewritable>(dummy, op_name, lhs, rhs, NULL, NULL);
+        assert(lrtn == NotImplemented);
+    } else
+        lrtn = binopInternalHelper<rewritable>(rewrite_args, op_name, lhs, rhs, r_lhs, r_rhs);
     if (lrtn) {
         if (lrtn != NotImplemented)
             return lrtn;
@@ -5595,8 +5602,11 @@ Box* binopInternal(Box* lhs, Box* rhs, int op_type, BinopRewriteArgs* rewrite_ar
         DecrefHandle<BoxedString> rop_name = getReverseOpName(op_type);
         Box* rrtn = binopInternalHelper<rewritable>(rewrite_args, rop_name, rhs, lhs, r_rhs, r_lhs);
         if (rrtn) {
-            if (rrtn != NotImplemented)
+            if (rrtn != NotImplemented) {
+                if (!inplace)
+                    should_rewrite_later.insert(std::make_tuple(lhs, rhs, op_type, (bool)inplace));
                 return rrtn;
+            }
             Py_DECREF(rrtn);
         }
     }
