@@ -5558,53 +5558,69 @@ Box* binopInternal(Box* lhs, Box* rhs, int op_type, BinopRewriteArgs* rewrite_ar
         r_rhs_cls->addAttrGuard(offsetof(BoxedClass, tp_mro), (intptr_t)rhs->cls->tp_mro);
     }
 
-    if (inplace) {
+    static std::map<std::tuple<Box*, Box*, int, bool>, int> should_rewrite_later;
+
+    auto&& inplace_func = [&]() {
         // XXX I think we need to make sure that we keep these strings alive?
         DecrefHandle<BoxedString> iop_name = getInplaceOpName(op_type);
-        Box* irtn = binopInternalHelper<rewritable>(rewrite_args, iop_name, lhs, rhs, r_lhs, r_rhs);
-        if (irtn) {
-            if (irtn != NotImplemented)
-                return irtn;
-            Py_DECREF(irtn);
-        }
-    }
+        return binopInternalHelper<rewritable>(rewrite_args, iop_name, lhs, rhs, r_lhs, r_rhs);
+    };
 
-    static std::set<std::tuple<Box*, Box*, int, bool>> should_rewrite_later;
-
-    bool should_try_reverse = true;
-    if (lhs->cls != rhs->cls && isSubclass(rhs->cls, lhs->cls)) {
-        should_try_reverse = false;
+    auto&& reverse_func = [&]() {
         DecrefHandle<BoxedString> rop_name = getReverseOpName(op_type);
-        Box* rrtn = binopInternalHelper<rewritable>(rewrite_args, rop_name, rhs, lhs, r_rhs, r_lhs);
-        if (rrtn) {
-            if (rrtn != NotImplemented)
-                return rrtn;
-            Py_DECREF(rrtn);
+        return binopInternalHelper<rewritable>(rewrite_args, rop_name, rhs, lhs, r_rhs, r_lhs);
+    };
+
+    auto&& normal_func = [&]() {
+        BORROWED(BoxedString*)op_name = getOpName(op_type);
+        return binopInternalHelper<rewritable>(rewrite_args, op_name, lhs, rhs, r_lhs, r_rhs);
+    };
+
+    int& action = should_rewrite_later[std::make_tuple(lhs, rhs, op_type, (bool)inplace)];
+    if (action == 1) {
+        return normal_func();
+    } else if (action == 2) {
+        return reverse_func();
+    } else if (inplace && action == 3) {
+        return inplace_func();
+    } else {
+        if (inplace) {
+            Box* irtn = inplace_func();
+            if (irtn) {
+                if (irtn != NotImplemented) {
+                    action = 3;
+                    return irtn;
+                }
+                Py_DECREF(irtn);
+            }
         }
-    }
 
-    BORROWED(BoxedString*)op_name = getOpName(op_type);
-    bool is_inside_set = rewrite_args && should_rewrite_later.count(std::make_tuple(lhs, rhs, op_type, (bool)inplace));
-    Box* lrtn = NULL;
-    if (is_inside_set) {
-        BinopRewriteArgs* dummy = NULL;
-        lrtn = binopInternalHelper<rewritable>(dummy, op_name, lhs, rhs, NULL, NULL);
-        assert(lrtn == NotImplemented);
-    } else
-        lrtn = binopInternalHelper<rewritable>(rewrite_args, op_name, lhs, rhs, r_lhs, r_rhs);
-    if (lrtn) {
-        if (lrtn != NotImplemented)
-            return lrtn;
-        Py_DECREF(lrtn);
-    }
+        bool should_try_reverse = true;
+        if (lhs->cls != rhs->cls && isSubclass(rhs->cls, lhs->cls)) {
+            should_try_reverse = false;
+            Box* rrtn = reverse_func();
+            if (rrtn) {
+                if (rrtn != NotImplemented) {
+                    action = 2;
+                    return rrtn;
+                }
+                Py_DECREF(rrtn);
+            }
+        }
 
-    if (should_try_reverse) {
-        DecrefHandle<BoxedString> rop_name = getReverseOpName(op_type);
-        Box* rrtn = binopInternalHelper<rewritable>(rewrite_args, rop_name, rhs, lhs, r_rhs, r_lhs);
-        if (rrtn) {
+        Box* lrtn = normal_func();
+        if (lrtn) {
+            if (lrtn != NotImplemented) {
+                action = 1;
+                return lrtn;
+            }
+            Py_DECREF(lrtn);
+        }
+
+        if (should_try_reverse) {
+            Box* rrtn = reverse_func();
             if (rrtn != NotImplemented) {
-                if (!inplace)
-                    should_rewrite_later.insert(std::make_tuple(lhs, rhs, op_type, (bool)inplace));
+                action = 2;
                 return rrtn;
             }
             Py_DECREF(rrtn);
