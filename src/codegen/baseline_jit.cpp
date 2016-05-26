@@ -14,6 +14,8 @@
 
 #include "codegen/baseline_jit.h"
 
+#include <sys/mman.h>
+
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/DenseSet.h>
 
@@ -56,12 +58,21 @@ static_assert(JitCodeBlock::scratch_size == 256, "have to update EH table!");
 
 constexpr int code_size = JitCodeBlock::memory_size - sizeof(eh_info);
 
+JitCodeBlock::MemoryManager::MemoryManager() {
+    int protection = PROT_READ | PROT_WRITE | PROT_EXEC;
+    int flags = MAP_PRIVATE | MAP_ANONYMOUS;
+#if ENABLE_BASELINEJIT_MAP32BIT
+    flags |= MAP_32BIT;
+#endif
+    addr = (uint8_t*)mmap(NULL, JitCodeBlock::memory_size, protection, flags, -1, 0);
+}
+JitCodeBlock::MemoryManager::~MemoryManager() {
+    munmap(addr, JitCodeBlock::memory_size);
+    addr = NULL;
+}
+
 JitCodeBlock::JitCodeBlock(llvm::StringRef name)
-    : memory(new uint8_t[memory_size]),
-      entry_offset(0),
-      a(memory.get() + sizeof(eh_info), code_size),
-      is_currently_writing(false),
-      asm_failed(false) {
+    : entry_offset(0), a(memory.get() + sizeof(eh_info), code_size), is_currently_writing(false), asm_failed(false) {
     static StatCounter num_jit_code_blocks("num_baselinejit_code_blocks");
     num_jit_code_blocks.log();
     static StatCounter num_jit_total_bytes("num_baselinejit_total_bytes");
