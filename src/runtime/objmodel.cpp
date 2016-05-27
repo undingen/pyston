@@ -57,6 +57,19 @@
 #endif
 
 namespace pyston {
+using BinopTypeKey = std::tuple<void*, void*, int, bool>;
+}
+
+namespace std {
+template <> struct hash<pyston::BinopTypeKey> {
+    std::size_t operator()(const pyston::BinopTypeKey& k) const {
+        return hash<void*>()(std::get<0>(k)) ^ hash<void*>()(std::get<1>(k)) ^ hash<int>()(std::get<2>(k))
+               ^ hash<bool>()(std::get<3>(k));
+    }
+};
+}
+
+namespace pyston {
 
 static const std::string iter_str("__iter__");
 static const std::string new_str("__new__");
@@ -5472,11 +5485,33 @@ static Box* binopInternalHelper(BinopRewriteArgs*& rewrite_args, BoxedString* op
     return rtn;
 }
 
+static Box* pow_2arg_Helper(Box* lhs, Box* rhs) noexcept {
+    return PyNumber_Power(lhs, rhs, None);
+}
+
+static Box* inplace_pow_2arg_Helper(Box* lhs, Box* rhs) noexcept {
+    return PyNumber_InPlacePower(lhs, rhs, None);
+}
+
+enum class BinopType { Unknown = 0, Normal, Reverse, Inplace, Unsupported };
+static std::unordered_map<BinopTypeKey, BinopType> binop_action_table;
+
 template <Rewritable rewritable, bool inplace>
 Box* binopInternal(Box* lhs, Box* rhs, int op_type, BinopRewriteArgs* rewrite_args) {
     if (rewritable == NOT_REWRITABLE) {
         assert(!rewrite_args);
         rewrite_args = NULL;
+    }
+
+    RewriterVar* r_lhs = NULL;
+    RewriterVar* r_rhs = NULL;
+
+    if (rewrite_args) {
+        r_lhs = rewrite_args->lhs;
+        r_rhs = rewrite_args->rhs;
+
+        r_lhs->addAttrGuard(offsetof(Box, cls), (intptr_t)lhs->cls);
+        r_rhs->addAttrGuard(offsetof(Box, cls), (intptr_t)rhs->cls);
     }
 
     // Currently can't patchpoint user-defined binops since we can't assume that just because
@@ -5527,93 +5562,102 @@ Box* binopInternal(Box* lhs, Box* rhs, int op_type, BinopRewriteArgs* rewrite_ar
             case AST_TYPE::DivMod:
                 func = inplace ? NULL : PyNumber_Divmod;
                 break;
+            case AST_TYPE::Pow:
+                func = inplace ? inplace_pow_2arg_Helper : pow_2arg_Helper;
+                break;
         };
 
-        if (func) {
-            if (rewrite_args) {
-                rewrite_args->lhs->addAttrGuard(offsetof(Box, cls), (intptr_t)lhs->cls);
-                rewrite_args->rhs->addAttrGuard(offsetof(Box, cls), (intptr_t)rhs->cls);
-                RewriterVar* r_ret = rewrite_args->rewriter->call(true, (void*)func, rewrite_args->lhs,
-                                                                  rewrite_args->rhs)->setType(RefType::OWNED);
-                rewrite_args->rewriter->checkAndThrowCAPIException(r_ret);
-                rewrite_args->out_rtn = r_ret;
-                rewrite_args->out_success = true;
-            }
+        RELEASE_ASSERT(func, "which one did we forget? %d", op_type);
 
-            Box* rtn = func(lhs, rhs);
-            if (!rtn)
-                throwCAPIException();
-            return rtn;
+        if (rewrite_args) {
+            RewriterVar* r_ret = rewrite_args->rewriter->call(true, (void*)func, r_lhs, r_rhs)->setType(RefType::OWNED);
+            rewrite_args->rewriter->checkAndThrowCAPIException(r_ret);
+            rewrite_args->out_rtn = r_ret;
+            rewrite_args->out_success = true;
         }
+
+        Box* rtn = func(lhs, rhs);
+        if (!rtn)
+            throwCAPIException();
+        return rtn;
     }
 
-    if (!can_patchpoint)
-        rewrite_args = NULL;
-
-    RewriterVar* r_lhs = NULL;
-    RewriterVar* r_rhs = NULL;
-    if (rewrite_args) {
-        r_lhs = rewrite_args->lhs;
-        r_rhs = rewrite_args->rhs;
-
-        RewriterVar* r_lhs_cls = r_lhs->getAttr(offsetof(Box, cls))->setType(RefType::BORROWED);
-        r_lhs_cls->addGuard((intptr_t)lhs->cls);
-        RewriterVar* r_rhs_cls = r_rhs->getAttr(offsetof(Box, cls))->setType(RefType::BORROWED);
-        r_rhs_cls->addGuard((intptr_t)rhs->cls);
-
-        r_lhs_cls->addAttrGuard(offsetof(BoxedClass, tp_mro), (intptr_t)lhs->cls->tp_mro);
-        r_rhs_cls->addAttrGuard(offsetof(BoxedClass, tp_mro), (intptr_t)rhs->cls->tp_mro);
-    }
-
-    if (inplace) {
+    assert(can_patchpoint);
+    auto&& inplace_func = [&]() {
         // XXX I think we need to make sure that we keep these strings alive?
         DecrefHandle<BoxedString> iop_name = getInplaceOpName(op_type);
-        Box* irtn = binopInternalHelper<rewritable>(rewrite_args, iop_name, lhs, rhs, r_lhs, r_rhs);
-        if (irtn) {
-            if (irtn != NotImplemented)
-                return irtn;
-            Py_DECREF(irtn);
-        }
-    }
+        return binopInternalHelper<rewritable>(rewrite_args, iop_name, lhs, rhs, r_lhs, r_rhs);
+    };
 
-    bool should_try_reverse = true;
-    if (lhs->cls != rhs->cls && isSubclass(rhs->cls, lhs->cls)) {
-        should_try_reverse = false;
+    auto&& reverse_func = [&]() {
         DecrefHandle<BoxedString> rop_name = getReverseOpName(op_type);
-        Box* rrtn = binopInternalHelper<rewritable>(rewrite_args, rop_name, rhs, lhs, r_rhs, r_lhs);
-        if (rrtn) {
-            if (rrtn != NotImplemented)
-                return rrtn;
-            Py_DECREF(rrtn);
+        return binopInternalHelper<rewritable>(rewrite_args, rop_name, rhs, lhs, r_rhs, r_lhs);
+    };
+
+    auto&& normal_func = [&]() {
+        BORROWED(BoxedString*)op_name = getOpName(op_type);
+        return binopInternalHelper<rewritable>(rewrite_args, op_name, lhs, rhs, r_lhs, r_rhs);
+    };
+
+    BinopType& action = binop_action_table[std::make_tuple((void*)lhs->cls, (void*)rhs->cls, op_type, (bool)inplace)];
+    if (likely(action == BinopType::Normal)) {
+        return normal_func();
+    } else if (action == BinopType::Reverse) {
+        return reverse_func();
+    } else if (inplace && action == BinopType::Inplace) {
+        return inplace_func();
+    } else if (action == BinopType::Unsupported) {
+        raiseExcHelper(TypeError, "unsupported operand type(s) for %s%s: '%s' and '%s'", getOpSymbol(op_type).data(),
+                       inplace ? "=" : "", getTypeName(lhs), getTypeName(rhs));
+    } else {
+        if (inplace) {
+            Box* irtn = inplace_func();
+            if (irtn) {
+                if (irtn != NotImplemented) {
+                    action = BinopType::Inplace;
+                    return irtn;
+                }
+                Py_DECREF(irtn);
+            }
         }
-    }
 
-    BORROWED(BoxedString*)op_name = getOpName(op_type);
-    Box* lrtn = binopInternalHelper<rewritable>(rewrite_args, op_name, lhs, rhs, r_lhs, r_rhs);
-    if (lrtn) {
-        if (lrtn != NotImplemented)
-            return lrtn;
-        Py_DECREF(lrtn);
-    }
-
-    if (should_try_reverse) {
-        DecrefHandle<BoxedString> rop_name = getReverseOpName(op_type);
-        Box* rrtn = binopInternalHelper<rewritable>(rewrite_args, rop_name, rhs, lhs, r_rhs, r_lhs);
-        if (rrtn) {
-            if (rrtn != NotImplemented)
-                return rrtn;
-            Py_DECREF(rrtn);
+        bool should_try_reverse = true;
+        if (lhs->cls != rhs->cls && isSubclass(rhs->cls, lhs->cls)) {
+            should_try_reverse = false;
+            Box* rrtn = reverse_func();
+            if (rrtn) {
+                if (rrtn != NotImplemented) {
+                    action = BinopType::Reverse;
+                    return rrtn;
+                }
+                Py_DECREF(rrtn);
+            }
         }
-    }
 
-    llvm::StringRef op_sym = getOpSymbol(op_type);
-    const char* op_sym_suffix = "";
-    if (inplace) {
-        op_sym_suffix = "=";
-    }
+        Box* lrtn = normal_func();
+        if (lrtn) {
+            if (lrtn != NotImplemented) {
+                action = BinopType::Normal;
+                return lrtn;
+            }
+            Py_DECREF(lrtn);
+        }
 
-    raiseExcHelper(TypeError, "unsupported operand type(s) for %s%s: '%s' and '%s'", op_sym.data(), op_sym_suffix,
-                   getTypeName(lhs), getTypeName(rhs));
+        if (should_try_reverse) {
+            Box* rrtn = reverse_func();
+            if (rrtn) {
+                if (rrtn != NotImplemented) {
+                    action = BinopType::Reverse;
+                    return rrtn;
+                }
+                Py_DECREF(rrtn);
+            }
+        }
+
+        action = BinopType::Unsupported;
+        raiseExcHelper(TypeError, "unsupported operand type(s) for %s%s: '%s' and '%s'", getOpSymbol(op_type).data(),
+                       inplace ? "=" : "", getTypeName(lhs), getTypeName(rhs));
+    }
 }
 template Box* binopInternal<REWRITABLE, true>(Box*, Box*, int, BinopRewriteArgs*);
 template Box* binopInternal<REWRITABLE, false>(Box*, Box*, int, BinopRewriteArgs*);
