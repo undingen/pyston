@@ -565,6 +565,8 @@ protected:
 #endif
     }
 
+    llvm::ArrayRef<assembler::Register> allocatable_regs;
+
 public:
     // This should be called exactly once for each argument
     RewriterVar* getArg(int argnum);
