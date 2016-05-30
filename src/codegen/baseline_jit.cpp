@@ -31,6 +31,16 @@
 
 namespace pyston {
 
+llvm::DenseSet<uint64_t> bjit_blocks;
+bool isInsideBjit(uint64_t ip) {
+    for (auto&& addr : bjit_blocks) {
+        if (ip >= addr && ip < addr + JitCodeBlock::memory_size) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static llvm::DenseSet<CFGBlock*> blocks_aborted;
 static llvm::DenseMap<CFGBlock*, std::vector<void*>> block_patch_locations;
 
@@ -62,6 +72,7 @@ JitCodeBlock::JitCodeBlock(llvm::StringRef name)
       a(memory.get() + sizeof(eh_info), code_size),
       is_currently_writing(false),
       asm_failed(false) {
+    bjit_blocks.insert((uint64_t)memory.get());
     static StatCounter num_jit_code_blocks("num_baselinejit_code_blocks");
     num_jit_code_blocks.log();
     static StatCounter num_jit_total_bytes("num_baselinejit_total_bytes");

@@ -48,6 +48,8 @@
 #include <libunwind.h>
 #undef UNW_LOCAL_ONLY
 
+extern "C" void* orig_return_addr;
+
 namespace {
 int _dummy_ = unw_set_caching_policy(unw_local_addr_space, UNW_CACHE_PER_THREAD);
 }
@@ -575,8 +577,12 @@ public:
             try {
                 auto unwind_session_state = pause();
 
+
+
                 if (prev_frame_info)
                     deinitFrame(prev_frame_info);
+
+
 
                 // check decref info and decref locations when available
                 if (decref_info_iter != decref_infos.end()) {
@@ -616,11 +622,17 @@ public:
         PythonFrameIteratorImpl frame_iter;
         bool found_frame = pystack_extractor.handleCFrame(cursor, &frame_iter);
         if (found_frame) {
+            if (unlikely(_pendingcalls_to_do)) {
+                makePendingCalls();
+            }
+
             frame_iter.getMD()->propagated_cxx_exceptions++;
             assert(!prev_frame_info);
             prev_frame_info = frame_iter.getFrameInfo();
 
             // make sure that our libunwind based python frame handling and the manual one are the same.
+            if (prev_frame_info != getTopFrameInfo())
+                printf("%p %p\n ", prev_frame_info, getTopFrameInfo());
             assert(prev_frame_info == getTopFrameInfo());
 
             if (!getIsReraiseFlag()) {
@@ -716,6 +728,134 @@ template <typename Func> void unwindPythonStack(Func func) {
 
         // keep unwinding
     }
+}
+
+bool isInsideBjit(uint64_t);
+extern "C" void mypendingCallsCheckHelper();
+void replaceReturnSetSignalFlag() {
+#if 0
+    struct FrameLayout {
+        FrameLayout* bp;
+        void* ip;
+    };
+    //assert(!orig_return_addr);
+
+    FrameLayout* prev = (FrameLayout*)__builtin_frame_address(0);
+    do {
+        uint64_t ip = (uint64_t)prev->ip;
+        if ((void*)ip == mypendingCallsCheckHelper)
+            break;
+        CompiledFunction* cf = getCFForAddress(ip);
+        bool jitted = cf != NULL;
+        bool interpreted = !jitted && inASTInterpreterExecuteInner(ip);
+        if (interpreted)
+            break;
+        if (cf || isInsideBjit(ip)) {
+            orig_return_addr = prev->ip;
+            prev->ip = (void*)mypendingCallsCheckHelper;
+            break;
+        }
+        prev = prev->bp;
+    } while (true);
+#elif 0
+    int num_frames = 0;
+    unw_context_t ctx;
+    unw_cursor_t cursor;
+    unw_getcontext(&ctx);
+    unw_init_local(&cursor, &ctx);
+    while (true) {
+        int r = unw_step(&cursor);
+
+        assert(r >= 0);
+        if (r == 0)
+            break;
+
+        uint64_t ip = (uint64_t)get_cursor_ip(&cursor);
+        if ((void*)ip == mypendingCallsCheckHelper)
+            break;
+        CompiledFunction* cf = getCFForAddress(ip);
+        bool jitted = cf != NULL;
+        bool interpreted = !jitted && inASTInterpreterExecuteInner(ip);
+        if (interpreted)
+            break;
+        if (cf || isInsideBjit(ip)) {
+
+            break;
+        }
+
+        ++num_frames;
+        // keep unwinding
+    }
+
+    int i = 0;
+    unw_getcontext(&ctx);
+    unw_init_local(&cursor, &ctx);
+    while (true) {
+        int r = unw_step(&cursor);
+
+        assert(r >= 0);
+        if (r == 0)
+            break;
+
+        uint64_t ip = (uint64_t)get_cursor_ip(&cursor);
+        if ((void*)ip == mypendingCallsCheckHelper)
+            break;
+        if (num_frames - 1 == i) {
+            orig_return_addr = (void*)ip;
+            unw_set_reg(&cursor, UNW_REG_IP, (unw_word_t)mypendingCallsCheckHelper);
+            break;
+        }
+
+        ++i;
+        // keep unwinding
+    }
+#else
+    struct FrameLayout {
+        FrameLayout* bp;
+        void* ip;
+    };
+
+    unw_context_t ctx;
+    unw_cursor_t cursor;
+    unw_getcontext(&ctx);
+    unw_init_local(&cursor, &ctx);
+
+    FrameLayout* prev = (FrameLayout*)NULL;
+    std::vector<FrameLayout*> frames;
+
+    while (true) {
+        int r = unw_step(&cursor);
+
+        assert(r >= 0);
+        if (r == 0)
+            break;
+
+        uint64_t ip = (uint64_t)get_cursor_ip(&cursor);
+        if ((void*)ip == mypendingCallsCheckHelper)
+            break;
+
+        frames.push_back((FrameLayout*)get_cursor_bp(&cursor));
+
+        CompiledFunction* cf = getCFForAddress(ip);
+        bool jitted = cf != NULL;
+        bool interpreted = !jitted && inASTInterpreterExecuteInner(ip);
+        if (interpreted)
+            break;
+        if (cf || isInsideBjit(ip)) {
+            if ((void*)prev->ip == mypendingCallsCheckHelper) {
+                printf("already replaced... %p\n", orig_return_addr);
+                break;
+            }
+            RELEASE_ASSERT((uint64_t)prev->ip == ip, "%p %p %p", (void*)prev->ip, (void*)ip,
+                           (void*)mypendingCallsCheckHelper);
+            orig_return_addr = prev->ip;
+            prev->ip = (void*)mypendingCallsCheckHelper;
+            break;
+        }
+
+        prev = (FrameLayout*)get_cursor_bp(&cursor);
+    }
+#endif
 }
 
 // To produce a traceback, we:

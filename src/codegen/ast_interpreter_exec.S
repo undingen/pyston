@@ -17,6 +17,11 @@
 // It's written in ASM to make sure the stack layout keeps beeing the same and that nothing gets inlined.
 // Our unwinder treats this function specialy.
 
+.data
+.global orig_return_addr
+orig_return_addr:
+   .long 0
+
 // Box* executeInnerAndSetupFrame(ASTInterpreter& interpreter, CFGBlock* start_block, AST_stmt* start_at)
 .text
 .globl executeInnerAndSetupFrame
@@ -62,6 +67,31 @@ astInterpretDeopt:
     ret
     .cfi_endproc
 .size astInterpretDeopt,.-astInterpretDeopt
+
+.text
+.globl mypendingCallsCheckHelper
+.type mypendingCallsCheckHelper,@function
+.align 16
+mypendingCallsCheckHelper:
+    .cfi_startproc
+    push (orig_return_addr)
+    xor %rdi, %rdi
+    mov %rdi, (orig_return_addr)
+    push %rbp
+    .cfi_def_cfa_offset     16
+    .cfi_offset             rbp,-16
+    mov %rsp, %rbp
+    .cfi_def_cfa_register   rbp
+    push %rax
+    push %rax
+    call makePendingCalls
+    pop %rax
+    pop %rax
+    .cfi_def_cfa            rsp,8
+    pop %rbp
+    ret
+    .cfi_endproc
+.size mypendingCallsCheckHelper,.-mypendingCallsCheckHelper
 
 .section .note.GNU-stack,"",%progbits // we don't need executable stack
 

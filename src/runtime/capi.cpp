@@ -1438,6 +1438,10 @@ extern "C" int Py_AddPendingCall(int (*func)(void*), void* arg) noexcept {
     // _Py_Ticker = 0;
 
     _pendingcalls_to_do = 1;
+
+
+    replaceReturnSetSignalFlag();
+
     if (lock != NULL)
         PyThread_release_lock(lock);
     return result;
@@ -1492,7 +1496,9 @@ extern "C" int Py_MakePendingCalls(void) noexcept {
     return r;
 }
 
+extern "C" void* orig_return_addr;
 extern "C" void makePendingCalls() {
+    orig_return_addr = 0;
     int ret = Py_MakePendingCalls();
     if (ret != 0)
         throwCAPIException();

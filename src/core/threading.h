@@ -81,6 +81,8 @@ void releaseGLRead();
 void acquireGLWrite();
 void releaseGLWrite();
 void _allowGLReadPreemption();
+extern "C" void makePendingCalls();
+extern "C" volatile int _pendingcalls_to_do;
 
 #define GIL_CHECK_INTERVAL 1000
 // Note: this doesn't need to be an atomic, since it should
@@ -100,6 +102,9 @@ extern "C" inline void allowGLReadPreemption() {
         }
     }
 #endif
+    if (0 && unlikely(_pendingcalls_to_do)) {
+        makePendingCalls();
+    }
 
     // Double-checked locking: first read with no ordering constraint:
     if (!threads_waiting_on_gil.load(std::memory_order_relaxed))

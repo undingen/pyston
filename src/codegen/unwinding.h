@@ -136,6 +136,7 @@ struct DeoptState {
     AST_stmt* current_stmt;
 };
 DeoptState getDeoptState();
+void replaceReturnSetSignalFlag();
 }
 
 #endif

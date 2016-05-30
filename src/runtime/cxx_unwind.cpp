@@ -479,6 +479,13 @@ static inline int64_t determine_action(const lsda_info_t* info, const call_site_
     RELEASE_ASSERT(0, "action chain exhausted and no cleanup indicated");
 }
 
+static inline unw_word_t get_cursor_reg(unw_cursor_t* cursor, int reg) {
+    unw_word_t v;
+    unw_get_reg(cursor, reg, &v);
+    return v;
+}
+extern "C" void* orig_return_addr;
+extern "C" void mypendingCallsCheckHelper();
 // The stack-unwinding loop.
 static inline void unwind_loop(ExcInfo* exc_data) {
     // NB. https://monoinfinito.wordpress.com/series/exception-handling-in-c/ is a very useful resource
@@ -497,6 +504,12 @@ static inline void unwind_loop(ExcInfo* exc_data) {
 
     while (unw_step(&cursor) > 0) {
         unw_proc_info_t pip;
+
+        if ((void*)get_cursor_reg(&cursor, UNW_REG_IP) == mypendingCallsCheckHelper) {
+            RELEASE_ASSERT(orig_return_addr, "");
+            unw_set_reg(&cursor, UNW_REG_IP, (unw_word_t)orig_return_addr);
+            orig_return_addr = NULL;
+        }
 
         static StatCounter frames_unwound("num_frames_unwound_cxx");
         frames_unwound.log();
