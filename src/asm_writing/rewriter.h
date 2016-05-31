@@ -566,6 +566,7 @@ protected:
     }
 
     llvm::ArrayRef<assembler::Register> allocatable_regs;
+    int current_action_idx = -1;
 
 public:
     // This should be called exactly once for each argument

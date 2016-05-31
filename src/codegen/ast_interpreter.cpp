@@ -477,7 +477,7 @@ void ASTInterpreter::doStore(AST_Name* node, STOLEN(Value) value) {
             if (is_live)
                 jit->emitSetLocal(name, node->vreg, closure, value);
             else
-                jit->emitSetBlockLocal(name, value);
+                jit->emitSetBlockLocal(name, node->vreg, value);
         }
 
         if (closure) {
@@ -1779,6 +1779,10 @@ Value ASTInterpreter::visit_attribute(AST_Attribute* node) {
 
 int ASTInterpreterJitInterface::getBoxedLocalsOffset() {
     return offsetof(ASTInterpreter, frame_info.boxedLocals);
+}
+
+int ASTInterpreterJitInterface::getCreatedClosureOffset() {
+    return offsetof(ASTInterpreter, created_closure);
 }
 
 int ASTInterpreterJitInterface::getCurrentBlockOffset() {
