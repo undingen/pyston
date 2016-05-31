@@ -386,8 +386,7 @@ RewriterVar* JitFragmentWriter::emitGetBlockLocal(InternedString s, int vreg) {
     if (it == local_syms.end()) {
         auto r = emitGetLocal(s, vreg);
         assert(r->reftype == RefType::OWNED);
-        emitSetLocal(s, vreg, false, imm(nullptr)); // clear out the vreg
-        emitSetBlockLocal(s, r);
+        emitSetBlockLocal(s, vreg, r);
         return r;
     }
     return it->second;
@@ -396,6 +395,8 @@ RewriterVar* JitFragmentWriter::emitGetBlockLocal(InternedString s, int vreg) {
 void JitFragmentWriter::emitKillTemporary(InternedString s, int vreg) {
     if (!local_syms.count(s))
         emitSetLocal(s, vreg, false, imm(nullptr));
+    else
+        local_syms[s]->refUsed();
 }
 
 RewriterVar* JitFragmentWriter::emitGetBoxedLocal(BoxedString* s) {
@@ -549,8 +550,19 @@ std::vector<RewriterVar*> JitFragmentWriter::emitUnpackIntoArray(RewriterVar* v,
 }
 
 RewriterVar* JitFragmentWriter::emitYield(RewriterVar* v) {
-    auto rtn = call(false, (void*)ASTInterpreterJitInterface::yieldHelper, getInterp(), v)->setType(RefType::OWNED);
+    llvm::SmallVector<RewriterVar*, 8> local_args;
+    local_args.push_back(interp->getAttr(ASTInterpreterJitInterface::getCreatedClosureOffset()));
+    for (auto&& sym : local_syms) {
+        if (sym.second->reftype == RefType::OWNED)
+            local_args.push_back(sym.second);
+    }
+    auto&& args = allocArgs(local_args, RewriterVar::SetattrType::REF_USED);
+    RewriterVar* generator = interp->getAttr(ASTInterpreterJitInterface::getGeneratorOffset());
+    auto rtn = call(false, (void*)yield, generator, v, args, imm(local_args.size()))->setType(RefType::OWNED);
     v->refConsumed();
+    for (auto&& var : local_args) {
+        var->refUsed();
+    }
     return rtn;
 }
 
@@ -643,10 +655,13 @@ void JitFragmentWriter::emitSetAttr(AST_expr* node, RewriterVar* obj, BoxedStrin
     attr->refConsumed(rtn.second);
 }
 
-void JitFragmentWriter::emitSetBlockLocal(InternedString s, STOLEN(RewriterVar*) v) {
+void JitFragmentWriter::emitSetBlockLocal(InternedString s, int vreg, STOLEN(RewriterVar*) v) {
     if (LOG_BJIT_ASSEMBLY)
         comment("BJIT: emitSetBlockLocal() start");
     RewriterVar* prev = local_syms[s];
+    if (!prev) {
+        emitSetLocal(s, vreg, false, imm(nullptr)); // clear out the vreg
+    }
     local_syms[s] = v;
     if (LOG_BJIT_ASSEMBLY)
         comment("BJIT: emitSetBlockLocal() end");

@@ -1235,7 +1235,6 @@ std::vector<Location> Rewriter::getDecrefLocations() {
     for (RewriterVar& var : vars) {
         if (var.locations.size() && var.needsDecref()) {
             bool found_location = false;
-
             for (Location l : var.locations) {
                 if (l.type == Location::Scratch) {
                     // convert to stack based location because later on we may not know the offset of the scratch area
@@ -1253,7 +1252,10 @@ std::vector<Location> Rewriter::getDecrefLocations() {
                 } else
                     RELEASE_ASSERT(0, "not implemented");
             }
-            RELEASE_ASSERT(found_location, "");
+            if (!found_location) {
+                assert(0);
+                failed = true;
+            }
         }
     }
 
@@ -1357,7 +1359,22 @@ void RewriterVar::refUsed() {
 }
 
 bool RewriterVar::needsDecref() {
-    return reftype == RefType::OWNED && !this->refHandedOff();
+    if (reftype == RefType::OWNED && !this->refHandedOff())
+        return true;
+    if (reftype == RefType::OWNED && this->num_refs_consumed > 0) {
+        if (uses[0] == rewriter->current_action_idx)
+            return false;
+        if (uses[this->last_refconsumed_numuses - 1] > rewriter->current_action_idx) {
+            return true;
+        }
+        return false;
+    }
+    if (reftype == RefType::OWNED) {
+        if (uses[0] == rewriter->current_action_idx)
+            return false;
+        return true;
+    }
+    return false;
 }
 
 void RewriterVar::registerOwnedAttr(int byte_offset) {
@@ -1510,6 +1527,7 @@ void Rewriter::commit() {
             _incref(var, 1);
         }
 
+        current_action_idx = i;
         actions[i].action();
 
         if (failed) {
