@@ -255,7 +255,7 @@ ASTInterpreter::ASTInterpreter(FunctionMetadata* md, Box** vregs, int num_vregs,
 
     frame_info.vregs = vregs;
     frame_info.md = md;
-    frame_info.num_vregs = num_vregs;
+    frame_info.num_vregs = 0;
 
     assert(scope_info);
 }
@@ -333,6 +333,7 @@ void ASTInterpreter::finishJITing(CFGBlock* continue_block) {
 Box* ASTInterpreter::execJITedBlock(CFGBlock* b) {
     try {
         UNAVOIDABLE_STAT_TIMER(t0, "us_timer_in_baseline_jitted_code");
+        frame_info.num_vregs = std::max(frame_info.num_vregs, b->cfg->num_vregs_cross_block);
         std::pair<CFGBlock*, Box*> rtn = b->entry_code(this, b, vregs);
         next_block = rtn.first;
         return rtn.second;
@@ -477,7 +478,7 @@ void ASTInterpreter::doStore(AST_Name* node, STOLEN(Value) value) {
             if (is_live)
                 jit->emitSetLocal(name, node->vreg, closure, value);
             else
-                jit->emitSetBlockLocal(name, node->vreg, value);
+                jit->emitSetBlockLocal(name, node->vreg, value, node->vreg < current_block->cfg->num_vregs_cross_block);
         }
 
         if (closure) {
@@ -485,6 +486,7 @@ void ASTInterpreter::doStore(AST_Name* node, STOLEN(Value) value) {
         } else {
             assert(getSymVRegMap().count(name));
             assert(getSymVRegMap()[name] == node->vreg);
+            frame_info.num_vregs = std::max(frame_info.num_vregs, node->vreg + 1);
             Box* prev = vregs[node->vreg];
             vregs[node->vreg] = value.o;
             Py_XDECREF(prev);
@@ -713,6 +715,7 @@ Box* ASTInterpreter::doOSR(AST_Jump* node) {
     std::unique_ptr<PhiAnalysis> phis
         = computeRequiredPhis(getMD()->param_names, source_info->cfg, liveness, scope_info);
 
+    /*
     llvm::DenseMap<int, InternedString> offset_name_map;
     for (auto&& v : getSymVRegMap()) {
         offset_name_map[v.second] = v.first;
@@ -732,6 +735,7 @@ Box* ASTInterpreter::doOSR(AST_Jump* node) {
         int vreg_num = getSymVRegMap()[dead];
         Py_CLEAR(vregs[vreg_num]);
     }
+    */
 
     const OSREntryDescriptor* found_entry = nullptr;
     for (auto& p : getMD()->osr_versions) {
@@ -1362,6 +1366,7 @@ Value ASTInterpreter::visit_delete(AST_Delete* node) {
                         }
                     }
 
+                    frame_info.num_vregs = std::max(frame_info.num_vregs, target->vreg + 1);
                     Py_DECREF(vregs[target->vreg]);
                     vregs[target->vreg] = NULL;
                 }
@@ -1696,6 +1701,7 @@ Value ASTInterpreter::visit_name(AST_Name* node) {
             assert(node->vreg >= 0);
             assert(getSymVRegMap().count(node->id));
             assert(getSymVRegMap()[node->id] == node->vreg);
+            frame_info.num_vregs = std::max(frame_info.num_vregs, node->vreg + 1);
             Box* val = vregs[node->vreg];
 
             if (val) {
@@ -1871,6 +1877,7 @@ void ASTInterpreterJitInterface::setExcInfoHelper(void* _interpreter, STOLEN(Box
 void ASTInterpreterJitInterface::setLocalClosureHelper(void* _interpreter, long vreg, InternedString id, Box* v) {
     ASTInterpreter* interpreter = (ASTInterpreter*)_interpreter;
 
+    interpreter->frame_info.num_vregs = std::max(interpreter->frame_info.num_vregs, (int)vreg + 1);
     assert(interpreter->getSymVRegMap().count(id));
     assert(interpreter->getSymVRegMap()[id] == vreg);
     Box* prev = interpreter->vregs[vreg];

@@ -273,6 +273,7 @@ extern "C" void deinitFrame(FrameInfo* frame_info) {
     int num_vregs = frame_info->num_vregs;
     assert(num_vregs >= 0);
 
+    // printf("num_vregs: %d\n", num_vregs);
     decrefArray<true>(frame_info->vregs, num_vregs);
 
     Py_CLEAR(frame_info->boxedLocals);

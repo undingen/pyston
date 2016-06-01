@@ -386,7 +386,7 @@ RewriterVar* JitFragmentWriter::emitGetBlockLocal(InternedString s, int vreg) {
     if (it == local_syms.end()) {
         auto r = emitGetLocal(s, vreg);
         assert(r->reftype == RefType::OWNED);
-        emitSetBlockLocal(s, vreg, r);
+        emitSetBlockLocal(s, vreg, r, true);
         return r;
     }
     return it->second;
@@ -655,11 +655,11 @@ void JitFragmentWriter::emitSetAttr(AST_expr* node, RewriterVar* obj, BoxedStrin
     attr->refConsumed(rtn.second);
 }
 
-void JitFragmentWriter::emitSetBlockLocal(InternedString s, int vreg, STOLEN(RewriterVar*) v) {
+void JitFragmentWriter::emitSetBlockLocal(InternedString s, int vreg, STOLEN(RewriterVar*) v, bool clear_out) {
     if (LOG_BJIT_ASSEMBLY)
         comment("BJIT: emitSetBlockLocal() start");
     RewriterVar* prev = local_syms[s];
-    if (!prev) {
+    if (!prev && clear_out) {
         emitSetLocal(s, vreg, false, imm(nullptr)); // clear out the vreg
     }
     local_syms[s] = v;
@@ -716,6 +716,7 @@ void JitFragmentWriter::emitSetLocal(InternedString s, int vreg, bool set_closur
         // but I suspect is not that big a deal as long as the llvm jit implements this kind of optimization.
         bool prev_nullable = true;
 
+        assert(vreg < block->cfg->num_vregs_cross_block);
         vregs_array->replaceAttr(8 * vreg, v, prev_nullable);
     }
     if (LOG_BJIT_ASSEMBLY)

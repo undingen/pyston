@@ -2654,7 +2654,9 @@ public:
         if (node->lookup_type == ScopeInfo::VarScopeType::FAST
             || node->lookup_type == ScopeInfo::VarScopeType::CLOSURE) {
             auto it = sym_blocks_map.find(node->id);
-            bool is_a_block_local = it->second.size() == 1 && !it->second.count(0);
+            bool is_a_block_local = it->second.size() == 1 && !it->second.count(0)
+                                    && node->lookup_type == ScopeInfo::VarScopeType::FAST
+                                    && node->id.isCompilerCreatedName();
             if (!is_a_block_local || pass >= 2)
                 node->vreg = assignVReg(node->id);
         }
@@ -2731,6 +2733,7 @@ void CFG::assignVRegs(const ParamNames& param_names, ScopeInfo* scope_info) {
         }
         if (visitor.pass == 2) {
             num_vregs = visitor.index;
+            num_vregs_cross_block = num_vregs;
         }
     }
     sym_vreg_map = std::move(visitor.sym_vreg_map);
