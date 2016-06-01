@@ -2554,15 +2554,66 @@ void CFG::print(llvm::raw_ostream& stream) {
         blocks[i]->print(stream);
 }
 
+class NameBlockVisitor : public NoopASTVisitor {
+public:
+    llvm::DenseMap<InternedString, std::unordered_set<CFGBlock*>> sym_blocks_map;
+    ScopeInfo* scope_info;
+    CFGBlock* block = 0;
+
+    NameBlockVisitor(ScopeInfo* scope_info) : scope_info(scope_info) {}
+
+    bool visit_arguments(AST_arguments* node) override {
+        for (AST_expr* d : node->defaults)
+            d->accept(this);
+        return true;
+    }
+
+    bool visit_classdef(AST_ClassDef* node) override {
+        for (auto e : node->bases)
+            e->accept(this);
+        for (auto e : node->decorator_list)
+            e->accept(this);
+        return true;
+    }
+
+    bool visit_functiondef(AST_FunctionDef* node) override {
+        for (auto* d : node->decorator_list)
+            d->accept(this);
+        node->args->accept(this);
+        return true;
+    }
+
+    bool visit_lambda(AST_Lambda* node) override {
+        node->args->accept(this);
+        return true;
+    }
+
+    bool visit_name(AST_Name* node) override {
+        // if (!node->id.isCompilerCreatedName())
+        //    return true;
+
+        if (node->lookup_type == ScopeInfo::VarScopeType::UNKNOWN)
+            node->lookup_type = scope_info->getScopeTypeOfName(node->id);
+
+        if (node->lookup_type == ScopeInfo::VarScopeType::FAST
+            || node->lookup_type == ScopeInfo::VarScopeType::CLOSURE) {
+            sym_blocks_map[node->id].insert(block);
+        }
+        return true;
+    }
+};
+
 class AssignVRegsVisitor : public NoopASTVisitor {
 public:
     int index = 0;
-    bool only_user_visible;
+    int pass = 0;
     llvm::DenseMap<InternedString, int> sym_vreg_map;
     ScopeInfo* scope_info;
+    const llvm::DenseMap<InternedString, std::unordered_set<CFGBlock*>>& sym_blocks_map;
 
-    AssignVRegsVisitor(ScopeInfo* scope_info, bool only_user_visible)
-        : only_user_visible(only_user_visible), scope_info(scope_info) {}
+    AssignVRegsVisitor(ScopeInfo* scope_info,
+                       const llvm::DenseMap<InternedString, std::unordered_set<CFGBlock*>>& sym_blocks_map)
+        : scope_info(scope_info), sym_blocks_map(sym_blocks_map) {}
 
     bool visit_arguments(AST_arguments* node) override {
         for (AST_expr* d : node->defaults)
@@ -2594,14 +2645,19 @@ public:
         if (node->vreg != -1)
             return true;
 
-        if (only_user_visible && node->id.isCompilerCreatedName())
+        if (pass == 0 && node->id.isCompilerCreatedName())
             return true;
 
         if (node->lookup_type == ScopeInfo::VarScopeType::UNKNOWN)
             node->lookup_type = scope_info->getScopeTypeOfName(node->id);
 
-        if (node->lookup_type == ScopeInfo::VarScopeType::FAST || node->lookup_type == ScopeInfo::VarScopeType::CLOSURE)
-            node->vreg = assignVReg(node->id);
+        if (node->lookup_type == ScopeInfo::VarScopeType::FAST
+            || node->lookup_type == ScopeInfo::VarScopeType::CLOSURE) {
+            auto it = sym_blocks_map.find(node->id);
+            bool is_a_block_local = it->second.size() == 1 && !it->second.count(0);
+            if (!is_a_block_local || pass >= 2)
+                node->vreg = assignVReg(node->id);
+        }
         return true;
     }
 
@@ -2619,14 +2675,43 @@ void CFG::assignVRegs(const ParamNames& param_names, ScopeInfo* scope_info) {
     if (has_vregs_assigned)
         return;
 
-    AssignVRegsVisitor visitor(scope_info, true);
+    {
+        NameBlockVisitor visitor(scope_info);
+        for (CFGBlock* b : blocks) {
+            visitor.block = b;
+            for (AST_stmt* stmt : b->body) {
+                stmt->accept(&visitor);
+            }
+        }
+
+        visitor.block = 0;
+        for (auto* name : param_names.arg_names) {
+            name->accept(&visitor);
+        }
+
+        if (param_names.vararg_name)
+            param_names.vararg_name->accept(&visitor);
+
+        if (param_names.kwarg_name)
+            param_names.kwarg_name->accept(&visitor);
+
+        sym_blocks_map = visitor.sym_blocks_map;
+    }
+
+    AssignVRegsVisitor visitor(scope_info, sym_blocks_map);
+
 
     // we need todo two passes: first we assign the user visible vars a vreg and then the compiler created get there
     // value.
-    for (int i = 0; i < 2; ++i) {
+    for (int i = 0; i < 3; ++i) {
         for (CFGBlock* b : blocks) {
+            int current_vreg_num = visitor.index;
             for (AST_stmt* stmt : b->body) {
                 stmt->accept(&visitor);
+            }
+            if (i == 2) {
+                num_vregs = std::max(num_vregs, visitor.index);
+                visitor.index = current_vreg_num;
             }
         }
 
@@ -2640,13 +2725,17 @@ void CFG::assignVRegs(const ParamNames& param_names, ScopeInfo* scope_info) {
         if (param_names.kwarg_name)
             param_names.kwarg_name->accept(&visitor);
 
-        if (visitor.only_user_visible) {
-            visitor.only_user_visible = false;
+        ++visitor.pass;
+        if (visitor.pass == 1) {
             sym_vreg_map_user_visible = visitor.sym_vreg_map;
+        }
+        if (visitor.pass == 2) {
+            num_vregs = visitor.index;
         }
     }
     sym_vreg_map = std::move(visitor.sym_vreg_map);
     has_vregs_assigned = true;
+    // printf("%d %d\n", (int)sym_vreg_map.size(), num_vregs);
 }
 
 CFG* computeCFG(SourceInfo* source, std::vector<AST_stmt*> body) {

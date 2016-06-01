@@ -84,7 +84,7 @@ int FunctionMetadata::calculateNumVRegs() {
         ScopeInfo* scope_info = source->getScopeInfo();
         cfg->assignVRegs(param_names, scope_info);
     }
-    return cfg->sym_vreg_map.size();
+    return cfg->num_vregs;
 }
 
 int FunctionMetadata::calculateNumUserVisibleVRegs() {

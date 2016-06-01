@@ -83,6 +83,8 @@ public:
     // (which will have lower ids than the compiler generated ones).
     llvm::DenseMap<InternedString, int> sym_vreg_map;
     llvm::DenseMap<InternedString, int> sym_vreg_map_user_visible;
+    llvm::DenseMap<InternedString, std::unordered_set<CFGBlock*>> sym_blocks_map;
+    int num_vregs = -1;
 
     CFG() : next_idx(0), has_vregs_assigned(false) {}
 
