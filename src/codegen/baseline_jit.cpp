@@ -62,7 +62,7 @@ constexpr int code_size = JitCodeBlock::memory_size - sizeof(eh_info);
 
 JitCodeBlock::MemoryManager::MemoryManager() {
     int protection = PROT_READ | PROT_WRITE | PROT_EXEC;
-    int flags = MAP_PRIVATE | MAP_ANONYMOUS;
+    int flags = MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE;
 #if ENABLE_BASELINEJIT_MAP_32BIT
     flags |= MAP_32BIT;
 #endif
