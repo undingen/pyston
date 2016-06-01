@@ -61,15 +61,26 @@ static_assert(JitCodeBlock::scratch_size == 256, "have to update EH table!");
 constexpr int code_size = JitCodeBlock::memory_size - sizeof(eh_info);
 
 JitCodeBlock::MemoryManager::MemoryManager() {
+#if ENABLE_BASELINEJIT_USE_MMAP
     int protection = PROT_READ | PROT_WRITE | PROT_EXEC;
-    int flags = MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE;
+    int flags = MAP_PRIVATE | MAP_ANONYMOUS;
 #if ENABLE_BASELINEJIT_MAP_32BIT
     flags |= MAP_32BIT;
 #endif
     addr = (uint8_t*)mmap(NULL, JitCodeBlock::memory_size, protection, flags, -1, 0);
+#else
+#if ENABLE_BASELINEJIT_MAP_32BIT
+#error "not stupported"
+#endif
+    addr = (uint8_t*)malloc(JitCodeBlock::memory_size);
+#endif
 }
 JitCodeBlock::MemoryManager::~MemoryManager() {
+#if ENABLE_BASELINEJIT_USE_MMAP
     munmap(addr, JitCodeBlock::memory_size);
+#else
+    free(addr);
+#endif
     addr = NULL;
 }
 
