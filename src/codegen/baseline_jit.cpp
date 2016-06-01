@@ -72,14 +72,14 @@ JitCodeBlock::MemoryManager::MemoryManager() {
 #if ENABLE_BASELINEJIT_MAP_32BIT
 #error "not stupported"
 #endif
-    addr = (uint8_t*)malloc(JitCodeBlock::memory_size);
+    addr = new uint8_t[JitCodeBlock::memory_size];
 #endif
 }
 JitCodeBlock::MemoryManager::~MemoryManager() {
 #if ENABLE_BASELINEJIT_USE_MMAP
     munmap(addr, JitCodeBlock::memory_size);
 #else
-    free(addr);
+    delete[] addr;
 #endif
     addr = NULL;
 }
