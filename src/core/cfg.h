@@ -43,10 +43,9 @@ class ParamNames;
 class ScopeInfo;
 
 class CFGBlock {
-private:
+public:
     CFG* cfg;
 
-public:
     // Baseline JIT helper fields:
     // contains address to the start of the code of this basic block
     void* code;
@@ -85,6 +84,7 @@ public:
     llvm::DenseMap<InternedString, int> sym_vreg_map_user_visible;
     llvm::DenseMap<InternedString, std::unordered_set<CFGBlock*>> sym_blocks_map;
     int num_vregs = -1;
+    int num_vregs_cross_block = -1;
 
     CFG() : next_idx(0), has_vregs_assigned(false) {}
 

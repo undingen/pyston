@@ -634,7 +634,10 @@ void JitFragmentWriter::emitSetBlockLocal(InternedString s, int vreg, STOLEN(Rew
     if (LOG_BJIT_ASSEMBLY)
         comment("BJIT: emitSetBlockLocal() start");
     RewriterVar* prev = local_syms[s];
-    if (!prev)
+    // if we never set this sym before in this BB and the symbol gets accessed in several blocks clear it because it
+    // could have been set in a previous block.
+    bool vreg_is_not_block_local = vreg < block->cfg->num_vregs_cross_block;
+    if (!prev && vreg_is_not_block_local)
         emitSetLocal(s, vreg, false, imm(nullptr)); // clear out the vreg
     local_syms[s] = v;
     if (LOG_BJIT_ASSEMBLY)
@@ -690,6 +693,7 @@ void JitFragmentWriter::emitSetLocal(InternedString s, int vreg, bool set_closur
         // but I suspect is not that big a deal as long as the llvm jit implements this kind of optimization.
         bool prev_nullable = true;
 
+        assert(vreg < block->cfg->num_vregs_cross_block);
         vregs_array->replaceAttr(8 * vreg, v, prev_nullable);
     }
     if (LOG_BJIT_ASSEMBLY)
