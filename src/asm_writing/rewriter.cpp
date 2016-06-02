@@ -1313,11 +1313,6 @@ void RewriterVar::refConsumed(RewriterAction* action) {
     action->consumed_refs.push_front(this);
 }
 
-void RewriterVar::refUsed() {
-    uses.push_back(rewriter->actions.size() - 1);
-    rewriter->getLastAction()->additional_uses.push_front(this);
-}
-
 bool RewriterVar::needsDecref() {
     if (reftype == RefType::OWNED && !this->refHandedOff())
         return true;
@@ -1489,10 +1484,6 @@ void Rewriter::commit() {
 
         current_action_idx = i;
         actions[i].action();
-
-        for (auto&& var : actions[i].additional_uses) {
-            var->bumpUse();
-        }
 
         if (failed) {
             ic_rewrites_aborted_failed.log();

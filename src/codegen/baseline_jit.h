@@ -310,8 +310,9 @@ private:
     RewriterVar* emitCallWithAllocatedArgs(void* func_addr, const llvm::ArrayRef<RewriterVar*> args,
                                            const llvm::ArrayRef<RewriterVar*> additional_uses);
     std::pair<RewriterVar*, RewriterAction*> emitPPCall(void* func_addr, llvm::ArrayRef<RewriterVar*> args,
-                                                        unsigned short num_slots, unsigned short slot_size,
-                                                        AST* ast_node = NULL, TypeRecorder* type_recorder = NULL);
+                                                        unsigned char num_slots, unsigned short slot_size,
+                                                        AST* ast_node = NULL, TypeRecorder* type_recorder = NULL,
+                                                        llvm::ArrayRef<RewriterVar*> additional_uses = {});
 
     static void assertNameDefinedHelper(const char* id);
     static Box* callattrHelper(Box* obj, BoxedString* attr, CallattrFlags flags, TypeRecorder* type_recorder,

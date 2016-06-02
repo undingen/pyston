@@ -193,8 +193,6 @@ public:
     // if no action is specified it will assume the last action consumed the reference
     void refConsumed(RewriterAction* action = NULL);
 
-    void refUsed();
-
     // registerOwnedAttr tells the refcounter that a certain memory location holds a pointer
     // to an owned reference.  This must be paired with a call to deregisterOwnedAttr
     // Call these right before emitting the store (for register) or decref (for deregister).
@@ -342,7 +340,6 @@ class RewriterAction {
 public:
     SmallFunction<48> action;
     std::forward_list<RewriterVar*> consumed_refs;
-    std::forward_list<RewriterVar*> additional_uses;
 
 
     template <typename F> RewriterAction(F&& action) : action(std::forward<F>(action)) {}
