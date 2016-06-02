@@ -1293,8 +1293,8 @@ void RewriterVar::refConsumed(RewriterAction* action) {
 }
 
 void RewriterVar::refUsed() {
-    // TODO: This is a pretty silly implementation that might prevent other optimizations?
-    rewriter->addAction([=]() { this->bumpUse(); }, { this }, ActionType::NORMAL);
+    uses.push_back(rewriter->actions.size() - 1);
+    rewriter->getLastAction()->additional_uses.push_back(this);
 }
 
 bool RewriterVar::needsDecref() {
@@ -1468,6 +1468,10 @@ void Rewriter::commit() {
 
         current_action_idx = i;
         actions[i].action();
+
+        for (auto&& var : actions[i].additional_uses) {
+            var->bumpUse();
+        }
 
         if (failed) {
             ic_rewrites_aborted_failed.log();

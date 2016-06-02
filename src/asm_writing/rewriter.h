@@ -341,6 +341,7 @@ class RewriterAction {
 public:
     SmallFunction<56> action;
     std::vector<RewriterVar*> consumed_refs;
+    std::vector<RewriterVar*> additional_uses;
 
     template <typename F> RewriterAction(F&& action) : action(std::forward<F>(action)) {}
 
