@@ -16,6 +16,7 @@
 #define PYSTON_ASMWRITING_REWRITER_H
 
 #include <deque>
+#include <forward_list>
 #include <list>
 #include <map>
 #include <memory>
@@ -192,8 +193,6 @@ public:
     // if no action is specified it will assume the last action consumed the reference
     void refConsumed(RewriterAction* action = NULL);
 
-    void refUsed();
-
     // registerOwnedAttr tells the refcounter that a certain memory location holds a pointer
     // to an owned reference.  This must be paired with a call to deregisterOwnedAttr
     // Call these right before emitting the store (for register) or decref (for deregister).
@@ -237,11 +236,11 @@ private:
     // /* some code */
     // bumpUseLateIfNecessary();
     void bumpUseEarlyIfPossible() {
-        if (reftype != RefType::OWNED)
+        if (reftype != RefType::OWNED && !hasScratchAllocation())
             bumpUse();
     }
     void bumpUseLateIfNecessary() {
-        if (reftype == RefType::OWNED)
+        if (reftype == RefType::OWNED || hasScratchAllocation())
             bumpUse();
     }
 
@@ -339,8 +338,9 @@ public:
 
 class RewriterAction {
 public:
-    SmallFunction<56> action;
-    std::vector<RewriterVar*> consumed_refs;
+    SmallFunction<48> action;
+    std::forward_list<RewriterVar*> consumed_refs;
+
 
     template <typename F> RewriterAction(F&& action) : action(std::forward<F>(action)) {}
 
@@ -367,7 +367,30 @@ private:
 
 protected:
     // Allocates `bytes` bytes of data.  The allocation will get freed when the rewriter gets freed.
-    void* regionAlloc(size_t bytes) { return allocator.Allocate(bytes, 16 /* alignment */); }
+    void* regionAlloc(size_t bytes, int alignment = 16) { return allocator.Allocate(bytes, alignment); }
+
+    // This takes a variable number of llvm::ArrayRef<RewriterVar*> and copies in all elements into a single contiguous
+    // memory location.
+    template <typename... Args>
+    llvm::MutableArrayRef<RewriterVar*> regionAllocArgs(llvm::ArrayRef<RewriterVar*> arg1, Args... args) {
+        size_t num_total_args = 0;
+        for (auto&& array : { arg1, args... }) {
+            num_total_args += array.size();
+        }
+        if (num_total_args == 0)
+            return llvm::MutableArrayRef<RewriterVar*>();
+
+        RewriterVar** args_array
+            = (RewriterVar**)this->regionAlloc(sizeof(RewriterVar*) * num_total_args, 8 /* alignment */);
+        RewriterVar** insert_point = args_array;
+        for (auto&& array : { arg1, args... }) {
+            if (!array.empty()) {
+                memcpy(insert_point, array.data(), array.size() * sizeof(RewriterVar*));
+                insert_point += array.size();
+            }
+        }
+        return llvm::MutableArrayRef<RewriterVar*>(args_array, num_total_args);
+    }
 
     // Helps generating the best code for loading a const integer value.
     // By keeping track of the last known value of every register and reusing it.
@@ -509,11 +532,13 @@ protected:
     void _slowpathJump(bool condition_eq);
     void _trap();
     void _loadConst(RewriterVar* result, int64_t val);
-    void _setupCall(bool has_side_effects, llvm::ArrayRef<RewriterVar*> args, llvm::ArrayRef<RewriterVar*> args_xmm,
-                    Location preserve = Location::any());
+    void _setupCall(bool has_side_effects, llvm::ArrayRef<RewriterVar*> args = {},
+                    llvm::ArrayRef<RewriterVar*> args_xmm = {}, Location preserve = Location::any(),
+                    llvm::ArrayRef<RewriterVar*> stuff_to_bump = {});
     // _call does not call bumpUse on its arguments:
     void _call(RewriterVar* result, bool has_side_effects, bool can_throw, void* func_addr,
-               llvm::ArrayRef<RewriterVar*> args, llvm::ArrayRef<RewriterVar*> args_xmm = {});
+               llvm::ArrayRef<RewriterVar*> args, llvm::ArrayRef<RewriterVar*> args_xmm = {},
+               llvm::ArrayRef<RewriterVar*> stuff_to_bump = {});
     void _add(RewriterVar* result, RewriterVar* a, int64_t b, Location dest);
     int _allocate(RewriterVar* result, int n);
     void _allocateAndCopy(RewriterVar* result, RewriterVar* array, int n);
@@ -612,7 +637,7 @@ public:
     // inline cache.  (Extra allocations don't count even though they're potentially visible if you look
     // hard enough.)
     RewriterVar* call(bool has_side_effects, void* func_addr, llvm::ArrayRef<RewriterVar*> args = {},
-                      llvm::ArrayRef<RewriterVar*> args_xmm = {});
+                      llvm::ArrayRef<RewriterVar*> args_xmm = {}, llvm::ArrayRef<RewriterVar*> additional_uses = {});
     template <typename... Args>
     RewriterVar* call(bool has_side_effects, void* func_addr, RewriterVar* arg1, Args... args) {
         return call(has_side_effects, func_addr, llvm::ArrayRef<RewriterVar*>({ arg1, args... }), {});
