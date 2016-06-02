@@ -236,11 +236,11 @@ private:
     // /* some code */
     // bumpUseLateIfNecessary();
     void bumpUseEarlyIfPossible() {
-        if (reftype != RefType::OWNED)
+        if (reftype != RefType::OWNED && !hasScratchAllocation())
             bumpUse();
     }
     void bumpUseLateIfNecessary() {
-        if (reftype == RefType::OWNED)
+        if (reftype == RefType::OWNED || hasScratchAllocation())
             bumpUse();
     }
 
@@ -510,10 +510,11 @@ protected:
     void _trap();
     void _loadConst(RewriterVar* result, int64_t val);
     void _setupCall(bool has_side_effects, llvm::ArrayRef<RewriterVar*> args, llvm::ArrayRef<RewriterVar*> args_xmm,
-                    Location preserve = Location::any());
+                    Location preserve = Location::any(), llvm::ArrayRef<RewriterVar*> stuff_to_bump = {});
     // _call does not call bumpUse on its arguments:
     void _call(RewriterVar* result, bool has_side_effects, bool can_throw, void* func_addr,
-               llvm::ArrayRef<RewriterVar*> args, llvm::ArrayRef<RewriterVar*> args_xmm);
+               llvm::ArrayRef<RewriterVar*> args, llvm::ArrayRef<RewriterVar*> args_xmm,
+               llvm::ArrayRef<RewriterVar*> stuff_to_bump = {});
     void _add(RewriterVar* result, RewriterVar* a, int64_t b, Location dest);
     int _allocate(RewriterVar* result, int n);
     void _allocateAndCopy(RewriterVar* result, RewriterVar* array, int n);

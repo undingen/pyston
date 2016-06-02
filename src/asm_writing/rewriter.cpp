@@ -980,16 +980,15 @@ RewriterVar* Rewriter::call(bool has_side_effects, void* func_addr, llvm::ArrayR
 
     addAction([this, result, func_addr, lambda_closure]() {
         this->_call(result, lambda_closure.has_side_effects, lambda_closure.can_throw, func_addr, lambda_closure.args(),
-                    lambda_closure.argsXmm());
-        for (auto&& use : lambda_closure.allArgs())
-            use->bumpUse();
+                    lambda_closure.argsXmm(), lambda_closure.allArgs());
     }, lambda_closure.allArgs(), type);
 
     return result;
 }
 
 void Rewriter::_setupCall(bool has_side_effects, llvm::ArrayRef<RewriterVar*> args,
-                          llvm::ArrayRef<RewriterVar*> args_xmm, Location preserve) {
+                          llvm::ArrayRef<RewriterVar*> args_xmm, Location preserve,
+                          llvm::ArrayRef<RewriterVar*> stuff_to_bump) {
     if (has_side_effects)
         assert(done_guarding);
 
@@ -1076,6 +1075,10 @@ void Rewriter::_setupCall(bool has_side_effects, llvm::ArrayRef<RewriterVar*> ar
     }
 #endif
 
+    for (auto&& use : stuff_to_bump) {
+        use->bumpUseEarlyIfPossible();
+    }
+
     // Spill caller-saved registers:
     for (auto check_reg : caller_save_registers) {
         // check_reg.dump();
@@ -1138,7 +1141,8 @@ void Rewriter::_setupCall(bool has_side_effects, llvm::ArrayRef<RewriterVar*> ar
 }
 
 void Rewriter::_call(RewriterVar* result, bool has_side_effects, bool can_throw, void* func_addr,
-                     llvm::ArrayRef<RewriterVar*> args, llvm::ArrayRef<RewriterVar*> args_xmm) {
+                     llvm::ArrayRef<RewriterVar*> args, llvm::ArrayRef<RewriterVar*> args_xmm,
+                     llvm::ArrayRef<RewriterVar*> stuff_to_bump) {
     if (LOG_IC_ASSEMBLY)
         assembler->comment("_call");
 
@@ -1147,17 +1151,7 @@ void Rewriter::_call(RewriterVar* result, bool has_side_effects, bool can_throw,
     if (failed)
         return;
 
-    _setupCall(has_side_effects, args, args_xmm, assembler::R11);
-
-    // This duty is now on the caller:
-    /*
-    for (RewriterVar* arg : args) {
-        arg->bumpUse();
-    }
-    for (RewriterVar* arg_xmm : args_xmm) {
-        arg_xmm->bumpUse();
-    }
-    */
+    _setupCall(has_side_effects, args, args_xmm, assembler::R11, stuff_to_bump);
 
     assertConsistent();
 
@@ -1188,6 +1182,10 @@ void Rewriter::_call(RewriterVar* result, bool has_side_effects, bool can_throw,
 
     if (result)
         result->releaseIfNoUses();
+
+    for (RewriterVar* arg : stuff_to_bump) {
+        arg->bumpUseLateIfNecessary();
+    }
 }
 
 std::vector<Location> Rewriter::getDecrefLocations() {

@@ -895,10 +895,7 @@ JitFragmentWriter::emitPPCall(void* func_addr, llvm::ArrayRef<RewriterVar*> args
         = addAction([this, result, func_addr, ast_node, _args, args_size, slot_size, num_slots, num_additional]() {
             llvm::ArrayRef<RewriterVar*> all_args = llvm::ArrayRef<RewriterVar*>(_args, args_size + num_additional);
             auto args = all_args.slice(0, args_size);
-            auto additional_uses = all_args.slice(args_size);
-            this->_emitPPCall(result, func_addr, args, num_slots, slot_size, ast_node);
-            for (auto&& additional_use : additional_uses)
-                additional_use->bumpUse();
+            this->_emitPPCall(result, func_addr, args, num_slots, slot_size, ast_node, all_args);
         }, llvm::ArrayRef<RewriterVar*>(_args, num_args), ActionType::NORMAL);
 
     if (type_recorder) {
@@ -1077,7 +1074,8 @@ void JitFragmentWriter::_emitOSRPoint() {
 }
 
 void JitFragmentWriter::_emitPPCall(RewriterVar* result, void* func_addr, llvm::ArrayRef<RewriterVar*> args,
-                                    int num_slots, int slot_size, AST* ast_node) {
+                                    int num_slots, int slot_size, AST* ast_node,
+                                    llvm::ArrayRef<RewriterVar*> stuff_to_bump) {
     assembler::Register r = allocReg(assembler::R11);
 
     if (args.size() > 6) { // only 6 args can get passed in registers.
@@ -1088,9 +1086,9 @@ void JitFragmentWriter::_emitPPCall(RewriterVar* result, void* func_addr, llvm::
         }
         RewriterVar::SmallVector reg_args(args.begin(), args.begin() + 6);
         assert(reg_args.size() == 6);
-        _setupCall(false, reg_args, RewriterVar::SmallVector());
+        _setupCall(false, reg_args, {}, Location::any(), stuff_to_bump);
     } else
-        _setupCall(false, args, RewriterVar::SmallVector());
+        _setupCall(false, args, {}, Location::any(), stuff_to_bump);
 
     if (failed)
         return;
@@ -1135,15 +1133,8 @@ void JitFragmentWriter::_emitPPCall(RewriterVar* result, void* func_addr, llvm::
 
     result->releaseIfNoUses();
 
-    // TODO: it would be nice to be able to bumpUse on these earlier so that we could potentially avoid spilling
-    // the args across the call if we don't need to.
-    // This had to get moved to the very end of this function due to the fact that bumpUse can cause refcounting
-    // operations to happen.
-    // I'm not sure though that just moving this earlier is good enough though -- we also might need to teach setupCall
-    // that the args might not be needed afterwards?
-    // Anyway this feels like micro-optimizations at the moment and we can figure it out later.
-    for (RewriterVar* arg : args) {
-        arg->bumpUse();
+    for (RewriterVar* use : stuff_to_bump) {
+        use->bumpUseLateIfNecessary();
     }
 }
 

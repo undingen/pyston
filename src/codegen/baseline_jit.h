@@ -25,7 +25,7 @@ namespace pyston {
 
 // passes MAP_32BIT to mmap when allocating the memory for the bjit code.
 // it's nice for inspecting the generated asm because the debugger is able to show the name of called C/C++ functions
-#define ENABLE_BASELINEJIT_MAP_32BIT 0
+#define ENABLE_BASELINEJIT_MAP_32BIT 1
 #define ENABLE_BASELINEJIT_USE_MMAP ENABLE_BASELINEJIT_MAP_32BIT
 #define ENABLE_BASELINEJIT_ICS 1
 
@@ -332,7 +332,7 @@ private:
     void _emitJump(CFGBlock* b, RewriterVar* block_next, ExitInfo& exit_info);
     void _emitOSRPoint();
     void _emitPPCall(RewriterVar* result, void* func_addr, llvm::ArrayRef<RewriterVar*> args, int num_slots,
-                     int slot_size, AST* ast_node);
+                     int slot_size, AST* ast_node, llvm::ArrayRef<RewriterVar*> stuff_to_bump);
     void _emitRecordType(RewriterVar* type_recorder_var, RewriterVar* obj_cls_var);
     void _emitReturn(RewriterVar* v);
     void _emitSideExit(STOLEN(RewriterVar*) var, RewriterVar* val_constant, CFGBlock* next_block,
