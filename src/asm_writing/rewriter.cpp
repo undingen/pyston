@@ -920,18 +920,9 @@ RewriterVar* Rewriter::loadConst(int64_t val, Location dest) {
 }
 
 RewriterVar* Rewriter::call(bool has_side_effects, void* func_addr, llvm::ArrayRef<RewriterVar*> args,
-                            llvm::ArrayRef<RewriterVar*> args_xmm) {
+                            llvm::ArrayRef<RewriterVar*> args_xmm, llvm::ArrayRef<RewriterVar*> additional_uses) {
     STAT_TIMER(t0, "us_timer_rewriter", 10);
     RewriterVar* result = createNewVar();
-    RewriterVar::SmallVector uses;
-    for (RewriterVar* v : args) {
-        assert(v != NULL);
-        uses.push_back(v);
-    }
-    for (RewriterVar* v : args_xmm) {
-        assert(v != NULL);
-        uses.push_back(v);
-    }
 
     ActionType type;
     if (has_side_effects)
@@ -939,30 +930,60 @@ RewriterVar* Rewriter::call(bool has_side_effects, void* func_addr, llvm::ArrayR
     else
         type = ActionType::NORMAL;
 
-    // It's not nice to pass llvm::SmallVectors through a closure, especially with our SmallFunction
-    // optimization, so just regionAlloc them and copy the data in:
-    RewriterVar** _args = (RewriterVar**)this->regionAlloc(sizeof(RewriterVar*) * args.size());
-    memcpy(_args, args.begin(), sizeof(RewriterVar*) * args.size());
-    RewriterVar** _args_xmm = (RewriterVar**)this->regionAlloc(sizeof(RewriterVar*) * args_xmm.size());
-    memcpy(_args_xmm, args_xmm.begin(), sizeof(RewriterVar*) * args_xmm.size());
-
-    int args_size = args.size();
-    assert(args_xmm.size() <= 0x7fff);
-    // Hack: pack this into a short to make sure it fits in the closure
-    short xmm_args_size = args_xmm.size();
 
     // TODO: we don't need to generate the decref info for calls which can't throw
     bool can_throw = true;
 
+    int num_total_args = args.size() + args_xmm.size() + additional_uses.size();
+    RewriterVar** args_array = (RewriterVar**)this->regionAlloc(sizeof(RewriterVar*) * num_total_args);
+
     // Hack: explicitly order the closure arguments so they pad nicer
-    addAction([args_size, xmm_args_size, has_side_effects, can_throw, this, result, func_addr, _args, _args_xmm]() {
-        this->_call(result, has_side_effects, can_throw, func_addr, llvm::ArrayRef<RewriterVar*>(_args, args_size),
-                    llvm::ArrayRef<RewriterVar*>(_args_xmm, xmm_args_size));
-        for (int i = 0; i < args_size; i++)
-            _args[i]->bumpUse();
-        for (int i = 0; i < xmm_args_size; i++)
-            _args_xmm[i]->bumpUse();
-    }, uses, type);
+    struct LambdaClosure {
+        RewriterVar** args_array;
+
+        struct {
+            unsigned int has_side_effects : 1;
+            unsigned int can_throw : 1;
+            unsigned int num_args : 16;
+            unsigned int num_args_xmm : 16;
+            unsigned int num_additional_uses : 16;
+        };
+
+        llvm::MutableArrayRef<RewriterVar*> allArgs() const {
+            return llvm::MutableArrayRef<RewriterVar*>(args_array, num_args + num_args_xmm + num_additional_uses);
+        }
+
+        llvm::MutableArrayRef<RewriterVar*> args() const { return allArgs().slice(0, num_args); }
+
+        llvm::MutableArrayRef<RewriterVar*> argsXmm() const { return allArgs().slice(num_args, num_args_xmm); }
+
+        llvm::MutableArrayRef<RewriterVar*> additionalUses() const {
+            return allArgs().slice(num_args + num_args_xmm, num_additional_uses);
+        }
+
+        LambdaClosure(RewriterVar** args_array, llvm::ArrayRef<RewriterVar*> _args,
+                      llvm::ArrayRef<RewriterVar*> _args_xmm, llvm::ArrayRef<RewriterVar*> _addition_uses,
+                      bool has_side_effects, bool can_throw)
+            : args_array(args_array), has_side_effects(has_side_effects), can_throw(can_throw) {
+            num_args = _args.size();
+            num_args_xmm = _args_xmm.size();
+            num_additional_uses = _addition_uses.size();
+            std::copy(_args.begin(), _args.end(), args().begin());
+            std::copy(_args_xmm.begin(), _args_xmm.end(), argsXmm().begin());
+            std::copy(_addition_uses.begin(), _addition_uses.end(), additionalUses().begin());
+        }
+
+    } lambda_closure(args_array, args, args_xmm, additional_uses, has_side_effects, can_throw);
+    assert(lambda_closure.args().size() == args.size());
+    assert(lambda_closure.argsXmm().size() == args_xmm.size());
+    assert(lambda_closure.additionalUses().size() == additional_uses.size());
+
+    addAction([this, result, func_addr, lambda_closure]() {
+        this->_call(result, lambda_closure.has_side_effects, lambda_closure.can_throw, func_addr, lambda_closure.args(),
+                    lambda_closure.argsXmm());
+        for (auto&& use : lambda_closure.allArgs())
+            use->bumpUse();
+    }, lambda_closure.allArgs(), type);
 
     return result;
 }

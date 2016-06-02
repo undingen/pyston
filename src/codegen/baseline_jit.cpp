@@ -297,11 +297,7 @@ void JitFragmentWriter::emitDictSet(RewriterVar* dict, RewriterVar* k, RewriterV
 
 RewriterVar* JitFragmentWriter::emitCallWithAllocatedArgs(void* func_addr, const llvm::ArrayRef<RewriterVar*> args,
                                                           const llvm::ArrayRef<RewriterVar*> additional_uses) {
-    RewriterVar* rtn = call(false, func_addr, args);
-    for (auto&& use : additional_uses) {
-        use->refUsed();
-    }
-    return rtn;
+    return call(false, func_addr, args, {}, additional_uses);
 }
 
 RewriterVar* JitFragmentWriter::emitCreateList(const llvm::ArrayRef<RewriterVar*> values) {
@@ -882,10 +878,9 @@ uint64_t JitFragmentWriter::asUInt(InternedString s) {
 }
 #endif
 
-std::pair<RewriterVar*, RewriterAction*> JitFragmentWriter::emitPPCall(void* func_addr,
-                                                                       llvm::ArrayRef<RewriterVar*> args, int num_slots,
-                                                                       int slot_size, AST* ast_node,
-                                                                       TypeRecorder* type_recorder) {
+std::pair<RewriterVar*, RewriterAction*>
+JitFragmentWriter::emitPPCall(void* func_addr, llvm::ArrayRef<RewriterVar*> args, unsigned short num_slots,
+                              unsigned short slot_size, AST* ast_node, TypeRecorder* type_recorder) {
     if (LOG_BJIT_ASSEMBLY)
         comment("BJIT: emitPPCall() start");
     RewriterVar::SmallVector args_vec(args.begin(), args.end());
@@ -896,10 +891,11 @@ std::pair<RewriterVar*, RewriterAction*> JitFragmentWriter::emitPPCall(void* fun
     RewriterVar** _args = (RewriterVar**)regionAlloc(sizeof(RewriterVar*) * args_size);
     memcpy(_args, args.begin(), sizeof(RewriterVar*) * args_size);
 
-    RewriterAction* call_action = addAction([=]() {
-        this->_emitPPCall(result, func_addr, llvm::ArrayRef<RewriterVar*>(_args, args_size), num_slots, slot_size,
-                          ast_node);
-    }, args, ActionType::NORMAL);
+    RewriterAction* call_action
+        = addAction([this, result, func_addr, ast_node, _args, args_size, num_slots, slot_size]() {
+            this->_emitPPCall(result, func_addr, llvm::ArrayRef<RewriterVar*>(_args, args_size), num_slots, slot_size,
+                              ast_node);
+        }, args, ActionType::NORMAL);
 
     if (type_recorder) {
         RewriterVar* type_recorder_var = imm(type_recorder);

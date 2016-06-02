@@ -339,7 +339,7 @@ public:
 
 class RewriterAction {
 public:
-    SmallFunction<56> action;
+    SmallFunction<48> action;
     std::vector<RewriterVar*> consumed_refs;
     std::vector<RewriterVar*> additional_uses;
 
@@ -613,7 +613,7 @@ public:
     // inline cache.  (Extra allocations don't count even though they're potentially visible if you look
     // hard enough.)
     RewriterVar* call(bool has_side_effects, void* func_addr, llvm::ArrayRef<RewriterVar*> args = {},
-                      llvm::ArrayRef<RewriterVar*> args_xmm = {});
+                      llvm::ArrayRef<RewriterVar*> args_xmm = {}, llvm::ArrayRef<RewriterVar*> additional_uses = {});
     template <typename... Args>
     RewriterVar* call(bool has_side_effects, void* func_addr, RewriterVar* arg1, Args... args) {
         return call(has_side_effects, func_addr, llvm::ArrayRef<RewriterVar*>({ arg1, args... }), {});
