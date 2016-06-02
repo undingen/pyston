@@ -339,7 +339,7 @@ public:
 class RewriterAction {
 public:
     SmallFunction<48> action;
-    std::forward_list<RewriterVar*> consumed_refs;
+    std::vector<RewriterVar*> consumed_refs;
 
 
     template <typename F> RewriterAction(F&& action) : action(std::forward<F>(action)) {}
