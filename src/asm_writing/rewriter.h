@@ -16,6 +16,7 @@
 #define PYSTON_ASMWRITING_REWRITER_H
 
 #include <deque>
+#include <forward_list>
 #include <list>
 #include <map>
 #include <memory>
@@ -340,8 +341,9 @@ public:
 class RewriterAction {
 public:
     SmallFunction<48> action;
-    std::vector<RewriterVar*> consumed_refs;
-    std::vector<RewriterVar*> additional_uses;
+    std::forward_list<RewriterVar*> consumed_refs;
+    std::forward_list<RewriterVar*> additional_uses;
+
 
     template <typename F> RewriterAction(F&& action) : action(std::forward<F>(action)) {}
 

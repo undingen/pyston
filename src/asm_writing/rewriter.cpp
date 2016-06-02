@@ -1310,12 +1310,12 @@ void RewriterVar::refConsumed(RewriterAction* action) {
     last_refconsumed_numuses = uses.size();
     if (!action)
         action = rewriter->getLastAction();
-    action->consumed_refs.emplace_back(this);
+    action->consumed_refs.push_front(this);
 }
 
 void RewriterVar::refUsed() {
     uses.push_back(rewriter->actions.size() - 1);
-    rewriter->getLastAction()->additional_uses.push_back(this);
+    rewriter->getLastAction()->additional_uses.push_front(this);
 }
 
 bool RewriterVar::needsDecref() {
