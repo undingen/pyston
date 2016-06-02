@@ -382,8 +382,8 @@ RewriterVar* JitFragmentWriter::emitGetBlockLocal(InternedString s, int vreg) {
 void JitFragmentWriter::emitKillTemporary(InternedString s, int vreg) {
     if (!local_syms.count(s))
         emitSetLocal(s, vreg, false, imm(nullptr));
-    else
-        local_syms[s]->refUsed();
+    // else
+    //    local_syms[s]->refUsed();
 }
 
 RewriterVar* JitFragmentWriter::emitGetBoxedLocal(BoxedString* s) {
@@ -544,11 +544,9 @@ RewriterVar* JitFragmentWriter::emitYield(RewriterVar* v) {
     }
     auto&& args = allocArgs(local_args, RewriterVar::SetattrType::REF_USED);
     RewriterVar* generator = interp->getAttr(ASTInterpreterJitInterface::getGeneratorOffset());
-    auto rtn = call(false, (void*)yield, generator, v, args, imm(local_args.size()))->setType(RefType::OWNED);
+    auto rtn = call(false, (void*)yield, { generator, v, args, imm(local_args.size()) }, {}, local_args)
+                   ->setType(RefType::OWNED);
     v->refConsumed();
-    for (auto&& var : local_args) {
-        var->refUsed();
-    }
     return rtn;
 }
 
