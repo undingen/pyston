@@ -936,6 +936,13 @@ RewriterVar* Rewriter::call(bool has_side_effects, void* func_addr, llvm::ArrayR
 
     int num_total_args = args.size() + args_xmm.size() + additional_uses.size();
     RewriterVar** args_array = (RewriterVar**)this->regionAlloc(sizeof(RewriterVar*) * num_total_args);
+    RewriterVar** insert_point = args_array;
+    for (auto&& array : { args, args_xmm, additional_uses }) {
+        if (!array.empty()) {
+            memcpy(insert_point, array.data(), array.size() * sizeof(RewriterVar*));
+            insert_point += array.size();
+        }
+    }
 
     // Hack: explicitly order the closure arguments so they pad nicer
     struct LambdaClosure {
@@ -958,19 +965,21 @@ RewriterVar* Rewriter::call(bool has_side_effects, void* func_addr, llvm::ArrayR
         llvm::MutableArrayRef<RewriterVar*> argsXmm() const { return allArgs().slice(num_args, num_args_xmm); }
 
         llvm::MutableArrayRef<RewriterVar*> additionalUses() const {
-            return allArgs().slice(num_args + num_args_xmm, num_additional_uses);
+            return allArgs().slice((int)num_args + (int)num_args_xmm, num_additional_uses);
         }
 
         LambdaClosure(RewriterVar** args_array, llvm::ArrayRef<RewriterVar*> _args,
                       llvm::ArrayRef<RewriterVar*> _args_xmm, llvm::ArrayRef<RewriterVar*> _addition_uses,
                       bool has_side_effects, bool can_throw)
-            : args_array(args_array), has_side_effects(has_side_effects), can_throw(can_throw) {
-            num_args = _args.size();
-            num_args_xmm = _args_xmm.size();
-            num_additional_uses = _addition_uses.size();
-            std::copy(_args.begin(), _args.end(), args().begin());
-            std::copy(_args_xmm.begin(), _args_xmm.end(), argsXmm().begin());
-            std::copy(_addition_uses.begin(), _addition_uses.end(), additionalUses().begin());
+            : args_array(args_array),
+              has_side_effects(has_side_effects),
+              can_throw(can_throw),
+              num_args(_args.size()),
+              num_args_xmm(_args_xmm.size()),
+              num_additional_uses(_addition_uses.size()) {
+            assert(_args.size() < 1 << 16);
+            assert(_args_xmm.size() < 1 << 16);
+            assert(_addition_uses.size() < 1 << 16);
         }
 
     } lambda_closure(args_array, args, args_xmm, additional_uses, has_side_effects, can_throw);

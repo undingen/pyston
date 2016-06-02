@@ -367,7 +367,7 @@ private:
 
 protected:
     // Allocates `bytes` bytes of data.  The allocation will get freed when the rewriter gets freed.
-    void* regionAlloc(size_t bytes) { return allocator.Allocate(bytes, 16 /* alignment */); }
+    void* regionAlloc(size_t bytes) { return allocator.Allocate(bytes, 8 /* alignment */); }
 
     // Helps generating the best code for loading a const integer value.
     // By keeping track of the last known value of every register and reusing it.
