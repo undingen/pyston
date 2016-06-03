@@ -525,6 +525,8 @@ RewriterVar* JitFragmentWriter::emitYield(RewriterVar* v) {
     llvm::SmallVector<RewriterVar*, 8> local_args;
     local_args.push_back(interp->getAttr(ASTInterpreterJitInterface::getCreatedClosureOffset()));
     for (auto&& sym : local_syms) {
+        if (sym.second == v)
+            continue;
         if (sym.second->reftype == RefType::OWNED)
             local_args.push_back(sym.second);
     }
