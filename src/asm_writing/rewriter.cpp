@@ -933,16 +933,7 @@ RewriterVar* Rewriter::call(bool has_side_effects, void* func_addr, llvm::ArrayR
 
     // TODO: we don't need to generate the decref info for calls which can't throw
     bool can_throw = true;
-
-    int num_total_args = args.size() + args_xmm.size() + additional_uses.size();
-    RewriterVar** args_array = (RewriterVar**)this->regionAlloc(sizeof(RewriterVar*) * num_total_args);
-    RewriterVar** insert_point = args_array;
-    for (auto&& array : { args, args_xmm, additional_uses }) {
-        if (!array.empty()) {
-            memcpy(insert_point, array.data(), array.size() * sizeof(RewriterVar*));
-            insert_point += array.size();
-        }
-    }
+    auto args_array_ref = regionAllocArgs(args, args_xmm, additional_uses);
 
     // Hack: explicitly order the closure arguments so they pad nicer
     struct LambdaClosure {
@@ -956,22 +947,22 @@ RewriterVar* Rewriter::call(bool has_side_effects, void* func_addr, llvm::ArrayR
             unsigned int num_additional_uses : 16;
         };
 
-        llvm::MutableArrayRef<RewriterVar*> allArgs() const {
-            return llvm::MutableArrayRef<RewriterVar*>(args_array, num_args + num_args_xmm + num_additional_uses);
+        llvm::ArrayRef<RewriterVar*> allArgs() const {
+            return llvm::makeArrayRef(args_array, num_args + num_args_xmm + num_additional_uses);
         }
 
-        llvm::MutableArrayRef<RewriterVar*> args() const { return allArgs().slice(0, num_args); }
+        llvm::ArrayRef<RewriterVar*> args() const { return allArgs().slice(0, num_args); }
 
-        llvm::MutableArrayRef<RewriterVar*> argsXmm() const { return allArgs().slice(num_args, num_args_xmm); }
+        llvm::ArrayRef<RewriterVar*> argsXmm() const { return allArgs().slice(num_args, num_args_xmm); }
 
-        llvm::MutableArrayRef<RewriterVar*> additionalUses() const {
+        llvm::ArrayRef<RewriterVar*> additionalUses() const {
             return allArgs().slice((int)num_args + (int)num_args_xmm, num_additional_uses);
         }
 
-        LambdaClosure(RewriterVar** args_array, llvm::ArrayRef<RewriterVar*> _args,
+        LambdaClosure(llvm::MutableArrayRef<RewriterVar*> args_array_ref, llvm::ArrayRef<RewriterVar*> _args,
                       llvm::ArrayRef<RewriterVar*> _args_xmm, llvm::ArrayRef<RewriterVar*> _addition_uses,
                       bool has_side_effects, bool can_throw)
-            : args_array(args_array),
+            : args_array(args_array_ref.data()),
               has_side_effects(has_side_effects),
               can_throw(can_throw),
               num_args(_args.size()),
@@ -982,7 +973,7 @@ RewriterVar* Rewriter::call(bool has_side_effects, void* func_addr, llvm::ArrayR
             assert(_addition_uses.size() < 1 << 16);
         }
 
-    } lambda_closure(args_array, args, args_xmm, additional_uses, has_side_effects, can_throw);
+    } lambda_closure(args_array_ref, args, args_xmm, additional_uses, has_side_effects, can_throw);
     assert(lambda_closure.args().size() == args.size());
     assert(lambda_closure.argsXmm().size() == args_xmm.size());
     assert(lambda_closure.additionalUses().size() == additional_uses.size());
