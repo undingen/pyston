@@ -1167,14 +1167,12 @@ void JitFragmentWriter::_emitSideExit(STOLEN(RewriterVar*) var, RewriterVar* val
     // Really, we should probably do a decref on either side post-jump.
     // But the automatic refcounter doesn't support that, and since the value is either True or False,
     // we can get away with doing the decref early.
-    // TODO: better solution is to just make NONZERO return a borrowed ref, so we don't have to decref at all.
     if (var->reftype == RefType::OWNED) {
         _decref(var);
         // Hax: override the automatic refcount system
-        assert(var->reftype == RefType::OWNED);
-        assert(var->num_refs_consumed == 0);
         var->reftype = RefType::BORROWED;
     }
+    assert(var->num_refs_consumed == 0);
 
     assembler::Register var_reg = var->getInReg();
     if (isLargeConstant(val)) {
