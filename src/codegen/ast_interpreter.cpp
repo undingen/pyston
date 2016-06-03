@@ -255,7 +255,7 @@ ASTInterpreter::ASTInterpreter(FunctionMetadata* md, Box** vregs, int num_vregs,
 
     frame_info.vregs = vregs;
     frame_info.md = md;
-    frame_info.num_vregs = 0;
+    frame_info.num_vregs = source_info->cfg->num_vregs_cross_block;
 
     assert(scope_info);
 }
@@ -333,7 +333,6 @@ void ASTInterpreter::finishJITing(CFGBlock* continue_block) {
 Box* ASTInterpreter::execJITedBlock(CFGBlock* b) {
     try {
         UNAVOIDABLE_STAT_TIMER(t0, "us_timer_in_baseline_jitted_code");
-        frame_info.num_vregs = std::max(frame_info.num_vregs, b->cfg->num_vregs_cross_block);
         std::pair<CFGBlock*, Box*> rtn = b->entry_code(this, b, vregs);
         next_block = rtn.first;
         return rtn.second;
@@ -369,7 +368,7 @@ Box* ASTInterpreter::executeInner(ASTInterpreter& interpreter, CFGBlock* start_b
     threading::allowGLReadPreemption();
     interpreter.setCurrentStatement(NULL);
 
-    if (!from_start) {
+    if (unlikely(!from_start)) {
         interpreter.current_block = start_block;
         bool started = false;
         for (auto s : start_block->body) {
