@@ -1208,7 +1208,7 @@ std::vector<Location> Rewriter::getDecrefLocations() {
                     RELEASE_ASSERT(0, "not implemented");
             }
             if (!found_location) {
-                assert(0);
+                // this is very rare. just fail the rewrite for now
                 failed = true;
             }
         }
