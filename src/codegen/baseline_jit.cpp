@@ -522,7 +522,7 @@ std::vector<RewriterVar*> JitFragmentWriter::emitUnpackIntoArray(RewriterVar* v,
 }
 
 RewriterVar* JitFragmentWriter::emitYield(RewriterVar* v) {
-    llvm::SmallVector<RewriterVar*, 8> local_args;
+    llvm::SmallVector<RewriterVar*, 16> local_args;
     local_args.push_back(interp->getAttr(ASTInterpreterJitInterface::getCreatedClosureOffset()));
     for (auto&& sym : local_syms) {
         if (sym.second == v)
@@ -530,6 +530,10 @@ RewriterVar* JitFragmentWriter::emitYield(RewriterVar* v) {
         if (sym.second->reftype == RefType::OWNED)
             local_args.push_back(sym.second);
     }
+    // erase duplicate entries
+    std::sort(local_args.begin(), local_args.end());
+    local_args.erase(std::unique(local_args.begin(), local_args.end()), local_args.end());
+
     auto&& args = allocArgs(local_args, RewriterVar::SetattrType::REF_USED);
     RewriterVar* generator = interp->getAttr(ASTInterpreterJitInterface::getGeneratorOffset());
     auto rtn = call(false, (void*)yield, { generator, v, args, imm(local_args.size()) }, {}, local_args)
