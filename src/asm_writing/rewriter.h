@@ -368,6 +368,9 @@ private:
 protected:
     // Allocates `bytes` bytes of data.  The allocation will get freed when the rewriter gets freed.
     void* regionAlloc(size_t bytes, int alignment = 16) { return allocator.Allocate(bytes, alignment); }
+    template <typename T> llvm::MutableArrayRef<T> regionAlloc(size_t num_elements) {
+        return llvm::MutableArrayRef<T>(allocator.Allocate<T>(num_elements), num_elements);
+    }
 
     // This takes a variable number of llvm::ArrayRef<RewriterVar*> and copies in all elements into a single contiguous
     // memory location.
@@ -380,16 +383,16 @@ protected:
         if (num_total_args == 0)
             return llvm::MutableArrayRef<RewriterVar*>();
 
-        RewriterVar** args_array
-            = (RewriterVar**)this->regionAlloc(sizeof(RewriterVar*) * num_total_args, 8 /* alignment */);
-        RewriterVar** insert_point = args_array;
+        auto args_array_ref = regionAlloc<RewriterVar*>(num_total_args);
+        auto insert_point = args_array_ref;
         for (auto&& array : { arg1, args... }) {
             if (!array.empty()) {
-                memcpy(insert_point, array.data(), array.size() * sizeof(RewriterVar*));
-                insert_point += array.size();
+                memcpy(insert_point.data(), array.data(), array.size() * sizeof(RewriterVar*));
+                insert_point = insert_point.slice(array.size());
             }
         }
-        return llvm::MutableArrayRef<RewriterVar*>(args_array, num_total_args);
+        assert(insert_point.size() == 0);
+        return args_array_ref;
     }
 
     // Helps generating the best code for loading a const integer value.
