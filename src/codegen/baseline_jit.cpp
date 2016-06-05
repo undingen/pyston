@@ -577,7 +577,14 @@ void JitFragmentWriter::emitJump(CFGBlock* b) {
     if (LOG_BJIT_ASSEMBLY)
         comment("BJIT: emitJump() start");
 
-    RewriterVar* next = imm(b);
+    int block_index = 1;
+    for (auto bb : b->cfg->blocks) {
+        if (b == bb)
+            break;
+        ++block_index;
+    }
+
+    RewriterVar* next = imm(block_index);
     addAction([=]() { _emitJump(b, next, exit_info); }, { next }, ActionType::NORMAL);
     if (LOG_BJIT_ASSEMBLY)
         comment("BJIT: emitJump() end");
@@ -704,7 +711,15 @@ void JitFragmentWriter::emitSideExit(STOLEN(RewriterVar*) v, Box* cmp_value, CFG
     if (LOG_BJIT_ASSEMBLY)
         comment("BJIT: emitSideExit start");
     RewriterVar* var = imm(cmp_value);
-    RewriterVar* next_block_var = imm(next_block);
+
+    int next_block_index = 1;
+    for (auto bb : next_block->cfg->blocks) {
+        if (next_block == bb)
+            break;
+        ++next_block_index;
+    }
+
+    RewriterVar* next_block_var = imm(next_block_index);
 
     llvm::SmallVector<RewriterVar*, 16> vars;
     vars.push_back(v);

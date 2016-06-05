@@ -50,7 +50,7 @@ public:
     // contains address to the start of the code of this basic block
     void* code;
     // contains the address of the entry function
-    std::pair<CFGBlock*, Box*>(*entry_code)(void* interpeter, CFGBlock* block, Box** vregs);
+    std::pair<long, Box*>(*entry_code)(void* interpeter, CFGBlock* block, Box** vregs);
 
     llvm::SmallVector<AST_stmt*, 4> body;
     llvm::SmallVector<CFGBlock*, 2> predecessors, successors;
