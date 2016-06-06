@@ -169,6 +169,7 @@ private:
     // this contains all the decref infos the bjit generated inside the memory block,
     // this allows us to deregister them when we release the code
     std::vector<DecrefInfo> decref_infos;
+    std::unordered_map<int, std::unordered_set<int>> block_defined_vars;
 
 public:
     JitCodeBlock(llvm::StringRef name);
@@ -176,7 +177,8 @@ public:
     std::unique_ptr<JitFragmentWriter> newFragment(CFGBlock* block, int patch_jump_offset = 0);
     bool shouldCreateNewBlock() const { return asm_failed || a.bytesLeft() < 128; }
     void fragmentAbort(bool not_enough_space);
-    void fragmentFinished(int bytes_witten, int num_bytes_overlapping, void* next_fragment_start, ICInfo& ic_info);
+    void fragmentFinished(int bytes_witten, int num_bytes_overlapping, void* next_fragment_start, ICInfo& ic_inf,
+                          std::unordered_set<int> defined_vregs, CFGBlock* block);
 };
 
 class JitFragmentWriter : public Rewriter {
@@ -207,7 +209,7 @@ private:
     RewriterVar* interp;
     RewriterVar* vregs_array;
     llvm::DenseMap<InternedString, RewriterVar*> local_syms;
-    llvm::DenseSet<int> defined_vregs;
+    std::unordered_set<int> defined_vregs;
     std::unique_ptr<ICInfo> ic_info;
 
     // Optional points to a CFGBlock and a patch location which should get patched to a direct jump if
@@ -230,7 +232,8 @@ private:
 
 public:
     JitFragmentWriter(CFGBlock* block, std::unique_ptr<ICInfo> ic_info, std::unique_ptr<ICSlotRewrite> rewrite,
-                      int code_offset, int num_bytes_overlapping, void* entry_code, JitCodeBlock& code_block);
+                      int code_offset, int num_bytes_overlapping, void* entry_code, JitCodeBlock& code_block,
+                      std::unordered_set<int> defined_vregs);
 
     RewriterVar* getInterp();
     RewriterVar* imm(uint64_t val);

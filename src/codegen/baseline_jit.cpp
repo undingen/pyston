@@ -131,9 +131,21 @@ std::unique_ptr<JitFragmentWriter> JitCodeBlock::newFragment(CFGBlock* block, in
                                                llvm::CallingConv::C, live_outs, assembler::RAX, 0,
                                                std::vector<Location>()));
     std::unique_ptr<ICSlotRewrite> rewrite(new ICSlotRewrite(ic_info.get(), ""));
+    std::unordered_set<int> defined;
 
-    return std::unique_ptr<JitFragmentWriter>(new JitFragmentWriter(
-        block, std::move(ic_info), std::move(rewrite), fragment_offset, patch_jump_offset, a.getStartAddr(), *this));
+    if (block->predecessors.size()) {
+        defined = block_defined_vars[block->predecessors[0]->idx];
+        for (auto&& b : llvm::makeArrayRef(block->predecessors).slice(1)) {
+            std::unordered_set<int> set_union;
+            std::set_intersection(defined.begin(), defined.end(), block_defined_vars[b->idx].begin(),
+                                  block_defined_vars[b->idx].end(), std::inserter(set_union, set_union.begin()));
+            defined = set_union;
+        }
+    }
+
+    return std::unique_ptr<JitFragmentWriter>(new JitFragmentWriter(block, std::move(ic_info), std::move(rewrite),
+                                                                    fragment_offset, patch_jump_offset,
+                                                                    a.getStartAddr(), *this, defined));
 }
 
 void JitCodeBlock::fragmentAbort(bool not_enough_space) {
@@ -142,12 +154,13 @@ void JitCodeBlock::fragmentAbort(bool not_enough_space) {
 }
 
 void JitCodeBlock::fragmentFinished(int bytes_written, int num_bytes_overlapping, void* next_fragment_start,
-                                    ICInfo& ic_info) {
+                                    ICInfo& ic_info, std::unordered_set<int> defined_vregs, CFGBlock* block) {
     assert(next_fragment_start == bytes_written + a.curInstPointer() - num_bytes_overlapping);
     a.setCurInstPointer((uint8_t*)next_fragment_start);
 
     asm_failed = false;
     is_currently_writing = false;
+    block_defined_vars[block->idx] = defined_vregs;
 
     ic_info.appendDecrefInfosTo(decref_infos);
 }
@@ -161,7 +174,7 @@ static const assembler::Register bjit_allocatable_regs[]
 
 JitFragmentWriter::JitFragmentWriter(CFGBlock* block, std::unique_ptr<ICInfo> ic_info,
                                      std::unique_ptr<ICSlotRewrite> rewrite, int code_offset, int num_bytes_overlapping,
-                                     void* entry_code, JitCodeBlock& code_block)
+                                     void* entry_code, JitCodeBlock& code_block, std::unordered_set<int> defined_vregs)
     : Rewriter(std::move(rewrite), 0, {}, /* needs_invalidation_support = */ false),
       block(block),
       code_offset(code_offset),
@@ -170,6 +183,7 @@ JitFragmentWriter::JitFragmentWriter(CFGBlock* block, std::unique_ptr<ICInfo> ic
       entry_code(entry_code),
       code_block(code_block),
       interp(0),
+      defined_vregs(defined_vregs),
       ic_info(std::move(ic_info)) {
     allocatable_regs = bjit_allocatable_regs;
 
@@ -419,7 +433,8 @@ RewriterVar* JitFragmentWriter::emitGetLocal(InternedString s, int vreg) {
         val_var->setType(RefType::OWNED);
         defined_vregs.insert(vreg);
     } else {
-        val_var->setType(RefType::BORROWED);
+        val_var->setType(RefType::OWNED);
+        val_var->incref();
     }
     if (LOG_BJIT_ASSEMBLY)
         comment("BJIT: emitGetLocal end");
@@ -849,7 +864,8 @@ int JitFragmentWriter::finishCompilation() {
         ASSERT(assembler->curInstPointer() == (uint8_t*)exit_info.exit_start + exit_info.num_bytes,
                "Error! wrote more bytes out after the 'retq' that we thought was going to be the end of the assembly.  "
                "We will end up overwriting those instructions.");
-    code_block.fragmentFinished(assembler->bytesWritten(), num_bytes_overlapping, next_fragment_start, *ic_info);
+    code_block.fragmentFinished(assembler->bytesWritten(), num_bytes_overlapping, next_fragment_start, *ic_info,
+                                defined_vregs, block);
 
 #if MOVING_GC
     // If JitFragmentWriter is destroyed, we don't necessarily want the ICInfo to be destroyed also,
