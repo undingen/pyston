@@ -207,6 +207,7 @@ private:
     RewriterVar* interp;
     RewriterVar* vregs_array;
     llvm::DenseMap<InternedString, RewriterVar*> local_syms;
+    llvm::DenseSet<int> defined_vregs;
     std::unique_ptr<ICInfo> ic_info;
 
     // Optional points to a CFGBlock and a patch location which should get patched to a direct jump if

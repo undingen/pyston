@@ -360,8 +360,14 @@ RewriterVar* JitFragmentWriter::emitGetBlockLocal(InternedString s, int vreg) {
     auto it = local_syms.find(s);
     if (it == local_syms.end()) {
         auto r = emitGetLocal(s, vreg);
-        assert(r->reftype == RefType::OWNED);
-        emitSetBlockLocal(s, vreg, r);
+        if (r->reftype == RefType::OWNED) {
+            assert(r->reftype == RefType::OWNED);
+            emitSetBlockLocal(s, vreg, r);
+        } else {
+            vregs_array->setAttr(vreg * 8, imm(0ul));
+            r->reftype = RefType::OWNED;
+        }
+
         return r;
     }
     return it->second;
@@ -406,8 +412,15 @@ RewriterVar* JitFragmentWriter::emitGetLocal(InternedString s, int vreg) {
     assert(vreg >= 0);
     // TODO Can we use BORROWED here? Not sure if there are cases when we can't rely on borrowing the ref
     // from the vregs array.  Safer like this.
-    RewriterVar* val_var = vregs_array->getAttr(vreg * 8)->setType(RefType::OWNED);
-    addAction([=]() { _emitGetLocal(val_var, s.c_str()); }, { val_var }, ActionType::NORMAL);
+    RewriterVar* val_var = vregs_array->getAttr(vreg * 8);
+    if (defined_vregs.count(vreg) == 0) {
+        addAction([=]() { _emitGetLocal(val_var, s.c_str()); }, { val_var }, ActionType::NORMAL);
+        // val_var->setType(RefType::OWNED);
+        val_var->setType(RefType::OWNED);
+        defined_vregs.insert(vreg);
+    } else {
+        val_var->setType(RefType::BORROWED);
+    }
     if (LOG_BJIT_ASSEMBLY)
         comment("BJIT: emitGetLocal end");
     return val_var;
@@ -698,10 +711,14 @@ void JitFragmentWriter::emitSetLocal(InternedString s, int vreg, bool set_closur
         // The issue is that definedness analysis is somewhat expensive to compute, so we don't compute it
         // for the bjit.  We could try calculating it (which would require some re-plumbing), which might help
         // but I suspect is not that big a deal as long as the llvm jit implements this kind of optimization.
-        bool prev_nullable = true;
+        bool prev_nullable = defined_vregs.count(vreg) == 0;
 
         assert(vreg < block->cfg->num_vregs_cross_block);
         vregs_array->replaceAttr(8 * vreg, v, prev_nullable);
+        if (v->isContantNull())
+            defined_vregs.erase(vreg);
+        else
+            defined_vregs.insert(vreg);
     }
     if (LOG_BJIT_ASSEMBLY)
         comment("BJIT: emitSetLocal() end");
