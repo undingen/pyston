@@ -134,13 +134,20 @@ std::unique_ptr<JitFragmentWriter> JitCodeBlock::newFragment(CFGBlock* block, in
     std::unordered_set<int> defined;
 
     if (block->predecessors.size()) {
-        defined = block_defined_vars[block->predecessors[0]->idx];
-        for (auto&& b : llvm::makeArrayRef(block->predecessors).slice(1)) {
-            std::unordered_set<int> set_union;
-            std::set_intersection(defined.begin(), defined.end(), block_defined_vars[b->idx].begin(),
-                                  block_defined_vars[b->idx].end(), std::inserter(set_union, set_union.begin()));
-            defined = set_union;
-        }
+        if (block->predecessors.size() > 1) {
+            std::unordered_map<int, int> m;
+
+            for (auto&& b : block->predecessors) {
+                for (auto&& vreg : block_defined_vars[b->idx]) {
+                    ++m[vreg];
+                }
+            }
+            for (auto&& vreg : m) {
+                if (vreg.second == block->predecessors.size())
+                    defined.insert(vreg.first);
+            }
+        } else
+            defined = block_defined_vars[block->predecessors[0]->idx];
     }
 
     return std::unique_ptr<JitFragmentWriter>(new JitFragmentWriter(block, std::move(ic_info), std::move(rewrite),
