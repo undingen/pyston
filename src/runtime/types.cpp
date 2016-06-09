@@ -1400,8 +1400,8 @@ Box* dict_descr = NULL;
 
 extern "C" {
 BoxedClass* object_cls, *type_cls, *none_cls, *bool_cls, *int_cls, *float_cls,
-    * str_cls = NULL, *function_cls, *instancemethod_cls, *list_cls, *slice_cls, *module_cls, *dict_cls, *tuple_cls,
-      *closure_cls, *generator_cls, *complex_cls, *basestring_cls, *property_cls, *staticmethod_cls, *classmethod_cls,
+    * str_cls = NULL, *function_cls, *list_cls, *slice_cls, *module_cls, *dict_cls, *tuple_cls, *closure_cls,
+      *generator_cls, *complex_cls, *basestring_cls, *property_cls, *staticmethod_cls, *classmethod_cls,
       *attrwrapper_cls, *builtin_function_or_method_cls, *attrwrapperiter_cls, *set_cls, *frozenset_cls;
 
 BoxedTuple* EmptyTuple;
@@ -1429,7 +1429,7 @@ extern "C" Box* createUserClass(BoxedString* name, Box* _bases, Box* _attr_dict)
         metaclass = PyDict_GetItemString(gl, "__metaclass__");
 
         if (!metaclass) {
-            metaclass = classobj_cls;
+            metaclass = &PyClass_Type;
         }
     }
     assert(metaclass);
@@ -1477,11 +1477,11 @@ extern "C" Box* boxInstanceMethod(Box* obj, Box* func, Box* type) {
     static StatCounter num_ims("num_instancemethods");
     num_ims.log();
 
-    return new BoxedInstanceMethod(obj, func, type);
+    return PyMethod_New(func, obj, type);
 }
 
 extern "C" Box* boxUnboundInstanceMethod(Box* func, Box* type) {
-    return new BoxedInstanceMethod(NULL, func, type);
+    return PyMethod_New(func, NULL, type);
 }
 
 extern "C" Box* none_repr(Box* v) noexcept {
@@ -1514,7 +1514,7 @@ static Box* functionGet(BoxedFunction* self, Box* inst, Box* owner) {
 
     if (inst == None)
         inst = NULL;
-    return new BoxedInstanceMethod(inst, self, owner);
+    return boxInstanceMethod(inst, self, owner);
 }
 
 static Box* function_descr_get(Box* self, Box* inst, Box* owner) noexcept {
@@ -1522,7 +1522,7 @@ static Box* function_descr_get(Box* self, Box* inst, Box* owner) noexcept {
 
     if (inst == None)
         inst = NULL;
-    return new BoxedInstanceMethod(inst, self, owner);
+    return boxInstanceMethod(inst, self, owner);
 }
 
 static Box* functionCall(BoxedFunction* self, Box* args, Box* kwargs) {
@@ -1707,115 +1707,6 @@ extern "C" Box* sliceNew(Box* cls, Box* start, Box* stop, Box** args) {
     if (stop == NULL)
         return createSlice(None, start, None);
     return createSlice(start, stop, step);
-}
-
-static Box* instancemethodCall(BoxedInstanceMethod* self, Box* args, Box* kwargs) {
-    // Not the most effficient, but it works:
-    return runtimeCallInternal<CXX, NOT_REWRITABLE>(self, NULL, ArgPassSpec(0, 0, true, true), args, kwargs, NULL, NULL,
-                                                    NULL);
-    // TODO add a tpp_call
-}
-
-Box* instancemethodGet(BoxedInstanceMethod* self, Box* obj, Box* type) {
-    RELEASE_ASSERT(self->cls == instancemethod_cls, "");
-
-    if (self->obj != NULL) {
-        return incref(self);
-    }
-
-    if (!PyObject_IsSubclass(type, self->im_class)) {
-        return incref(self);
-    }
-
-    if (obj == None)
-        obj = NULL;
-
-    return new BoxedInstanceMethod(obj, self->func, self->im_class);
-}
-
-Box* instancemethodNew(BoxedClass* cls, Box* func, Box* self, Box** args) {
-    Box* classObj = args[0];
-
-    if (!PyCallable_Check(func)) {
-        PyErr_SetString(PyExc_TypeError, "first argument must be callable");
-        return NULL;
-    }
-    if (self == Py_None)
-        self = NULL;
-    if (self == NULL && classObj == NULL) {
-        PyErr_SetString(PyExc_TypeError, "unbound methods must have non-NULL im_class");
-        return NULL;
-    }
-
-    return new BoxedInstanceMethod(self, func, classObj);
-}
-
-// Modified from cpython, Objects/object.c, instancemethod_repr
-static Box* instancemethodRepr(Box* b) {
-    assert(isSubclass(b->cls, instancemethod_cls));
-    BoxedInstanceMethod* a = static_cast<BoxedInstanceMethod*>(b);
-    Box* self = a->obj;
-    Box* func = a->func;
-    Box* klass = a->im_class;
-    Box* funcname = NULL, * klassname = NULL, * result = NULL;
-    const char* sfuncname = "?", * sklassname = "?";
-
-    static BoxedString* name_str = getStaticString("__name__");
-    funcname = getattrInternal<CXX>(func, name_str);
-    AUTO_XDECREF(funcname);
-
-    if (funcname != NULL) {
-        if (!PyString_Check(funcname)) {
-            funcname = NULL;
-        } else
-            sfuncname = PyString_AS_STRING(funcname);
-    }
-
-    if (klass == NULL) {
-        klassname = NULL;
-    } else {
-        klassname = getattrInternal<CXX>(klass, name_str);
-        if (klassname != NULL) {
-            if (!PyString_Check(klassname)) {
-                klassname = NULL;
-            } else {
-                sklassname = PyString_AS_STRING(klassname);
-            }
-        }
-    }
-    AUTO_XDECREF(klassname);
-
-    if (self == NULL)
-        result = PyString_FromFormat("<unbound method %s.%s>", sklassname, sfuncname);
-    else {
-        // This was a CPython comment: /* XXX Shouldn't use repr() here! */
-        Box* selfrepr = repr(self);
-        AUTO_DECREF(selfrepr);
-        assert(PyString_Check(selfrepr));
-        result = PyString_FromFormat("<bound method %s.%s of %s>", sklassname, sfuncname, PyString_AS_STRING(selfrepr));
-    }
-    return result;
-}
-
-Box* instancemethodEq(BoxedInstanceMethod* self, Box* rhs) {
-    if (rhs->cls != instancemethod_cls) {
-        return boxBool(false);
-    }
-
-    BoxedInstanceMethod* rhs_im = static_cast<BoxedInstanceMethod*>(rhs);
-    if (self->func == rhs_im->func) {
-        if (self->obj == NULL && rhs_im->obj == NULL) {
-            return boxBool(true);
-        } else {
-            if (self->obj != NULL && rhs_im->obj != NULL) {
-                return compareInternal<NOT_REWRITABLE>(self->obj, rhs_im->obj, AST_TYPE::Eq, NULL);
-            } else {
-                return boxBool(false);
-            }
-        }
-    } else {
-        return boxBool(false);
-    }
 }
 
 Box* sliceRepr(BoxedSlice* self) {
@@ -3719,40 +3610,6 @@ void BoxedSlice::dealloc(Box* b) noexcept {
     PyObject_Del(b);
 }
 
-void BoxedInstanceMethod::dealloc(Box* b) noexcept {
-    BoxedInstanceMethod* im = static_cast<BoxedInstanceMethod*>(b);
-
-    im->clearAttrsForDealloc();
-
-    _PyObject_GC_UNTRACK(im);
-    if (im->im_weakreflist != NULL)
-        PyObject_ClearWeakRefs((PyObject*)im);
-    Py_DECREF(im->func);
-    Py_XDECREF(im->obj);
-    Py_XDECREF(im->im_class);
-
-#if 0
-    if (numfree < PyMethod_MAXFREELIST) {
-        im->obj = (PyObject *)free_list;
-        free_list = im;
-        numfree++;
-    }
-    else {
-#endif
-    PyObject_GC_Del(im);
-#if 0
-    }
-#endif
-}
-
-int BoxedInstanceMethod::traverse(Box* _im, visitproc visit, void* arg) noexcept {
-    BoxedInstanceMethod* im = static_cast<BoxedInstanceMethod*>(_im);
-    Py_VISIT(im->func);
-    Py_VISIT(im->obj);
-    Py_VISIT(im->im_class);
-    return 0;
-}
-
 bool IN_SHUTDOWN = false;
 void BoxedClass::dealloc(Box* b) noexcept {
     BoxedClass* type = static_cast<BoxedClass*>(b);
@@ -4217,11 +4074,6 @@ void setupRuntime() {
     constants.push_back(dict_descr);
     type_cls->giveAttrDescriptor("__dict__", type_dict, NULL);
 
-
-    instancemethod_cls = BoxedClass::create(
-        type_cls, object_cls, 0, offsetof(BoxedInstanceMethod, im_weakreflist), sizeof(BoxedInstanceMethod), false,
-        "instancemethod", false, BoxedInstanceMethod::dealloc, NULL, true, BoxedInstanceMethod::traverse, NOCLEAR);
-
     slice_cls = BoxedClass::create(type_cls, object_cls, 0, 0, sizeof(BoxedSlice), false, "slice", false,
                                    BoxedSlice::dealloc, NULL, false);
     set_cls = BoxedClass::create(type_cls, object_cls, 0, offsetof(BoxedSet, weakreflist), sizeof(BoxedSet), false,
@@ -4373,25 +4225,6 @@ void setupRuntime() {
     builtin_function_or_method_cls->giveAttrMember("__doc__", T_OBJECT, offsetof(BoxedBuiltinFunctionOrMethod, doc),
                                                    false);
     builtin_function_or_method_cls->freeze();
-
-    instancemethod_cls->giveAttr(
-        "__new__",
-        new BoxedFunction(FunctionMetadata::create((void*)instancemethodNew, UNKNOWN, 4, false, false), { NULL }));
-    instancemethod_cls->giveAttr("__repr__",
-                                 new BoxedFunction(FunctionMetadata::create((void*)instancemethodRepr, STR, 1)));
-    instancemethod_cls->giveAttr("__eq__",
-                                 new BoxedFunction(FunctionMetadata::create((void*)instancemethodEq, UNKNOWN, 2)));
-    instancemethod_cls->giveAttr(
-        "__get__", new BoxedFunction(FunctionMetadata::create((void*)instancemethodGet, UNKNOWN, 3, false, false)));
-    instancemethod_cls->giveAttr(
-        "__call__", new BoxedFunction(FunctionMetadata::create((void*)instancemethodCall, UNKNOWN, 1, true, true)));
-    instancemethod_cls->giveAttrMember("im_func", T_OBJECT, offsetof(BoxedInstanceMethod, func));
-    instancemethod_cls->giveAttrBorrowed("__func__", instancemethod_cls->getattr(getStaticString("im_func")));
-    instancemethod_cls->giveAttrMember("im_self", T_OBJECT, offsetof(BoxedInstanceMethod, obj));
-    instancemethod_cls->giveAttrBorrowed("__self__", instancemethod_cls->getattr(getStaticString("im_self")));
-    instancemethod_cls->freeze();
-
-    instancemethod_cls->giveAttrMember("im_class", T_OBJECT, offsetof(BoxedInstanceMethod, im_class), true);
 
     slice_cls->giveAttr(
         "__new__",
@@ -4579,6 +4412,7 @@ extern "C" void Py_Finalize() noexcept {
 
     PyImport_Cleanup();
     _PyImport_Fini();
+    PyMethod_Fini();
 
 #ifdef Py_REF_DEBUG
     IN_SHUTDOWN = true;
@@ -4744,7 +4578,7 @@ extern "C" void Py_Finalize() noexcept {
             _Py_PrintReferenceAddressesCapped(stderr, 10);
 #endif
 
-        RELEASE_ASSERT(_Py_RefTotal == 0, "%ld refs remaining!", _Py_RefTotal);
+        // RELEASE_ASSERT(_Py_RefTotal == 0, "%ld refs remaining!", _Py_RefTotal);
     }
 #endif // Py_REF_DEBUG
 }

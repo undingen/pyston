@@ -442,7 +442,7 @@ class_traverse(PyClassObject *o, visitproc visit, void *arg)
 }
 
 PyTypeObject PyClass_Type = {
-    PyObject_HEAD_INIT(&PyType_Type)
+    PyObject_HEAD_INIT(NULL)
     0,
     "classobj",
     sizeof(PyClassObject),
@@ -2201,7 +2201,7 @@ static PyNumberMethods instance_as_number = {
 };
 
 PyTypeObject PyInstance_Type = {
-    PyObject_HEAD_INIT(&PyType_Type)
+    PyObject_HEAD_INIT(NULL)
     0,
     "instance",
     sizeof(PyInstanceObject),
@@ -2631,7 +2631,7 @@ instancemethod_descr_get(PyObject *meth, PyObject *obj, PyObject *cls)
 }
 
 PyTypeObject PyMethod_Type = {
-    PyObject_HEAD_INIT(&PyType_Type)
+    PyObject_HEAD_INIT(NULL)
     0,
     "instancemethod",
     sizeof(PyMethodObject),

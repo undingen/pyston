@@ -765,12 +765,12 @@ extern "C" void PyErr_SetExcInfo(PyObject* type, PyObject* value, PyObject* trac
 }
 
 extern "C" const char* PyExceptionClass_Name(PyObject* o) noexcept {
-    return PyClass_Check(o) ? PyString_AS_STRING(static_cast<BoxedClassobj*>(o)->name)
+    return PyClass_Check(o) ? PyString_AS_STRING(reinterpret_cast<PyClassObject*>(o)->cl_name)
                             : static_cast<BoxedClass*>(o)->tp_name;
 }
 
 extern "C" PyObject* PyExceptionInstance_Class(PyObject* o) noexcept {
-    return PyInstance_Check(o) ? (Box*)static_cast<BoxedInstance*>(o)->inst_cls : o->cls;
+    return PyInstance_Check(o) ? (Box*)reinterpret_cast<PyInstanceObject*>(o)->in_class : o->cls;
 }
 
 #define Py_DEFAULT_RECURSION_LIMIT 1000

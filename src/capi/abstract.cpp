@@ -400,7 +400,7 @@ static int recursive_isinstance(PyObject* inst, PyObject* cls) noexcept {
     }
 
     if (PyClass_Check(cls) && PyInstance_Check(inst)) {
-        PyObject* inclass = static_cast<BoxedInstance*>(inst)->inst_cls;
+        PyObject* inclass = (PyObject*)((PyInstanceObject*)inst)->in_class;
         retval = PyClass_IsSubclass(inclass, cls);
     } else if (PyType_Check(cls)) {
         retval = PyObject_TypeCheck(inst, (PyTypeObject*)cls);
@@ -1566,7 +1566,7 @@ extern "C" PyObject* PySequence_GetItem(PyObject* s, Py_ssize_t i) noexcept {
     return type_error("'%.200s' object does not support indexing", s);
 }
 
-PyObject* _PySlice_FromIndices(Py_ssize_t istart, Py_ssize_t istop) {
+extern "C" PyObject* _PySlice_FromIndices(Py_ssize_t istart, Py_ssize_t istop) noexcept {
     PyObject* start, *end, *slice;
     start = PyInt_FromSsize_t(istart);
     if (!start)
@@ -2121,7 +2121,7 @@ extern "C" PyObject* _PyNumber_ConvertIntegralToInt(STOLEN(PyObject*) integral, 
 
 non_integral_error:
     if (PyInstance_Check(integral)) {
-        type_name = static_cast<BoxedInstance*>(integral)->inst_cls->name->data();
+        type_name = PyString_AS_STRING(((PyInstanceObject*)integral)->in_class->cl_name);
     } else {
         type_name = integral->cls->tp_name;
     }

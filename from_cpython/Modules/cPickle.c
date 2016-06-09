@@ -2088,9 +2088,7 @@ save_inst(Picklerobject *self, PyObject *args)
     }
 
     if (!self->bin) {
-        // Pyston change:
-        // if (!( name = ((PyClassObject *)class)->cl_name ))  {
-        if (!( name = PyClass_Name(class)))  {
+        if (!( name = ((PyClassObject *)class)->cl_name ))  {
             PyErr_SetString(PicklingError, "class has no name");
             goto finally;
         }
