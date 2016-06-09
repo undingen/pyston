@@ -4412,7 +4412,6 @@ extern "C" void Py_Finalize() noexcept {
 
     PyImport_Cleanup();
     _PyImport_Fini();
-    PyMethod_Fini();
 
 #ifdef Py_REF_DEBUG
     IN_SHUTDOWN = true;

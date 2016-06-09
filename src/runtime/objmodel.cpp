@@ -1722,7 +1722,17 @@ BORROWED(Box*) typeLookup(BoxedClass* cls, BoxedString* attr, GetattrRewriteArgs
                     rewrite_args->obj_shape_guarded = true;
                 }
             }
-            val = base->getattr<rewritable>(attr, rewrite_args);
+            if (PyClass_Check(base)) {
+                BoxedDict* d = (BoxedDict*)((PyClassObject*)base)->cl_dict;
+                auto it = d->d.find(attr);
+                if (it != d->d.end())
+                    val = it->second;
+                else
+                    val = NULL;
+                rewrite_args = NULL;
+            } else {
+                val = base->getattr<rewritable>(attr, rewrite_args);
+            }
 
             if (rewrite_args && !rewrite_args->isSuccessful())
                 rewrite_args = NULL;
@@ -1767,10 +1777,18 @@ BORROWED(Box*) typeLookup(BoxedClass* cls, BoxedString* attr, GetattrRewriteArgs
                         continue;
                     }
                 }
-
-                val = b->getattr(attr);
-                if (val)
-                    break;
+                if (PyClass_Check(b)) {
+                    BoxedDict* d = (BoxedDict*)((PyClassObject*)b)->cl_dict;
+                    auto it = d->d.find(attr);
+                    if (it != d->d.end()) {
+                        val = it->second;
+                        break;
+                    }
+                } else {
+                    val = b->getattr(attr);
+                    if (val)
+                        break;
+                }
             }
 
             if (MCACHE_CACHEABLE_NAME(attr) && assign_version_tag(cls)) {
@@ -2244,8 +2262,6 @@ Box* getattrInternalEx(Box* obj, BoxedString* attr, GetattrRewriteArgs* rewrite_
             if (obj->cls->tp_getattro == slot_tp_getattr_hook) {
                 return slotTpGetattrHookInternal<S, rewritable>(obj, attr, rewrite_args, for_call, bind_obj_out,
                                                                 r_bind_obj_out);
-                //} else if (obj->cls->tp_getattro == instance_getattro) {
-                //    return instanceGetattroInternal<S>(obj, attr, rewrite_args);
             } else if (obj->cls->tp_getattro == type_getattro) {
                 try {
                     Box* r = getattrInternalGeneric<true, rewritable>(obj, attr, rewrite_args, cls_only, for_call,
@@ -2758,13 +2774,14 @@ Box* getattrInternalGeneric(Box* obj, BoxedString* attr, GetattrRewriteArgs* rew
     }
 
 
+    /*
     // TODO this shouldn't go here; it should be in instancemethod_cls->tp_getattr[o]
     if (PyMethod_Check(obj->cls)) {
         assert(!rewrite_args || !rewrite_args->isSuccessful());
         return getattrInternalEx<CXX, NOT_REWRITABLE>(reinterpret_cast<PyMethodObject*>(obj)->im_func, attr, NULL,
                                                       cls_only, for_call, bind_obj_out, NULL);
     }
-
+*/
     if (rewrite_args)
         rewrite_args->setReturn(NULL, ReturnConvention::NO_RETURN);
     return NULL;

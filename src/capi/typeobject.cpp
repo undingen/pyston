@@ -252,6 +252,13 @@ static PyObject* wrap_binaryfunc(PyObject* self, PyObject* other, void* wrapped)
     return (*func)(self, other);
 }
 
+static PyObject* wrap_binaryfunc3(PyObject* self, PyObject* other, void* wrapped) noexcept {
+    STAT_TIMER(t0, "us_timer_wrap_binaryfunc3", WRAP_AVOIDABILITY(self));
+    ternaryfunc func = (ternaryfunc)wrapped;
+
+    return (*func)(self, other, None);
+}
+
 static PyObject* wrap_binaryfunc_l(PyObject* self, PyObject* other, void* wrapped) noexcept {
     STAT_TIMER(t0, "us_timer_wrap_binaryfunc_l", WRAP_AVOIDABILITY(self));
     binaryfunc func = (binaryfunc)wrapped;
@@ -1774,7 +1781,7 @@ static slotdef slotdefs[] = {
     IBSLOT_2ARG("__imul__", nb_inplace_multiply, slot_nb_inplace_multiply, wrap_binaryfunc, "*="),                   //
     IBSLOT_2ARG("__idiv__", nb_inplace_divide, slot_nb_inplace_divide, wrap_binaryfunc, "/="),                       //
     IBSLOT_2ARG("__imod__", nb_inplace_remainder, slot_nb_inplace_remainder, wrap_binaryfunc, "%="),                 //
-    IBSLOT_2ARG("__ipow__", nb_inplace_power, slot_nb_inplace_power, wrap_binaryfunc, "**="),                        //
+    IBSLOT_2ARG("__ipow__", nb_inplace_power, slot_nb_inplace_power, wrap_binaryfunc3, "**="),                       //
     IBSLOT_2ARG("__ilshift__", nb_inplace_lshift, slot_nb_inplace_lshift, wrap_binaryfunc, "<<="),                   //
     IBSLOT_2ARG("__irshift__", nb_inplace_rshift, slot_nb_inplace_rshift, wrap_binaryfunc, ">>="),                   //
     IBSLOT_2ARG("__iand__", nb_inplace_and, slot_nb_inplace_and, wrap_binaryfunc, "&="),                             //
