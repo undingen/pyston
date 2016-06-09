@@ -46,6 +46,8 @@ PyObject* slot_tp_richcompare(PyObject* self, PyObject* other, int op) noexcept;
 PyObject* slot_tp_iter(PyObject* self) noexcept;
 PyObject* slot_tp_iternext(PyObject* self) noexcept;
 PyObject* slot_tp_new(PyTypeObject* self, PyObject* args, PyObject* kwds) noexcept;
+PyObject* slot_tp_str(PyObject* self) noexcept;
+PyObject* slot_tp_repr(PyObject* self) noexcept;
 PyObject* slot_mp_subscript(PyObject* self, PyObject* arg1) noexcept;
 int slot_mp_ass_subscript(PyObject* self, PyObject* key, PyObject* value) noexcept;
 int slot_sq_contains(PyObject* self, PyObject* value) noexcept;

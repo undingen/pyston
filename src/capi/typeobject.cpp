@@ -627,7 +627,7 @@ extern "C" int _PyObject_SlotCompare(PyObject* self, PyObject* other) noexcept {
 
 #define SLOT_AVOIDABILITY(obj) ((obj)->cls->is_user_defined ? 10 : 20)
 
-static PyObject* slot_tp_repr(PyObject* self) noexcept {
+PyObject* slot_tp_repr(PyObject* self) noexcept {
     STAT_TIMER(t0, "us_timer_slot_tprepr", SLOT_AVOIDABILITY(self));
 
     PyObject* func, *res;
@@ -643,7 +643,7 @@ static PyObject* slot_tp_repr(PyObject* self) noexcept {
     return PyString_FromFormat("<%s object at %p>", Py_TYPE(self)->tp_name, self);
 }
 
-static PyObject* slot_tp_str(PyObject* self) noexcept {
+PyObject* slot_tp_str(PyObject* self) noexcept {
     STAT_TIMER(t0, "us_timer_slot_tpstr", SLOT_AVOIDABILITY(self));
 
     PyObject* func, *res;

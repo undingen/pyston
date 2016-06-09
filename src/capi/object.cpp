@@ -17,6 +17,7 @@
 
 #include "Python.h"
 
+#include "capi/typeobject.h"
 #include "capi/types.h"
 #include "core/threading.h"
 #include "core/types.h"
@@ -363,9 +364,14 @@ extern "C" PyObject* PyObject_Unicode(PyObject* v) noexcept {
             Py_INCREF(v);
             res = v;
         } else {
-            if (Py_TYPE(v)->tp_str != NULL)
-                res = (*Py_TYPE(v)->tp_str)(v);
-            else
+            if (Py_TYPE(v)->tp_str != NULL) {
+                // pyston change:
+                // res = (*Py_TYPE(v)->tp_repr)(v);
+                if (Py_TYPE(v)->tp_str == slot_tp_str)
+                    res = callCXXFromStyle<CAPI>([&]() { return v->cls->callStrIC(v); });
+                else
+                    res = (*Py_TYPE(v)->tp_repr)(v);
+            } else
                 res = PyObject_Repr(v);
         }
     }
@@ -395,7 +401,14 @@ extern "C" PyObject* PyObject_Repr(PyObject* v) noexcept {
         return PyString_FromFormat("<%s object at %p>", Py_TYPE(v)->tp_name, v);
     else {
         PyObject* res;
-        res = (*Py_TYPE(v)->tp_repr)(v);
+
+        // pyston change:
+        // res = (*Py_TYPE(v)->tp_repr)(v);
+        if (Py_TYPE(v)->tp_repr == slot_tp_repr)
+            res = callCXXFromStyle<CAPI>([&]() { return v->cls->callReprIC(v); });
+        else
+            res = (*Py_TYPE(v)->tp_repr)(v);
+
         if (res == NULL)
             return NULL;
 #ifdef Py_USING_UNICODE
@@ -440,7 +453,14 @@ extern "C" PyObject* _PyObject_Str(PyObject* v) noexcept {
        infinitely. */
     if (Py_EnterRecursiveCall(" while getting the str of an object"))
         return NULL;
-    res = (*Py_TYPE(v)->tp_str)(v);
+
+    // pyston change:
+    // res = (*Py_TYPE(v)->tp_str)(v);
+    if (Py_TYPE(v)->tp_str == slot_tp_str)
+        res = callCXXFromStyle<CAPI>([&]() { return v->cls->callStrIC(v); });
+    else
+        res = (*Py_TYPE(v)->tp_str)(v);
+
     Py_LeaveRecursiveCall();
     if (res == NULL)
         return NULL;

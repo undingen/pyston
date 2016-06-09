@@ -239,6 +239,20 @@ Box* BoxedClass::callReprIC(Box* obj) {
     return ic->call(obj, repr_str, callattr_flags, nullptr, nullptr, nullptr, nullptr, nullptr);
 }
 
+Box* BoxedClass::callStrIC(Box* obj) {
+    assert(obj->cls == this);
+
+    auto ic = str_ic.get();
+    if (!ic) {
+        ic = new CallattrIC();
+        str_ic.reset(ic);
+    }
+
+    static BoxedString* str_str = getStaticString("__str__");
+    CallattrFlags callattr_flags{.cls_only = true, .null_on_nonexistent = false, .argspec = ArgPassSpec(0) };
+    return ic->call(obj, str_str, callattr_flags, nullptr, nullptr, nullptr, nullptr, nullptr);
+}
+
 Box* BoxedClass::callIterIC(Box* obj) {
     assert(obj->cls == this);
 
