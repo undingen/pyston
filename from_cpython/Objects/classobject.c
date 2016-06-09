@@ -35,16 +35,22 @@ PyClass_New(PyObject *bases, PyObject *dict, PyObject *name)
         docstr= PyString_InternFromString("__doc__");
         if (docstr == NULL)
             return NULL;
+        // Pyston change:
+        PyGC_RegisterStaticConstant(docstr);
     }
     if (modstr == NULL) {
         modstr= PyString_InternFromString("__module__");
         if (modstr == NULL)
             return NULL;
+        // Pyston change:
+        PyGC_RegisterStaticConstant(modstr);
     }
     if (namestr == NULL) {
         namestr= PyString_InternFromString("__name__");
         if (namestr == NULL)
             return NULL;
+        // Pyston change:
+        PyGC_RegisterStaticConstant(namestr);
     }
     if (name == NULL || !PyString_Check(name)) {
         PyErr_SetString(PyExc_TypeError,
@@ -110,6 +116,10 @@ PyClass_New(PyObject *bases, PyObject *dict, PyObject *name)
         delattrstr = PyString_InternFromString("__delattr__");
         if (delattrstr == NULL)
             goto alloc_error;
+        // Pyston change:
+        PyGC_RegisterStaticConstant(getattrstr);
+        PyGC_RegisterStaticConstant(setattrstr);
+        PyGC_RegisterStaticConstant(delattrstr);
     }
 
     op = PyObject_GC_New(PyClassObject, &PyClass_Type);
@@ -578,6 +588,8 @@ PyInstance_New(PyObject *klass, PyObject *arg, PyObject *kw)
         initstr = PyString_InternFromString("__init__");
         if (initstr == NULL)
             return NULL;
+        // Pyston change:
+        PyGC_RegisterStaticConstant(initstr);
     }
     inst = (PyInstanceObject *) PyInstance_NewRaw(klass, NULL);
     if (inst == NULL)
@@ -671,6 +683,8 @@ instance_dealloc(register PyInstanceObject *inst)
         delstr = PyString_InternFromString("__del__");
         if (delstr == NULL)
             PyErr_WriteUnraisable((PyObject*)inst);
+         // Pyston change:
+         PyGC_RegisterStaticConstant(delstr);
     }
     if (delstr && (del = instance_getattr2(inst, delstr)) != NULL) {
         PyObject *res = PyEval_CallObject(del, (PyObject *)NULL);
@@ -936,6 +950,8 @@ instance_repr(PyInstanceObject *inst)
         reprstr = PyString_InternFromString("__repr__");
         if (reprstr == NULL)
             return NULL;
+        // Pyston change:
+        PyGC_RegisterStaticConstant(reprstr);
     }
     func = instance_getattr(inst, reprstr);
     if (func == NULL) {
@@ -976,6 +992,8 @@ instance_str(PyInstanceObject *inst)
         strstr = PyString_InternFromString("__str__");
         if (strstr == NULL)
             return NULL;
+        // Pyston change:
+        PyGC_RegisterStaticConstant(strstr);
     }
     func = instance_getattr(inst, strstr);
     if (func == NULL) {
@@ -1001,6 +1019,8 @@ instance_hash(PyInstanceObject *inst)
         hashstr = PyString_InternFromString("__hash__");
         if (hashstr == NULL)
             return -1;
+        // Pyston change:
+        PyGC_RegisterStaticConstant(hashstr);
     }
     func = instance_getattr(inst, hashstr);
     if (func == NULL) {
@@ -1014,6 +1034,8 @@ instance_hash(PyInstanceObject *inst)
             eqstr = PyString_InternFromString("__eq__");
             if (eqstr == NULL)
                 return -1;
+            // Pyston change:
+            PyGC_RegisterStaticConstant(eqstr);
         }
         func = instance_getattr(inst, eqstr);
         if (func == NULL) {
@@ -1024,6 +1046,8 @@ instance_hash(PyInstanceObject *inst)
                 cmpstr = PyString_InternFromString("__cmp__");
                 if (cmpstr == NULL)
                     return -1;
+                // Pyston change:
+                PyGC_RegisterStaticConstant(cmpstr);
             }
             func = instance_getattr(inst, cmpstr);
             if (func == NULL) {
@@ -1077,6 +1101,8 @@ instance_length(PyInstanceObject *inst)
         lenstr = PyString_InternFromString("__len__");
         if (lenstr == NULL)
             return -1;
+        // Pyston change:
+        PyGC_RegisterStaticConstant(lenstr);
     }
     func = instance_getattr(inst, lenstr);
     if (func == NULL)
@@ -1126,6 +1152,8 @@ instance_subscript(PyInstanceObject *inst, PyObject *key)
         getitemstr = PyString_InternFromString("__getitem__");
         if (getitemstr == NULL)
             return NULL;
+        // Pyston change:
+        PyGC_RegisterStaticConstant(getitemstr);
     }
     func = instance_getattr(inst, getitemstr);
     if (func == NULL)
@@ -1153,6 +1181,8 @@ instance_ass_subscript(PyInstanceObject *inst, PyObject *key, PyObject *value)
             delitemstr = PyString_InternFromString("__delitem__");
             if (delitemstr == NULL)
                 return -1;
+            // Pyston change:
+            PyGC_RegisterStaticConstant(delitemstr);
         }
         func = instance_getattr(inst, delitemstr);
     }
@@ -1161,6 +1191,8 @@ instance_ass_subscript(PyInstanceObject *inst, PyObject *key, PyObject *value)
             setitemstr = PyString_InternFromString("__setitem__");
             if (setitemstr == NULL)
                 return -1;
+            // Pyston change:
+            PyGC_RegisterStaticConstant(setitemstr);
         }
         func = instance_getattr(inst, setitemstr);
     }
@@ -1198,6 +1230,8 @@ instance_item(PyInstanceObject *inst, Py_ssize_t i)
         getitemstr = PyString_InternFromString("__getitem__");
         if (getitemstr == NULL)
             return NULL;
+        // Pyston change:
+        PyGC_RegisterStaticConstant(getitemstr);
     }
     func = instance_getattr(inst, getitemstr);
     if (func == NULL)
@@ -1217,6 +1251,8 @@ instance_slice(PyInstanceObject *inst, Py_ssize_t i, Py_ssize_t j)
         getslicestr = PyString_InternFromString("__getslice__");
         if (getslicestr == NULL)
             return NULL;
+        // Pyston change:
+        PyGC_RegisterStaticConstant(getslicestr);
     }
     func = instance_getattr(inst, getslicestr);
 
@@ -1229,6 +1265,8 @@ instance_slice(PyInstanceObject *inst, Py_ssize_t i, Py_ssize_t j)
             getitemstr = PyString_InternFromString("__getitem__");
             if (getitemstr == NULL)
                 return NULL;
+            // Pyston change:
+            PyGC_RegisterStaticConstant(getitemstr);
         }
         func = instance_getattr(inst, getitemstr);
         if (func == NULL)
@@ -1264,6 +1302,8 @@ instance_ass_item(PyInstanceObject *inst, Py_ssize_t i, PyObject *item)
             delitemstr = PyString_InternFromString("__delitem__");
             if (delitemstr == NULL)
                 return -1;
+            // Pyston change:
+            PyGC_RegisterStaticConstant(delitemstr);
         }
         func = instance_getattr(inst, delitemstr);
     }
@@ -1272,6 +1312,8 @@ instance_ass_item(PyInstanceObject *inst, Py_ssize_t i, PyObject *item)
             setitemstr = PyString_InternFromString("__setitem__");
             if (setitemstr == NULL)
                 return -1;
+            // Pyston change:
+            PyGC_RegisterStaticConstant(setitemstr);
         }
         func = instance_getattr(inst, setitemstr);
     }
@@ -1306,6 +1348,8 @@ instance_ass_slice(PyInstanceObject *inst, Py_ssize_t i, Py_ssize_t j, PyObject 
                 PyString_InternFromString("__delslice__");
             if (delslicestr == NULL)
                 return -1;
+            // Pyston change:
+            PyGC_RegisterStaticConstant(delslicestr);
         }
         func = instance_getattr(inst, delslicestr);
         if (func == NULL) {
@@ -1317,6 +1361,8 @@ instance_ass_slice(PyInstanceObject *inst, Py_ssize_t i, Py_ssize_t j, PyObject 
                     PyString_InternFromString("__delitem__");
                 if (delitemstr == NULL)
                     return -1;
+                // Pyston change:
+                PyGC_RegisterStaticConstant(delitemstr);
             }
             func = instance_getattr(inst, delitemstr);
             if (func == NULL)
@@ -1340,6 +1386,8 @@ instance_ass_slice(PyInstanceObject *inst, Py_ssize_t i, Py_ssize_t j, PyObject 
                 PyString_InternFromString("__setslice__");
             if (setslicestr == NULL)
                 return -1;
+            // Pyston change:
+            PyGC_RegisterStaticConstant(setslicestr);
         }
         func = instance_getattr(inst, setslicestr);
         if (func == NULL) {
@@ -1351,6 +1399,8 @@ instance_ass_slice(PyInstanceObject *inst, Py_ssize_t i, Py_ssize_t j, PyObject 
                     PyString_InternFromString("__setitem__");
                 if (setitemstr == NULL)
                     return -1;
+                // Pyston change:
+                PyGC_RegisterStaticConstant(setitemstr);
             }
             func = instance_getattr(inst, setitemstr);
             if (func == NULL)
@@ -1395,6 +1445,8 @@ instance_contains(PyInstanceObject *inst, PyObject *member)
         __contains__ = PyString_InternFromString("__contains__");
         if(__contains__ == NULL)
             return -1;
+        // Pyston change:
+        PyGC_RegisterStaticConstant(__contains__);
     }
     func = instance_getattr(inst, __contains__);
     if (func) {
@@ -1501,6 +1553,8 @@ half_binop(PyObject *v, PyObject *w, char *opname, binaryfunc thisfunc,
         coerce_obj = PyString_InternFromString("__coerce__");
         if (coerce_obj == NULL)
             return NULL;
+        // Pyston change:
+        PyGC_RegisterStaticConstant(coerce_obj);
     }
     coercefunc = PyObject_GetAttr(v, coerce_obj);
     if (coercefunc == NULL) {
@@ -1588,6 +1642,8 @@ instance_coerce(PyObject **pv, PyObject **pw)
         coerce_obj = PyString_InternFromString("__coerce__");
         if (coerce_obj == NULL)
             return -1;
+        // Pyston change:
+        PyGC_RegisterStaticConstant(coerce_obj);
     }
     coercefunc = PyObject_GetAttr(v, coerce_obj);
     if (coercefunc == NULL) {
@@ -1634,7 +1690,7 @@ instance_coerce(PyObject **pv, PyObject **pw)
 static PyObject *funcname(PyInstanceObject *self) { \
     static PyObject *o; \
     if (o == NULL) { o = PyString_InternFromString(methodname); \
-                     if (o == NULL) return NULL; } \
+                     if (o == NULL) return NULL; PyGC_RegisterStaticConstant(o); } \
     return generic_unary_op(self, o); \
 }
 
@@ -1643,7 +1699,7 @@ static PyObject *funcname(PyInstanceObject *self) { \
 static PyObject *funcname(PyInstanceObject *self) { \
     static PyObject *o; \
     if (o == NULL) { o = PyString_InternFromString(methodname); \
-                     if (o == NULL) return NULL; } \
+                     if (o == NULL) return NULL; PyGC_RegisterStaticConstant(o); } \
     if (PyObject_HasAttr((PyObject*)self, o)) \
         return generic_unary_op(self, o); \
     else \
@@ -1714,6 +1770,8 @@ half_cmp(PyObject *v, PyObject *w)
         cmp_obj = PyString_InternFromString("__cmp__");
         if (cmp_obj == NULL)
             return -2;
+        // Pyston change:
+        PyGC_RegisterStaticConstant(cmp_obj);
     }
 
     cmp_func = PyObject_GetAttr(v, cmp_obj);
@@ -1822,6 +1880,8 @@ instance_nonzero(PyInstanceObject *self)
         nonzerostr = PyString_InternFromString("__nonzero__");
         if (nonzerostr == NULL)
             return -1;
+        // Pyston change:
+        PyGC_RegisterStaticConstant(nonzerostr);
     }
     if ((func = instance_getattr(self, nonzerostr)) == NULL) {
         if (!PyErr_ExceptionMatches(PyExc_AttributeError))
@@ -1831,6 +1891,8 @@ instance_nonzero(PyInstanceObject *self)
             lenstr = PyString_InternFromString("__len__");
             if (lenstr == NULL)
                 return -1;
+            // Pyston change:
+            PyGC_RegisterStaticConstant(lenstr);
         }
         if ((func = instance_getattr(self, lenstr)) == NULL) {
             if (!PyErr_ExceptionMatches(PyExc_AttributeError))
@@ -1871,6 +1933,8 @@ instance_index(PyInstanceObject *self)
         indexstr = PyString_InternFromString("__index__");
         if (indexstr == NULL)
             return NULL;
+        // Pyston change:
+        PyGC_RegisterStaticConstant(indexstr);
     }
     if ((func = instance_getattr(self, indexstr)) == NULL) {
         if (!PyErr_ExceptionMatches(PyExc_AttributeError))
@@ -1898,6 +1962,8 @@ instance_int(PyInstanceObject *self)
         int_name = PyString_InternFromString("__int__");
         if (int_name == NULL)
             return NULL;
+        // Pyston change:
+        PyGC_RegisterStaticConstant(int_name);
     }
     if (PyObject_HasAttr((PyObject*)self, int_name))
         return generic_unary_op(self, int_name);
@@ -2013,6 +2079,8 @@ init_name_op(void)
         name_op[i] = PyString_InternFromString(_name_op[i]);
         if (name_op[i] == NULL)
             return -1;
+        // Pyston change:
+        PyGC_RegisterStaticConstant(name_op[i]);
     }
     return 0;
 }
@@ -2096,11 +2164,15 @@ instance_getiter(PyInstanceObject *self)
         iterstr = PyString_InternFromString("__iter__");
         if (iterstr == NULL)
             return NULL;
+        // Pyston change:
+        PyGC_RegisterStaticConstant(iterstr);
     }
     if (getitemstr == NULL) {
         getitemstr = PyString_InternFromString("__getitem__");
         if (getitemstr == NULL)
             return NULL;
+        // Pyston change:
+        PyGC_RegisterStaticConstant(getitemstr);
     }
 
     if ((func = instance_getattr(self, iterstr)) != NULL) {
@@ -2139,6 +2211,8 @@ instance_iternext(PyInstanceObject *self)
         nextstr = PyString_InternFromString("next");
         if (nextstr == NULL)
             return NULL;
+        // Pyston change:
+        PyGC_RegisterStaticConstant(nextstr);
     }
 
     if ((func = instance_getattr(self, nextstr)) != NULL) {
@@ -2343,6 +2417,8 @@ instancemethod_get_doc(PyMethodObject *im, void *context)
         docstr= PyString_InternFromString("__doc__");
         if (docstr == NULL)
             return NULL;
+        // Pyston change:
+        PyGC_RegisterStaticConstant(docstr);
     }
     return PyObject_GetAttr(im->im_func, docstr);
 }
