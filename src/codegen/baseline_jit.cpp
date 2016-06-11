@@ -16,6 +16,7 @@
 
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/DenseSet.h>
+#include <llvm/Support/FileSystem.h>
 #include <sys/mman.h>
 
 #include "codegen/irgen/hooks.h"
@@ -67,11 +68,34 @@ JitCodeBlock::MemoryManager::MemoryManager() {
     flags |= MAP_32BIT;
 #endif
     addr = (uint8_t*)mmap(NULL, JitCodeBlock::memory_size, protection, flags, -1, 0);
+
+#if ENABLE_BASELINEJIT_PERF_DUMP
+    auto del = [](std::vector<uint8_t*>* all_code) {
+        for (uint8_t* addr : *all_code) {
+            const char* dir = "bjit_dump";
+            char filename[200];
+            sprintf(filename, "%s/0x%016lx", dir, (unsigned long)addr + sizeof(eh_info));
+            if (!llvm::sys::fs::exists(dir) && llvm::sys::fs::create_directories(dir))
+                assert(0);
+            FILE* f = fopen(filename, "wb");
+            std::fwrite(addr + sizeof(eh_info), 1, code_size, f);
+            fclose(f);
+        }
+        delete all_code;
+    };
+    static std::unique_ptr<std::vector<uint8_t*>, decltype(del)> code_dumper(new std::vector<uint8_t*>, del);
+    if (PROFILE)
+        code_dumper->push_back(addr);
+#endif
 }
 
 JitCodeBlock::MemoryManager::~MemoryManager() {
     munmap(addr, JitCodeBlock::memory_size);
     addr = NULL;
+
+#if ENABLE_BASELINEJIT_PERF_DUMP
+    assert(0 && "should remove entry in code_dumper");
+#endif
 }
 
 JitCodeBlock::JitCodeBlock(llvm::StringRef name)

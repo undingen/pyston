@@ -28,6 +28,12 @@ namespace pyston {
 #define ENABLE_BASELINEJIT_MAP_32BIT 1
 #define ENABLE_BASELINEJIT_ICS 1
 
+// perf is normaly not able to display the disassembly of bjit generated code using this options and a helper
+// script it's possible. If enabled, all bjit generated code gets written into "bjit_dump/<addr>" files.
+// one just has to run `perf record` while passing `-p` to pyston and than
+// use `perf report --objdump ./tools/perf_bjit_helper.py`
+#define ENABLE_BASELINEJIT_PERF_DUMP 0
+
 class AST_stmt;
 class Box;
 class BoxedDict;
