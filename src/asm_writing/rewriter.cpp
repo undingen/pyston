@@ -367,6 +367,18 @@ void RewriterVar::addAttrGuard(int offset, uint64_t val, bool negate) {
     if (!attr_guards.insert(std::make_tuple(offset, val, negate)).second)
         return; // duplicate guard detected
 
+    if (!rewriter->added_changing_action) {
+        auto it = getattrs.find(std::make_pair(offset, (int)assembler::MovType::Q));
+        if (it != getattrs.end()) {
+            RewriterVar* attr = it->second;
+            if (negate)
+                attr->addGuardNotEq(val);
+            else
+                attr->addGuard(val);
+            return;
+        }
+    }
+
     RewriterVar* val_var = rewriter->loadConst(val);
     rewriter->addAction([=]() { rewriter->_addAttrGuard(this, offset, val_var, negate); }, { this, val_var },
                         ActionType::GUARD);
@@ -415,6 +427,20 @@ void Rewriter::_addAttrGuard(RewriterVar* var, int offset, RewriterVar* val_cons
 
 RewriterVar* RewriterVar::getAttr(int offset, Location dest, assembler::MovType type) {
     STAT_TIMER(t0, "us_timer_rewriter", 10);
+
+    // if no changing action happened we can reuse get attributes
+    if (!rewriter->added_changing_action) {
+        RewriterVar*& result = getattrs[std::make_pair(offset, (int)type)];
+        if (result) {
+            if (dest != Location::any())
+                result->getInReg(dest, true /* allow_constant_in_reg */);
+        } else {
+            result = rewriter->createNewVar();
+            rewriter->addAction([=]() { rewriter->_getAttr(result, this, offset, dest, type); }, { this },
+                                ActionType::NORMAL);
+        }
+        return result;
+    }
 
     RewriterVar* result = rewriter->createNewVar();
     rewriter->addAction([=]() { rewriter->_getAttr(result, this, offset, dest, type); }, { this }, ActionType::NORMAL);
