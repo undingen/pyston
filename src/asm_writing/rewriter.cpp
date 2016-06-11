@@ -1922,8 +1922,7 @@ void Rewriter::_checkAndThrowCAPIException(RewriterVar* r, int64_t exc_val, asse
     _setupCall(false, {});
     {
         assembler::ForwardJump jnz(*assembler, assembler::COND_NOT_ZERO);
-        assembler->mov(assembler::Immediate((void*)throwCAPIException), assembler::R11);
-        assembler->callq(assembler::R11);
+        _emitCallInst(assembler::R11, (void*)throwCAPIException);
 
         registerDecrefInfoHere();
     }
