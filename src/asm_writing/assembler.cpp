@@ -990,6 +990,25 @@ void Assembler::lea(Indirect mem, Register reg) {
     }
 }
 
+void Assembler::leaRip(Immediate offset, Register reg) {
+    int reg_idx = reg.regnum;
+
+    int rex = REX_W;
+    if (reg_idx >= 8) {
+        rex |= REX_R;
+        reg_idx -= 8;
+    }
+
+    assert(reg_idx >= 0 && reg_idx < 8);
+
+    emitRex(rex);
+    emitByte(0x8D);
+
+    emitModRM(0, reg_idx, 0b101);
+    assert(fitsInto<int32_t>(offset.val));
+    emitInt(offset.val, 4);
+}
+
 void Assembler::test(Register reg1, Register reg2) {
     int reg1_idx = reg1.regnum;
     int reg2_idx = reg2.regnum;

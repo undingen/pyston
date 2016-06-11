@@ -181,6 +181,14 @@ bool Rewriter::ConstLoader::tryLea(uint64_t val, assembler::Register dst_reg) {
             return true;
         }
         // TODO: maybe add RIP relative LEA
+        uint64_t asm_address = (uint64_t)rewriter->assembler->curInstPointer() + 7;
+        uint64_t real_asm_address = asm_address + (uint64_t)rewriter->rewrite->getSlotStart()
+                                    - (uint64_t)rewriter->assembler->startAddr();
+        int64_t offset = (int64_t)(val - real_asm_address);
+        if (!isLargeConstant(offset)) {
+            rewriter->assembler->leaRip(assembler::Immediate(offset), dst_reg);
+            return true;
+        }
     }
     return false;
 }
@@ -1015,9 +1023,10 @@ void Rewriter::_setupCall(bool has_side_effects, llvm::ArrayRef<RewriterVar*> ar
     if (has_side_effects && needs_invalidation_support) {
         if (!marked_inside_ic) {
             uintptr_t counter_addr = (uintptr_t)(&picked_slot->num_inside);
+
             if (isLargeConstant(counter_addr)) {
                 assembler::Register reg = allocReg(Location::any(), preserve);
-                assembler->mov(assembler::Immediate(counter_addr), reg);
+                const_loader.loadConstIntoReg(counter_addr, reg);
                 assembler->incl(assembler::Indirect(reg, 0));
             } else {
                 assembler->incl(assembler::Immediate(counter_addr));
@@ -1513,7 +1522,7 @@ void Rewriter::commit() {
         uintptr_t counter_addr = (uintptr_t)(&picked_slot->num_inside);
         if (isLargeConstant(counter_addr)) {
             assembler::Register reg = allocReg(Location::any(), getReturnDestination());
-            assembler->mov(assembler::Immediate(counter_addr), reg);
+            const_loader.loadConstIntoReg(counter_addr, reg);
             assembler->decl(assembler::Indirect(reg, 0));
         } else {
             assembler->decl(assembler::Immediate(counter_addr));

@@ -177,6 +177,7 @@ public:
 
 
     void lea(Indirect mem, Register reg);
+    void leaRip(Immediate offset, Register reg);
 
     void test(Register reg1, Register reg2);
 
