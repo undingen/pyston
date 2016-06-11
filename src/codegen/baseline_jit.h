@@ -32,7 +32,7 @@ namespace pyston {
 // script it's possible. If enabled, all bjit generated code gets written into "bjit_dump/<addr>" files.
 // one just has to run `perf record` while passing `-p` to pyston and than
 // use `perf report --objdump ./tools/perf_bjit_helper.py`
-#define ENABLE_BASELINEJIT_PERF_DUMP 0
+#define ENABLE_BASELINEJIT_PERF_DUMP 1
 
 class AST_stmt;
 class Box;

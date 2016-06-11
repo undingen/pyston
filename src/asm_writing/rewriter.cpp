@@ -510,17 +510,11 @@ void RewriterVar::incref() {
 }
 
 void RewriterVar::decref() {
-    rewriter->addAction([=]() {
-        rewriter->_decref(this);
-        this->bumpUse();
-    }, { this }, ActionType::MUTATION);
+    rewriter->addAction([=]() { rewriter->_decref(this, { this }); }, { this }, ActionType::MUTATION);
 }
 
 void RewriterVar::xdecref() {
-    rewriter->addAction([=]() {
-        rewriter->_xdecref(this);
-        this->bumpUse();
-    }, { this }, ActionType::MUTATION);
+    rewriter->addAction([=]() { rewriter->_xdecref(this, { this }); }, { this }, ActionType::MUTATION);
 }
 
 void Rewriter::_incref(RewriterVar* var, int num_refs) {
@@ -565,17 +559,17 @@ void Rewriter::_incref(RewriterVar* var, int num_refs) {
     // (ie the caller should call bumpUse)
 }
 
-void Rewriter::_decref(RewriterVar* var) {
+void Rewriter::_decref(RewriterVar* var, llvm::ArrayRef<RewriterVar*> vars_to_bump) {
     assert(!var->nullable);
 // assembler->trap();
 
-// this->_call(NULL, true, false /* can't throw */, (void*)Helper::decref, { var });
+// this->_call(NULL, true, false /* can't throw */, (void*)Helper::decref, { var }, {}, vars_to_bump);
 
 #ifdef Py_REF_DEBUG
     // assembler->trap();
     assembler->decq(assembler::Immediate(&_Py_RefTotal));
 #endif
-    _setupCall(true, { var }, {}, assembler::RAX);
+    _setupCall(true, { var }, {}, assembler::RAX, vars_to_bump);
 
 
 #ifdef Py_REF_DEBUG
@@ -603,13 +597,16 @@ void Rewriter::_decref(RewriterVar* var) {
 
     // Doesn't call bumpUse, since this function is designed to be callable from other emitting functions.
     // (ie the caller should call bumpUse)
+    for (auto&& use : vars_to_bump) {
+        use->bumpUseLateIfNecessary();
+    }
 }
 
-void Rewriter::_xdecref(RewriterVar* var) {
+void Rewriter::_xdecref(RewriterVar* var, llvm::ArrayRef<RewriterVar*> vars_to_bump) {
     assert(var->nullable);
     // assembler->trap();
 
-    this->_call(NULL, true, false /* can't throw */, (void*)Helper::xdecref, { var });
+    this->_call(NULL, true, false /* can't throw */, (void*)Helper::xdecref, { var }, {}, vars_to_bump);
 
     // Doesn't call bumpUse, since this function is designed to be callable from other emitting functions.
     // (ie the caller should call bumpUse)
@@ -1137,6 +1134,21 @@ void Rewriter::_setupCall(bool has_side_effects, llvm::ArrayRef<RewriterVar*> ar
 #endif
 }
 
+void Rewriter::_emitCallInst(assembler::Register r, void* func_addr) {
+    assert(vars_by_location.count(r) == 0);
+
+    uint64_t asm_address = (uint64_t)assembler->curInstPointer() + 5;
+    uint64_t real_asm_address = asm_address + (uint64_t)rewrite->getSlotStart() - (uint64_t)assembler->startAddr();
+    int64_t offset = (int64_t)((uint64_t)func_addr - real_asm_address);
+    if (isLargeConstant(offset)) {
+        const_loader.loadConstIntoReg((uint64_t)func_addr, r);
+        assembler->callq(r);
+    } else {
+        assembler->call(assembler::Immediate(offset));
+        assert(assembler->hasFailed() || asm_address == (uint64_t)assembler->curInstPointer());
+    }
+}
+
 void Rewriter::_call(RewriterVar* result, bool has_side_effects, bool can_throw, void* func_addr,
                      llvm::ArrayRef<RewriterVar*> args, llvm::ArrayRef<RewriterVar*> args_xmm,
                      llvm::ArrayRef<RewriterVar*> vars_to_bump) {
@@ -1152,19 +1164,7 @@ void Rewriter::_call(RewriterVar* result, bool has_side_effects, bool can_throw,
 
     assertConsistent();
 
-    // make sure setupCall doesn't use R11
-    assert(vars_by_location.count(assembler::R11) == 0);
-
-    uint64_t asm_address = (uint64_t)assembler->curInstPointer() + 5;
-    uint64_t real_asm_address = asm_address + (uint64_t)rewrite->getSlotStart() - (uint64_t)assembler->startAddr();
-    int64_t offset = (int64_t)((uint64_t)func_addr - real_asm_address);
-    if (isLargeConstant(offset)) {
-        const_loader.loadConstIntoReg((uint64_t)func_addr, r);
-        assembler->callq(r);
-    } else {
-        assembler->call(assembler::Immediate(offset));
-        assert(assembler->hasFailed() || asm_address == (uint64_t)assembler->curInstPointer());
-    }
+    _emitCallInst(r, func_addr);
 
     if (can_throw)
         registerDecrefInfoHere();

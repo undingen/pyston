@@ -566,8 +566,8 @@ protected:
 
     // These do not call bumpUse on their arguments:
     void _incref(RewriterVar* var, int num_refs = 1);
-    void _decref(RewriterVar* var);
-    void _xdecref(RewriterVar* var);
+    void _decref(RewriterVar* var, llvm::ArrayRef<RewriterVar*> vars_to_bump = {});
+    void _xdecref(RewriterVar* var, llvm::ArrayRef<RewriterVar*> vars_to_bump = {});
 
     void assertConsistent() {
 #ifndef NDEBUG
@@ -686,6 +686,7 @@ public:
     }
 
     friend class RewriterVar;
+    void _emitCallInst(assembler::Register r, void* func_addr);
 };
 
 void setSlowpathFunc(uint8_t* pp_addr, void* func);
