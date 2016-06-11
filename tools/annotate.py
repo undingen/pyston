@@ -18,6 +18,16 @@ def get_objdump(func):
     raise Exception("Couldn't find function %r to objdump" % func)
 
 _symbols = None
+
+def demangle(sym):
+    if os.path.exists("tools/demangle"):
+        demangled = commands.getoutput("tools/demangle %s" % sym)
+        if demangled == "Error: unable to demangle":
+            demangled = sym
+    else:
+        demangled = commands.getoutput("c++filt %s" % sym)
+    return demangled
+
 def lookupAsSymbol(n):
     global _symbols
     if _symbols is None:
@@ -31,12 +41,11 @@ def lookupAsSymbol(n):
     if not sym:
         return sym
 
-    demangled = None
-    if sym.startswith('_') and os.path.exists("tools/demangle"):
-        demangled = commands.getoutput("tools/demangle %s" % sym)
-        if demangled != "Error: unable to demangle":
-            return demangled
-    return sym + "()"
+    if sym.startswith('_'):
+        demangled = demangle(sym)
+        # perf report does not like '<'
+        return demangled.replace("<", "_")
+    return sym
 
 _heap_proc = None
 heapmap_args = None
@@ -81,13 +90,28 @@ def lookupAsHeapAddr(n):
 def lookupConstant(n):
     sym = lookupAsSymbol(n)
     if sym:
-        return "# " + sym
+        return "; " + sym
 
     heap = lookupAsHeapAddr(n)
     if heap:
-        return "# " + heap
+        return "; " + heap
 
     return ""
+
+def getCommentForInst(inst):
+    patterns = ["movabs \\$0x([0-9a-f]+),",
+                "mov    \\$0x([0-9a-f]+),",
+                "cmpq   \\$0x([0-9a-f]+),",
+                "callq  0x([0-9a-f]+)",
+                ]
+
+    for pattern in patterns:
+        m = re.search(pattern, inst)
+        if m:
+            n = int(m.group(1), 16)
+            if n:
+                return lookupConstant(n)
+    return None
 
 if __name__ == "__main__":
     # TODO: if it's not passed, maybe default to annotating the
@@ -138,18 +162,7 @@ equivalent to '--heap-map-args ./pyston_release -i BENCHMARK'.
     for l in objdump.split('\n')[7:]:
         addr = l.split(':')[0]
         count = counts.pop(addr.strip(), 0)
-
-        extra = ""
-
-        m = re.search("movabs \\$0x([0-9a-f]{4,}),", l)
-        if m:
-            n = int(m.group(1), 16)
-            extra = lookupConstant(n)
-
-        m = re.search("mov    \\$0x([0-9a-f]{4,}),", l)
-        if m:
-            n = int(m.group(1), 16)
-            extra = lookupConstant(n)
+        extra = getCommentForInst(l) or ""
 
         if args.collapse_nops and l.endswith("\tnop"):
             addr = l.split()[0][:-1]
