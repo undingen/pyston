@@ -1083,7 +1083,7 @@ struct FrameInfo {
     void disableDeinit(FrameInfo* replacement_frame);
     bool isDisabledFrame() const { return back == NO_DEINIT; }
 
-    FrameInfo(ExcInfo exc)
+    FrameInfo(ExcInfo exc, FunctionMetadata* md = NULL)
         : exc(exc),
           boxedLocals(NULL),
           frame_obj(0),
@@ -1093,7 +1093,7 @@ struct FrameInfo {
           stmt(0),
           globals(0),
           back(0),
-          md(0) {}
+          md(md) {}
 };
 
 // callattr() takes a number of flags and arguments, and for performance we pack them into a single register:

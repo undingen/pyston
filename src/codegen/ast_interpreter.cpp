@@ -139,14 +139,9 @@ private:
     FrameInfo frame_info;
     unsigned edgecount;
 
-    SourceInfo* source_info;
-    ScopeInfo* scope_info;
-    PhiAnalysis* phis;
-    Box** vregs;
     ExcInfo last_exception;
     BoxedClosure* created_closure;
     BoxedGenerator* generator;
-    BoxedModule* parent_module;
 
     std::unique_ptr<JitFragmentWriter> jit;
     bool should_jit;
@@ -154,9 +149,11 @@ private:
 public:
     ~ASTInterpreter() { Py_XDECREF(this->created_closure); }
 
-    const VRegInfo& getVRegInfo() const { return source_info->cfg->getVRegInfo(); }
-    const llvm::DenseMap<InternedString, int>& getSymVRegMap() const {
-        return source_info->cfg->getVRegInfo().getSymVRegMap();
+    SourceInfo* getSourceInfo() { return &getMD()->source_info; }
+
+    const VRegInfo& getVRegInfo() { return getSourceInfo()->cfg->getVRegInfo(); }
+    const llvm::DenseMap<InternedString, int>& getSymVRegMap() {
+        return getSourceInfo()->cfg->getVRegInfo().getSymVRegMap();
     }
 
     AST_stmt* getCurrentStatement() {
@@ -166,11 +163,12 @@ public:
 
     void setCurrentStatement(AST_stmt* stmt) { frame_info.stmt = stmt; }
 
-    FunctionMetadata* getMD() { return frame_info.md; }
+    FunctionMetadataSource* getMD() { return (FunctionMetadataSource*)frame_info.md; }
     FrameInfo* getFrameInfo() { return &frame_info; }
     BoxedClosure* getPassedClosure() { return frame_info.passed_closure; }
-    Box** getVRegs() { return vregs; }
-    const ScopeInfo* getScopeInfo() { return scope_info; }
+    Box** getVRegs() { return frame_info.vregs; }
+    ScopeInfo* getScopeInfo() { return getSourceInfo()->scope_info; }
+    BoxedModule* getParentModule() { return getSourceInfo()->parent_module; }
 
     void addSymbol(InternedString name, Box* value, bool allow_duplicates);
     void setGenerator(Box* gen);
@@ -183,7 +181,7 @@ public:
 };
 
 void ASTInterpreter::addSymbol(InternedString name, Box* new_value, bool allow_duplicates) {
-    Box*& value = vregs[getVRegInfo().getVReg(name)];
+    Box*& value = getVRegs()[getVRegInfo().getVReg(name)];
     Box* old_value = value;
     value = incref(new_value);
     if (allow_duplicates)
@@ -223,16 +221,11 @@ void ASTInterpreter::setGlobals(Box* globals) {
 
 ASTInterpreter::ASTInterpreter(FunctionMetadataSource* md, Box** vregs, FrameInfo* deopt_frame_info)
     : current_block(0),
-      frame_info(ExcInfo(NULL, NULL, NULL)),
+      frame_info(ExcInfo(NULL, NULL, NULL), md),
       edgecount(0),
-      source_info(&md->source_info),
-      scope_info(source_info->scope_info),
-      phis(NULL),
-      vregs(vregs),
       last_exception(NULL, NULL, NULL),
       created_closure(0),
       generator(0),
-      parent_module(source_info->parent_module),
       should_jit(false) {
 
     if (deopt_frame_info) {
@@ -251,10 +244,7 @@ ASTInterpreter::ASTInterpreter(FunctionMetadataSource* md, Box** vregs, FrameInf
     }
 
     frame_info.vregs = vregs;
-    frame_info.md = md;
     frame_info.num_vregs = getVRegInfo().getNumOfCrossBlockVRegs();
-
-    assert(scope_info);
 }
 
 void ASTInterpreter::initArguments(BoxedClosure* _closure, BoxedGenerator* _generator, Box* arg1, Box* arg2, Box* arg3,
@@ -262,8 +252,8 @@ void ASTInterpreter::initArguments(BoxedClosure* _closure, BoxedGenerator* _gene
     setPassedClosure(_closure);
     generator = _generator;
 
-    if (unlikely(scope_info->createsClosure())) {
-        created_closure = createClosure(_closure, scope_info->getClosureSize());
+    if (unlikely(getScopeInfo()->createsClosure())) {
+        created_closure = createClosure(_closure, getScopeInfo()->getClosureSize());
     }
 
     const ParamNames& param_names = getMD()->param_names;
@@ -302,7 +292,7 @@ void ASTInterpreter::startJITing(CFGBlock* block, int exit_offset) {
         code_block = code_blocks[code_blocks.size() - 1].get();
 
     if (!code_block || code_block->shouldCreateNewBlock()) {
-        code_blocks.push_back(std::unique_ptr<JitCodeBlock>(new JitCodeBlock(source_info->getName()->s())));
+        code_blocks.push_back(std::unique_ptr<JitCodeBlock>(new JitCodeBlock(getSourceInfo()->getName()->s())));
         code_block = code_blocks[code_blocks.size() - 1].get();
         exit_offset = 0;
     }
@@ -331,7 +321,7 @@ void ASTInterpreter::finishJITing(CFGBlock* continue_block) {
 Box* ASTInterpreter::execJITedBlock(CFGBlock* b) {
     try {
         UNAVOIDABLE_STAT_TIMER(t0, "us_timer_in_baseline_jitted_code");
-        std::pair<CFGBlock*, Box*> rtn = b->entry_code(this, b, vregs);
+        std::pair<CFGBlock*, Box*> rtn = b->entry_code(this, b, getVRegs());
         next_block = rtn.first;
         return rtn.second;
     } catch (ExcInfo e) {
@@ -357,7 +347,7 @@ Box* ASTInterpreter::executeInner(ASTInterpreter& interpreter, CFGBlock* start_b
 
     assert((start_block == NULL) == (start_at == NULL));
     if (start_block == NULL) {
-        start_block = interpreter.source_info->cfg->getStartingBlock();
+        start_block = interpreter.getSourceInfo()->cfg->getStartingBlock();
         start_at = start_block->body[0];
     }
 
@@ -469,7 +459,7 @@ void ASTInterpreter::doStore(AST_Name* node, STOLEN(Value) value) {
         if (jit) {
             bool is_live = true;
             if (!closure)
-                is_live = source_info->getLiveness()->isLiveAtEnd(name, current_block);
+                is_live = getSourceInfo()->getLiveness()->isLiveAtEnd(name, current_block);
             if (is_live)
                 jit->emitSetLocal(name, node->vreg, closure, value);
             else
@@ -481,8 +471,8 @@ void ASTInterpreter::doStore(AST_Name* node, STOLEN(Value) value) {
         } else {
             assert(getVRegInfo().getVReg(node->id) == node->vreg);
             frame_info.num_vregs = std::max(frame_info.num_vregs, node->vreg + 1);
-            Box* prev = vregs[node->vreg];
-            vregs[node->vreg] = value.o;
+            Box* prev = getVRegs()[node->vreg];
+            getVRegs()[node->vreg] = value.o;
             Py_XDECREF(prev);
         }
     }
@@ -705,21 +695,21 @@ Box* ASTInterpreter::doOSR(AST_Jump* node) {
     static StatCounter ast_osrs("num_ast_osrs");
     ast_osrs.log();
 
-    LivenessAnalysis* liveness = source_info->getLiveness();
+    LivenessAnalysis* liveness = getSourceInfo()->getLiveness();
     std::unique_ptr<PhiAnalysis> phis
-        = computeRequiredPhis(getMD()->param_names, source_info->cfg, liveness, scope_info);
+        = computeRequiredPhis(getMD()->param_names, getSourceInfo()->cfg, liveness, getScopeInfo());
 
     llvm::SmallVector<int, 16> dead_vregs;
     for (auto&& sym : getSymVRegMap()) {
         if (!liveness->isLiveAtEnd(sym.first, current_block)) {
             dead_vregs.push_back(sym.second);
         } else if (phis->isRequiredAfter(sym.first, current_block)) {
-            assert(scope_info->getScopeTypeOfName(sym.first) != ScopeInfo::VarScopeType::GLOBAL);
+            assert(getScopeInfo()->getScopeTypeOfName(sym.first) != ScopeInfo::VarScopeType::GLOBAL);
         } else {
         }
     }
     for (auto&& vreg_num : dead_vregs) {
-        Py_CLEAR(vregs[vreg_num]);
+        Py_CLEAR(getVRegs()[vreg_num]);
     }
 
     const OSREntryDescriptor* found_entry = nullptr;
@@ -737,14 +727,14 @@ Box* ASTInterpreter::doOSR(AST_Jump* node) {
     static Box* const VAL_UNDEFINED = (Box*)None;
 
     for (auto& name : phis->definedness.getDefinedNamesAtEnd(current_block)) {
-        Box* val = vregs[getVRegInfo().getVReg(name)];
+        Box* val = getVRegs()[getVRegInfo().getVReg(name)];
         if (!liveness->isLiveAtEnd(name, current_block))
             continue;
 
         if (phis->isPotentiallyUndefinedAfter(name, current_block)) {
             bool is_defined = val != NULL;
             // TODO only mangle once
-            sorted_symbol_table[getIsDefinedName(name, source_info->getInternedStrings())] = (Box*)is_defined;
+            sorted_symbol_table[getIsDefinedName(name, getSourceInfo()->getInternedStrings())] = (Box*)is_defined;
             sorted_symbol_table[name] = is_defined ? incref(val) : incref(VAL_UNDEFINED);
         } else {
             ASSERT(val != NULL, "%s", name.c_str());
@@ -765,17 +755,17 @@ Box* ASTInterpreter::doOSR(AST_Jump* node) {
 
     if (generator) {
         // generated is only borrowed in order to not introduce cycles
-        sorted_symbol_table[source_info->getInternedStrings().get(PASSED_GENERATOR_NAME)] = generator;
+        sorted_symbol_table[getSourceInfo()->getInternedStrings().get(PASSED_GENERATOR_NAME)] = generator;
     }
 
     if (frame_info.passed_closure)
-        sorted_symbol_table[source_info->getInternedStrings().get(PASSED_CLOSURE_NAME)]
+        sorted_symbol_table[getSourceInfo()->getInternedStrings().get(PASSED_CLOSURE_NAME)]
             = incref(frame_info.passed_closure);
 
     if (created_closure)
-        sorted_symbol_table[source_info->getInternedStrings().get(CREATED_CLOSURE_NAME)] = incref(created_closure);
+        sorted_symbol_table[getSourceInfo()->getInternedStrings().get(CREATED_CLOSURE_NAME)] = incref(created_closure);
 
-    sorted_symbol_table[source_info->getInternedStrings().get(FRAME_INFO_PTR_NAME)] = (Box*)&frame_info;
+    sorted_symbol_table[getSourceInfo()->getInternedStrings().get(FRAME_INFO_PTR_NAME)] = (Box*)&frame_info;
 
     if (found_entry == nullptr) {
         OSREntryDescriptor* entry = OSREntryDescriptor::create(getMD(), node, CXX);
@@ -885,7 +875,7 @@ Value ASTInterpreter::visit_langPrimitive(AST_LangPrimitive* node) {
         assert(ast_str->str_type == AST_Str::STR);
         const std::string& name = ast_str->str_data;
         assert(name.size());
-        BORROWED(BoxedString*)name_boxed = source_info->parent_module->getStringConstant(name, true);
+        BORROWED(BoxedString*)name_boxed = getParentModule()->getStringConstant(name, true);
 
         if (jit)
             v.var = jit->emitImportFrom(module, name_boxed);
@@ -909,7 +899,7 @@ Value ASTInterpreter::visit_langPrimitive(AST_LangPrimitive* node) {
         assert(node->args.size() == 1);
         assert(node->args[0]->type == AST_TYPE::Name);
 
-        RELEASE_ASSERT(source_info->ast->type == AST_TYPE::Module || source_info->ast->type == AST_TYPE::Suite,
+        RELEASE_ASSERT(getSourceInfo()->ast->type == AST_TYPE::Module || getSourceInfo()->ast->type == AST_TYPE::Suite,
                        "import * not supported in functions");
 
         Value module = visit_expr(node->args[0]);
@@ -982,7 +972,7 @@ Value ASTInterpreter::visit_stmt(AST_stmt* node) {
 #endif
 
     if (0) {
-        printf("%20s % 2d ", source_info->getName()->c_str(), current_block->idx);
+        printf("%20s % 2d ", getSourceInfo()->getName()->c_str(), current_block->idx);
         print_ast(node);
         printf("\n");
     }
@@ -1062,14 +1052,14 @@ Value ASTInterpreter::visit_return(AST_Return* node) {
     bool temporaries_alive = false;
 #ifndef NDEBUG
     for (auto&& v : getSymVRegMap()) {
-        if (v.first.s()[0] == '#' && vregs[v.second]) {
+        if (v.first.s()[0] == '#' && getVRegs()[v.second]) {
             fprintf(stderr, "%s still alive\n", v.first.c_str());
             temporaries_alive = true;
         }
     }
 
     if (temporaries_alive)
-        source_info->cfg->print();
+        getSourceInfo()->cfg->print();
 
     assert(!temporaries_alive);
 #endif
@@ -1080,7 +1070,7 @@ Value ASTInterpreter::visit_return(AST_Return* node) {
 }
 
 Value ASTInterpreter::createFunction(AST* node, AST_arguments* args, const std::vector<AST_stmt*>& body) {
-    FunctionMetadata* md = wrapFunction(node, args, body, source_info);
+    FunctionMetadata* md = wrapFunction(node, args, body, getSourceInfo());
 
     std::vector<Box*> defaults;
     llvm::SmallVector<RewriterVar*, 4> defaults_vars;
@@ -1118,28 +1108,28 @@ Value ASTInterpreter::createFunction(AST* node, AST_arguments* args, const std::
 
     bool takes_closure;
     if (!LAZY_SCOPING_ANALYSIS)
-        source_info->scoping->getScopeInfoForNode(node);
+        getSourceInfo()->scoping->getScopeInfoForNode(node);
 
     // Optimization: when compiling a module, it's nice to not have to run analyses into the
     // entire module's source code.
     // If we call getScopeInfoForNode, that will trigger an analysis of that function tree,
     // but we're only using it here to figure out if that function takes a closure.
     // Top level functions never take a closure, so we can skip the analysis.
-    if (source_info->ast->type == AST_TYPE::Module)
+    if (getSourceInfo()->ast->type == AST_TYPE::Module)
         takes_closure = false;
     else {
-        takes_closure = source_info->scoping->getScopeInfoForNode(node)->takesClosure();
+        takes_closure = getSourceInfo()->scoping->getScopeInfoForNode(node)->takesClosure();
     }
 
     BoxedClosure* closure = 0;
     RewriterVar* closure_var = NULL;
     if (takes_closure) {
-        if (scope_info->createsClosure()) {
+        if (getScopeInfo()->createsClosure()) {
             closure = created_closure;
             if (jit)
                 closure_var = jit->getInterp()->getAttr(offsetof(ASTInterpreter, created_closure));
         } else {
-            assert(scope_info->passesThroughClosure());
+            assert(getScopeInfo()->passesThroughClosure());
             closure = frame_info.passed_closure;
             if (jit)
                 closure_var = jit->getInterp()->getAttr(offsetof(ASTInterpreter, frame_info.passed_closure));
@@ -1149,7 +1139,7 @@ Value ASTInterpreter::createFunction(AST* node, AST_arguments* args, const std::
 
     Box* passed_globals = NULL;
     RewriterVar* passed_globals_var = NULL;
-    if (!getMD()->source->scoping->areGlobalsFromModule()) {
+    if (!getSourceInfo()->scoping->areGlobalsFromModule()) {
         passed_globals = frame_info.globals;
         if (jit)
             passed_globals_var = jit->getInterp()->getAttr(offsetof(ASTInterpreter, frame_info.globals));
@@ -1196,7 +1186,7 @@ Value ASTInterpreter::visit_makeFunction(AST_MakeFunction* mkfn) {
 Value ASTInterpreter::visit_makeClass(AST_MakeClass* mkclass) {
     abortJITing();
     AST_ClassDef* node = mkclass->class_def;
-    ScopeInfo* scope_info = source_info->scoping->getScopeInfoForNode(node);
+    ScopeInfo* scope_info = getSourceInfo()->scoping->getScopeInfoForNode(node);
     assert(scope_info);
 
     BoxedTuple* basesTuple = BoxedTuple::create(node->bases.size());
@@ -1213,13 +1203,13 @@ Value ASTInterpreter::visit_makeClass(AST_MakeClass* mkclass) {
 
     BoxedClosure* closure = NULL;
     if (scope_info->takesClosure()) {
-        if (this->scope_info->passesThroughClosure())
+        if (this->getScopeInfo()->passesThroughClosure())
             closure = getPassedClosure();
         else
             closure = created_closure;
         assert(closure);
     }
-    FunctionMetadata* md = wrapFunction(node, nullptr, node->body, source_info);
+    FunctionMetadata* md = wrapFunction(node, nullptr, node->body, getSourceInfo());
 
     Box* passed_globals = NULL;
     if (!getMD()->source->scoping->areGlobalsFromModule())
@@ -1318,7 +1308,7 @@ Value ASTInterpreter::visit_delete(AST_Delete* node) {
             case AST_TYPE::Name: {
                 AST_Name* target = (AST_Name*)target_;
                 if (target->lookup_type == ScopeInfo::VarScopeType::UNKNOWN)
-                    target->lookup_type = scope_info->getScopeTypeOfName(target->id);
+                    target->lookup_type = getScopeInfo()->getScopeTypeOfName(target->id);
                 ScopeInfo::VarScopeType vst = target->lookup_type;
                 if (vst == ScopeInfo::VarScopeType::GLOBAL) {
                     if (jit)
@@ -1335,20 +1325,20 @@ Value ASTInterpreter::visit_delete(AST_Delete* node) {
                     assert(getVRegInfo().getVReg(target->id) == target->vreg);
 
                     if (target->id.s()[0] == '#') {
-                        assert(vregs[target->vreg] != NULL);
+                        assert(getVRegs()[target->vreg] != NULL);
                         if (jit)
                             jit->emitKillTemporary(target->id, target->vreg);
                     } else {
                         abortJITing();
-                        if (vregs[target->vreg] == 0) {
+                        if (getVRegs()[target->vreg] == 0) {
                             assertNameDefined(0, target->id.c_str(), NameError, true /* local_var_msg */);
                             return Value();
                         }
                     }
 
                     frame_info.num_vregs = std::max(frame_info.num_vregs, target->vreg + 1);
-                    Py_DECREF(vregs[target->vreg]);
-                    vregs[target->vreg] = NULL;
+                    Py_DECREF(getVRegs()[target->vreg]);
+                    getVRegs()[target->vreg] = NULL;
                 }
                 break;
             }
@@ -1394,8 +1384,8 @@ Value ASTInterpreter::visit_exec(AST_Exec* node) {
     AUTO_XDECREF(locals.o);
 
     if (jit)
-        jit->emitExec(code, globals, locals, this->source_info->future_flags);
-    exec(code.o, globals.o, locals.o, this->source_info->future_flags);
+        jit->emitExec(code, globals, locals, this->getSourceInfo()->future_flags);
+    exec(code.o, globals.o, locals.o, this->getSourceInfo()->future_flags);
 
     return Value();
 }
@@ -1553,13 +1543,13 @@ Value ASTInterpreter::visit_expr(AST_Expr* node) {
 Value ASTInterpreter::visit_num(AST_Num* node) {
     Box* o = NULL;
     if (node->num_type == AST_Num::INT) {
-        o = parent_module->getIntConstant(node->n_int);
+        o = getParentModule()->getIntConstant(node->n_int);
     } else if (node->num_type == AST_Num::FLOAT) {
-        o = parent_module->getFloatConstant(node->n_float);
+        o = getParentModule()->getFloatConstant(node->n_float);
     } else if (node->num_type == AST_Num::LONG) {
-        o = parent_module->getLongConstant(node->n_long);
+        o = getParentModule()->getLongConstant(node->n_long);
     } else if (node->num_type == AST_Num::COMPLEX) {
-        o = parent_module->getPureImaginaryConstant(node->n_float);
+        o = getParentModule()->getPureImaginaryConstant(node->n_float);
     } else
         RELEASE_ASSERT(0, "not implemented");
     Py_INCREF(o);
@@ -1626,9 +1616,9 @@ Value ASTInterpreter::visit_set(AST_Set* node) {
 Value ASTInterpreter::visit_str(AST_Str* node) {
     Box* o = NULL;
     if (node->str_type == AST_Str::STR) {
-        o = parent_module->getStringConstant(node->str_data, true);
+        o = getParentModule()->getStringConstant(node->str_data, true);
     } else if (node->str_type == AST_Str::UNICODE) {
-        o = parent_module->getUnicodeConstant(node->str_data);
+        o = getParentModule()->getUnicodeConstant(node->str_data);
     } else {
         RELEASE_ASSERT(0, "%d", node->str_type);
     }
@@ -1638,7 +1628,7 @@ Value ASTInterpreter::visit_str(AST_Str* node) {
 
 Value ASTInterpreter::visit_name(AST_Name* node) {
     if (node->lookup_type == ScopeInfo::VarScopeType::UNKNOWN) {
-        node->lookup_type = scope_info->getScopeTypeOfName(node->id);
+        node->lookup_type = getScopeInfo()->getScopeTypeOfName(node->id);
     }
 
     switch (node->lookup_type) {
@@ -1664,7 +1654,7 @@ Value ASTInterpreter::visit_name(AST_Name* node) {
                 if (node->is_kill) {
                     is_live = false;
                 } else if (node->lookup_type == ScopeInfo::VarScopeType::FAST)
-                    is_live = source_info->getLiveness()->isLiveAtEnd(node->id, current_block);
+                    is_live = getSourceInfo()->getLiveness()->isLiveAtEnd(node->id, current_block);
 
                 if (is_live) {
                     assert(!node->is_kill);
@@ -1681,12 +1671,12 @@ Value ASTInterpreter::visit_name(AST_Name* node) {
             assert(node->vreg >= 0);
             assert(getVRegInfo().getVReg(node->id) == node->vreg);
             frame_info.num_vregs = std::max(frame_info.num_vregs, node->vreg + 1);
-            Box* val = vregs[node->vreg];
+            Box* val = getVRegs()[node->vreg];
 
             if (val) {
                 v.o = val;
                 if (node->is_kill)
-                    vregs[node->vreg] = NULL;
+                    getVRegs()[node->vreg] = NULL;
                 else
                     Py_INCREF(val);
                 return v;
@@ -1813,7 +1803,7 @@ void ASTInterpreterJitInterface::delNameHelper(void* _interpreter, InternedStrin
 
 Box* ASTInterpreterJitInterface::derefHelper(void* _interpreter, InternedString s) {
     ASTInterpreter* interpreter = (ASTInterpreter*)_interpreter;
-    DerefInfo deref_info = interpreter->scope_info->getDerefInfo(s);
+    DerefInfo deref_info = interpreter->getScopeInfo()->getDerefInfo(s);
     assert(interpreter->getPassedClosure());
     BoxedClosure* closure = interpreter->getPassedClosure();
     for (int i = 0; i < deref_info.num_parents_from_passed_closure; i++) {
@@ -1858,9 +1848,9 @@ void ASTInterpreterJitInterface::setLocalClosureHelper(void* _interpreter, long 
 
     interpreter->frame_info.num_vregs = std::max(interpreter->frame_info.num_vregs, (int)vreg + 1);
     assert(interpreter->getVRegInfo().getVReg(id) == vreg);
-    Box* prev = interpreter->vregs[vreg];
-    interpreter->vregs[vreg] = v;
-    auto closure_offset = interpreter->scope_info->getClosureOffset(id);
+    Box* prev = interpreter->getVRegs()[vreg];
+    interpreter->getVRegs()[vreg] = v;
+    auto closure_offset = interpreter->getScopeInfo()->getClosureOffset(id);
     Box* prev_closure_elt = interpreter->created_closure->elts[closure_offset];
     interpreter->created_closure->elts[closure_offset] = incref(v);
     Py_XDECREF(prev);
