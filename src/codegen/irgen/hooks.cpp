@@ -210,7 +210,7 @@ CompiledFunction* compileFunction(FunctionMetadata* f, FunctionSpecialization* s
 
     assert((entry_descriptor != NULL) + (spec != NULL) == 1);
 
-    SourceInfo* source = f->source.get();
+    SourceInfo* source = f->source;
     assert(source);
 
     BoxedString* name = source->getName();
@@ -315,7 +315,7 @@ CompiledFunction* compileFunction(FunctionMetadata* f, FunctionSpecialization* s
 }
 
 void compileAndRunModule(AST_Module* m, BoxedModule* bm) {
-    FunctionMetadata* md;
+    FunctionMetadataSource* md;
 
     { // scope for limiting the locked region:
         LOCK_REGION(codegen_rwlock.asWrite());
@@ -330,16 +330,16 @@ void compileAndRunModule(AST_Module* m, BoxedModule* bm) {
 
         auto fn_str = boxString(fn);
         AUTO_DECREF(fn_str);
-        std::unique_ptr<SourceInfo> si(new SourceInfo(bm, scoping, future_flags, m, m->body, fn_str));
+        SourceInfo si(bm, scoping, future_flags, m, m->body, fn_str);
 
         static BoxedString* doc_str = getStaticString("__doc__");
-        bm->setattr(doc_str, autoDecref(si->getDocString()), NULL);
+        bm->setattr(doc_str, autoDecref(si.getDocString()), NULL);
 
         static BoxedString* builtins_str = getStaticString("__builtins__");
         if (!bm->hasattr(builtins_str))
             bm->setattr(builtins_str, PyModule_GetDict(builtins_module), NULL);
 
-        md = new FunctionMetadata(0, false, false, std::move(si));
+        md = new FunctionMetadataSource(0, false, false, std::move(si));
     }
 
     UNAVOIDABLE_STAT_TIMER(t0, "us_timer_interpreted_module_toplevel");
@@ -366,7 +366,8 @@ Box* evalOrExec(FunctionMetadata* md, Box* globals, Box* boxedLocals) {
         Py_DECREF(doc_string);
     }
 
-    return astInterpretFunctionEval(md, globals, boxedLocals);
+    assert(md->source);
+    return astInterpretFunctionEval((FunctionMetadataSource*)md, globals, boxedLocals);
 }
 
 static FunctionMetadata* compileForEvalOrExec(AST* source, std::vector<AST_stmt*> body, BoxedString* fn,
@@ -388,10 +389,9 @@ static FunctionMetadata* compileForEvalOrExec(AST* source, std::vector<AST_stmt*
         flags->cf_flags = future_flags;
     }
 
-    std::unique_ptr<SourceInfo> si(
-        new SourceInfo(getCurrentModule(), scoping, future_flags, source, std::move(body), fn));
+    SourceInfo si(getCurrentModule(), scoping, future_flags, source, std::move(body), fn);
 
-    FunctionMetadata* md = new FunctionMetadata(0, false, false, std::move(si));
+    FunctionMetadata* md = new FunctionMetadataSource(0, false, false, std::move(si));
     return md;
 }
 

@@ -4791,8 +4791,8 @@ static Box* callChosenCF(CompiledFunction* chosen_cf, BoxedClosure* closure, Box
 // This function exists for the rewriter: astInterpretFunction takes 9 args, but the rewriter
 // only supports calling functions with at most 6 since it can currently only pass arguments
 // in registers.
-static Box* astInterpretHelper(FunctionMetadata* f, BoxedClosure* closure, BoxedGenerator* generator, Box* globals,
-                               Box** _args) {
+static Box* astInterpretHelper(FunctionMetadataSource* f, BoxedClosure* closure, BoxedGenerator* generator,
+                               Box* globals, Box** _args) {
     Box* arg1 = _args[0];
     Box* arg2 = _args[1];
     Box* arg3 = _args[2];
@@ -4801,8 +4801,8 @@ static Box* astInterpretHelper(FunctionMetadata* f, BoxedClosure* closure, Boxed
     return astInterpretFunction(f, closure, generator, globals, arg1, arg2, arg3, (Box**)args);
 }
 
-static Box* astInterpretHelperCapi(FunctionMetadata* f, BoxedClosure* closure, BoxedGenerator* generator, Box* globals,
-                                   Box** _args) noexcept {
+static Box* astInterpretHelperCapi(FunctionMetadataSource* f, BoxedClosure* closure, BoxedGenerator* generator,
+                                   Box* globals, Box** _args) noexcept {
     try {
         return astInterpretHelper(f, closure, generator, globals, _args);
     } catch (ExcInfo e) {
@@ -4811,7 +4811,7 @@ static Box* astInterpretHelperCapi(FunctionMetadata* f, BoxedClosure* closure, B
     }
 }
 
-static Box* astInterpretHelper2ArgsCapi(FunctionMetadata* f, BoxedClosure* closure, BoxedGenerator* generator,
+static Box* astInterpretHelper2ArgsCapi(FunctionMetadataSource* f, BoxedClosure* closure, BoxedGenerator* generator,
                                         Box* globals, Box* arg1, Box* arg2) noexcept {
     try {
         return astInterpretFunction(f, closure, generator, globals, arg1, arg2, NULL, NULL);
@@ -4845,6 +4845,8 @@ Box* callCLFunc(FunctionMetadata* md, CallRewriteArgs* rewrite_args, int num_out
     CompiledFunction* chosen_cf = pickVersion(md, S, num_output_args, oarg1, oarg2, oarg3, oargs);
 
     if (!chosen_cf) {
+        assert(md->source);
+        FunctionMetadataSource* mds = (FunctionMetadataSource*)md;
         if (rewrite_args) {
             RewriterVar::SmallVector arg_vec;
 
@@ -4905,13 +4907,13 @@ Box* callCLFunc(FunctionMetadata* md, CallRewriteArgs* rewrite_args, int num_out
 
         if (S == CAPI) {
             try {
-                return astInterpretFunction(md, closure, generator, globals, oarg1, oarg2, oarg3, oargs);
+                return astInterpretFunction(mds, closure, generator, globals, oarg1, oarg2, oarg3, oargs);
             } catch (ExcInfo e) {
                 setCAPIException(e);
                 return NULL;
             }
         } else {
-            return astInterpretFunction(md, closure, generator, globals, oarg1, oarg2, oarg3, oargs);
+            return astInterpretFunction(mds, closure, generator, globals, oarg1, oarg2, oarg3, oargs);
         }
     }
 

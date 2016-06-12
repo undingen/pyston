@@ -39,25 +39,19 @@ namespace pyston {
 
 DS_DEFINE_RWLOCK(codegen_rwlock);
 
-FunctionMetadata::FunctionMetadata(int num_args, bool takes_varargs, bool takes_kwargs,
-                                   std::unique_ptr<SourceInfo> source)
-    : code_obj(NULL),
-      num_args(num_args),
-      takes_varargs(takes_varargs),
-      takes_kwargs(takes_kwargs),
-      source(std::move(source)),
-      param_names(this->source->ast, this->source->getInternedStrings()),
-      always_use_version(NULL),
-      times_interpreted(0),
-      internal_callable(NULL, NULL) {
+FunctionMetadataSource::FunctionMetadataSource(int num_args, bool takes_varargs, bool takes_kwargs, SourceInfo&& source)
+    : FunctionMetadata(num_args, takes_varargs, takes_kwargs, ParamNames(source.ast, source.getInternedStrings()),
+                       &source_info),
+      source_info(std::forward<SourceInfo&&>(source)) {
 }
 
-FunctionMetadata::FunctionMetadata(int num_args, bool takes_varargs, bool takes_kwargs, const ParamNames& param_names)
+FunctionMetadata::FunctionMetadata(int num_args, bool takes_varargs, bool takes_kwargs, const ParamNames& param_names,
+                                   SourceInfo* source_info)
     : code_obj(NULL),
       num_args(num_args),
       takes_varargs(takes_varargs),
       takes_kwargs(takes_kwargs),
-      source(nullptr),
+      source(source_info),
       param_names(param_names),
       always_use_version(NULL),
       times_interpreted(0),
@@ -81,7 +75,7 @@ void FunctionMetadata::addVersion(CompiledFunction* compiled) {
     compiled->md = this;
 
     if (compiled->entry_descriptor == NULL) {
-        bool could_have_speculations = (source.get() != NULL);
+        bool could_have_speculations = (source != NULL);
         if (!could_have_speculations && versions.size() == 0 && compiled->effort == EffortLevel::MAXIMAL
             && compiled->spec->accepts_all_inputs && compiled->spec->boxed_return_value)
             always_use_version = compiled;
@@ -125,10 +119,6 @@ SourceInfo::SourceInfo(BoxedModule* m, ScopingAnalysis* scoping, FutureFlags fut
             RELEASE_ASSERT(0, "Unknown type: %d", ast->type);
             break;
     }
-}
-
-SourceInfo::~SourceInfo() {
-    // TODO: release memory..
 }
 
 void FunctionAddressRegistry::registerFunction(const std::string& name, void* addr, int length,

@@ -3206,13 +3206,12 @@ FunctionMetadata* wrapFunction(AST* node, AST_arguments* args, const std::vector
 
     FunctionMetadata*& md = made[node];
     if (md == NULL) {
-        std::unique_ptr<SourceInfo> si(
-            new SourceInfo(source->parent_module, source->scoping, source->future_flags, node, body, source->getFn()));
+        SourceInfo si(source->parent_module, source->scoping, source->future_flags, node, body, source->getFn());
         if (args)
-            md = new FunctionMetadata(args->args.size(), args->vararg.s().size(), args->kwarg.s().size(),
-                                      std::move(si));
+            md = new FunctionMetadataSource(args->args.size(), args->vararg.s().size(), args->kwarg.s().size(),
+                                            std::move(si));
         else
-            md = new FunctionMetadata(0, false, false, std::move(si));
+            md = new FunctionMetadataSource(0, false, false, std::move(si));
     }
     return md;
 }

@@ -428,7 +428,6 @@ public:
 
     SourceInfo(BoxedModule* m, ScopingAnalysis* scoping, FutureFlags future_flags, AST* ast,
                std::vector<AST_stmt*> body, BoxedString* fn);
-    ~SourceInfo();
 
 private:
     std::unique_ptr<LivenessAnalysis> liveness_info;
@@ -459,7 +458,7 @@ public:
     int num_args;
     bool takes_varargs, takes_kwargs;
 
-    std::unique_ptr<SourceInfo> source; // source can be NULL for functions defined in the C/C++ runtime
+    SourceInfo* const source; // source can be NULL for functions defined in the C/C++ runtime
     ParamNames param_names;
 
     FunctionList
@@ -483,10 +482,10 @@ public:
                                         Box**, const std::vector<BoxedString*>*> InternalCallable;
     InternalCallable internal_callable;
 
-    FunctionMetadata(int num_args, bool takes_varargs, bool takes_kwargs, std::unique_ptr<SourceInfo> source);
+
     FunctionMetadata(int num_args, bool takes_varargs, bool takes_kwargs,
-                     const ParamNames& param_names = ParamNames::empty());
-    ~FunctionMetadata();
+                     const ParamNames& param_names = ParamNames::empty(), SourceInfo* source_info = NULL);
+    // virtual ~FunctionMetadata() = default;
 
     int numReceivedArgs() { return num_args + takes_varargs + takes_kwargs; }
 
@@ -525,6 +524,12 @@ public:
                                     ExceptionStyle exception_style = CXX) {
         return create(f, rtn_type, nargs, false, false, param_names, exception_style);
     }
+};
+
+class FunctionMetadataSource : public FunctionMetadata {
+public:
+    FunctionMetadataSource(int num_args, bool takes_varargs, bool takes_kwargs, SourceInfo&& source);
+    SourceInfo source_info;
 };
 
 
