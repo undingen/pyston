@@ -126,6 +126,7 @@ private:
 public:
     std::vector<CFGBlock*> blocks;
     bool is_fast = false;
+    bool is_full_bjit = false;
 
 public:
     CFG() : next_idx(0) {}
@@ -161,7 +162,7 @@ public:
 };
 
 class SourceInfo;
-CFG* computeCFG(SourceInfo* source, std::vector<AST_stmt*> body, const ParamNames& param_names);
+CFG* computeCFG(SourceInfo* source, const std::vector<AST_stmt*>& body, const ParamNames& param_names);
 void printCFG(CFG* cfg);
 }
 
