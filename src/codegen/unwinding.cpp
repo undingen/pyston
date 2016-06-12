@@ -454,7 +454,7 @@ static const LineInfo lineInfoForFrameInfo(FrameInfo* frame_info) {
     auto* md = frame_info->md;
     assert(md);
 
-    auto source = md->source.get();
+    auto source = md->source;
 
     return LineInfo(current_stmt->lineno, current_stmt->col_offset, source->getFn(), source->getName());
 }
@@ -1030,7 +1030,7 @@ std::string getCurrentPythonLine() {
         std::ostringstream stream;
 
         auto* md = frame_info->md;
-        auto source = md->source.get();
+        auto source = md->source;
 
         auto current_stmt = frame_info->stmt;
 

@@ -62,7 +62,7 @@ IRGenState::IRGenState(FunctionMetadata* md, CompiledFunction* cf, SourceInfo* s
       stmt(NULL),
       scratch_size(0) {
     assert(cf->func);
-    assert(cf->md->source.get() == source_info); // I guess this is duplicate now
+    assert(cf->md->source == source_info); // I guess this is duplicate now
 }
 
 IRGenState::~IRGenState() {
@@ -3278,12 +3278,11 @@ FunctionMetadata* wrapFunction(AST* node, AST_arguments* args, const std::vector
 
     FunctionMetadata*& md = made[node];
     if (md == NULL) {
-        std::unique_ptr<SourceInfo> si(
-            new SourceInfo(source->parent_module, source->scoping, source->future_flags, node, body, source->getFn()));
+        SourceInfo si(source->parent_module, source->scoping, source->future_flags, node, body, source->getFn());
         if (args)
-            md = new FunctionMetadata(args->args.size(), args->vararg, args->kwarg, std::move(si));
+            md = new FunctionMetadataSource(args->args.size(), args->vararg, args->kwarg, std::move(si));
         else
-            md = new FunctionMetadata(0, false, false, std::move(si));
+            md = new FunctionMetadataSource(0, false, false, std::move(si));
     }
     return md;
 }
