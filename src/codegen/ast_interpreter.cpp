@@ -66,7 +66,7 @@ extern "C" Box* executeInnerAndSetupFrame(ASTInterpreter& interpreter, CFGBlock*
  */
 class ASTInterpreter {
 public:
-    ASTInterpreter(FunctionMetadata* md, Box** vregs, FrameInfo* deopt_frame_info = NULL);
+    ASTInterpreter(FunctionMetadataSource* md, Box** vregs, FrameInfo* deopt_frame_info = NULL);
 
     void initArguments(BoxedClosure* closure, BoxedGenerator* generator, Box* arg1, Box* arg2, Box* arg3, Box** args);
 
@@ -221,12 +221,12 @@ void ASTInterpreter::setGlobals(Box* globals) {
     this->frame_info.globals = incref(globals);
 }
 
-ASTInterpreter::ASTInterpreter(FunctionMetadata* md, Box** vregs, FrameInfo* deopt_frame_info)
+ASTInterpreter::ASTInterpreter(FunctionMetadataSource* md, Box** vregs, FrameInfo* deopt_frame_info)
     : current_block(0),
       frame_info(ExcInfo(NULL, NULL, NULL)),
       edgecount(0),
-      source_info(md->source.get()),
-      scope_info(0),
+      source_info(&md->source_info),
+      scope_info(source_info->scope_info),
       phis(NULL),
       vregs(vregs),
       last_exception(NULL, NULL, NULL),
@@ -234,8 +234,6 @@ ASTInterpreter::ASTInterpreter(FunctionMetadata* md, Box** vregs, FrameInfo* deo
       generator(0),
       parent_module(source_info->parent_module),
       should_jit(false) {
-
-    scope_info = source_info->scope_info;
 
     if (deopt_frame_info) {
         // copy over all fields and clear the deopt frame info
@@ -1920,11 +1918,11 @@ extern "C" Box* executeInnerFromASM(ASTInterpreter& interpreter, CFGBlock* start
     return rtn;
 }
 
-Box* astInterpretFunction(FunctionMetadata* md, Box* closure, Box* generator, Box* globals, Box* arg1, Box* arg2,
+Box* astInterpretFunction(FunctionMetadataSource* md, Box* closure, Box* generator, Box* globals, Box* arg1, Box* arg2,
                           Box* arg3, Box** args) {
     UNAVOIDABLE_STAT_TIMER(t0, "us_timer_in_interpreter");
 
-    SourceInfo* source_info = md->source.get();
+    SourceInfo* const source_info = &md->source_info;
 
     assert((!globals) == source_info->scoping->areGlobalsFromModule());
     bool can_reopt = ENABLE_REOPT && !FORCE_INTERPRETER;
@@ -2060,7 +2058,7 @@ Box* astInterpretFunction(FunctionMetadata* md, Box* closure, Box* generator, Bo
     return v ? v : incref(None);
 }
 
-Box* astInterpretFunctionEval(FunctionMetadata* md, Box* globals, Box* boxedLocals) {
+Box* astInterpretFunctionEval(FunctionMetadataSource* md, Box* globals, Box* boxedLocals) {
     ++md->times_interpreted;
 
     // Note: due to some (avoidable) restrictions, this check is pretty constrained in where
@@ -2070,7 +2068,7 @@ Box* astInterpretFunctionEval(FunctionMetadata* md, Box* globals, Box* boxedLoca
     // executeInner since we want the SyntaxErrors to happen *before* the stack frame is entered.
     // (For instance, throwing the exception will try to fetch the current statement, but we determine
     // that by looking at the cfg.)
-    SourceInfo* source_info = md->source.get();
+    SourceInfo* source_info = md->source;
     if (!source_info->cfg)
         source_info->cfg = computeCFG(source_info, source_info->body, md->param_names);
 
@@ -2104,7 +2102,7 @@ extern "C" Box* astInterpretDeoptFromASM(FunctionMetadata* md, AST_expr* after_e
     assert(after_expr);
     assert(expr_val);
 
-    SourceInfo* source_info = md->source.get();
+    SourceInfo* source_info = md->source;
 
     // We can't reuse the existing vregs from the LLVM tier because they only contain the user visible ones this means
     // there wouldn't be enough space for the compiler generated ones which the interpreter (+bjit) stores inside the
@@ -2121,7 +2119,7 @@ extern "C" Box* astInterpretDeoptFromASM(FunctionMetadata* md, AST_expr* after_e
     RELEASE_ASSERT(cur_thread_state.frame_info == frame_state.frame_info, "");
     cur_thread_state.frame_info = frame_state.frame_info->back;
 
-    ASTInterpreter interpreter(md, vregs, frame_state.frame_info);
+    ASTInterpreter interpreter((FunctionMetadataSource*)md, vregs, frame_state.frame_info);
 
     for (const auto& p : *frame_state.locals) {
         assert(p.first->cls == str_cls);

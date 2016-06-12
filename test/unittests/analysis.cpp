@@ -75,7 +75,7 @@ void doOsrTest(bool is_osr, bool i_maybe_undefined) {
                     fn.c_str()), scoping, future_flags, func, func->body, boxString(fn)));
     FunctionMetadata* clfunc = new FunctionMetadata(0, false, false, std::move(si));
 
-    CFG* cfg = computeCFG(clfunc->source.get(), func->body, clfunc->param_names);
+    CFG* cfg = computeCFG(clfunc->source, func->body, clfunc->param_names);
     std::unique_ptr<LivenessAnalysis> liveness = computeLivenessInfo(cfg);
 
     // cfg->print();
