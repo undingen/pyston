@@ -288,9 +288,6 @@ void RewriterVar::addGuard(uint64_t val) {
 
     if (isConstant()) {
         RELEASE_ASSERT(constant_value == val, "added guard which is always false");
-        if (is_cls && ((BoxedClass*)val) && ((BoxedClass*)val)->doesNotNeedGuard()) {
-            does_not_need_guards = true;
-        }
         return;
     }
 
@@ -388,12 +385,13 @@ void RewriterVar::addAttrGuard(int offset, uint64_t val, bool negate) {
     if (does_not_need_guards)
         return;
 
-    RewriterVar* val_var = rewriter->loadConst(val);
-    rewriter->addAction([=]() { rewriter->_addAttrGuard(this, offset, val_var, negate); }, { this, val_var },
-                        ActionType::GUARD);
-
     if (offset == offsetof(Box, cls) && !negate && ((BoxedClass*)val) && ((BoxedClass*)val)->doesNotNeedGuard()) {
-        does_not_need_guards = true;
+        RewriterVar* var = getAttr(offset);
+        var->addGuard(val);
+    } else {
+        RewriterVar* val_var = rewriter->loadConst(val);
+        rewriter->addAction([=]() { rewriter->_addAttrGuard(this, offset, val_var, negate); }, { this, val_var },
+                            ActionType::GUARD);
     }
 }
 

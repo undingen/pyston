@@ -252,7 +252,9 @@ public:
         return true;
     }
 
-    bool doesNotNeedGuard() { return is_constant && !instancesHaveHCAttrs() && !instancesHaveDictAttrs(); }
+    bool doesNotNeedGuard() {
+        return is_constant && !instancesHaveHCAttrs() && !instancesHaveDictAttrs() && hasGenericGetattr();
+    }
 
     void freeze();
 
