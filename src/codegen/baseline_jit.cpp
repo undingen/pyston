@@ -225,11 +225,11 @@ RewriterVar* JitFragmentWriter::imm(void* val) {
 }
 
 RewriterVar* JitFragmentWriter::emitAugbinop(AST_expr* node, RewriterVar* lhs, RewriterVar* rhs, int op_type) {
-    return emitPPCall((void*)augbinop, { lhs, rhs, imm(op_type) }, 2, 320, node).first->setType(RefType::OWNED);
+    return emitPPCall((void*)augbinop, { lhs, rhs, imm(op_type) }, 2 + 2, 320, node).first->setType(RefType::OWNED);
 }
 
 RewriterVar* JitFragmentWriter::emitBinop(AST_expr* node, RewriterVar* lhs, RewriterVar* rhs, int op_type) {
-    return emitPPCall((void*)binop, { lhs, rhs, imm(op_type) }, 2, 240, node).first->setType(RefType::OWNED);
+    return emitPPCall((void*)binop, { lhs, rhs, imm(op_type) }, 2 + 2, 240, node).first->setType(RefType::OWNED);
 }
 
 RewriterVar* JitFragmentWriter::emitCallattr(AST_expr* node, RewriterVar* obj, BoxedString* attr, CallattrFlags flags,
@@ -515,7 +515,7 @@ RewriterVar* JitFragmentWriter::emitRuntimeCall(AST_expr* node, RewriterVar* obj
     if (keyword_names)
         call_args.push_back(imm(keyword_names));
 
-    return emitPPCall((void*)runtimeCall, call_args, 2, 640, node, type_recorder, additional_uses)
+    return emitPPCall((void*)runtimeCall, call_args, 3, 640, node, type_recorder, additional_uses)
         .first->setType(RefType::OWNED);
 #else
     RewriterVar* argspec_var = imm(argspec.asInt());
@@ -913,7 +913,8 @@ std::pair<RewriterVar*, RewriterAction*>
 JitFragmentWriter::emitPPCall(void* func_addr, llvm::ArrayRef<RewriterVar*> args, unsigned char num_slots,
                               unsigned short slot_size, AST* ast_node, TypeRecorder* type_recorder,
                               llvm::ArrayRef<RewriterVar*> additional_uses) {
-    slot_size = slot_size*2/3;
+    slot_size = slot_size * 2 / 3;
+
     if (LOG_BJIT_ASSEMBLY)
         comment("BJIT: emitPPCall() start");
     RewriterVar::SmallVector args_vec(args.begin(), args.end());

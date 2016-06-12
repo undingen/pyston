@@ -1791,8 +1791,10 @@ BORROWED(Box*) typeLookup(BoxedClass* cls, BoxedString* attr, GetattrRewriteArgs
             if (!val)
                 rewrite_args->setReturn(NULL, ReturnConvention::NO_RETURN);
             else {
-                rewrite_args->setReturn(rewrite_args->rewriter->loadConst((int64_t)val)->setType(RefType::BORROWED),
-                                        ReturnConvention::HAS_RETURN);
+                RewriterVar* r_val = rewrite_args->rewriter->loadConst((int64_t)val);
+                if (obj_saved->does_not_need_guards)
+                    r_val->does_not_need_guards = true;
+                rewrite_args->setReturn(r_val->setType(RefType::BORROWED), ReturnConvention::HAS_RETURN);
             }
         }
         return val;
