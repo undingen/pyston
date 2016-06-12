@@ -280,11 +280,21 @@ void RewriterVar::addGuard(uint64_t val) {
 
     if (isConstant()) {
         RELEASE_ASSERT(constant_value == val, "added guard which is always false");
+        if (is_cls && ((BoxedClass*)val) && ((BoxedClass*)val)->doesNotNeedGuard()) {
+            does_not_need_guards = true;
+        }
         return;
     }
 
+    if (does_not_need_guards)
+        return;
+
     RewriterVar* val_var = rewriter->loadConst(val);
     rewriter->addAction([=]() { rewriter->_addGuard(this, val_var); }, { this, val_var }, ActionType::GUARD);
+
+    if (is_cls && ((BoxedClass*)val) && ((BoxedClass*)val)->doesNotNeedGuard()) {
+        does_not_need_guards = true;
+    }
 }
 
 void Rewriter::_nextSlotJump(bool condition_eq) {
@@ -367,9 +377,16 @@ void RewriterVar::addAttrGuard(int offset, uint64_t val, bool negate) {
     if (!attr_guards.insert(std::make_tuple(offset, val, negate)).second)
         return; // duplicate guard detected
 
+    if (does_not_need_guards)
+        return;
+
     RewriterVar* val_var = rewriter->loadConst(val);
     rewriter->addAction([=]() { rewriter->_addAttrGuard(this, offset, val_var, negate); }, { this, val_var },
                         ActionType::GUARD);
+
+    if (offset == offsetof(Box, cls) && !negate && ((BoxedClass*)val) && ((BoxedClass*)val)->doesNotNeedGuard()) {
+        does_not_need_guards = true;
+    }
 }
 
 void Rewriter::_addAttrGuard(RewriterVar* var, int offset, RewriterVar* val_constant, bool negate) {
@@ -432,6 +449,10 @@ RewriterVar* RewriterVar::getAttr(int offset, Location dest, assembler::MovType 
 
     RewriterVar* result = rewriter->createNewVar();
     rewriter->addAction([=]() { rewriter->_getAttr(result, this, offset, dest, type); }, { this }, ActionType::NORMAL);
+
+    if (offset == offsetof(Box, cls) && type == assembler::MovType::Q && !rewriter->added_changing_action)
+        result->is_cls = true;
+    result->does_not_need_guards = does_not_need_guards;
     return result;
 }
 
