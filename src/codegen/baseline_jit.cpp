@@ -834,6 +834,16 @@ int JitFragmentWriter::finishCompilation() {
                "We will end up overwriting those instructions.");
     code_block.fragmentFinished(assembler->bytesWritten(), num_bytes_overlapping, next_fragment_start, *ic_info);
 
+    bool all_jited = true;
+    for (auto&& b : block->cfg->blocks) {
+        if (!b->entry_code) {
+            all_jited = false;
+            break;
+        }
+    }
+    if (all_jited)
+        block->cfg->is_full_bjit = true;
+
 #if MOVING_GC
     // If JitFragmentWriter is destroyed, we don't necessarily want the ICInfo to be destroyed also,
     // because it may contain a list of references to pointers in generated code that still exists

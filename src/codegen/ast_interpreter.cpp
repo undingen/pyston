@@ -71,6 +71,7 @@ public:
     void initArguments(BoxedClosure* closure, BoxedGenerator* generator, Box* arg1, Box* arg2, Box* arg3, Box** args);
 
     static Box* execute(ASTInterpreter& interpreter, CFGBlock* start_block = NULL, AST_stmt* start_at = NULL);
+    static Box* executeInnerBjit(ASTInterpreter& interpreter);
     static Box* executeInner(ASTInterpreter& interpreter, CFGBlock* start_block, AST_stmt* start_at);
 
 private:
@@ -164,6 +165,7 @@ public:
     void setCurrentStatement(AST_stmt* stmt) { frame_info.stmt = stmt; }
 
     FunctionMetadataSource* getMD() { return (FunctionMetadataSource*)frame_info.md; }
+    CFG* getCFG() { return getSourceInfo()->cfg; }
     FrameInfo* getFrameInfo() { return &frame_info; }
     BoxedClosure* getPassedClosure() { return frame_info.passed_closure; }
     Box** getVRegs() { return frame_info.vregs; }
@@ -339,6 +341,29 @@ Box* ASTInterpreter::execJITedBlock(CFGBlock* b) {
     }
     return nullptr;
 }
+
+
+Box* ASTInterpreter::executeInnerBjit(ASTInterpreter& interpreter) {
+    CFGBlock* b = interpreter.getSourceInfo()->cfg->getStartingBlock();
+
+    // Important that this happens after RegisterHelper:
+    interpreter.setCurrentStatement(b->body[0]);
+    threading::allowGLReadPreemption();
+
+    Box* rtn = interpreter.execJITedBlock(b);
+    assert(!interpreter.next_block);
+
+    // check if we returned from the baseline JIT because we should do a OSR.
+    if (unlikely(rtn == (Box*)ASTInterpreterJitInterface::osr_dummy_value)) {
+        AST_Jump* cur_stmt = (AST_Jump*)interpreter.getCurrentStatement();
+        RELEASE_ASSERT(cur_stmt->type == AST_TYPE::Jump, "");
+        // WARNING: do not put a try catch + rethrow block around this code here.
+        //          it will confuse our unwinder!
+        rtn = interpreter.doOSR(cur_stmt);
+    }
+    return rtn;
+}
+
 
 Box* ASTInterpreter::executeInner(ASTInterpreter& interpreter, CFGBlock* start_block, AST_stmt* start_at) {
     Value v(nullptr, nullptr);
@@ -1903,9 +1928,69 @@ const void* interpreter_instr_addr = (void*)&executeInnerAndSetupFrame;
 // small wrapper around executeInner because we can not directly call the member function from asm.
 extern "C" Box* executeInnerFromASM(ASTInterpreter& interpreter, CFGBlock* start_block, AST_stmt* start_at) {
     initFrame(interpreter.getFrameInfo());
-    Box* rtn = ASTInterpreter::executeInner(interpreter, start_block, start_at);
+    Box* rtn = NULL;
+    if (likely(!start_block && !start_at && interpreter.getCFG()->is_full_bjit))
+        rtn = ASTInterpreter::executeInnerBjit(interpreter);
+    else
+        rtn = ASTInterpreter::executeInner(interpreter, start_block, start_at);
     deinitFrameMaybe(interpreter.getFrameInfo());
     return rtn;
+}
+
+Box* reoptFunction(FunctionMetadataSource* md, Box* closure, Box* generator, Box* globals, Box* arg1, Box* arg2,
+                   Box* arg3, Box** args) {
+    md->times_interpreted = 0;
+
+    // EffortLevel new_effort = EffortLevel::MODERATE;
+    EffortLevel new_effort = EffortLevel::MAXIMAL; // always use max opt (disabled moderate opt tier)
+    if (FORCE_OPTIMIZE)
+        new_effort = EffortLevel::MAXIMAL;
+
+    std::vector<ConcreteCompilerType*> arg_types;
+    for (int i = 0; i < md->param_names.totalParameters(); i++) {
+        Box* arg = getArg(i, arg1, arg2, arg3, args);
+
+        assert(arg || i == md->param_names.kwargsIndex()); // only builtin functions can pass NULL args
+
+        // TODO: reenable argument-type specialization
+        arg_types.push_back(UNKNOWN);
+        // arg_types.push_back(typeFromClass(arg->cls));
+    }
+    FunctionSpecialization* spec = new FunctionSpecialization(UNKNOWN, arg_types);
+
+    // this also pushes the new CompiledVersion to the back of the version list:
+    CompiledFunction* optimized = compileFunction(md, spec, new_effort, NULL);
+
+    md->dependent_interp_callsites.invalidateAll();
+
+    UNAVOIDABLE_STAT_TIMER(t0, "us_timer_in_jitted_code");
+    Box* r;
+    Box* maybe_args[3];
+    int nmaybe_args = 0;
+    if (closure)
+        maybe_args[nmaybe_args++] = closure;
+    if (generator)
+        maybe_args[nmaybe_args++] = generator;
+    if (globals)
+        maybe_args[nmaybe_args++] = globals;
+    if (nmaybe_args == 0)
+        r = optimized->call(arg1, arg2, arg3, args);
+    else if (nmaybe_args == 1)
+        r = optimized->call1(maybe_args[0], arg1, arg2, arg3, args);
+    else if (nmaybe_args == 2)
+        r = optimized->call2(maybe_args[0], maybe_args[1], arg1, arg2, arg3, args);
+    else {
+        assert(nmaybe_args == 3);
+        r = optimized->call3(maybe_args[0], maybe_args[1], maybe_args[2], arg1, arg2, arg3, args);
+    }
+
+    if (optimized->exception_style == CXX)
+        return r;
+    else {
+        if (!r)
+            throwCAPIException();
+        return r;
+    }
 }
 
 Box* astInterpretFunction(FunctionMetadataSource* md, Box* closure, Box* generator, Box* globals, Box* arg1, Box* arg2,
@@ -1915,62 +2000,11 @@ Box* astInterpretFunction(FunctionMetadataSource* md, Box* closure, Box* generat
     SourceInfo* const source_info = &md->source_info;
 
     assert((!globals) == source_info->scoping->areGlobalsFromModule());
-    bool can_reopt = ENABLE_REOPT && !FORCE_INTERPRETER;
-
-    if (unlikely(can_reopt
-                 && (FORCE_OPTIMIZE || !ENABLE_INTERPRETER || md->times_interpreted > REOPT_THRESHOLD_BASELINE))) {
-        md->times_interpreted = 0;
-
-        // EffortLevel new_effort = EffortLevel::MODERATE;
-        EffortLevel new_effort = EffortLevel::MAXIMAL; // always use max opt (disabled moderate opt tier)
-        if (FORCE_OPTIMIZE)
-            new_effort = EffortLevel::MAXIMAL;
-
-        std::vector<ConcreteCompilerType*> arg_types;
-        for (int i = 0; i < md->param_names.totalParameters(); i++) {
-            Box* arg = getArg(i, arg1, arg2, arg3, args);
-
-            assert(arg || i == md->param_names.kwargsIndex()); // only builtin functions can pass NULL args
-
-            // TODO: reenable argument-type specialization
-            arg_types.push_back(UNKNOWN);
-            // arg_types.push_back(typeFromClass(arg->cls));
-        }
-        FunctionSpecialization* spec = new FunctionSpecialization(UNKNOWN, arg_types);
-
-        // this also pushes the new CompiledVersion to the back of the version list:
-        CompiledFunction* optimized = compileFunction(md, spec, new_effort, NULL);
-
-        md->dependent_interp_callsites.invalidateAll();
-
-        UNAVOIDABLE_STAT_TIMER(t0, "us_timer_in_jitted_code");
-        Box* r;
-        Box* maybe_args[3];
-        int nmaybe_args = 0;
-        if (closure)
-            maybe_args[nmaybe_args++] = closure;
-        if (generator)
-            maybe_args[nmaybe_args++] = generator;
-        if (globals)
-            maybe_args[nmaybe_args++] = globals;
-        if (nmaybe_args == 0)
-            r = optimized->call(arg1, arg2, arg3, args);
-        else if (nmaybe_args == 1)
-            r = optimized->call1(maybe_args[0], arg1, arg2, arg3, args);
-        else if (nmaybe_args == 2)
-            r = optimized->call2(maybe_args[0], maybe_args[1], arg1, arg2, arg3, args);
-        else {
-            assert(nmaybe_args == 3);
-            r = optimized->call3(maybe_args[0], maybe_args[1], maybe_args[2], arg1, arg2, arg3, args);
-        }
-
-        if (optimized->exception_style == CXX)
-            return r;
-        else {
-            if (!r)
-                throwCAPIException();
-            return r;
-        }
+    bool should_reopt = md->times_interpreted > REOPT_THRESHOLD_BASELINE || FORCE_OPTIMIZE || !ENABLE_INTERPRETER;
+    if (unlikely(should_reopt)) {
+        bool can_reopt = ENABLE_REOPT && !FORCE_INTERPRETER;
+        if (can_reopt)
+            return reoptFunction(md, closure, generator, globals, arg1, arg2, arg3, args);
     }
 
 
@@ -1987,7 +2021,8 @@ Box* astInterpretFunction(FunctionMetadataSource* md, Box* closure, Box* generat
         cfg = computeCFG(source_info, source_info->body, md->param_names);
 
     Box** vregs = NULL;
-    int num_vregs = cfg->getVRegInfo().getTotalNumOfVRegs();
+    int num_vregs = cfg->is_full_bjit ? cfg->getVRegInfo().getNumOfCrossBlockVRegs()
+                                      : cfg->getVRegInfo().getTotalNumOfVRegs();
     if (num_vregs > 0) {
         vregs = (Box**)alloca(sizeof(Box*) * num_vregs);
         memset(vregs, 0, sizeof(Box*) * num_vregs);
