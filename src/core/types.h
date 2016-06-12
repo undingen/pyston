@@ -227,13 +227,11 @@ struct ParamNames {
     ParamNames(const std::vector<llvm::StringRef>& args, llvm::StringRef vararg, llvm::StringRef kwarg);
     static ParamNames empty() { return ParamNames(); }
 
-    int totalParameters() const {
-        return args.size() + (vararg.str().size() == 0 ? 0 : 1) + (kwarg.str().size() == 0 ? 0 : 1);
-    }
+    int totalParameters() const { return args.size() + (vararg.size() == 0 ? 0 : 1) + (kwarg.size() == 0 ? 0 : 1); }
 
     int kwargsIndex() const {
-        assert(kwarg.str().size());
-        return args.size() + (vararg.str().size() == 0 ? 0 : 1);
+        // assert(kwarg.str().size());
+        return args.size() + (vararg.size() == 0 ? 0 : 1);
     }
 
 private:

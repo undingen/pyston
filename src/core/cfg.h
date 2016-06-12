@@ -162,11 +162,12 @@ public:
 // Control Flow Graph
 class CFG {
 private:
-    int next_idx;
     VRegInfo vreg_info;
+    int next_idx;
 
 public:
     std::vector<CFGBlock*> blocks;
+    bool is_fast = false;
 
 public:
     CFG() : next_idx(0) {}
