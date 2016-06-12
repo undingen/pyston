@@ -897,6 +897,11 @@ uint64_t JitFragmentWriter::asUInt(InternedString s) {
 std::pair<RewriterVar*, RewriterAction*>
 JitFragmentWriter::emitPPCall(void* func_addr, llvm::ArrayRef<RewriterVar*> args, unsigned short pp_size, AST* ast_node,
                               TypeRecorder* type_recorder, llvm::ArrayRef<RewriterVar*> additional_uses) {
+    /*
+    if (func_addr != (void*)runtimeCall && func_addr != (void*)callattr && func_addr != (void*)setattr
+        && func_addr != (void*)setitem)
+        slot_size = std::min((unsigned short)100, slot_size);
+    */
     if (LOG_BJIT_ASSEMBLY)
         comment("BJIT: emitPPCall() start");
     RewriterVar::SmallVector args_vec(args.begin(), args.end());
