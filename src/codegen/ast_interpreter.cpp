@@ -235,7 +235,7 @@ ASTInterpreter::ASTInterpreter(FunctionMetadata* md, Box** vregs, FrameInfo* deo
       parent_module(source_info->parent_module),
       should_jit(false) {
 
-    scope_info = source_info->getScopeInfo();
+    scope_info = source_info->scope_info;
 
     if (deopt_frame_info) {
         // copy over all fields and clear the deopt frame info
@@ -260,12 +260,13 @@ ASTInterpreter::ASTInterpreter(FunctionMetadata* md, Box** vregs, FrameInfo* deo
 }
 
 void ASTInterpreter::initArguments(BoxedClosure* _closure, BoxedGenerator* _generator, Box* arg1, Box* arg2, Box* arg3,
-                                   Box** args) {
+                                   Box** __restrict args) {
     setPassedClosure(_closure);
     generator = _generator;
 
-    if (scope_info->createsClosure())
+    if (unlikely(scope_info->createsClosure())) {
         created_closure = createClosure(_closure, scope_info->getClosureSize());
+    }
 
     const ParamNames& param_names = getMD()->param_names;
 
@@ -450,8 +451,7 @@ Value ASTInterpreter::doBinOp(AST_expr* node, Value left, Value right, int op, B
 }
 
 void ASTInterpreter::doStore(AST_Name* node, STOLEN(Value) value) {
-    if (node->lookup_type == ScopeInfo::VarScopeType::UNKNOWN)
-        node->lookup_type = scope_info->getScopeTypeOfName(node->id);
+    assert(node->lookup_type != ScopeInfo::VarScopeType::UNKNOWN);
 
     InternedString name = node->id;
     ScopeInfo::VarScopeType vst = node->lookup_type;
@@ -1963,6 +1963,7 @@ Box* astInterpretFunction(FunctionMetadata* md, Box* closure, Box* generator, Bo
         }
     }
 
+
     // Note: due to some (avoidable) restrictions, this check is pretty constrained in where
     // it can go, due to the fact that it can throw an exception.
     // It can't go in the ASTInterpreter constructor, since that will cause the C++ runtime to
@@ -1970,11 +1971,13 @@ Box* astInterpretFunction(FunctionMetadata* md, Box* closure, Box* generator, Bo
     // executeInner since we want the SyntaxErrors to happen *before* the stack frame is entered.
     // (For instance, throwing the exception will try to fetch the current statement, but we determine
     // that by looking at the cfg.)
-    if (!source_info->cfg)
-        source_info->cfg = computeCFG(source_info, source_info->body, md->param_names);
+    CFG*& cfg = source_info->cfg;
+
+    if (unlikely(!cfg))
+        cfg = computeCFG(source_info, source_info->body, md->param_names);
 
     Box** vregs = NULL;
-    int num_vregs = source_info->cfg->getVRegInfo().getTotalNumOfVRegs();
+    int num_vregs = cfg->getVRegInfo().getTotalNumOfVRegs();
     if (num_vregs > 0) {
         vregs = (Box**)alloca(sizeof(Box*) * num_vregs);
         memset(vregs, 0, sizeof(Box*) * num_vregs);
@@ -1983,12 +1986,6 @@ Box* astInterpretFunction(FunctionMetadata* md, Box* closure, Box* generator, Bo
     ++md->times_interpreted;
     ASTInterpreter interpreter(md, vregs);
 
-    ScopeInfo* scope_info = md->source->getScopeInfo();
-
-    if (unlikely(scope_info->usesNameLookup())) {
-        interpreter.setBoxedLocals(new BoxedDict());
-    }
-
     assert((!globals) == md->source->scoping->areGlobalsFromModule());
     if (globals) {
         interpreter.setGlobals(globals);
@@ -1996,7 +1993,47 @@ Box* astInterpretFunction(FunctionMetadata* md, Box* closure, Box* generator, Bo
         interpreter.setGlobals(source_info->parent_module);
     }
 
-    interpreter.initArguments((BoxedClosure*)closure, (BoxedGenerator*)generator, arg1, arg2, arg3, args);
+    if (likely(cfg->is_fast)) {
+        int i = 0;
+        const ParamNames& param_names = md->param_names;
+        const int total = param_names.kwargsIndex();
+        while (i < total) {
+            vregs[i] = incref(getArg(i, arg1, arg2, arg3, args));
+            ++i;
+        }
+
+        if (param_names.kwarg_name) {
+            assert(i == param_names.kwarg_name->vreg);
+            Box* val = getArg(i, arg1, arg2, arg3, args);
+            if (!val)
+                val = createDict();
+            else
+                Py_INCREF(val);
+            vregs[i] = val;
+            ++i;
+        }
+    } else {
+        ScopeInfo* scope_info = md->source->scope_info;
+
+        bool is_fast = !closure && !generator;
+
+        if (unlikely(scope_info->usesNameLookup())) {
+            interpreter.setBoxedLocals(new BoxedDict());
+            is_fast = false;
+        }
+
+        if (unlikely(scope_info->createsClosure())) {
+            is_fast = false;
+        }
+
+        if (likely(is_fast)) {
+            cfg->is_fast = true;
+        }
+
+        interpreter.initArguments((BoxedClosure*)closure, (BoxedGenerator*)generator, arg1, arg2, arg3, args);
+    }
+
+
     Box* v = ASTInterpreter::execute(interpreter);
     return v ? v : incref(None);
 }
