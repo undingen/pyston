@@ -112,6 +112,7 @@ public:
     int getTotalNumOfVRegs() const { return num_vregs; }
     int getNumOfUserVisibleVRegs() const { return sym_vreg_map_user_visible.size(); }
     int getNumOfCrossBlockVRegs() const { return num_vregs_cross_block; }
+    int getNumOfBlockLocalVRegs() const { return num_vregs - num_vregs_cross_block; }
 
     bool hasVRegsAssigned() const { return num_vregs != -1; }
     void assignVRegs(CFG* cfg, const ParamNames& param_names, ScopeInfo* scope_info);

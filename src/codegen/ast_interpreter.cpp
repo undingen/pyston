@@ -147,18 +147,13 @@ private:
     BoxedClosure* created_closure;
     BoxedGenerator* generator;
     BoxedModule* parent_module;
-    std::vector<Box*> additional_vregs;
+    llvm::MutableArrayRef<Box*> additional_vregs;
 
     std::unique_ptr<JitFragmentWriter> jit;
     bool should_jit;
 
 public:
-    ~ASTInterpreter() {
-        Py_XDECREF(this->created_closure);
-        for (auto&& v : additional_vregs) {
-            Py_XDECREF(v);
-        }
-    }
+    ~ASTInterpreter() { Py_XDECREF(this->created_closure); }
 
     const VRegInfo& getVRegInfo() const { return source_info->cfg->getVRegInfo(); }
     const llvm::DenseMap<InternedString, int>& getSymVRegMap() const {
@@ -400,6 +395,7 @@ Box* ASTInterpreter::executeInner(ASTInterpreter& interpreter, CFGBlock* start_b
     if (ENABLE_BASELINEJIT && interpreter.getMD()->times_interpreted >= REOPT_THRESHOLD_INTERPRETER)
         interpreter.should_jit = true;
 
+    AutoDecrefArray<true> decref_additional(NULL, 0);
     while (interpreter.next_block) {
         interpreter.current_block = interpreter.next_block;
         interpreter.next_block = 0;
@@ -424,10 +420,15 @@ Box* ASTInterpreter::executeInner(ASTInterpreter& interpreter, CFGBlock* start_b
             }
         }
 
-        if (interpreter.additional_vregs.size() == 0)
-            interpreter.additional_vregs.resize(
-                interpreter.source_info->cfg->getVRegInfo().getTotalNumOfVRegs()
-                - interpreter.source_info->cfg->getVRegInfo().getNumOfCrossBlockVRegs());
+        if (unlikely(interpreter.additional_vregs.size() == 0
+                     && interpreter.source_info->cfg->getVRegInfo().getNumOfBlockLocalVRegs())) {
+            int num_additional = interpreter.source_info->cfg->getVRegInfo().getNumOfBlockLocalVRegs();
+            interpreter.additional_vregs
+                = llvm::MutableArrayRef<Box*>((Box**)alloca(sizeof(Box*) * num_additional), num_additional);
+            memset(interpreter.additional_vregs.data(), 0, sizeof(Box*) * num_additional);
+            decref_additional
+                = AutoDecrefArray<true>(interpreter.additional_vregs.data(), interpreter.additional_vregs.size());
+        }
 
         if (ENABLE_BASELINEJIT && interpreter.should_jit && !interpreter.jit) {
             assert(!interpreter.current_block->code);
@@ -444,6 +445,7 @@ Box* ASTInterpreter::executeInner(ASTInterpreter& interpreter, CFGBlock* start_b
             v = interpreter.visit_stmt(s);
         }
     }
+
     return v.o;
 }
 
