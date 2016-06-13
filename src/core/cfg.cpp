@@ -2652,6 +2652,7 @@ void VRegInfo::assignVRegs(CFG* cfg, const ParamNames& param_names, ScopeInfo* s
                 visitor.next_vreg = num_vregs_cross_block;
 
             if (b == cfg->getStartingBlock()) {
+                visitor.current_block = 0;
                 for (auto* name : param_names.arg_names) {
                     name->accept(&visitor);
                 }
@@ -2660,6 +2661,7 @@ void VRegInfo::assignVRegs(CFG* cfg, const ParamNames& param_names, ScopeInfo* s
 
                 if (param_names.kwarg_name)
                     param_names.kwarg_name->accept(&visitor);
+                visitor.current_block = b;
             }
 
             for (AST_stmt* stmt : b->body) {
