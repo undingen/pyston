@@ -2003,7 +2003,6 @@ Box* astInterpretFunction(FunctionMetadataSource* md, Box* closure, Box* generat
                                       : cfg->getVRegInfo().getTotalNumOfVRegs();
     if (num_vregs > 0) {
         vregs = (Box**)alloca(sizeof(Box*) * num_vregs);
-        memset(vregs, 0, sizeof(Box*) * num_vregs);
     }
 
     ++md->times_interpreted;
@@ -2035,7 +2034,10 @@ Box* astInterpretFunction(FunctionMetadataSource* md, Box* closure, Box* generat
             vregs[i] = val;
             ++i;
         }
+        if (num_vregs - i)
+            memset(&vregs[i], 0, sizeof(Box*) * (num_vregs - i));
     } else {
+        memset(vregs, 0, sizeof(Box*) * num_vregs);
         ScopeInfo* scope_info = md->source->scope_info;
 
         bool is_fast = !closure && !generator;
