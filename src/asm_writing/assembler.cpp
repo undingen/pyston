@@ -775,6 +775,27 @@ void Assembler::incq(Indirect mem) {
 }
 
 void Assembler::decq(Indirect mem) {
+    if (mem.offset == 0) {
+        int src_idx = mem.base.regnum;
+
+        int rex = REX_W;
+        if (src_idx >= 8) {
+            rex |= REX_B;
+            src_idx -= 8;
+        }
+
+        assert(src_idx >= 0 && src_idx < 8);
+
+        if (rex)
+            emitRex(rex);
+
+        emitByte(0x83);
+        emitByte(0x28 | src_idx);
+        emitByte(1);
+        return;
+    }
+
+
     int src_idx = mem.base.regnum;
 
     int rex = REX_W;
