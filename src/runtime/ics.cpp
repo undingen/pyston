@@ -254,8 +254,9 @@ RuntimeIC::RuntimeIC(void* func_addr, int num_slots, int slot_size) {
 
 
         SpillMap _spill_map;
-        PatchpointInitializationInfo initialization_info = initializePatchpoint3(
-            func_addr, pp_start, pp_end, 0 /* scratch_offset */, 0 /* scratch_size */, LiveOutSet(), _spill_map);
+        PatchpointInitializationInfo initialization_info
+            = initializePatchpoint3(func_addr, pp_start, pp_end, 0 /* scratch_offset */, 0 /* scratch_size */,
+                                    LiveOutSet(), _spill_map, setup_info.get());
         assert(_spill_map.size() == 0);
         assert(initialization_info.slowpath_start == pp_start + patchable_size);
         assert(initialization_info.slowpath_rtn_addr == pp_end);

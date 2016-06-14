@@ -797,7 +797,7 @@ int JitFragmentWriter::finishCompilation() {
         uint8_t* end_addr = pp_info.end_addr;
         PatchpointInitializationInfo initialization_info
             = initializePatchpoint3(pp_info.func_addr, start_addr, end_addr, 0 /* scratch_offset */,
-                                    0 /* scratch_size */, LiveOutSet(), _spill_map);
+                                    0 /* scratch_size */, LiveOutSet(), _spill_map, pp_info.ic.get());
         uint8_t* slowpath_start = initialization_info.slowpath_start;
         uint8_t* slowpath_rtn_addr = initialization_info.slowpath_rtn_addr;
 

@@ -723,7 +723,7 @@ struct PatchpointInitializationInfo {
 
 PatchpointInitializationInfo initializePatchpoint3(void* slowpath_func, uint8_t* start_addr, uint8_t* end_addr,
                                                    int scratch_offset, int scratch_size, LiveOutSet live_outs,
-                                                   SpillMap& remapped);
+                                                   SpillMap& remapped, const ICSetupInfo* setup_info = NULL);
 
 template <> inline RewriterVar* RewriterVar::getAttrCast<bool, bool>(int offset, Location loc) {
     return getAttr(offset, loc, assembler::MovType::ZBL);

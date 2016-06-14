@@ -301,7 +301,7 @@ void processStackmap(CompiledFunction* cf, StackMap* stackmap) {
 
 
         auto initialization_info = initializePatchpoint3(slowpath_func, start_addr, end_addr, scratch_rbp_offset,
-                                                         scratch_size, std::move(live_outs), frame_remapped);
+                                                         scratch_size, std::move(live_outs), frame_remapped, ic);
 
         ASSERT(initialization_info.slowpath_start - start_addr >= ic->num_slots * ic->slot_size,
                "Used more slowpath space than expected; change ICSetupInfo::totalSize()?");

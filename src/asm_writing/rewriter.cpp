@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "asm_writing/icinfo.h"
+#include "codegen/patchpoints.h"
 #include "codegen/unwinding.h"
 #include "core/common.h"
 #include "core/stats.h"
@@ -2430,7 +2431,7 @@ void setSlowpathFunc(uint8_t* pp_addr, void* func) {
 
 PatchpointInitializationInfo initializePatchpoint3(void* slowpath_func, uint8_t* start_addr, uint8_t* end_addr,
                                                    int scratch_offset, int scratch_size, LiveOutSet live_outs,
-                                                   SpillMap& remapped) {
+                                                   SpillMap& remapped, const ICSetupInfo* setup_info) {
     assert(start_addr < end_addr);
 
     int est_slowpath_size = INITIAL_CALL_SIZE;
@@ -2478,14 +2479,23 @@ PatchpointInitializationInfo initializePatchpoint3(void* slowpath_func, uint8_t*
 
     // TODO: some of these registers could already have been pushed via the frame saving code
 
-    uint8_t* slowpath_start = end_addr - est_slowpath_size;
-    ASSERT(slowpath_start >= start_addr, "Used more slowpath space than expected; change ICSetupInfo::totalSize()?");
+    uint8_t* est_slowpath_start = end_addr - est_slowpath_size;
+    int num_slots = setup_info ? setup_info->num_slots : 1;
+    int slot_size = setup_info ? setup_info->slot_size : est_slowpath_start - start_addr;
+    assert(num_slots >= 1);
 
-    assembler::Assembler _a(start_addr, slowpath_start - start_addr);
-    //_a.trap();
-    if (slowpath_start - start_addr > 20)
-        _a.jmp(assembler::JumpDestination::fromStart(slowpath_start - start_addr));
-    _a.fillWithNops();
+    uint8_t* slowpath_start = start_addr + num_slots * slot_size;
+    ASSERT(slowpath_start >= start_addr, "Used more slowpath space than expected; change ICSetupInfo::totalSize()?");
+    ASSERT(est_slowpath_start >= slowpath_start,
+           "Used more slowpath space than expected; change ICSetupInfo::totalSize()?");
+
+    for (int slot_index = 0; slot_index < num_slots; ++slot_index) {
+        auto slot_start = start_addr + slot_index * slot_size;
+        assembler::Assembler _a(slot_start, slot_size);
+        if (slowpath_start - slot_start > 20)
+            _a.jmp(assembler::JumpDestination::fromStart(slowpath_start - slot_start));
+        _a.fillWithNops();
+    }
 
     assembler::Assembler assem(slowpath_start, end_addr - slowpath_start);
     // if (regs_to_spill.size())
