@@ -299,7 +299,7 @@ public:
     void abortCompilation();
     int finishCompilation();
 
-    bool finishAssembly(int continue_offset) override;
+    bool finishAssembly(int continue_offset, bool& should_fill_with_nops) override;
 
 private:
     RewriterVar* allocArgs(const llvm::ArrayRef<RewriterVar*> args, RewriterVar::SetattrType);

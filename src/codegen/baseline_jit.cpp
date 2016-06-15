@@ -833,7 +833,8 @@ int JitFragmentWriter::finishCompilation() {
     return exit_info.num_bytes;
 }
 
-bool JitFragmentWriter::finishAssembly(int continue_offset) {
+bool JitFragmentWriter::finishAssembly(int continue_offset, bool& should_fill_with_nops) {
+    should_fill_with_nops = false;
     return !assembler->hasFailed();
 }
 
@@ -874,6 +875,13 @@ std::pair<RewriterVar*, RewriterAction*>
 JitFragmentWriter::emitPPCall(void* func_addr, llvm::ArrayRef<RewriterVar*> args, unsigned char num_slots,
                               unsigned short slot_size, AST* ast_node, TypeRecorder* type_recorder,
                               llvm::ArrayRef<RewriterVar*> additional_uses) {
+
+    slot_size = ((num_slots * slot_size) * 2) / 3;
+    if (slot_size < 100)
+        slot_size = 100;
+    if (slot_size > 1024)
+        slot_size = 1024;
+    num_slots = 1;
     if (LOG_BJIT_ASSEMBLY)
         comment("BJIT: emitPPCall() start");
     RewriterVar::SmallVector args_vec(args.begin(), args.end());
