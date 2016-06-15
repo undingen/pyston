@@ -882,7 +882,8 @@ int JitFragmentWriter::finishCompilation() {
     return exit_info.num_bytes;
 }
 
-bool JitFragmentWriter::finishAssembly(int continue_offset) {
+bool JitFragmentWriter::finishAssembly(int continue_offset, bool& should_fill_with_nops) {
+    should_fill_with_nops = false;
     return !assembler->hasFailed();
 }
 
@@ -926,6 +927,7 @@ JitFragmentWriter::emitPPCall(void* func_addr, llvm::ArrayRef<RewriterVar*> args
     if (func_addr != (void*)runtimeCall && func_addr != (void*)callattr && func_addr != (void*)setattr
         && func_addr != (void*)setitem)
         slot_size = std::min((unsigned short)100, slot_size);
+
     if (LOG_BJIT_ASSEMBLY)
         comment("BJIT: emitPPCall() start");
     RewriterVar::SmallVector args_vec(args.begin(), args.end());
