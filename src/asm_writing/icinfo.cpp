@@ -107,15 +107,25 @@ ICSlotRewrite::~ICSlotRewrite() {
 }
 
 void ICSlotRewrite::abort() {
-    if (assembler.hasFailed() && ic->percentBackedoff() > 50 && ic->slots.size() > 1) {
-        for (int i = 0; i < ic->slots.size() - 1; ++i) {
-            if (!ic->slots[i].num_inside && !ic->slots[i + 1].num_inside) {
-                ic->slots[i].clear();
-                ic->slots[i + 1].clear();
-                ic->slots[i].size = ic->slots[i].size + ic->slots[i + 1].size;
-                ic->slots[i + 1].size = 0;
-                ic->next_slot_to_try = i;
-                break;
+    if (assembler.hasFailed()) {
+        ++ic->num_asm_failed;
+        if (ic->num_asm_failed > 2 && ic->slots.size() > 1) {
+            for (int i = 0; i < ic->slots.size() - 1; ++i) {
+                int sec = i + 1;
+                while (sec < ic->slots.size() && !ic->slots[sec].num_inside && !ic->slots[sec].size)
+                    ++sec;
+                if (!ic->slots[i].num_inside && !ic->slots[sec].num_inside && ic->slots[sec].size) {
+                    ic->slots[i].clear();
+                    ic->slots[sec].clear();
+                    ic->slots[i].size = ic->slots[i].size + ic->slots[sec].size;
+                    ic->slots[sec].size = 0;
+                    ic->next_slot_to_try = i;
+                    ic->num_asm_failed = 0;
+
+                    static StatCounter merged_slots("ic_merged_slots");
+                    merged_slots.log();
+                    break;
+                }
             }
         }
     }
@@ -203,7 +213,7 @@ void ICSlotRewrite::commit(CommitHook* hook, std::vector<void*> gc_references,
     // if (VERBOSITY()) printf("Commiting to %p-%p\n", start, start + ic->slot_size);
     memcpy(slot_start, buf, old_size);
     int new_slot_size = ic_entry->size - real_size;
-    bool should_create_new_slot = new_slot_size > 30 && &ic->slots.back() == ic_entry && ic->slots.size() <= 8;
+    bool should_create_new_slot = new_slot_size >= real_size && &ic->slots.back() == ic_entry && ic->slots.size() <= 8;
     if (should_create_new_slot)
         ic_entry->size = real_size;
 
@@ -240,6 +250,7 @@ void ICSlotRewrite::commit(CommitHook* hook, std::vector<void*> gc_references,
         // printf("adding new slot: %d\n", new_slot_size);
         ic->slots.emplace_back(ic, (uint8_t*)ic_entry->start_addr + real_size, new_slot_size);
     }
+    ic->num_asm_failed = 0;
 }
 
 void ICSlotRewrite::addDependenceOn(ICInvalidator& invalidator) {
