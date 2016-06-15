@@ -79,6 +79,9 @@ void ICSlotInfo::clear() {
 }
 
 std::unique_ptr<ICSlotRewrite> ICSlotRewrite::create(ICInfo* ic, const char* debug_name) {
+    if (ic->currently_rewriting)
+        return NULL;
+
     auto ic_entry = ic->pickEntryForRewrite(debug_name);
     if (!ic_entry)
         return NULL;
@@ -92,7 +95,7 @@ ICSlotRewrite::ICSlotRewrite(ICInfo* ic, const char* debug_name, ICSlotInfo* ic_
       buf((uint8_t*)malloc(ic_entry->size)),
       assembler(buf, ic_entry->size),
       ic_entry(ic_entry) {
-    ic_entry->num_inside = 1;
+    ic->currently_rewriting = true;
     assembler.nop();
     if (VERBOSITY() >= 4)
         printf("starting %s icentry\n", debug_name);
@@ -100,11 +103,22 @@ ICSlotRewrite::ICSlotRewrite(ICInfo* ic, const char* debug_name, ICSlotInfo* ic_
 
 ICSlotRewrite::~ICSlotRewrite() {
     free(buf);
-    if (ic_entry)
-        ic_entry->num_inside = 0;
+    ic->currently_rewriting = false;
 }
 
 void ICSlotRewrite::abort() {
+    if (assembler.hasFailed() && ic->percentBackedoff() > 50 && ic->slots.size() > 1) {
+        for (int i = 0; i < ic->slots.size() - 1; ++i) {
+            if (!ic->slots[i].num_inside && !ic->slots[i + 1].num_inside) {
+                ic->slots[i].clear();
+                ic->slots[i + 1].clear();
+                ic->slots[i].size = ic->slots[i].size + ic->slots[i + 1].size;
+                ic->slots[i + 1].size = 0;
+                ic->next_slot_to_try = i;
+                break;
+            }
+        }
+    }
     ic->retry_backoff = std::min(MAX_RETRY_BACKOFF, 2 * ic->retry_backoff);
     ic->retry_in = ic->retry_backoff;
 }
@@ -189,7 +203,8 @@ void ICSlotRewrite::commit(CommitHook* hook, std::vector<void*> gc_references,
     // if (VERBOSITY()) printf("Commiting to %p-%p\n", start, start + ic->slot_size);
     memcpy(slot_start, buf, old_size);
     int new_slot_size = ic_entry->size - real_size;
-    if (&ic->slots.back() == ic_entry)
+    bool should_create_new_slot = new_slot_size > 30 && &ic->slots.back() == ic_entry && ic->slots.size() <= 8;
+    if (should_create_new_slot)
         ic_entry->size = real_size;
 
     for (auto p : ic_entry->gc_references) {
@@ -221,7 +236,7 @@ void ICSlotRewrite::commit(CommitHook* hook, std::vector<void*> gc_references,
 
     llvm::sys::Memory::InvalidateInstructionCache(slot_start, old_size);
 
-    if (new_slot_size > 30 && &ic->slots.back() == ic_entry && ic->slots.size() <= 8) {
+    if (should_create_new_slot) {
         // printf("adding new slot: %d\n", new_slot_size);
         ic->slots.emplace_back(ic, (uint8_t*)ic_entry->start_addr + real_size, new_slot_size);
     }
@@ -259,20 +274,15 @@ std::unique_ptr<ICSlotRewrite> ICInfo::startRewrite(const char* debug_name) {
 }
 
 ICSlotInfo* ICInfo::pickEntryForRewrite(const char* debug_name) {
-    if (slots.back().num_inside)
-        return NULL;
-    // return &slots.back();
-
     int num_slots = slots.size();
-    // assert(slots.size() < 10);
-    // if (num_slots > 1)
-    //    return NULL;
     for (int _i = 0; _i < num_slots; _i++) {
         int i = (_i + next_slot_to_try) % num_slots;
 
         ICSlotInfo& sinfo = slots[i];
         assert(sinfo.num_inside >= 0);
         if (sinfo.num_inside)
+            continue;
+        if (!sinfo.size)
             continue;
 
         if (VERBOSITY() >= 4) {
@@ -428,10 +438,9 @@ void ICInfo::clear(ICSlotInfo* icentry) {
 }
 
 bool ICInfo::shouldAttempt() {
-    if (slots.back().num_inside)
+    if (currently_rewriting)
         return false;
-    // if (times_rewritten >= slots.size())
-    //    return false;
+
     if (retry_in) {
         retry_in--;
         return false;
