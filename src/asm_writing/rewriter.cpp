@@ -2379,8 +2379,9 @@ Rewriter* Rewriter::createRewriter(void* rtn_addr, int num_args, const char* deb
 
     log_ic_attempts_started(debug_name);
     std::unique_ptr<ICSlotRewrite> slots = ic->startRewrite(debug_name);
-    if (!slots->prepareEntry())
+    if (!slots) {
         return NULL;
+    }
     return new Rewriter(std::move(slots), num_args, ic->getLiveOuts());
 }
 

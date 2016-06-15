@@ -154,7 +154,7 @@ std::unique_ptr<JitFragmentWriter> JitCodeBlock::newFragment(CFGBlock* block, in
     std::unique_ptr<ICInfo> ic_info(new ICInfo(fragment_start, nullptr, nullptr, stack_info, 1, bytes_left,
                                                llvm::CallingConv::C, live_outs, assembler::RAX, 0,
                                                std::vector<Location>()));
-    std::unique_ptr<ICSlotRewrite> rewrite(new ICSlotRewrite(ic_info.get(), ""));
+    std::unique_ptr<ICSlotRewrite> rewrite = ic_info->startRewrite("");
 
     return std::unique_ptr<JitFragmentWriter>(new JitFragmentWriter(
         block, std::move(ic_info), std::move(rewrite), fragment_offset, patch_jump_offset, a.getStartAddr(), *this));
