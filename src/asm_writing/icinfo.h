@@ -90,8 +90,11 @@ private:
 
     ICSlotInfo* ic_entry;
 
+    ICSlotRewrite(ICInfo* ic, const char* debug_name, ICSlotInfo* ic_entry);
+
 public:
-    ICSlotRewrite(ICInfo* ic, const char* debug_name);
+    static std::unique_ptr<ICSlotRewrite> create(ICInfo* ic, const char* debug_name);
+
     ~ICSlotRewrite();
 
     assembler::Assembler* getAssembler() { return &assembler; }

@@ -78,10 +78,21 @@ void ICSlotInfo::clear() {
     decref_infos.clear();
 }
 
-ICSlotRewrite::ICSlotRewrite(ICInfo* ic, const char* debug_name)
-    : ic(ic), debug_name(debug_name), buf((uint8_t*)malloc(ic->getSlotSize())), assembler(buf, ic->getSlotSize()) {
-    this->ic_entry = NULL;
-    prepareEntry();
+std::unique_ptr<ICSlotRewrite> ICSlotRewrite::create(ICInfo* ic, const char* debug_name) {
+    auto ic_entry = ic->pickEntryForRewrite(debug_name);
+    if (!ic_entry)
+        return NULL;
+
+    return std::unique_ptr<ICSlotRewrite>(new ICSlotRewrite(ic, debug_name, ic_entry));
+}
+
+ICSlotRewrite::ICSlotRewrite(ICInfo* ic, const char* debug_name, ICSlotInfo* ic_entry)
+    : ic(ic),
+      debug_name(debug_name),
+      buf((uint8_t*)malloc(ic_entry->size)),
+      assembler(buf, ic_entry->size),
+      ic_entry(ic_entry) {
+    ic_entry->num_inside = 1;
     assembler.nop();
     if (VERBOSITY() >= 4)
         printf("starting %s icentry\n", debug_name);
@@ -89,8 +100,8 @@ ICSlotRewrite::ICSlotRewrite(ICInfo* ic, const char* debug_name)
 
 ICSlotRewrite::~ICSlotRewrite() {
     free(buf);
-    if (this->ic_entry)
-        this->ic_entry->num_inside = 0;
+    if (ic_entry)
+        ic_entry->num_inside = 0;
 }
 
 void ICSlotRewrite::abort() {
@@ -101,15 +112,13 @@ void ICSlotRewrite::abort() {
 ICSlotInfo* ICSlotRewrite::prepareEntry() {
     if (this->ic_entry)
         return this->ic_entry;
+    assert(0);
+    /*
     this->ic_entry = ic->pickEntryForRewrite(debug_name);
     if (!this->ic_entry)
         return NULL;
-    this->ic_entry->num_inside = 1;
-    assert(this->ic_entry == &ic->slots.back());
-    if (this->ic_entry->size != assembler.getSize())
-        printf("1: %d %d\n", this->ic_entry->size, assembler.getSize());
-    assert(this->ic_entry->size == assembler.getSize());
-    return this->ic_entry;
+    */
+    return NULL;
 }
 
 uint8_t* ICSlotRewrite::getSlotStart() {
@@ -180,7 +189,8 @@ void ICSlotRewrite::commit(CommitHook* hook, std::vector<void*> gc_references,
     // if (VERBOSITY()) printf("Commiting to %p-%p\n", start, start + ic->slot_size);
     memcpy(slot_start, buf, old_size);
     int new_slot_size = ic_entry->size - real_size;
-    ic_entry->size = real_size;
+    if (&ic->slots.back() == ic_entry)
+        ic_entry->size = real_size;
 
     for (auto p : ic_entry->gc_references) {
         Py_DECREF(p);
@@ -245,13 +255,13 @@ assembler::GenericRegister ICSlotRewrite::returnRegister() {
 
 
 std::unique_ptr<ICSlotRewrite> ICInfo::startRewrite(const char* debug_name) {
-    return std::unique_ptr<ICSlotRewrite>(new ICSlotRewrite(this, debug_name));
+    return ICSlotRewrite::create(this, debug_name);
 }
 
 ICSlotInfo* ICInfo::pickEntryForRewrite(const char* debug_name) {
     if (slots.back().num_inside)
         return NULL;
-    return &slots.back();
+    // return &slots.back();
 
     int num_slots = slots.size();
     // assert(slots.size() < 10);
@@ -418,8 +428,10 @@ void ICInfo::clear(ICSlotInfo* icentry) {
 }
 
 bool ICInfo::shouldAttempt() {
-    if (times_rewritten >= slots.size())
+    if (slots.back().num_inside)
         return false;
+    // if (times_rewritten >= slots.size())
+    //    return false;
     if (retry_in) {
         retry_in--;
         return false;
