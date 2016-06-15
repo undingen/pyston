@@ -5518,7 +5518,7 @@ Box* binopInternal(Box* lhs, Box* rhs, int op_type, BinopRewriteArgs* rewrite_ar
     // resolving it one way right now (ex, using the value from lhs.__add__) means that later
     // we'll resolve it the same way, even for the same argument types.
     // TODO implement full resolving semantics inside the rewrite?
-    bool can_patchpoint = !lhs->cls->is_user_defined && !rhs->cls->is_user_defined;
+    bool can_patchpoint = lhs->cls->isSafeToPP() && rhs->cls->isSafeToPP();
     if (!can_patchpoint) {
         PyObject* (*func)(PyObject*, PyObject*) = NULL;
 

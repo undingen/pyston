@@ -252,6 +252,8 @@ public:
         return true;
     }
 
+    bool isSafeToPP() { return !is_user_defined && is_constant && hasGenericGetattr(); }
+
     void freeze();
 
     // These should only be used for builtin types:
