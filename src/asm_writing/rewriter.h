@@ -264,8 +264,9 @@ private:
     Location arg_loc;
     std::pair<int /*offset*/, int /*size*/> scratch_allocation;
 
-    llvm::SmallSet<std::tuple<int, uint64_t, bool>, 4> attr_guards;  // used to detect duplicate guards
-    llvm::SmallDenseMap<std::pair<int, int>, RewriterVar*> getattrs; // used to detect duplicate getAttrs
+    llvm::SmallVector<std::tuple<int, assembler::MovType, RewriterVar*>, 3>
+        getattrs; // used to detect duplicate getAttrs
+    RewriterVar* parent = NULL;
 
     // Gets a copy of this variable in a register, spilling/reloading if necessary.
     // TODO have to be careful with the result since the interface doesn't guarantee
@@ -605,6 +606,28 @@ protected:
     }
 
     llvm::ArrayRef<assembler::Register> allocatable_regs;
+
+    struct Guard {
+        RewriterVar* var;
+        uint64_t val;
+        int offset;
+        bool negate;
+        bool deref;
+
+        Guard(RewriterVar* var, int offset, uint64_t val, bool negate = false)
+            : var(var), val(val), offset(offset), negate(negate), deref(true) {}
+        Guard(RewriterVar* var, uint64_t val, bool negate = false)
+            : var(var), val(val), offset(-1), negate(negate), deref(false) {}
+
+        std::tuple<RewriterVar*, uint64_t, int, bool, bool> asTuple() const {
+            return std::make_tuple(var, val, offset, negate, deref);
+        }
+
+        bool operator<(const Guard& rhs) const { return this->asTuple() < rhs.asTuple(); }
+        bool operator==(const Guard& rhs) const { return this->asTuple() == rhs.asTuple(); }
+    };
+
+    llvm::SmallSet<Guard, 8> attr_guards; // used to detect duplicate guards
 
 public:
     // This should be called exactly once for each argument

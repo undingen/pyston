@@ -283,6 +283,22 @@ void RewriterVar::addGuard(uint64_t val) {
         return;
     }
 
+    if (parent) {
+        int attr_offset = -1;
+        for (auto&& v : parent->getattrs) {
+            if (std::get<2>(v) == this && std::get<1>(v) == assembler::MovType::Q) {
+                attr_offset = std::get<0>(v);
+                break;
+            }
+        }
+        assert(attr_offset != -1);
+        if (!rewriter->attr_guards.insert(Rewriter::Guard(parent, attr_offset, val)).second)
+            return;
+    } else {
+        if (!rewriter->attr_guards.insert(Rewriter::Guard(this, val)).second)
+            return;
+    }
+
     RewriterVar* val_var = rewriter->loadConst(val);
     rewriter->addAction([=]() { rewriter->_addGuard(this, val_var); }, { this, val_var }, ActionType::GUARD);
 }
@@ -332,6 +348,22 @@ void Rewriter::_addGuard(RewriterVar* var, RewriterVar* val_constant) {
 void RewriterVar::addGuardNotEq(uint64_t val) {
     STAT_TIMER(t0, "us_timer_rewriter", 10);
 
+    if (parent) {
+        int attr_offset = -1;
+        for (auto&& v : parent->getattrs) {
+            if (std::get<2>(v) == this && std::get<1>(v) == assembler::MovType::Q) {
+                attr_offset = std::get<0>(v);
+                break;
+            }
+        }
+        assert(attr_offset != -1);
+        if (!rewriter->attr_guards.insert(Rewriter::Guard(parent, attr_offset, val, true)).second)
+            return;
+    } else {
+        if (!rewriter->attr_guards.insert(Rewriter::Guard(this, val, true)).second)
+            return;
+    }
+
     RewriterVar* val_var = rewriter->loadConst(val);
     rewriter->addAction([=]() { rewriter->_addGuardNotEq(this, val_var); }, { this, val_var }, ActionType::GUARD);
 }
@@ -364,18 +396,19 @@ void Rewriter::_addGuardNotEq(RewriterVar* var, RewriterVar* val_constant) {
 void RewriterVar::addAttrGuard(int offset, uint64_t val, bool negate) {
     STAT_TIMER(t0, "us_timer_rewriter", 10);
 
-    if (!attr_guards.insert(std::make_tuple(offset, val, negate)).second)
+    if (!rewriter->attr_guards.insert(Rewriter::Guard(this, offset, val, negate)).second)
         return; // duplicate guard detected
 
     if (!rewriter->added_changing_action) {
-        auto it = getattrs.find(std::make_pair(offset, (int)assembler::MovType::Q));
-        if (it != getattrs.end()) {
-            RewriterVar* attr = it->second;
-            if (negate)
-                attr->addGuardNotEq(val);
-            else
-                attr->addGuard(val);
-            return;
+        for (auto&& v : getattrs) {
+            if (std::get<0>(v) == offset && std::get<1>(v) == assembler::MovType::Q) {
+                RewriterVar* attr = std::get<2>(v);
+                if (negate)
+                    attr->addGuardNotEq(val);
+                else
+                    attr->addGuard(val);
+                return;
+            }
         }
     }
 
@@ -430,14 +463,23 @@ RewriterVar* RewriterVar::getAttr(int offset, Location dest, assembler::MovType 
 
     // if no changing action happened we can reuse get attributes
     if (!rewriter->added_changing_action) {
-        RewriterVar*& result = getattrs[std::make_pair(offset, (int)type)];
+        RewriterVar* result = NULL;
+        for (auto&& v : getattrs) {
+            if (std::get<0>(v) == offset && std::get<1>(v) == assembler::MovType::Q) {
+                result = std::get<2>(v);
+                break;
+            }
+        }
         if (result) {
             if (dest != Location::any())
                 result->getInReg(dest, true /* allow_constant_in_reg */);
         } else {
             result = rewriter->createNewVar();
+            if (type == assembler::MovType::Q)
+                result->parent = this;
             rewriter->addAction([=]() { rewriter->_getAttr(result, this, offset, dest, type); }, { this },
                                 ActionType::NORMAL);
+            getattrs.push_back(std::make_tuple(offset, type, result));
         }
         return result;
     }
