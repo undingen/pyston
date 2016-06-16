@@ -107,17 +107,20 @@ ICSlotRewrite::~ICSlotRewrite() {
 }
 
 void ICSlotRewrite::abort() {
-    if (assembler.hasFailed()) {
+    if (0 && assembler.hasFailed()) {
         ++ic->num_asm_failed;
         if (ic->num_asm_failed > 2 && ic->slots.size() > 1) {
             for (int i = 0; i < ic->slots.size() - 1; ++i) {
                 int sec = i + 1;
                 while (sec < ic->slots.size() && !ic->slots[sec].num_inside && !ic->slots[sec].size)
                     ++sec;
+                if (!(sec < ic->slots.size()))
+                    break;
                 if (!ic->slots[i].num_inside && !ic->slots[sec].num_inside && ic->slots[sec].size) {
                     ic->slots[i].clear();
                     ic->slots[sec].clear();
-                    ic->slots[i].size = ic->slots[i].size + ic->slots[sec].size;
+                    ic->slots[i].size += ic->slots[sec].size;
+                    ic->slots[sec].start_addr = NULL;
                     ic->slots[sec].size = 0;
                     ic->next_slot_to_try = i;
                     ic->num_asm_failed = 0;
@@ -202,20 +205,23 @@ void ICSlotRewrite::commit(CommitHook* hook, std::vector<void*> gc_references,
 
     ic->next_slot_to_try++;
 
+    int new_slot_size = ic_entry->size - real_size;
+    bool should_create_new_slot = new_slot_size >= real_size && &ic->slots.back() == ic_entry && ic->slots.size() <= 8;
+    if (should_create_new_slot)
+        ic_entry->size = real_size;
+
     Assembler new_asm(assembler.getStartAddr(), assembler.getSize());
     for (auto&& jump : jumps_to_patch) {
         new_asm.setCurInstPointer(assembler.getStartAddr() + std::get<0>(jump));
-        new_asm.jmp_cond(assembler::JumpDestination::fromStart(real_size), (assembler::ConditionCode)std::get<2>(jump));
+        new_asm.jmp_cond(assembler::JumpDestination::fromStart(ic_entry->size),
+                         (assembler::ConditionCode)std::get<2>(jump));
         while (new_asm.bytesWritten() < std::get<1>(jump))
             new_asm.nop();
     }
 
     // if (VERBOSITY()) printf("Commiting to %p-%p\n", start, start + ic->slot_size);
     memcpy(slot_start, buf, old_size);
-    int new_slot_size = ic_entry->size - real_size;
-    bool should_create_new_slot = new_slot_size >= real_size && &ic->slots.back() == ic_entry && ic->slots.size() <= 8;
-    if (should_create_new_slot)
-        ic_entry->size = real_size;
+
 
     for (auto p : ic_entry->gc_references) {
         Py_DECREF(p);
@@ -459,7 +465,6 @@ bool ICInfo::shouldAttempt() {
     // Note(kmod): in some pathological deeply-recursive cases, it's important that we set the
     // retry counter even if we attempt it again.  We could probably handle this by setting
     // the backoff to 0 on commit, and then setting the retry to the backoff here.
-
     return !isMegamorphic() && ENABLE_ICS;
 }
 
