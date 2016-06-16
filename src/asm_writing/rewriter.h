@@ -259,6 +259,11 @@ private:
     bool is_arg;
     bool is_constant;
 
+public:
+    bool is_cls = false;
+    bool does_not_need_guards = false;
+
+private:
     uint64_t constant_value;
     Location arg_loc;
     std::pair<int /*offset*/, int /*size*/> scratch_allocation;

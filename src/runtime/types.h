@@ -252,6 +252,10 @@ public:
         return true;
     }
 
+    bool doesNotNeedGuard() {
+        return is_constant && !instancesHaveHCAttrs() && !instancesHaveDictAttrs() && hasGenericGetattr();
+    }
+
     void freeze();
 
     // These should only be used for builtin types:
