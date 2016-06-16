@@ -18,6 +18,7 @@
 #include <memory>
 #include <unordered_set>
 #include <vector>
+#include <deque>
 
 #include "llvm/IR/CallingConv.h"
 
@@ -55,11 +56,12 @@ struct DecrefInfo {
 
 struct ICSlotInfo {
 public:
-    ICSlotInfo(ICInfo* ic, int idx) : ic(ic), idx(idx), num_inside(0) {}
+    ICSlotInfo(ICInfo* ic, uint8_t* addr, int size) : ic(ic), start_addr(addr), num_inside(0), size(size) {}
 
     ICInfo* ic;
-    int idx;        // the index inside the ic
+    uint8_t* start_addr;
     int num_inside; // the number of stack frames that are currently inside this slot
+    int size;
 
     std::vector<void*> gc_references;
     std::vector<DecrefInfo> decref_infos;
@@ -73,7 +75,7 @@ public:
     class CommitHook {
     public:
         virtual ~CommitHook() {}
-        virtual bool finishAssembly(int fastpath_offset) = 0;
+        virtual bool finishAssembly(int fastpath_offset, bool& should_fill_with_nops) = 0;
     };
 
 private:
@@ -88,8 +90,11 @@ private:
 
     ICSlotInfo* ic_entry;
 
+    ICSlotRewrite(ICInfo* ic, const char* debug_name, ICSlotInfo* ic_entry);
+
 public:
-    ICSlotRewrite(ICInfo* ic, const char* debug_name);
+    static std::unique_ptr<ICSlotRewrite> create(ICInfo* ic, const char* debug_name);
+
     ~ICSlotRewrite();
 
     assembler::Assembler* getAssembler() { return &assembler; }
@@ -106,7 +111,8 @@ public:
 
     void addDependenceOn(ICInvalidator&);
     void commit(CommitHook* hook, std::vector<void*> gc_references,
-                std::vector<std::pair<uint64_t, std::vector<Location>>> decref_infos);
+                std::vector<std::pair<uint64_t, std::vector<Location>>> decref_infos,
+                std::vector<std::tuple<int, int, int>> jumps_to_patch);
     void abort();
 
     const ICInfo* getICInfo() { return ic; }
@@ -120,7 +126,7 @@ typedef BitSet<16> LiveOutSet;
 
 class ICInfo {
 private:
-    std::vector<ICSlotInfo> slots;
+    std::deque<ICSlotInfo> slots;
     // For now, just use a round-robin eviction policy.
     // This is probably a bunch worse than LRU, but it's also
     // probably a bunch better than the "always evict slot #0" policy
@@ -130,7 +136,6 @@ private:
 
     const StackInfo stack_info;
     const int num_slots;
-    const int slot_size;
     const llvm::CallingConv::ID calling_conv;
     LiveOutSet live_outs;
     const assembler::GenericRegister return_register;
@@ -148,6 +153,8 @@ private:
     ICSlotInfo* pickEntryForRewrite(const char* debug_name);
 
 public:
+    bool currently_rewriting = false;
+    int num_asm_failed = 0;
     ICInfo(void* start_addr, void* slowpath_rtn_addr, void* continue_addr, StackInfo stack_info, int num_slots,
            int slot_size, llvm::CallingConv::ID calling_conv, LiveOutSet live_outs,
            assembler::GenericRegister return_register, TypeRecorder* type_recorder,
@@ -155,7 +162,7 @@ public:
     ~ICInfo();
     void* const start_addr, *const slowpath_rtn_addr, *const continue_addr;
 
-    int getSlotSize() { return slot_size; }
+    int getSlotSize() { return slots.back().size; }
     int getNumSlots() { return num_slots; }
     llvm::CallingConv::ID getCallingConvention() { return calling_conv; }
     const LiveOutSet& getLiveOuts() { return live_outs; }

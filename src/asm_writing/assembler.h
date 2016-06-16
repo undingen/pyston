@@ -210,6 +210,7 @@ public:
     void setCurInstPointer(uint8_t* ptr) { addr = ptr; }
     bool isExactlyFull() const { return addr == end_addr; }
     uint8_t* getStartAddr() { return start_addr; }
+    int getSize() { return end_addr - start_addr; }
 };
 
 // This class helps generating a forward jump with a relative offset.

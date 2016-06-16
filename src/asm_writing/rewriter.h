@@ -504,6 +504,8 @@ protected:
     int offset_eq_jmp_slowpath;
     int offset_ne_jmp_slowpath;
 
+    std::vector<std::tuple<int, int, int>> next_slot_jmps;
+
     // Move the original IC args back into their original registers:
     void restoreArgs();
     // Assert that our original args are correctly placed in case we need to
@@ -534,7 +536,7 @@ protected:
     // Do the bookkeeping to say that var is no longer in location l
     void removeLocationFromVar(RewriterVar* var, Location l);
 
-    bool finishAssembly(int continue_offset) override;
+    bool finishAssembly(int continue_offset, bool& should_fill_with_nops) override;
 
     void _slowpathJump(bool condition_eq);
     void _trap();
