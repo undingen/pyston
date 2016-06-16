@@ -367,6 +367,18 @@ void RewriterVar::addAttrGuard(int offset, uint64_t val, bool negate) {
     if (!attr_guards.insert(std::make_tuple(offset, val, negate)).second)
         return; // duplicate guard detected
 
+    if (!rewriter->added_changing_action) {
+        auto it = getattrs.find(std::make_pair(offset, (int)assembler::MovType::Q));
+        if (it != getattrs.end()) {
+            RewriterVar* attr = it->second;
+            if (negate)
+                attr->addGuardNotEq(val);
+            else
+                attr->addGuard(val);
+            return;
+        }
+    }
+
     RewriterVar* val_var = rewriter->loadConst(val);
     rewriter->addAction([=]() { rewriter->_addAttrGuard(this, offset, val_var, negate); }, { this, val_var },
                         ActionType::GUARD);
