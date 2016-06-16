@@ -27,7 +27,7 @@ int MAX_OPT_ITERATIONS = 1;
 bool LOG_IC_ASSEMBLY = 0;
 bool LOG_BJIT_ASSEMBLY = 0;
 
-bool FORCE_INTERPRETER = false;
+bool FORCE_INTERPRETER = true;
 bool FORCE_OPTIMIZE = false;
 bool ENABLE_INTERPRETER = true;
 bool ENABLE_BASELINEJIT = true;

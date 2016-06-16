@@ -292,12 +292,14 @@ void RewriterVar::addGuard(uint64_t val) {
             }
         }
         assert(attr_offset != -1);
-        if (!rewriter->attr_guards.insert(Rewriter::Guard(parent, attr_offset, val)).second)
+        if (!rewriter->guards.insert(Guard(parent, attr_offset, val)))
             return;
     } else {
-        if (!rewriter->attr_guards.insert(Rewriter::Guard(this, val)).second)
+        if (!rewriter->guards.insert(Guard(this, val)))
             return;
     }
+
+    constant_value = val;
 
     RewriterVar* val_var = rewriter->loadConst(val);
     rewriter->addAction([=]() { rewriter->_addGuard(this, val_var); }, { this, val_var }, ActionType::GUARD);
@@ -357,10 +359,10 @@ void RewriterVar::addGuardNotEq(uint64_t val) {
             }
         }
         assert(attr_offset != -1);
-        if (!rewriter->attr_guards.insert(Rewriter::Guard(parent, attr_offset, val, true)).second)
+        if (!rewriter->guards.insert(Guard(parent, attr_offset, val, true)))
             return;
     } else {
-        if (!rewriter->attr_guards.insert(Rewriter::Guard(this, val, true)).second)
+        if (!rewriter->guards.insert(Guard(this, val, true)))
             return;
     }
 
@@ -396,7 +398,7 @@ void Rewriter::_addGuardNotEq(RewriterVar* var, RewriterVar* val_constant) {
 void RewriterVar::addAttrGuard(int offset, uint64_t val, bool negate) {
     STAT_TIMER(t0, "us_timer_rewriter", 10);
 
-    if (!rewriter->attr_guards.insert(Rewriter::Guard(this, offset, val, negate)).second)
+    if (!rewriter->guards.insert(Guard(this, offset, val, negate)))
         return; // duplicate guard detected
 
     if (!rewriter->added_changing_action) {

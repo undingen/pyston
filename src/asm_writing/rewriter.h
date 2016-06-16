@@ -205,6 +205,12 @@ public:
     bool isConstant() const { return is_constant; }
     bool isContantNull() const { return isConstant() && constant_value == 0; }
 
+    uint64_t getConstant() const { return constant_value; }
+
+    RewriterVar* getParent() {
+        return parent;
+    }
+
 protected:
     void incref();
     void decref();
@@ -264,8 +270,7 @@ private:
     Location arg_loc;
     std::pair<int /*offset*/, int /*size*/> scratch_allocation;
 
-    llvm::SmallVector<std::tuple<int, assembler::MovType, RewriterVar*>, 3>
-        getattrs; // used to detect duplicate getAttrs
+    std::vector<std::tuple<int, assembler::MovType, RewriterVar*>> getattrs; // used to detect duplicate getAttrs
     RewriterVar* parent = NULL;
 
     // Gets a copy of this variable in a register, spilling/reloading if necessary.
@@ -287,7 +292,7 @@ private:
     RewriterVar& operator=(const RewriterVar&) = delete;
 
 public:
-    RewriterVar(Rewriter* rewriter) : rewriter(rewriter), next_use(0), is_arg(false), is_constant(false) {
+    RewriterVar(Rewriter* rewriter) : rewriter(rewriter), next_use(0), is_arg(false), is_constant(false), constant_value(0) {
         assert(rewriter);
     }
 
@@ -358,6 +363,60 @@ enum class ActionType { NORMAL, GUARD, MUTATION };
 
 // non-NULL fake pointer, definitely legit
 #define LOCATION_PLACEHOLDER ((RewriterVar*)1)
+
+struct Guard {
+    RewriterVar* var;
+    uint64_t val;
+    int offset;
+    bool negate;
+    bool deref;
+
+    Guard(RewriterVar* var, int offset, uint64_t val, bool negate = false)
+        : var(var), val(val), offset(offset), negate(negate), deref(true) {}
+    Guard(RewriterVar* var, uint64_t val, bool negate = false)
+        : var(var), val(val), offset(-1), negate(negate), deref(false) {}
+
+    std::tuple<RewriterVar*, uint64_t, int, bool, bool> asTuple() const {
+        return std::make_tuple(var, val, offset, negate, deref);
+    }
+
+    bool operator<(const Guard& rhs) const { return this->asTuple() < rhs.asTuple(); }
+    bool operator==(const Guard& rhs) const { return this->asTuple() == rhs.asTuple(); }
+};
+
+class GuardOptimizer {
+    std::vector<Guard> attr_guards; // used to detect duplicate guards
+    std::vector<Guard> attr_guards_deref;
+public:
+    bool insert(Guard&& guard) {
+        if (!guard.deref) {
+            auto it = std::find(attr_guards.begin(), attr_guards.end(), guard);
+            if (it != attr_guards.end())
+                return false;
+            attr_guards.emplace_back(std::forward<Guard&>(guard));
+            return true;
+        }
+
+        auto it = std::find(attr_guards_deref.begin(), attr_guards_deref.end(), guard);
+        if (it != attr_guards_deref.end())
+            return false;
+
+        if (guard.var->getConstant()) {
+            for (auto v : attr_guards_deref) {
+                if (v.var->getConstant() == guard.var->getConstant()) {
+                    Guard c = guard;
+                    c.var = v.var;
+                    auto it = std::find(attr_guards_deref.begin(), attr_guards_deref.end(), c);
+                    if (it != attr_guards_deref.end())
+                        return false;
+                }
+            }
+        }
+
+        attr_guards_deref.emplace_back(std::forward<Guard&>(guard));
+        return true;
+    }
+};
 
 class Rewriter : public ICSlotRewrite::CommitHook {
 private:
@@ -607,27 +666,8 @@ protected:
 
     llvm::ArrayRef<assembler::Register> allocatable_regs;
 
-    struct Guard {
-        RewriterVar* var;
-        uint64_t val;
-        int offset;
-        bool negate;
-        bool deref;
 
-        Guard(RewriterVar* var, int offset, uint64_t val, bool negate = false)
-            : var(var), val(val), offset(offset), negate(negate), deref(true) {}
-        Guard(RewriterVar* var, uint64_t val, bool negate = false)
-            : var(var), val(val), offset(-1), negate(negate), deref(false) {}
-
-        std::tuple<RewriterVar*, uint64_t, int, bool, bool> asTuple() const {
-            return std::make_tuple(var, val, offset, negate, deref);
-        }
-
-        bool operator<(const Guard& rhs) const { return this->asTuple() < rhs.asTuple(); }
-        bool operator==(const Guard& rhs) const { return this->asTuple() == rhs.asTuple(); }
-    };
-
-    llvm::SmallSet<Guard, 8> attr_guards; // used to detect duplicate guards
+    GuardOptimizer guards;
 
 public:
     // This should be called exactly once for each argument
