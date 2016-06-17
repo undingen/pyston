@@ -163,7 +163,18 @@ public:
     void* const start_addr, *const slowpath_rtn_addr, *const continue_addr;
 
     int getSlotSize() { return slots.back().size; }
-    int getNumSlots() { return num_slots; }
+    bool hasFixedSize() { return times_rewritten < slots.size() && times_rewritten; }
+
+    int getFixedSize() {
+        if (hasFixedSize()) {
+            int size = 0;
+            for (int i = 0; i < times_rewritten; ++i)
+                size += slots[i].size + 30;
+            return size;
+        }
+        return 0;
+    }
+    int getNumSlots() { return slots.size(); }
     llvm::CallingConv::ID getCallingConvention() { return calling_conv; }
     const LiveOutSet& getLiveOuts() { return live_outs; }
 
