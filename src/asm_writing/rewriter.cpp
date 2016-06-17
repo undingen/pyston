@@ -727,18 +727,34 @@ void Rewriter::_setAttr(RewriterVar* ptr, int offset, RewriterVar* val) {
     if (LOG_IC_ASSEMBLY)
         assembler->comment("_setAttr");
 
-    assembler::Register ptr_reg = ptr->getInReg();
+    if (ptr->hasScratchAllocation()) {
+        bool is_immediate;
+        assembler::Immediate imm = val->tryGetAsImmediate(&is_immediate);
 
-    bool is_immediate;
-    assembler::Immediate imm = val->tryGetAsImmediate(&is_immediate);
+        auto dest_loc
+            = indirectFor(Location(Location::Scratch, (ptr->scratch_allocation.first * sizeof(void*)) + offset));
 
-    if (is_immediate) {
-        assembler->movq(imm, assembler::Indirect(ptr_reg, offset));
+        if (is_immediate) {
+            assembler->movq(imm, dest_loc);
+        } else {
+            assembler::Register val_reg = val->getInReg(Location::any(), false);
+
+            assembler->mov(val_reg, dest_loc);
+        }
     } else {
-        assembler::Register val_reg = val->getInReg(Location::any(), false, /* otherThan */ ptr_reg);
-        assert(ptr_reg != val_reg);
+        assembler::Register ptr_reg = ptr->getInReg();
 
-        assembler->mov(val_reg, assembler::Indirect(ptr_reg, offset));
+        bool is_immediate;
+        assembler::Immediate imm = val->tryGetAsImmediate(&is_immediate);
+
+        if (is_immediate) {
+            assembler->movq(imm, assembler::Indirect(ptr_reg, offset));
+        } else {
+            assembler::Register val_reg = val->getInReg(Location::any(), false, /* otherThan */ ptr_reg);
+            assert(ptr_reg != val_reg);
+
+            assembler->mov(val_reg, assembler::Indirect(ptr_reg, offset));
+        }
     }
 
     ptr->bumpUse();
@@ -789,6 +805,14 @@ assembler::Register RewriterVar::getInReg(Location dest, bool allow_constant_in_
     if (locations.size() == 0 && this->is_constant) {
         assembler::Register reg = rewriter->allocReg(dest, otherThan);
         rewriter->const_loader.loadConstIntoReg(this->constant_value, reg);
+        rewriter->addLocationToVar(this, reg);
+        return reg;
+    }
+
+    if (locations.size() == 0 && this->hasScratchAllocation()) {
+        assembler::Register reg = rewriter->allocReg(dest, otherThan);
+        auto stack_loc = getScratchOffset();
+        rewriter->assembler->lea(stack_loc, reg);
         rewriter->addLocationToVar(this, reg);
         return reg;
     }
@@ -1357,6 +1381,12 @@ void RewriterVar::deregisterOwnedAttr(int byte_offset) {
     }, { this }, ActionType::NORMAL);
 }
 
+assembler::Indirect RewriterVar::getScratchOffset(int additional_offset_bytes) {
+    assert(hasScratchAllocation());
+    return assembler::Indirect(assembler::RSP, 8 * scratch_allocation.first + additional_offset_bytes
+                                                   + +rewriter->rewrite->getScratchRspOffset());
+}
+
 void RewriterVar::bumpUse() {
     rewriter->assertPhaseEmitting();
 
@@ -1807,12 +1837,6 @@ int Rewriter::_allocate(RewriterVar* result, int n) {
 
                 assert(result->scratch_allocation == std::make_pair(0, 0));
                 result->scratch_allocation = std::make_pair(a, n);
-
-                assembler::Register r = result->initializeInReg();
-
-                // TODO we could do something like we do for constants and only load
-                // this when necessary, so it won't spill. Is that worth?
-                assembler->lea(assembler::Indirect(assembler::RSP, 8 * a + rewrite->getScratchRspOffset()), r);
 
                 assertConsistent();
                 result->releaseIfNoUses();

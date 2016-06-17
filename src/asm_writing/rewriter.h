@@ -205,6 +205,8 @@ public:
     bool isConstant() const { return is_constant; }
     bool isContantNull() const { return isConstant() && constant_value == 0; }
 
+    assembler::Indirect getScratchOffset(int additional_offset_bytes = 0);
+
 protected:
     void incref();
     void decref();

@@ -185,6 +185,7 @@ public:
         Register,
         XMMRegister,
         Stack,
+        StackAddr,
         Scratch, // stack location, relative to the scratch start
 
         StackIndirect, // A location like $rsp[offset1][offset2]
