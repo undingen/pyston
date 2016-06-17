@@ -4916,6 +4916,15 @@ Box* callCLFunc(FunctionMetadata* md, CallRewriteArgs* rewrite_args, int num_out
     if (rewrite_args) {
         rewrite_args->rewriter->addDependenceOn(chosen_cf->dependent_callsites);
 
+        if (!md->source && chosen_cf == md->always_use_version && chosen_cf->spec->accepts_all_inputs) {
+            if (num_output_args >= 1)
+                rewrite_args->rewriter->dontGuard(rewrite_args->arg1, offsetof(Box, cls));
+            if (num_output_args >= 2)
+                rewrite_args->rewriter->dontGuard(rewrite_args->arg2, offsetof(Box, cls));
+            if (num_output_args >= 3)
+                rewrite_args->rewriter->dontGuard(rewrite_args->arg3, offsetof(Box, cls));
+        }
+
         assert(!generator);
 
         RewriterVar::SmallVector arg_vec;

@@ -694,6 +694,9 @@ public:
         return 100 - ic->percentBackedoff() - ic->percentMegamorphic();
     }
 
+    std::unordered_set<RewriterVar*> dont_guard;
+    void dontGuard(RewriterVar* var, int) { dont_guard.insert(var); }
+
     friend class RewriterVar;
 };
 

@@ -135,7 +135,6 @@ private:
     int next_slot_to_try;
 
     const StackInfo stack_info;
-    const int num_slots;
     const llvm::CallingConv::ID calling_conv;
     LiveOutSet live_outs;
     const assembler::GenericRegister return_register;

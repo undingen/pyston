@@ -316,7 +316,6 @@ ICInfo::ICInfo(void* start_addr, void* slowpath_rtn_addr, void* continue_addr, S
                std::vector<Location> ic_global_decref_locations)
     : next_slot_to_try(0),
       stack_info(stack_info),
-      num_slots(num_slots),
       calling_conv(calling_conv),
       live_outs(std::move(_live_outs)),
       return_register(return_register),
