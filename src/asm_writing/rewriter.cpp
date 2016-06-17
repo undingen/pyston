@@ -2240,6 +2240,9 @@ Rewriter::Rewriter(std::unique_ptr<ICSlotRewrite> rewrite, int num_args, const L
       offset_eq_jmp_next_slot(-1),
       offset_ne_jmp_next_slot(-1),
       allocatable_regs(std_allocatable_regs) {
+    if (!this->rewrite->getICInfo()->allocatable_registers.empty())
+        allocatable_regs = this->rewrite->getICInfo()->allocatable_registers;
+
     initPhaseCollecting();
 
     finished = false;
