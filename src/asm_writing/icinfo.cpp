@@ -396,6 +396,7 @@ std::unique_ptr<ICInfo> registerCompiledPatchpoint(uint8_t* start_addr, uint8_t*
     ICInfo* icinfo
         = new ICInfo(start_addr, slowpath_rtn_addr, continue_addr, stack_info, ic->num_slots, ic->slot_size,
                      ic->getCallingConvention(), std::move(live_outs), return_register, ic->type_recorder, decref_info);
+    icinfo->allocatable_registers = ic->allocatable_regs;
 
     assert(!ics_by_return_addr.count(slowpath_rtn_addr));
     ics_by_return_addr[slowpath_rtn_addr] = icinfo;

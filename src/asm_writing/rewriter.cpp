@@ -1816,7 +1816,6 @@ int Rewriter::_allocate(RewriterVar* result, int n) {
         assembler->comment("_allocate");
 
     assert(n >= 1);
-    printf("alloc %d\n", n);
 
     int scratch_size = rewrite->getScratchSize();
     int consec = 0;
@@ -2225,6 +2224,9 @@ Rewriter::Rewriter(std::unique_ptr<ICSlotRewrite> rewrite, int num_args, const L
       offset_eq_jmp_slowpath(-1),
       offset_ne_jmp_slowpath(-1),
       allocatable_regs(std_allocatable_regs) {
+    if (!this->rewrite->getICInfo()->allocatable_registers.empty())
+        allocatable_regs = this->rewrite->getICInfo()->allocatable_registers;
+
     initPhaseCollecting();
 
     finished = false;

@@ -52,6 +52,7 @@ ICSetupInfo* ICSetupInfo::initialize(bool has_return_value, int num_slots, int s
                                      TypeRecorder* type_recorder) {
     ICSetupInfo* rtn = new ICSetupInfo(type, num_slots, slot_size, has_return_value, type_recorder);
 
+
     // We use size == CALL_ONLY_SIZE to imply that the call isn't patchable
     assert(rtn->totalSize() > CALL_ONLY_SIZE);
 

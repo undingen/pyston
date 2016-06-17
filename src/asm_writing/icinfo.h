@@ -20,6 +20,7 @@
 #include <vector>
 #include <deque>
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/IR/CallingConv.h"
 
 #include "asm_writing/assembler.h"
@@ -155,6 +156,7 @@ private:
 public:
     bool currently_rewriting = false;
     int num_asm_failed = 0;
+    llvm::ArrayRef<assembler::Register> allocatable_registers;
     ICInfo(void* start_addr, void* slowpath_rtn_addr, void* continue_addr, StackInfo stack_info, int num_slots,
            int slot_size, llvm::CallingConv::ID calling_conv, LiveOutSet live_outs,
            assembler::GenericRegister return_register, TypeRecorder* type_recorder,
