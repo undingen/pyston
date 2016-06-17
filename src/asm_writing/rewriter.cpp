@@ -295,12 +295,14 @@ void Rewriter::_slowpathJump(bool condition_eq) {
     int& last_jmp_offset = condition_eq ? offset_eq_jmp_slowpath : offset_ne_jmp_slowpath;
     auto condition = condition_eq ? assembler::COND_EQUAL : assembler::COND_NOT_EQUAL;
 
-    assert(assembler->bytesWritten() + assembler->bytesLeft() == rewrite->getSlotSize());
-    if (last_jmp_offset != -1 && assembler->bytesLeft() >= 0x80 && assembler->bytesWritten() - last_jmp_offset < 0x80) {
+    // assert(assembler->bytesWritten() + assembler->bytesLeft() == rewrite->getSlotSize());
+    if (last_jmp_offset != -1 /*&& assembler->bytesLeft() >= 0x80*/
+        && assembler->bytesWritten() - last_jmp_offset < 0x80) {
         assembler->jmp_cond(assembler::JumpDestination::fromStart(last_jmp_offset), condition);
     } else {
         last_jmp_offset = assembler->bytesWritten();
         assembler->jmp_cond(assembler::JumpDestination::fromStart(rewrite->getSlotSize()), condition);
+        next_slot_jmps.push_back(std::make_tuple(last_jmp_offset, assembler->bytesWritten(), (int)condition));
     }
 }
 
@@ -1654,7 +1656,7 @@ void Rewriter::commit() {
     }
 #endif
 
-    rewrite->commit(this, std::move(gc_references), std::move(decref_infos));
+    rewrite->commit(this, std::move(gc_references), std::move(decref_infos), next_slot_jmps);
     assert(gc_references.empty());
 
     if (assembler->hasFailed()) {
@@ -1677,12 +1679,13 @@ void Rewriter::commit() {
     ic_rewrites_total_bytes.log(asm_size_bytes);
 }
 
-bool Rewriter::finishAssembly(int continue_offset) {
+bool Rewriter::finishAssembly(int continue_offset, bool& should_fill_with_nops) {
     assert(picked_slot);
 
     assembler->jmp(assembler::JumpDestination::fromStart(continue_offset));
 
-    assembler->fillWithNops();
+    // assembler->fillWithNops();
+    should_fill_with_nops = true;
 
     return !assembler->hasFailed();
 }
@@ -2346,7 +2349,11 @@ Rewriter* Rewriter::createRewriter(void* rtn_addr, int num_args, const char* deb
     }
 
     log_ic_attempts_started(debug_name);
-    return new Rewriter(ic->startRewrite(debug_name), num_args, ic->getLiveOuts());
+    std::unique_ptr<ICSlotRewrite> slots = ic->startRewrite(debug_name);
+    if (!slots) {
+        return NULL;
+    }
+    return new Rewriter(std::move(slots), num_args, ic->getLiveOuts());
 }
 
 static const int INITIAL_CALL_SIZE = 13;
