@@ -47,6 +47,7 @@ static std::vector<std::pair<PatchpointInfo*, void* /* addr of func to call */>>
 ICSetupInfo* ICSetupInfo::initialize(bool has_return_value, int size, ICType type, TypeRecorder* type_recorder) {
     ICSetupInfo* rtn = new ICSetupInfo(type, size, has_return_value, type_recorder);
 
+
     // We use size == CALL_ONLY_SIZE to imply that the call isn't patchable
     assert(rtn->totalSize() > CALL_ONLY_SIZE);
 

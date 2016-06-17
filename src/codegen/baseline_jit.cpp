@@ -163,6 +163,18 @@ static const assembler::Register bjit_allocatable_regs[]
         assembler::RDI, assembler::RSI, assembler::R8,  assembler::R9,
         assembler::R10, assembler::R11, assembler::R12, assembler::R15 };
 
+static const assembler::Register bjit_allocatable_regsR12[]
+    = { assembler::RAX, assembler::RCX, assembler::RDX,
+        // no RSP
+        // no RBP
+        assembler::RDI, assembler::RSI, assembler::R8,  assembler::R9, assembler::R10, assembler::R11, assembler::R12 };
+
+static const assembler::Register bjit_allocatable_regsR15[]
+    = { assembler::RAX, assembler::RCX, assembler::RDX,
+        // no RSP
+        // no RBP
+        assembler::RDI, assembler::RSI, assembler::R8,  assembler::R9, assembler::R10, assembler::R11, assembler::R15 };
+
 JitFragmentWriter::JitFragmentWriter(CFGBlock* block, std::unique_ptr<ICInfo> ic_info,
                                      std::unique_ptr<ICSlotRewrite> rewrite, int code_offset, int num_bytes_overlapping,
                                      void* entry_code, JitCodeBlock& code_block)
@@ -1145,6 +1157,16 @@ void JitFragmentWriter::_emitPPCall(RewriterVar* result, void* func_addr, llvm::
     assert(assembler->hasFailed() || (pp_start + pp_size + call_size == pp_end));
 
     std::unique_ptr<ICSetupInfo> setup_info(ICSetupInfo::initialize(true, pp_size, ICSetupInfo::Generic, NULL));
+
+    bool unused_r12 = vars_by_location.count(assembler::R12) == 0;
+    bool unused_r15 = vars_by_location.count(assembler::R15) == 0;
+
+    if (unused_r12 && unused_r15)
+        setup_info->allocatable_regs = bjit_allocatable_regs;
+    else if (unused_r12)
+        setup_info->allocatable_regs = bjit_allocatable_regsR12;
+    else if (unused_r15)
+        setup_info->allocatable_regs = bjit_allocatable_regsR15;
 
     // calculate available scratch space
     int pp_scratch_size = 0;

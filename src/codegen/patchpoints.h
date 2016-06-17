@@ -18,8 +18,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/IR/CallingConv.h"
 
+#include "asm_writing/types.h"
 #include "codegen/stackmaps.h"
 #include "core/common.h"
 
@@ -76,6 +78,7 @@ public:
     int totalSize() const;
     bool hasReturnValue() const { return has_return_value; }
     bool isDeopt() const { return type == Deopt; }
+    llvm::ArrayRef<assembler::Register> allocatable_regs;
 
     llvm::CallingConv::ID getCallingConvention() const {
 // FIXME: we currently have some issues with using PreserveAll (the rewriter currently

@@ -2221,6 +2221,9 @@ Rewriter::Rewriter(std::unique_ptr<ICSlotRewrite> rewrite, int num_args, const L
       done_guarding(false),
       last_guard_action(-1),
       allocatable_regs(std_allocatable_regs) {
+    if (!this->rewrite->getICInfo()->allocatable_registers.empty())
+        allocatable_regs = this->rewrite->getICInfo()->allocatable_registers;
+
     initPhaseCollecting();
 
     finished = false;
