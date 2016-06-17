@@ -1816,6 +1816,7 @@ int Rewriter::_allocate(RewriterVar* result, int n) {
         assembler->comment("_allocate");
 
     assert(n >= 1);
+    printf("alloc %d\n", n);
 
     int scratch_size = rewrite->getScratchSize();
     int consec = 0;
@@ -1974,7 +1975,7 @@ void Rewriter::spillRegister(assembler::Register reg, Location preserve) {
 
     // There may be no need to spill if the var is held in a different location already.
     // There is no need to spill if it is a constant
-    if (var->locations.size() > 1 || var->is_constant) {
+    if (var->locations.size() > 1 || var->is_constant || var->hasScratchAllocation()) {
         removeLocationFromVar(var, reg);
         return;
     }
