@@ -3674,31 +3674,6 @@ Box* callattrInternal(Box* obj, BoxedString* attr, LookupScope scope, CallattrRe
 
     int npassed_args = argspec.totalPassed();
 
-    if (rewrite_args && !rewrite_args->args_guarded) {
-        // TODO duplication with runtime_call
-        // TODO should know which args don't need to be guarded, ex if we're guaranteed that they
-        // already fit, either since the type inferencer could determine that,
-        // or because they only need to fit into an UNKNOWN slot.
-
-        if (npassed_args >= 1)
-            rewrite_args->arg1->addAttrGuard(offsetof(Box, cls), (intptr_t)arg1->cls);
-        if (npassed_args >= 2)
-            rewrite_args->arg2->addAttrGuard(offsetof(Box, cls), (intptr_t)arg2->cls);
-        if (npassed_args >= 3)
-            rewrite_args->arg3->addAttrGuard(offsetof(Box, cls), (intptr_t)arg3->cls);
-
-        if (npassed_args > 3) {
-            for (int i = 3; i < npassed_args; i++) {
-                // TODO if there are a lot of args (>16), might be better to increment a pointer
-                // rather index them directly?
-                RewriterVar* v = rewrite_args->args->getAttr((i - 3) * sizeof(Box*), Location::any());
-                v->addAttrGuard(offsetof(Box, cls), (intptr_t)args[i - 3]->cls);
-            }
-        }
-
-        rewrite_args->args_guarded = true;
-    }
-
     // right now I don't think this is ever called with INST_ONLY?
     assert(scope != INST_ONLY);
 
@@ -5173,59 +5148,68 @@ Box* runtimeCallInternal(Box* obj, CallRewriteArgs* rewrite_args, ArgPassSpec ar
         return rtn;
     }
 
-    if (rewrite_args) {
-        if (!rewrite_args->args_guarded) {
-            // TODO should know which args don't need to be guarded, ex if we're guaranteed that they
-            // already fit, either since the type inferencer could determine that,
-            // or because they only need to fit into an UNKNOWN slot.
-
-            int kwargs_index = -1;
-            if (argspec.has_kwargs)
-                kwargs_index = argspec.kwargsIndex();
-
-            for (int i = 0; i < npassed_args; i++) {
-                Box* v = getArg(i, arg1, arg2, arg3, args);
-
-                if (i == kwargs_index) {
-                    if (v == NULL) {
-                        // I don't think this case should ever get hit currently -- the only places
-                        // we offer rewriting are places that don't have the ability to pass a NULL
-                        // kwargs.
-                        getArg(i, rewrite_args)->addGuard(0);
-                    } else {
-                        getArg(i, rewrite_args)->addAttrGuard(offsetof(Box, cls), (intptr_t)v->cls);
-                    }
-                } else {
-                    assert(v);
-                    getArg(i, rewrite_args)->addAttrGuard(offsetof(Box, cls), (intptr_t)v->cls);
-                }
-            }
-            rewrite_args->args_guarded = true;
-        }
-    }
 
     if (obj->cls == function_cls || obj->cls == builtin_function_or_method_cls) {
         BoxedFunctionBase* f = static_cast<BoxedFunctionBase*>(obj);
+        auto md = f->md;
+
+        // Some functions are sufficiently important that we want them to be able to patchpoint themselves;
+        // they can do this by setting the "internal_callable" field:
+        auto callable = md->internal_callable.get<S>();
+
+        if (S == CAPI)
+            assert((bool(md->internal_callable.get(CXX)) == bool(callable))
+                   && "too many opportunities for mistakes unless both CXX and CAPI versions are implemented");
+        else
+            assert((bool(md->internal_callable.get(CAPI)) == bool(callable))
+                   && "too many opportunities for mistake unless both CXX and CAPI versions are implementeds");
+
+        if (callable == NULL) {
+            callable = callFunc<S>;
+        }
+
+        if (rewrite_args) {
+            if (!rewrite_args->args_guarded) {
+                bool does_not_need_guards
+                    = callable == callFunc<S> && (md->always_use_version || md->versions.empty()
+                                                  || (md->versions.size() == 1
+                                                      && md->versions[0]->spec->accepts_all_inputs));
+                if (!does_not_need_guards) {
+                    // TODO should know which args don't need to be guarded, ex if we're guaranteed that they
+                    // already fit, either since the type inferencer could determine that,
+                    // or because they only need to fit into an UNKNOWN slot.
+
+                    int kwargs_index = -1;
+                    if (argspec.has_kwargs)
+                        kwargs_index = argspec.kwargsIndex();
+
+                    for (int i = 0; i < npassed_args; i++) {
+                        Box* v = getArg(i, arg1, arg2, arg3, args);
+
+                        if (i == kwargs_index) {
+                            if (v == NULL) {
+                                // I don't think this case should ever get hit currently -- the only places
+                                // we offer rewriting are places that don't have the ability to pass a NULL
+                                // kwargs.
+                                getArg(i, rewrite_args)->addGuard(0);
+                            } else {
+                                getArg(i, rewrite_args)->addAttrGuard(offsetof(Box, cls), (intptr_t)v->cls);
+                            }
+                        } else {
+                            assert(v);
+                            getArg(i, rewrite_args)->addAttrGuard(offsetof(Box, cls), (intptr_t)v->cls);
+                        }
+                    }
+                    rewrite_args->args_guarded = true;
+                }
+            }
+        }
+
 
         if (rewrite_args && !rewrite_args->func_guarded) {
             rewrite_args->obj->addGuard((intptr_t)f);
             rewrite_args->func_guarded = true;
             rewrite_args->rewriter->addDependenceOn(f->dependent_ics);
-        }
-
-        // Some functions are sufficiently important that we want them to be able to patchpoint themselves;
-        // they can do this by setting the "internal_callable" field:
-        auto callable = f->md->internal_callable.get<S>();
-
-        if (S == CAPI)
-            assert((bool(f->md->internal_callable.get(CXX)) == bool(callable))
-                   && "too many opportunities for mistakes unless both CXX and CAPI versions are implemented");
-        else
-            assert((bool(f->md->internal_callable.get(CAPI)) == bool(callable))
-                   && "too many opportunities for mistake unless both CXX and CAPI versions are implementeds");
-
-        if (callable == NULL) {
-            callable = callFunc<S>;
         }
 
         KEEP_ALIVE(f);
