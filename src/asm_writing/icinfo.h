@@ -169,7 +169,7 @@ public:
         if (hasFixedSize()) {
             int size = 0;
             for (int i = 0; i < times_rewritten; ++i)
-                size += slots[i].size + 30;
+                size += (slots[i].size + 32) & ~31;
             return size;
         }
         return 0;

@@ -389,7 +389,7 @@ ICSetupInfo* createGetattrIC(TypeRecorder* type_recorder, ICInfo* bjit_ic_info) 
 
 ICSetupInfo* createGetitemIC(TypeRecorder* type_recorder, ICInfo* bjit_ic_info) {
     if (bjit_ic_info && bjit_ic_info->hasFixedSize()) {
-        return ICSetupInfo::initialize(true, 1, bjit_ic_info->getFixedSize(), ICSetupInfo::Getattr, type_recorder);
+        return ICSetupInfo::initialize(true, 1, bjit_ic_info->getFixedSize(), ICSetupInfo::Getitem, type_recorder);
     }
     return ICSetupInfo::initialize(true, numSlots(bjit_ic_info, 1), 512, ICSetupInfo::Getitem, type_recorder);
 }
@@ -404,7 +404,7 @@ ICSetupInfo* createDelitemIC(TypeRecorder* type_recorder) {
 
 ICSetupInfo* createSetattrIC(TypeRecorder* type_recorder, ICInfo* bjit_ic_info) {
     if (bjit_ic_info && bjit_ic_info->hasFixedSize()) {
-        return ICSetupInfo::initialize(true, 1, bjit_ic_info->getFixedSize(), ICSetupInfo::Getattr, type_recorder);
+        return ICSetupInfo::initialize(true, 1, bjit_ic_info->getFixedSize(), ICSetupInfo::Setattr, type_recorder);
     }
     return ICSetupInfo::initialize(false, numSlots(bjit_ic_info, 2), 512, ICSetupInfo::Setattr, type_recorder);
 }
@@ -415,7 +415,7 @@ ICSetupInfo* createDelattrIC(TypeRecorder* type_recorder) {
 
 ICSetupInfo* createCallsiteIC(TypeRecorder* type_recorder, int num_args, ICInfo* bjit_ic_info) {
     if (bjit_ic_info && bjit_ic_info->hasFixedSize()) {
-        return ICSetupInfo::initialize(true, 1, bjit_ic_info->getFixedSize(), ICSetupInfo::Getattr, type_recorder);
+        return ICSetupInfo::initialize(true, 1, bjit_ic_info->getFixedSize(), ICSetupInfo::Callsite, type_recorder);
     }
     return ICSetupInfo::initialize(true, numSlots(bjit_ic_info, 4), 640 + 48 * num_args, ICSetupInfo::Callsite,
                                    type_recorder);
@@ -427,7 +427,7 @@ ICSetupInfo* createGetGlobalIC(TypeRecorder* type_recorder) {
 
 ICSetupInfo* createBinexpIC(TypeRecorder* type_recorder, ICInfo* bjit_ic_info) {
     if (bjit_ic_info && bjit_ic_info->hasFixedSize()) {
-        return ICSetupInfo::initialize(true, 1, bjit_ic_info->getFixedSize(), ICSetupInfo::Getattr, type_recorder);
+        return ICSetupInfo::initialize(true, 1, bjit_ic_info->getFixedSize(), ICSetupInfo::Binexp, type_recorder);
     }
     return ICSetupInfo::initialize(true, numSlots(bjit_ic_info, 4), 512, ICSetupInfo::Binexp, type_recorder);
 }
