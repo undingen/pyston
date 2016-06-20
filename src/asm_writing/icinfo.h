@@ -163,11 +163,13 @@ public:
     void* const start_addr, *const slowpath_rtn_addr, *const continue_addr;
 
     int getSlotSize() { return slots.back().size; }
-    bool hasFixedSize() { return times_rewritten < slots.size() && times_rewritten; }
+    bool hasFixedSize() { return times_rewritten < slots.size() /*&& times_rewritten*/; }
 
     int getFixedSize() {
         if (hasFixedSize()) {
             int size = 0;
+            if (!times_rewritten)
+                return slots[0].size;
             for (int i = 0; i < times_rewritten; ++i)
                 size += (slots[i].size + 32) & ~31;
             return size;
