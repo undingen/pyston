@@ -94,12 +94,15 @@ private:
     TypeRecorder* const type_recorder;
     int retry_in, retry_backoff;
     int times_rewritten;
+    int times_invalidated;
 
     DecrefInfo slowpath_decref_info;
     // This is a vector of locations which always need to get decrefed inside this IC.
     // Calls inside the ICSlots may need to decref additional locations but they will always contain at least the IC
     // global ones.
     std::vector<Location> ic_global_decref_locations;
+
+    std::unique_ptr<class RuntimeIC> runtime_ic;
 
     // for ICSlotRewrite:
     ICSlotInfo* pickEntryForRewrite(const char* debug_name);

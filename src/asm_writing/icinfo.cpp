@@ -28,6 +28,7 @@
 #include "core/options.h"
 #include "core/types.h"
 #include "runtime/types.h"
+#include "runtime/ics.h"
 
 namespace pyston {
 
@@ -293,6 +294,21 @@ ICSlotInfo* ICInfo::pickEntryForRewrite(const char* debug_name) {
         return &sinfo;
     }
 
+    bool is_runtime_ic = stack_info.scratch_size == 0x28;
+    if (times_invalidated < 2 && !runtime_ic && !is_runtime_ic && strlen(debug_name)) {
+        // call r11
+        assert(((unsigned char*)slowpath_rtn_addr)[-3] == 0x41);
+        assert(((unsigned char*)slowpath_rtn_addr)[-2] == 0xff);
+        assert(((unsigned char*)slowpath_rtn_addr)[-1] == 0xd3);
+
+        uint64_t* ptr_addr = (uint64_t*)(((char*)slowpath_rtn_addr) - (8 + 3));
+        uint64_t old_val = *ptr_addr;
+
+        runtime_ic = llvm::make_unique<RuntimeIC>((void*)old_val, 2048);
+        *ptr_addr = (uint64_t)runtime_ic->getAddr();
+        return NULL;
+    }
+
     if (fallback_to_in_use_slot != -1) {
         if (VERBOSITY() >= 4) {
             printf("picking %s icentry to in-use slot %d at %p\n", debug_name, fallback_to_in_use_slot, start_addr);
@@ -321,6 +337,7 @@ ICInfo::ICInfo(void* start_addr, void* slowpath_rtn_addr, void* continue_addr, S
       retry_in(0),
       retry_backoff(1),
       times_rewritten(0),
+      times_invalidated(0),
       ic_global_decref_locations(std::move(ic_global_decref_locations)),
       start_addr(start_addr),
       slowpath_rtn_addr(slowpath_rtn_addr),
@@ -410,6 +427,7 @@ ICInfo* getICInfo(void* rtn_addr) {
 }
 
 void ICInfo::clear(ICSlotInfo* icentry) {
+    ++times_invalidated;
     assert(icentry);
 
     uint8_t* start = (uint8_t*)icentry->start_addr;

@@ -34,9 +34,11 @@ private:
     RuntimeIC(const RuntimeIC&) = delete;
     void operator=(const RuntimeIC&) = delete;
 
-protected:
+public:
     RuntimeIC(void* addr, int patchable_size);
     ~RuntimeIC();
+
+    void* getAddr() { return addr; }
 
     template <class... Args> uint64_t call_int(Args... args) {
         return reinterpret_cast<uint64_t (*)(Args...)>(this->addr)(args...);
