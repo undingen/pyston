@@ -1125,7 +1125,13 @@ CompiledFunction* doCompile(FunctionMetadata* md, SourceInfo* source, ParamNames
 
     emitBBs(&irstate, types, entry_descriptor, blocks);
 
-    RefcountTracker::addRefcounts(&irstate);
+    bool found_cached_entry = false;
+    if (ENABLE_JIT_OBJECT_CACHE) {
+        g.object_cache->calculateModuleHash(g.cur_module, effort);
+        found_cached_entry = g.object_cache->haveCacheFileForHash();
+    }
+    if (!found_cached_entry)
+        RefcountTracker::addRefcounts(&irstate);
 
     int num_instructions = std::distance(llvm::inst_begin(f), llvm::inst_end(f));
     static StatCounter num_llvm_insts("num_llvm_insts");
@@ -1157,14 +1163,8 @@ CompiledFunction* doCompile(FunctionMetadata* md, SourceInfo* source, ParamNames
     // Calculate the module hash before doing any optimizations.
     // This has the advantage that we can skip running the opt passes when we have cached object file
     // but the disadvantage that optimizations are not allowed to add new symbolic constants...
-    if (ENABLE_JIT_OBJECT_CACHE) {
-        g.object_cache->calculateModuleHash(g.cur_module, effort);
-        if (ENABLE_LLVMOPTS && !g.object_cache->haveCacheFileForHash())
-            optimizeIR(f, effort);
-    } else {
-        if (ENABLE_LLVMOPTS)
-            optimizeIR(f, effort);
-    }
+    if (!found_cached_entry && ENABLE_LLVMOPTS)
+        optimizeIR(f, effort);
 
     g.cur_module = NULL;
 
