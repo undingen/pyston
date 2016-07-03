@@ -377,13 +377,13 @@ extern "C" BORROWED(PyObject*) PyDict_GetItem(PyObject* dict, PyObject* key) noe
         /* preserve the existing exception */
         PyObject* err_type, *err_value, *err_tb;
         PyErr_Fetch(&err_type, &err_value, &err_tb);
-        Box* b = getitemInternal<CAPI>(dict, key);
+        Box* b = getitemInternal<CAPI>(dict, key, false /* don't lookup slice attributes */);
         /* ignore errors */
         PyErr_Restore(err_type, err_value, err_tb);
         Py_XDECREF(b);
         return b;
     } else {
-        Box* b = getitemInternal<CAPI>(dict, key);
+        Box* b = getitemInternal<CAPI>(dict, key, false /* don't lookup slice attributes */);
         if (b == NULL)
             PyErr_Clear();
         else
@@ -515,7 +515,7 @@ extern "C" int PyDict_DelItem(PyObject* op, PyObject* key) noexcept {
 
     ASSERT(op->cls == attrwrapper_cls, "%s", getTypeName(op));
     try {
-        delitem(op, key);
+        delitem(op, key, false /* don't lookup slice attributes */);
         return 0;
     } catch (ExcInfo e) {
         setCAPIException(e);
@@ -733,7 +733,7 @@ void dictMerge(BoxedDict* self, Box* other) {
 
     for (Box* k : keys->pyElements()) {
         AUTO_DECREF(k);
-        _dictSetStolen(self, k, getitemInternal<CXX>(other, k));
+        _dictSetStolen(self, k, getitemInternal<CXX>(other, k, false /* don't lookup slice attributes */));
     }
 }
 
@@ -772,7 +772,7 @@ extern "C" int PyDict_Merge(PyObject* a, PyObject* b, int override_) noexcept {
             if (a && b && a->cls == attrwrapper_cls) {
                 RELEASE_ASSERT(PyDict_Check(b) && override_ == 1, "");
                 for (auto&& item : *(BoxedDict*)b) {
-                    setitem(a, item.first, item.second);
+                    setitem(a, item.first, item.second, false /* don't lookup slice attributes */);
                 }
                 return 0;
             }

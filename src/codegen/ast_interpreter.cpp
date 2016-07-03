@@ -472,7 +472,7 @@ void ASTInterpreter::doStore(AST_Name* node, STOLEN(Value) value) {
         assert(frame_info.boxedLocals != NULL);
         // TODO should probably pre-box the names when it's a scope that usesNameLookup
         AUTO_DECREF(value.o);
-        setitem(frame_info.boxedLocals, name.getBox(), value.o);
+        setitem(frame_info.boxedLocals, name.getBox(), value.o, false /* don't lookup slice attributes */);
     } else {
         bool closure = vst == ScopeInfo::VarScopeType::CLOSURE;
         if (jit) {
@@ -554,12 +554,13 @@ void ASTInterpreter::doStore(AST_expr* node, STOLEN(Value) value) {
         Value target = visit_expr(subscript->value);
         AUTO_DECREF(target.o);
 
+        bool is_slice = AST_TYPE::Index != subscript->slice->type;
         Value slice = visit_slice(subscript->slice);
         AUTO_DECREF(slice.o);
 
         if (jit)
-            jit->emitSetItem(target, slice, value);
-        setitem(target.o, slice.o, value.o);
+            jit->emitSetItem(target, slice, value, is_slice);
+        setitem(target.o, slice.o, value.o, is_slice);
     } else {
         RELEASE_ASSERT(0, "not implemented");
     }
@@ -1321,11 +1322,12 @@ Value ASTInterpreter::visit_delete(AST_Delete* node) {
                 AST_Subscript* sub = (AST_Subscript*)target_;
                 Value value = visit_expr(sub->value);
                 AUTO_DECREF(value.o);
+                bool is_slice = AST_TYPE::Index != sub->slice->type;
                 Value slice = visit_slice(sub->slice);
                 AUTO_DECREF(slice.o);
                 if (jit)
-                    jit->emitDelItem(value, slice);
-                delitem(value.o, slice.o);
+                    jit->emitDelItem(value, slice, is_slice);
+                delitem(value.o, slice.o, is_slice);
                 break;
             }
             case AST_TYPE::Attribute: {
@@ -1735,10 +1737,11 @@ Value ASTInterpreter::visit_name(AST_Name* node) {
 Value ASTInterpreter::visit_subscript(AST_Subscript* node) {
     Value value = visit_expr(node->value);
     AUTO_DECREF(value.o);
+    bool is_slice = node->slice->type != AST_TYPE::Index;
     Value slice = visit_slice(node->slice);
     AUTO_DECREF(slice.o);
 
-    return Value(getitem(value.o, slice.o), jit ? jit->emitGetItem(node, value, slice) : NULL);
+    return Value(getitem(value.o, slice.o, is_slice), jit ? jit->emitGetItem(node, value, slice, is_slice) : NULL);
 }
 
 Value ASTInterpreter::visit_list(AST_List* node) {

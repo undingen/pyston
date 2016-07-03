@@ -1015,7 +1015,7 @@ BORROWED(Box*) FrameInfo::updateBoxedLocals() {
         for (const auto& p : *d) {
             Box* varname = p.first;
             Box* value = p.second;
-            setitem(frame_info->boxedLocals, varname, value);
+            setitem(frame_info->boxedLocals, varname, value, false /* don't lookup slice attributes */);
         }
     }
 

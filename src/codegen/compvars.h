@@ -138,7 +138,8 @@ public:
         printf("len not defined for %s\n", debugName().c_str());
         abort();
     }
-    virtual CompilerVariable* getitem(IREmitter& emitter, const OpInfo& info, VAR* var, CompilerVariable* v) {
+    virtual CompilerVariable* getitem(IREmitter& emitter, const OpInfo& info, VAR* var, CompilerVariable* v,
+                                      bool should_lookup_slice) {
         // Can almost do this, except for error messages + types:
         // static const std::string attr("__getitem__");
         // return callattr(emitter, info, var, &attr, true, ArgPassSpec(1, 0, 0, 0), {v}, NULL);
@@ -229,7 +230,8 @@ public:
                                    const std::vector<CompilerVariable*>& args,
                                    const std::vector<BoxedString*>* keyword_names) = 0;
     virtual CompilerVariable* len(IREmitter& emitter, const OpInfo& info) = 0;
-    virtual CompilerVariable* getitem(IREmitter& emitter, const OpInfo& info, CompilerVariable*) = 0;
+    virtual CompilerVariable* getitem(IREmitter& emitter, const OpInfo& info, CompilerVariable*,
+                                      bool should_lookup_slice) = 0;
     virtual CompilerVariable* getPystonIter(IREmitter& emitter, const OpInfo& info) = 0;
     virtual CompilerVariable* binexp(IREmitter& emitter, const OpInfo& info, CompilerVariable* rhs,
                                      AST_TYPE::AST_TYPE op_type, BinExpType exp_type) = 0;
@@ -301,8 +303,9 @@ public:
         return type->call(emitter, info, this, argspec, args, keyword_names);
     }
     CompilerVariable* len(IREmitter& emitter, const OpInfo& info) override { return type->len(emitter, info, this); }
-    CompilerVariable* getitem(IREmitter& emitter, const OpInfo& info, CompilerVariable* slice) override {
-        return type->getitem(emitter, info, this, slice);
+    CompilerVariable* getitem(IREmitter& emitter, const OpInfo& info, CompilerVariable* slice,
+                              bool should_lookup_slice) override {
+        return type->getitem(emitter, info, this, slice, should_lookup_slice);
     }
     CompilerVariable* getPystonIter(IREmitter& emitter, const OpInfo& info) override {
         return type->getPystonIter(emitter, info, this);

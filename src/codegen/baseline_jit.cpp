@@ -402,8 +402,10 @@ RewriterVar* JitFragmentWriter::emitGetGlobal(BoxedString* s) {
     return emitPPCall((void*)getGlobal, { globals, imm(s) }, 128).first->setType(RefType::OWNED);
 }
 
-RewriterVar* JitFragmentWriter::emitGetItem(AST_expr* node, RewriterVar* value, RewriterVar* slice) {
-    return emitPPCall((void*)getitem, { value, slice }, 256, node).first->setType(RefType::OWNED);
+RewriterVar* JitFragmentWriter::emitGetItem(AST_expr* node, RewriterVar* value, RewriterVar* slice,
+                                            bool should_lookup_slice) {
+    return emitPPCall((void*)getitem, { value, slice, imm(should_lookup_slice) }, 256, node)
+        .first->setType(RefType::OWNED);
 }
 
 RewriterVar* JitFragmentWriter::emitGetLocal(InternedString s, int vreg) {
@@ -564,8 +566,8 @@ void JitFragmentWriter::emitDelGlobal(BoxedString* name) {
     call(false, (void*)delGlobal, globals, imm(name));
 }
 
-void JitFragmentWriter::emitDelItem(RewriterVar* target, RewriterVar* slice) {
-    emitPPCall((void*)delitem, { target, slice }, 256).first;
+void JitFragmentWriter::emitDelItem(RewriterVar* target, RewriterVar* slice, bool should_lookup_slice) {
+    emitPPCall((void*)delitem, { target, slice, imm(should_lookup_slice) }, 256).first;
 }
 
 void JitFragmentWriter::emitDelName(InternedString name) {
@@ -676,12 +678,13 @@ void JitFragmentWriter::emitSetGlobal(BoxedString* s, STOLEN(RewriterVar*) v, bo
     v->refConsumed(rtn.second);
 }
 
-void JitFragmentWriter::emitSetItem(RewriterVar* target, RewriterVar* slice, RewriterVar* value) {
-    emitPPCall((void*)setitem, { target, slice, value }, 2 * 512);
+void JitFragmentWriter::emitSetItem(RewriterVar* target, RewriterVar* slice, RewriterVar* value,
+                                    bool should_lookup_slice) {
+    emitPPCall((void*)setitem, { target, slice, value, imm(should_lookup_slice) }, 2 * 512);
 }
 
 void JitFragmentWriter::emitSetItemName(BoxedString* s, RewriterVar* v) {
-    emitSetItem(emitGetBoxedLocals(), imm(s), v);
+    emitSetItem(emitGetBoxedLocals(), imm(s), v, false);
 }
 
 void JitFragmentWriter::emitSetLocal(InternedString s, int vreg, bool set_closure, STOLEN(RewriterVar*) v) {

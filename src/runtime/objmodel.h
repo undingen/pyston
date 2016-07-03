@@ -83,10 +83,10 @@ extern "C" BoxedInt* len(Box* obj) __attribute__((noinline));
 extern "C" i64 unboxedLen(Box* obj) __attribute__((noinline));
 extern "C" Box* binop(Box* lhs, Box* rhs, int op_type) __attribute__((noinline));
 extern "C" Box* augbinop(Box* lhs, Box* rhs, int op_type) __attribute__((noinline));
-extern "C" Box* getitem(Box* value, Box* slice) __attribute__((noinline));
-extern "C" Box* getitem_capi(Box* value, Box* slice) noexcept __attribute__((noinline));
-extern "C" void setitem(Box* target, Box* slice, Box* value) __attribute__((noinline));
-extern "C" void delitem(Box* target, Box* slice) __attribute__((noinline));
+extern "C" Box* getitem(Box* value, Box* slice, int should_lookup_slice) __attribute__((noinline));
+extern "C" Box* getitem_capi(Box* value, Box* slice, int should_lookup_slice) noexcept __attribute__((noinline));
+extern "C" void setitem(Box* target, Box* slice, Box* value, int should_lookup_slice) __attribute__((noinline));
+extern "C" void delitem(Box* target, Box* slice, int should_lookup_slice) __attribute__((noinline));
 extern "C" PyObject* apply_slice(PyObject* u, PyObject* v, PyObject* w) noexcept;
 extern "C" Box* getclsattr(Box* obj, BoxedString* attr) __attribute__((noinline));
 extern "C" Box* getclsattrMaybeNonstring(Box* obj, Box* attr) __attribute__((noinline));
@@ -125,9 +125,11 @@ Box* runtimeCallInternal(Box* obj, CallRewriteArgs* rewrite_args, ArgPassSpec ar
 
 struct GetitemRewriteArgs;
 template <ExceptionStyle S, Rewritable rewritable = REWRITABLE>
-Box* getitemInternal(Box* target, Box* slice, GetitemRewriteArgs* rewrite_args) noexcept(S == CAPI);
-template <ExceptionStyle S> inline Box* getitemInternal(Box* target, Box* slice) noexcept(S == CAPI) {
-    return getitemInternal<S, NOT_REWRITABLE>(target, slice, NULL);
+Box* getitemInternal(Box* target, Box* slice, int should_lookup_slice,
+                     GetitemRewriteArgs* rewrite_args) noexcept(S == CAPI);
+template <ExceptionStyle S>
+inline Box* getitemInternal(Box* target, Box* slice, int should_lookup_slice) noexcept(S == CAPI) {
+    return getitemInternal<S, NOT_REWRITABLE>(target, slice, should_lookup_slice, NULL);
 }
 
 struct LenRewriteArgs;

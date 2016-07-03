@@ -466,12 +466,12 @@ done:
 
 
 extern "C" PyObject* PyObject_GetItem(PyObject* o, PyObject* key) noexcept {
-    return getitemInternal<ExceptionStyle::CAPI>(o, key);
+    return getitemInternal<ExceptionStyle::CAPI>(o, key, false /* don't lookup slice attributes */);
 }
 
 extern "C" int PyObject_SetItem(PyObject* o, PyObject* key, PyObject* v) noexcept {
     try {
-        setitem(o, key, v);
+        setitem(o, key, v, false /* don't lookup slice attributes */);
         return 0;
     } catch (ExcInfo e) {
         setCAPIException(e);
@@ -481,7 +481,7 @@ extern "C" int PyObject_SetItem(PyObject* o, PyObject* key, PyObject* v) noexcep
 
 extern "C" int PyObject_DelItem(PyObject* o, PyObject* key) noexcept {
     try {
-        delitem(o, key);
+        delitem(o, key, false /* don't lookup slice attributes */);
         return 0;
     } catch (ExcInfo e) {
         setCAPIException(e);

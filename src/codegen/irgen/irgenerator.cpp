@@ -1507,9 +1507,10 @@ private:
 
     CompilerVariable* evalSubscript(AST_Subscript* node, const UnwindInfo& unw_info) {
         CompilerVariable* value = evalExpr(node->value, unw_info);
+        bool is_slice = node->slice->type != AST_TYPE::Index;
         CompilerVariable* slice = evalSlice(node->slice, unw_info);
 
-        CompilerVariable* rtn = value->getitem(emitter, getOpInfoForNode(node, unw_info), slice);
+        CompilerVariable* rtn = value->getitem(emitter, getOpInfoForNode(node, unw_info), slice, is_slice);
         return rtn;
     }
 
@@ -2001,6 +2002,8 @@ private:
 
         ConcreteCompilerVariable* converted_val = val->makeConverted(emitter, val->getBoxType());
 
+        bool is_slice = target->slice->type != AST_TYPE::Index;
+
         // TODO add a CompilerVariable::setattr, which can (similar to getitem)
         // statically-resolve the function if possible, and only fall back to
         // patchpoints if it couldn't.
@@ -2012,11 +2015,13 @@ private:
             llvm_args.push_back(converted_target->getValue());
             llvm_args.push_back(converted_slice->getValue());
             llvm_args.push_back(converted_val->getValue());
+            llvm_args.push_back(getConstantInt(is_slice, g.i32));
 
             emitter.createIC(pp, (void*)pyston::setitem, llvm_args, unw_info);
         } else {
-            emitter.createCall3(unw_info, g.funcs.setitem, converted_target->getValue(), converted_slice->getValue(),
-                                converted_val->getValue());
+            emitter.createCall(unw_info, g.funcs.setitem,
+                               { converted_target->getValue(), converted_slice->getValue(), converted_val->getValue(),
+                                 getConstantInt(is_slice, g.i32) });
         }
     }
 
@@ -2123,6 +2128,7 @@ private:
     void _doDelitem(AST_Subscript* target, const UnwindInfo& unw_info) {
         CompilerVariable* tget = evalExpr(target->value, unw_info);
         CompilerVariable* slice = evalSlice(target->slice, unw_info);
+        bool is_slice = target->slice->type != AST_TYPE::Index;
 
         ConcreteCompilerVariable* converted_target = tget->makeConverted(emitter, tget->getBoxType());
         ConcreteCompilerVariable* converted_slice = slice->makeConverted(emitter, slice->getBoxType());
@@ -2134,10 +2140,12 @@ private:
             std::vector<llvm::Value*> llvm_args;
             llvm_args.push_back(converted_target->getValue());
             llvm_args.push_back(converted_slice->getValue());
+            llvm_args.push_back(getConstantInt(is_slice, g.i32));
 
             emitter.createIC(pp, (void*)pyston::delitem, llvm_args, unw_info);
         } else {
-            emitter.createCall2(unw_info, g.funcs.delitem, converted_target->getValue(), converted_slice->getValue());
+            emitter.createCall3(unw_info, g.funcs.delitem, converted_target->getValue(), converted_slice->getValue(),
+                                getConstantInt(is_slice, g.i32));
         }
     }
 

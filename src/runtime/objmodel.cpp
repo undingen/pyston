@@ -6126,7 +6126,7 @@ extern "C" PyObject* apply_slice(PyObject* u, PyObject* v, PyObject* w) noexcept
 // or the item operator (__getitem__).
 template <ExceptionStyle S, Rewritable rewritable>
 static Box* callItemOrSliceAttr(Box* target, BoxedString* item_str, BoxedString* slice_str, Box* slice, Box* value,
-                                CallRewriteArgs* rewrite_args) noexcept(S == CAPI) {
+                                CallRewriteArgs* rewrite_args, bool should_lookup_slice) noexcept(S == CAPI) {
     if (rewritable == NOT_REWRITABLE) {
         assert(!rewrite_args);
         rewrite_args = NULL;
@@ -6141,33 +6141,37 @@ static Box* callItemOrSliceAttr(Box* target, BoxedString* item_str, BoxedString*
     // Also, for special slicing logic (e.g. open slice ranges [:]), the builtin types
     // have C-implemented functions that already handle all the edge cases, so we don't
     // need to have a slowpath for them here.
-    if (target->cls == list_cls || target->cls == str_cls || target->cls == unicode_cls) {
-        if (rewrite_args) {
-            rewrite_args->obj->addAttrGuard(offsetof(Box, cls), (uint64_t)target->cls);
-        }
-        return callItemAttr<S, rewritable>(target, item_str, slice, value, rewrite_args);
-    }
 
-    // Guard on the type of the object (need to have the slice operator attribute to call it).
     bool has_slice_attr = false;
-    if (rewrite_args) {
-        RewriterVar* target_cls = rewrite_args->obj->getAttr(offsetof(Box, cls));
-        GetattrRewriteArgs grewrite_args(rewrite_args->rewriter, target_cls, Location::any());
-        has_slice_attr = (bool)typeLookup(target->cls, slice_str, &grewrite_args);
-        if (!grewrite_args.isSuccessful()) {
-            rewrite_args = NULL;
-        } else {
-            RewriterVar* rtn;
-            ReturnConvention return_convention;
-            std::tie(rtn, return_convention) = grewrite_args.getReturn();
-            if (return_convention != ReturnConvention::HAS_RETURN && return_convention != ReturnConvention::NO_RETURN)
-                rewrite_args = NULL;
-
-            if (rewrite_args)
-                assert(has_slice_attr == (return_convention == ReturnConvention::HAS_RETURN));
+    if (should_lookup_slice) {
+        if (target->cls == list_cls || target->cls == str_cls || target->cls == unicode_cls) {
+            if (rewrite_args) {
+                rewrite_args->obj->addAttrGuard(offsetof(Box, cls), (uint64_t)target->cls);
+            }
+            return callItemAttr<S, rewritable>(target, item_str, slice, value, rewrite_args);
         }
-    } else {
-        has_slice_attr = (bool)typeLookup(target->cls, slice_str);
+        // Guard on the type of the object (need to have the slice operator attribute to call it).
+
+        if (rewrite_args) {
+            RewriterVar* target_cls = rewrite_args->obj->getAttr(offsetof(Box, cls));
+            GetattrRewriteArgs grewrite_args(rewrite_args->rewriter, target_cls, Location::any());
+            has_slice_attr = (bool)typeLookup(target->cls, slice_str, &grewrite_args);
+            if (!grewrite_args.isSuccessful()) {
+                rewrite_args = NULL;
+            } else {
+                RewriterVar* rtn;
+                ReturnConvention return_convention;
+                std::tie(rtn, return_convention) = grewrite_args.getReturn();
+                if (return_convention != ReturnConvention::HAS_RETURN
+                    && return_convention != ReturnConvention::NO_RETURN)
+                    rewrite_args = NULL;
+
+                if (rewrite_args)
+                    assert(has_slice_attr == (return_convention == ReturnConvention::HAS_RETURN));
+            }
+        } else {
+            has_slice_attr = (bool)typeLookup(target->cls, slice_str);
+        }
     }
 
     if (!has_slice_attr) {
@@ -6255,7 +6259,8 @@ static Box* callItemOrSliceAttr(Box* target, BoxedString* item_str, BoxedString*
 }
 
 template <ExceptionStyle S, Rewritable rewritable>
-Box* getitemInternal(Box* target, Box* slice, GetitemRewriteArgs* rewrite_args) noexcept(S == CAPI) {
+Box* getitemInternal(Box* target, Box* slice, int should_lookup_slice,
+                     GetitemRewriteArgs* rewrite_args) noexcept(S == CAPI) {
     if (rewritable == NOT_REWRITABLE) {
         assert(!rewrite_args);
         rewrite_args = NULL;
@@ -6306,7 +6311,8 @@ Box* getitemInternal(Box* target, Box* slice, GetitemRewriteArgs* rewrite_args) 
             CallRewriteArgs crewrite_args(rewrite_args->rewriter, rewrite_args->target, rewrite_args->destination);
             crewrite_args.arg1 = rewrite_args->slice;
 
-            rtn = callItemOrSliceAttr<S, REWRITABLE>(target, getitem_str, getslice_str, slice, NULL, &crewrite_args);
+            rtn = callItemOrSliceAttr<S, REWRITABLE>(target, getitem_str, getslice_str, slice, NULL, &crewrite_args,
+                                                     should_lookup_slice);
 
             if (!crewrite_args.out_success) {
                 rewrite_args = NULL;
@@ -6314,7 +6320,8 @@ Box* getitemInternal(Box* target, Box* slice, GetitemRewriteArgs* rewrite_args) 
                 rewrite_args->out_rtn = crewrite_args.out_rtn;
             }
         } else {
-            rtn = callItemOrSliceAttr<S, NOT_REWRITABLE>(target, getitem_str, getslice_str, slice, NULL, NULL);
+            rtn = callItemOrSliceAttr<S, NOT_REWRITABLE>(target, getitem_str, getslice_str, slice, NULL, NULL,
+                                                         should_lookup_slice);
         }
     } catch (ExcInfo e) {
         if (S == CAPI) {
@@ -6353,13 +6360,13 @@ Box* getitemInternal(Box* target, Box* slice, GetitemRewriteArgs* rewrite_args) 
     return rtn;
 }
 // Force instantiation of the template
-template Box* getitemInternal<CAPI, REWRITABLE>(Box*, Box*, GetitemRewriteArgs*);
-template Box* getitemInternal<CXX, REWRITABLE>(Box*, Box*, GetitemRewriteArgs*);
-template Box* getitemInternal<CAPI, NOT_REWRITABLE>(Box*, Box*, GetitemRewriteArgs*);
-template Box* getitemInternal<CXX, NOT_REWRITABLE>(Box*, Box*, GetitemRewriteArgs*);
+template Box* getitemInternal<CAPI, REWRITABLE>(Box*, Box*, int, GetitemRewriteArgs*);
+template Box* getitemInternal<CXX, REWRITABLE>(Box*, Box*, int, GetitemRewriteArgs*);
+template Box* getitemInternal<CAPI, NOT_REWRITABLE>(Box*, Box*, int, GetitemRewriteArgs*);
+template Box* getitemInternal<CXX, NOT_REWRITABLE>(Box*, Box*, int, GetitemRewriteArgs*);
 
 // target[slice]
-extern "C" Box* getitem(Box* target, Box* slice) {
+extern "C" Box* getitem(Box* target, Box* slice, int should_lookup_slice) {
     STAT_TIMER(t0, "us_timer_slowpath_getitem", 10);
 
     // This possibly could just be represented as a single callattr; the only tricky part
@@ -6377,7 +6384,7 @@ extern "C" Box* getitem(Box* target, Box* slice) {
         GetitemRewriteArgs rewrite_args(rewriter.get(), rewriter->getArg(0), rewriter->getArg(1),
                                         rewriter->getReturnDestination());
 
-        rtn = getitemInternal<CXX>(target, slice, &rewrite_args);
+        rtn = getitemInternal<CXX>(target, slice, should_lookup_slice, &rewrite_args);
 
         if (!rewrite_args.out_success) {
             rewriter.reset(NULL);
@@ -6385,7 +6392,7 @@ extern "C" Box* getitem(Box* target, Box* slice) {
             rewriter->commitReturning(rewrite_args.out_rtn);
         }
     } else {
-        rtn = getitemInternal<CXX>(target, slice);
+        rtn = getitemInternal<CXX>(target, slice, should_lookup_slice);
     }
     assert(rtn);
 
@@ -6393,7 +6400,7 @@ extern "C" Box* getitem(Box* target, Box* slice) {
 }
 
 // target[slice]
-extern "C" Box* getitem_capi(Box* target, Box* slice) noexcept {
+extern "C" Box* getitem_capi(Box* target, Box* slice, int should_lookup_slice) noexcept {
     STAT_TIMER(t0, "us_timer_slowpath_getitem", 10);
 
     // This possibly could just be represented as a single callattr; the only tricky part
@@ -6411,7 +6418,7 @@ extern "C" Box* getitem_capi(Box* target, Box* slice) noexcept {
         GetitemRewriteArgs rewrite_args(rewriter.get(), rewriter->getArg(0), rewriter->getArg(1),
                                         rewriter->getReturnDestination());
 
-        rtn = getitemInternal<CAPI>(target, slice, &rewrite_args);
+        rtn = getitemInternal<CAPI>(target, slice, should_lookup_slice, &rewrite_args);
 
         if (!rewrite_args.out_success) {
             rewriter.reset(NULL);
@@ -6419,14 +6426,14 @@ extern "C" Box* getitem_capi(Box* target, Box* slice) noexcept {
             rewriter->commitReturning(rewrite_args.out_rtn);
         }
     } else {
-        rtn = getitemInternal<CAPI>(target, slice);
+        rtn = getitemInternal<CAPI>(target, slice, should_lookup_slice);
     }
 
     return rtn;
 }
 
 // target[slice] = value
-extern "C" void setitem(Box* target, Box* slice, Box* value) {
+extern "C" void setitem(Box* target, Box* slice, Box* value, int should_lookup_slice) {
     STAT_TIMER(t0, "us_timer_slowpath_setitem", 10);
 
     static StatCounter slowpath_setitem("slowpath_setitem");
@@ -6465,13 +6472,15 @@ extern "C" void setitem(Box* target, Box* slice, Box* value) {
         rewrite_args.arg1 = rewriter->getArg(1);
         rewrite_args.arg2 = rewriter->getArg(2);
 
-        rtn = callItemOrSliceAttr<CXX, REWRITABLE>(target, setitem_str, setslice_str, slice, value, &rewrite_args);
+        rtn = callItemOrSliceAttr<CXX, REWRITABLE>(target, setitem_str, setslice_str, slice, value, &rewrite_args,
+                                                   should_lookup_slice);
 
         if (!rewrite_args.out_success) {
             rewriter.reset(NULL);
         }
     } else {
-        rtn = callItemOrSliceAttr<CXX, NOT_REWRITABLE>(target, setitem_str, setslice_str, slice, value, NULL);
+        rtn = callItemOrSliceAttr<CXX, NOT_REWRITABLE>(target, setitem_str, setslice_str, slice, value, NULL,
+                                                       should_lookup_slice);
     }
 
     if (rtn == NULL) {
@@ -6484,7 +6493,7 @@ extern "C" void setitem(Box* target, Box* slice, Box* value) {
 }
 
 // del target[slice]
-extern "C" void delitem(Box* target, Box* slice) {
+extern "C" void delitem(Box* target, Box* slice, int should_lookup_slice) {
     STAT_TIMER(t0, "us_timer_slowpath_delitem", 10);
 
     static StatCounter slowpath_delitem("slowpath_delitem");
@@ -6501,13 +6510,15 @@ extern "C" void delitem(Box* target, Box* slice) {
         CallRewriteArgs rewrite_args(rewriter.get(), rewriter->getArg(0), rewriter->getReturnDestination());
         rewrite_args.arg1 = rewriter->getArg(1);
 
-        rtn = callItemOrSliceAttr<CXX, REWRITABLE>(target, delitem_str, delslice_str, slice, NULL, &rewrite_args);
+        rtn = callItemOrSliceAttr<CXX, REWRITABLE>(target, delitem_str, delslice_str, slice, NULL, &rewrite_args,
+                                                   should_lookup_slice);
 
         if (!rewrite_args.out_success) {
             rewriter.reset(NULL);
         }
     } else {
-        rtn = callItemOrSliceAttr<CXX, NOT_REWRITABLE>(target, delitem_str, delslice_str, slice, NULL, NULL);
+        rtn = callItemOrSliceAttr<CXX, NOT_REWRITABLE>(target, delitem_str, delslice_str, slice, NULL, NULL,
+                                                       should_lookup_slice);
     }
 
     if (rtn == NULL) {
@@ -7387,7 +7398,7 @@ extern "C" Box* importStar(Box* _from_module, Box* to_globals) {
 // TODO Make these fast, do inline caches and stuff
 
 extern "C" void boxedLocalsSet(Box* boxedLocals, BoxedString* attr, Box* val) {
-    setitem(boxedLocals, attr, val);
+    setitem(boxedLocals, attr, val, false /* don't lookup slice attributes */);
 }
 
 extern "C" Box* boxedLocalsGet(Box* boxedLocals, BoxedString* attr, Box* globals) {
@@ -7402,7 +7413,7 @@ extern "C" Box* boxedLocalsGet(Box* boxedLocals, BoxedString* attr, Box* globals
         }
     } else {
         try {
-            return getitem(boxedLocals, attr);
+            return getitem(boxedLocals, attr, false /* don't lookup slice attributes */);
         } catch (ExcInfo e) {
             // TODO should check the exact semantic here but it's something like:
             // If it throws a KeyError, then the variable doesn't exist so move on

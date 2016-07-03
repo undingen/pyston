@@ -330,7 +330,7 @@ public:
     }
 
     CompilerVariable* getitem(IREmitter& emitter, const OpInfo& info, ConcreteCompilerVariable* var,
-                              CompilerVariable* slice) override {
+                              CompilerVariable* slice, bool should_lookup_slice) override {
         if (slice->getType() == UNBOXED_SLICE) {
             UnboxedSlice slice_val = extractSlice(slice);
 
@@ -372,6 +372,8 @@ public:
             std::vector<llvm::Value*> llvm_args;
             llvm_args.push_back(var->getValue());
             llvm_args.push_back(converted_slice->getValue());
+            llvm_args.push_back(getConstantInt(should_lookup_slice, g.i32));
+
 
             llvm::Instruction* uncasted
                 = emitter.createIC(pp, (void*)(target_exception_style == CAPI ? pyston::getitem_capi : pyston::getitem),
@@ -379,9 +381,10 @@ public:
             rtn = createAfter<llvm::IntToPtrInst>(uncasted, uncasted, g.llvm_value_type_ptr, "");
             emitter.setType(rtn, RefType::OWNED);
         } else {
-            rtn = emitter.createCall2(
+            rtn = emitter.createCall3(
                 info.unw_info, target_exception_style == CAPI ? g.funcs.getitem_capi : g.funcs.getitem, var->getValue(),
-                converted_slice->getValue(), target_exception_style, getNullPtr(g.llvm_value_type_ptr));
+                converted_slice->getValue(), getConstantInt(should_lookup_slice, g.i32), target_exception_style,
+                getNullPtr(g.llvm_value_type_ptr));
             emitter.setType(rtn, RefType::OWNED);
         }
 
@@ -1187,9 +1190,10 @@ public:
         return new ConcreteCompilerVariable(other_type, boxed);
     }
 
-    CompilerVariable* getitem(IREmitter& emitter, const OpInfo& info, VAR* var, CompilerVariable* slice) override {
+    CompilerVariable* getitem(IREmitter& emitter, const OpInfo& info, VAR* var, CompilerVariable* slice,
+                              bool should_lookup_slice) override {
         ConcreteCompilerVariable* converted = var->makeConverted(emitter, BOXED_INT);
-        CompilerVariable* rtn = converted->getitem(emitter, info, slice);
+        CompilerVariable* rtn = converted->getitem(emitter, info, slice, should_lookup_slice);
         return rtn;
     }
 
@@ -1470,9 +1474,10 @@ public:
         return rtn;
     }
 
-    CompilerVariable* getitem(IREmitter& emitter, const OpInfo& info, VAR* var, CompilerVariable* slice) override {
+    CompilerVariable* getitem(IREmitter& emitter, const OpInfo& info, VAR* var, CompilerVariable* slice,
+                              bool should_lookup_slice) override {
         ConcreteCompilerVariable* converted = var->makeConverted(emitter, BOXED_FLOAT);
-        CompilerVariable* rtn = converted->getitem(emitter, info, slice);
+        CompilerVariable* rtn = converted->getitem(emitter, info, slice, should_lookup_slice);
         return rtn;
     }
 
@@ -2035,7 +2040,8 @@ public:
         return UNKNOWN->contains(emitter, info, var, lhs);
     }
 
-    CompilerVariable* getitem(IREmitter& emitter, const OpInfo& info, VAR* var, CompilerVariable* slice) override {
+    CompilerVariable* getitem(IREmitter& emitter, const OpInfo& info, VAR* var, CompilerVariable* slice,
+                              bool should_lookup_slice) override {
         static BoxedString* attr = getStaticString("__getitem__");
         bool no_attribute = false;
 
@@ -2099,7 +2105,7 @@ public:
                 assert(called_constant->getType() == UNDEF);
 
                 // Kind of hacky, but just call into getitem like normal.  except...
-                auto r = UNKNOWN->getitem(emitter, info, var, slice);
+                auto r = UNKNOWN->getitem(emitter, info, var, slice, should_lookup_slice);
                 // ... return the undef value, since that matches what the type analyzer thought we would do.
                 return called_constant;
             }
@@ -2108,7 +2114,7 @@ public:
                 return called_constant;
         }
 
-        return UNKNOWN->getitem(emitter, info, var, slice);
+        return UNKNOWN->getitem(emitter, info, var, slice, should_lookup_slice);
     }
 
     CompilerVariable* getPystonIter(IREmitter& emitter, const OpInfo& info, VAR* var) override {
@@ -2290,9 +2296,10 @@ public:
         return rtn;
     }
 
-    CompilerVariable* getitem(IREmitter& emitter, const OpInfo& info, VAR* var, CompilerVariable* slice) override {
+    CompilerVariable* getitem(IREmitter& emitter, const OpInfo& info, VAR* var, CompilerVariable* slice,
+                              bool should_lookup_slice) override {
         ConcreteCompilerVariable* converted = var->makeConverted(emitter, STR);
-        CompilerVariable* rtn = converted->getitem(emitter, info, slice);
+        CompilerVariable* rtn = converted->getitem(emitter, info, slice, should_lookup_slice);
         return rtn;
     }
 
@@ -2533,7 +2540,8 @@ public:
 
     static TupleType* make(const std::vector<CompilerType*>& elt_types) { return new TupleType(elt_types); }
 
-    CompilerVariable* getitem(IREmitter& emitter, const OpInfo& info, VAR* var, CompilerVariable* slice) override {
+    CompilerVariable* getitem(IREmitter& emitter, const OpInfo& info, VAR* var, CompilerVariable* slice,
+                              bool should_lookup_slice) override {
         assert(slice->getType() != UNBOXED_INT);
         if (slice->getType() == INT) {
             llvm::Value* v = IntType::extractInt(slice);
@@ -2566,7 +2574,7 @@ public:
         }
 
         ConcreteCompilerVariable* converted = var->makeConverted(emitter, BOXED_TUPLE);
-        CompilerVariable* rtn = converted->getitem(emitter, info, slice);
+        CompilerVariable* rtn = converted->getitem(emitter, info, slice, should_lookup_slice);
         return rtn;
     }
 
@@ -2815,7 +2823,7 @@ public:
     }
 
     CompilerVariable* getitem(IREmitter& emitter, const OpInfo& info, ConcreteCompilerVariable* var,
-                              CompilerVariable* slice) override {
+                              CompilerVariable* slice, bool should_lookup_slice) override {
         return undefVariable();
     }
 

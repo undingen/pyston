@@ -258,7 +258,7 @@ public:
     RewriterVar* emitGetBoxedLocals();
     RewriterVar* emitGetClsAttr(RewriterVar* obj, BoxedString* s);
     RewriterVar* emitGetGlobal(BoxedString* s);
-    RewriterVar* emitGetItem(AST_expr* node, RewriterVar* value, RewriterVar* slice);
+    RewriterVar* emitGetItem(AST_expr* node, RewriterVar* value, RewriterVar* slice, bool should_lookup_slice);
     RewriterVar* emitGetLocal(InternedString s, int vreg);
     RewriterVar* emitGetPystonIter(RewriterVar* v);
     RewriterVar* emitHasnext(RewriterVar* v);
@@ -277,7 +277,7 @@ public:
 
     void emitDelAttr(RewriterVar* target, BoxedString* attr);
     void emitDelGlobal(BoxedString* name);
-    void emitDelItem(RewriterVar* target, RewriterVar* slice);
+    void emitDelItem(RewriterVar* target, RewriterVar* slice, bool should_lookup_slice);
     void emitDelName(InternedString name);
     void emitExec(RewriterVar* code, RewriterVar* globals, RewriterVar* locals, FutureFlags flags);
     void emitJump(CFGBlock* b);
@@ -293,7 +293,7 @@ public:
     void emitSetExcInfo(RewriterVar* type, RewriterVar* value, RewriterVar* traceback);
     void emitSetGlobal(BoxedString* s, STOLEN(RewriterVar*) v, bool are_globals_from_module);
     void emitSetItemName(BoxedString* s, RewriterVar* v);
-    void emitSetItem(RewriterVar* target, RewriterVar* slice, RewriterVar* value);
+    void emitSetItem(RewriterVar* target, RewriterVar* slice, RewriterVar* value, bool should_lookup_slice);
     void emitSetLocal(InternedString s, int vreg, bool set_closure, STOLEN(RewriterVar*) v);
     // emitSideExit steals a full ref from v, not just a vref
     void emitSideExit(STOLEN(RewriterVar*) v, Box* cmp_value, CFGBlock* next_block);
