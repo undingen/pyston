@@ -179,7 +179,7 @@ static const assembler::Register bjit_allocatable_regsR15[]
 JitFragmentWriter::JitFragmentWriter(CFGBlock* block, std::unique_ptr<ICInfo> ic_info,
                                      std::unique_ptr<ICSlotRewrite> rewrite, int code_offset, int num_bytes_overlapping,
                                      void* entry_code, JitCodeBlock& code_block, int num_set)
-    : Rewriter(std::move(rewrite), 0, {}, /* needs_invalidation_support = */ false),
+    : Rewriter(std::move(rewrite), 0, {}, /* needs_invalidation_support = */ false, bjit_allocatable_regs),
       block(block),
       code_offset(code_offset),
       exit_info(),
@@ -188,7 +188,6 @@ JitFragmentWriter::JitFragmentWriter(CFGBlock* block, std::unique_ptr<ICInfo> ic
       code_block(code_block),
       interp(0),
       ic_info(std::move(ic_info)) {
-    allocatable_regs = bjit_allocatable_regs;
 
     for (int i = 0; i < num_set; ++i) {
         known_non_null_vregs.insert(i);
