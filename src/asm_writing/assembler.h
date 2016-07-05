@@ -111,8 +111,8 @@ public:
 
     bool hasFailed() { return failed; }
 
-    void nop() { emitByte(0x90); }
-    void trap() { emitByte(0xcc); }
+    void nop();
+    void trap();
 
     // emits a movabs if the immediate is a 64bit value or force_64bit_load = true otherwise it emits a 32bit mov
     void mov(Immediate imm, Register dest, bool force_64bit_load = false);
