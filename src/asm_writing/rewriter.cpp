@@ -1979,9 +1979,9 @@ void Rewriter::spillRegister(assembler::Register reg, Location preserve) {
     }
 
     // First, try to spill into a callee-save register:
-    for (assembler::Register new_reg : allocatable_regs) {
-        if (!new_reg.isCalleeSave())
-            continue;
+    for (assembler::Register new_reg : allocatable_callee_save_regs) {
+        assert(new_reg.isCalleeSave());
+
         if (vars_by_location.count(new_reg))
             continue;
         if (Location(new_reg) == preserve)
@@ -2225,6 +2225,12 @@ Rewriter::Rewriter(std::unique_ptr<ICSlotRewrite> rewrite, int num_args, const L
         allocatable_regs = this->rewrite->getICInfo()->allocatable_registers;
 
     initPhaseCollecting();
+
+    for (assembler::Register new_reg : this->allocatable_regs) {
+        if (!new_reg.isCalleeSave())
+            continue;
+        allocatable_callee_save_regs.push_back(new_reg);
+    }
 
     finished = false;
 
