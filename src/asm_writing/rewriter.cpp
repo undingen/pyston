@@ -2207,7 +2207,7 @@ TypeRecorder* Rewriter::getTypeRecorder() {
 }
 
 Rewriter::Rewriter(std::unique_ptr<ICSlotRewrite> rewrite, int num_args, const LiveOutSet& live_outs,
-                   bool needs_invalidation_support)
+                   bool needs_invalidation_support, llvm::ArrayRef<assembler::Register> allocatable_regs)
     : rewrite(std::move(rewrite)),
       assembler(this->rewrite->getAssembler()),
       picked_slot(NULL),
@@ -2220,9 +2220,12 @@ Rewriter::Rewriter(std::unique_ptr<ICSlotRewrite> rewrite, int num_args, const L
       marked_inside_ic(false),
       done_guarding(false),
       last_guard_action(-1),
-      allocatable_regs(std_allocatable_regs) {
+      allocatable_regs(allocatable_regs) {
+    if (this->allocatable_regs.empty())
+        this->allocatable_regs = std_allocatable_regs;
+
     if (!this->rewrite->getICInfo()->allocatable_registers.empty())
-        allocatable_regs = this->rewrite->getICInfo()->allocatable_registers;
+        this->allocatable_regs = this->rewrite->getICInfo()->allocatable_registers;
 
     initPhaseCollecting();
 

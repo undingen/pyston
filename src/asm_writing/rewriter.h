@@ -459,7 +459,7 @@ protected:
     // produces will support invalidation.  Normally we want this, but the baseline jit needs to turn
     // this off (for the non-IC assembly it generates).
     Rewriter(std::unique_ptr<ICSlotRewrite> rewrite, int num_args, const LiveOutSet& live_outs,
-             bool needs_invalidation_support = true);
+             bool needs_invalidation_support = true, llvm::ArrayRef<assembler::Register> allocatable_regs = {});
 
     std::deque<RewriterAction> actions;
     int current_action_idx; // in the emitting phase get's set to index of currently executed action
