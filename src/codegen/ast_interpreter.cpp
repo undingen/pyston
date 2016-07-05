@@ -299,7 +299,10 @@ void ASTInterpreter::startJITing(CFGBlock* block, int exit_offset) {
         exit_offset = 0;
     }
 
-    jit = code_block->newFragment(block, exit_offset);
+    int num_set = 0;
+    if (block == block->cfg->getStartingBlock())
+        num_set = getMD()->param_names.totalParameters();
+    jit = code_block->newFragment(block, exit_offset, num_set);
 }
 
 void ASTInterpreter::abortJITing() {
