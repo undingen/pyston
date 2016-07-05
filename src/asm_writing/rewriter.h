@@ -614,6 +614,7 @@ protected:
     }
 
     llvm::ArrayRef<assembler::Register> allocatable_regs;
+    llvm::SmallVector<assembler::Register, 4> allocatable_callee_save_regs;
 
 public:
     // This should be called exactly once for each argument
