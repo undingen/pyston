@@ -256,6 +256,7 @@ RuntimeIC::RuntimeIC(void* func_addr, int patchable_size) {
             func_addr, pp_start, pp_end, 0 /* scratch_offset */, 0 /* scratch_size */, LiveOutSet(), _spill_map);
         assert(_spill_map.size() == 0);
         assert(initialization_info.slowpath_start == pp_start + patchable_size);
+        printf("%p %p\n", initialization_info.slowpath_rtn_addr, pp_end);
         assert(initialization_info.slowpath_rtn_addr == pp_end);
         assert(initialization_info.continue_addr == pp_end);
 
@@ -275,6 +276,7 @@ RuntimeIC::RuntimeIC(void* func_addr, int patchable_size) {
 #endif
         assert(!prologue_assem.hasFailed());
         assert(prologue_assem.isExactlyFull());
+        prologue_assem.compile();
 
         assembler::Assembler epilogue_assem(pp_end, EPILOGUE_SIZE);
 #if RUNTIMEICS_OMIT_FRAME_PTR
@@ -286,6 +288,7 @@ RuntimeIC::RuntimeIC(void* func_addr, int patchable_size) {
         epilogue_assem.retq();
         assert(!epilogue_assem.hasFailed());
         assert(epilogue_assem.isExactlyFull());
+        epilogue_assem.compile();
 
         writeTrivialEhFrame(eh_frame_addr, addr, total_code_size, RUNTIMEICS_OMIT_FRAME_PTR);
         // (EH_FRAME_SIZE - 4) to omit the 4-byte null terminator, otherwise we trip an assert in parseEhFrame.
