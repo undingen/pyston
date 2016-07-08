@@ -74,11 +74,11 @@ public:
     const int size;
     const bool has_return_value;
     TypeRecorder* const type_recorder;
+    llvm::ArrayRef<assembler::Register> allocatable_regs;
 
     int totalSize() const;
     bool hasReturnValue() const { return has_return_value; }
     bool isDeopt() const { return type == Deopt; }
-    llvm::ArrayRef<assembler::Register> allocatable_regs;
 
     llvm::CallingConv::ID getCallingConvention() const {
 // FIXME: we currently have some issues with using PreserveAll (the rewriter currently
