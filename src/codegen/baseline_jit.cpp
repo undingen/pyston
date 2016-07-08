@@ -187,10 +187,11 @@ JitFragmentWriter::JitFragmentWriter(CFGBlock* block, std::unique_ptr<ICInfo> ic
       entry_code(entry_code),
       code_block(code_block),
       interp(0),
+      known_non_null_vregs(block->cfg->getVRegInfo().getTotalNumOfVRegs()),
       ic_info(std::move(ic_info)) {
 
     for (int i = 0; i < num_set; ++i) {
-        known_non_null_vregs.insert(i);
+        known_non_null_vregs.set(i);
     }
 
     added_changing_action = true;
@@ -437,9 +438,9 @@ RewriterVar* JitFragmentWriter::emitGetLocal(InternedString s, int vreg) {
     // TODO Can we use BORROWED here? Not sure if there are cases when we can't rely on borrowing the ref
     // from the vregs array.  Safer like this.
     RewriterVar* val_var = vregs_array->getAttr(vreg * 8);
-    if (known_non_null_vregs.count(vreg) == 0) {
+    if (known_non_null_vregs[vreg] == 0) {
         addAction([=]() { _emitGetLocal(val_var, s.c_str()); }, { val_var }, ActionType::NORMAL);
-        known_non_null_vregs.insert(vreg);
+        known_non_null_vregs.set(vreg);
     } else {
         val_var->incref();
     }
@@ -743,14 +744,14 @@ void JitFragmentWriter::emitSetLocal(InternedString s, int vreg, bool set_closur
         // The issue is that definedness analysis is somewhat expensive to compute, so we don't compute it
         // for the bjit.  We could try calculating it (which would require some re-plumbing), which might help
         // but I suspect is not that big a deal as long as the llvm jit implements this kind of optimization.
-        bool prev_nullable = known_non_null_vregs.count(vreg) == 0;
+        bool prev_nullable = !known_non_null_vregs[vreg];
 
         assert(!block->cfg->getVRegInfo().isBlockLocalVReg(vreg));
         vregs_array->replaceAttr(8 * vreg, v, prev_nullable);
         if (v->isContantNull())
-            known_non_null_vregs.erase(vreg);
+            known_non_null_vregs.clear(vreg);
         else
-            known_non_null_vregs.insert(vreg);
+            known_non_null_vregs.set(vreg);
     }
     if (LOG_BJIT_ASSEMBLY)
         comment("BJIT: emitSetLocal() end");

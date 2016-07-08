@@ -221,6 +221,10 @@ public:
         assert(vreg >= 0 && vreg < v.size());
         v[vreg] = true;
     }
+    void clear(int vreg) {
+        assert(vreg >= 0 && vreg < v.size());
+        v[vreg] = false;
+    }
 
     int numSet() const { return v.count(); }
 

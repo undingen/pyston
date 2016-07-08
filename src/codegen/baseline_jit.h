@@ -20,6 +20,7 @@
 #include "asm_writing/rewriter.h"
 #include "codegen/ast_interpreter.h"
 #include "codegen/patchpoints.h"
+#include "core/cfg.h"
 
 namespace pyston {
 
@@ -209,7 +210,7 @@ private:
     llvm::DenseMap<InternedString, RewriterVar*> local_syms;
     // keeps track which non block local vregs are known to have a non NULL value
     // TODO: in the future we could reuse this information between different basic blocks
-    llvm::DenseSet<int> known_non_null_vregs;
+    VRegSet known_non_null_vregs;
     std::unique_ptr<ICInfo> ic_info;
     llvm::SmallPtrSet<RewriterVar*, 4> var_is_a_python_bool;
 
