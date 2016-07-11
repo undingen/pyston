@@ -157,6 +157,7 @@ void ICSlotRewrite::commit(CommitHook* hook, std::vector<void*> gc_references,
         assembler.fillWithNops();
         assert(original_size == assembler.bytesWritten());
     }
+    assembler.compile();
 
     for (int i = 0; i < dependencies.size(); i++) {
         ICInvalidator* invalidator = dependencies[i].first;
@@ -185,10 +186,12 @@ void ICSlotRewrite::commit(CommitHook* hook, std::vector<void*> gc_references,
             while (new_asm.bytesWritten() < jmp_inst_end)
                 new_asm.nop();
         }
+        new_asm.compile();
 
         // put a jump to the slowpath at the beginning of the new slot
         Assembler asm_next_slot(assembler.getStartAddr() + actual_size, empty_space);
         asm_next_slot.jmp(JumpDestination::fromStart(empty_space));
+        asm_next_slot.compile();
 
         // add the new slot
         ic->slots.emplace_back(ic, ic_entry->start_addr + actual_size, empty_space);
@@ -379,6 +382,7 @@ std::unique_ptr<ICInfo> registerCompiledPatchpoint(uint8_t* start_addr, uint8_t*
     Assembler writer(start_addr, ic->size);
     writer.nop();
     writer.jmp(JumpDestination::fromStart(slowpath_start_addr - start_addr));
+    writer.compile();
 
     ICInfo* icinfo
         = new ICInfo(start_addr, slowpath_rtn_addr, continue_addr, stack_info, ic->size, ic->getCallingConvention(),

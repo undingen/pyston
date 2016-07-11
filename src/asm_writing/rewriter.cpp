@@ -449,7 +449,13 @@ void Rewriter::_getAttr(RewriterVar* result, RewriterVar* ptr, int offset, Locat
     ptr->bumpUseEarlyIfPossible();
 
     assembler::Register newvar_reg = result->initializeInReg(dest);
-    assembler->mov_generic(assembler::Indirect(ptr_reg, offset), newvar_reg, type);
+    if (type == assembler::MovType::L)
+        assembler->movl(assembler::Indirect(ptr_reg, offset), newvar_reg);
+    else if (type == assembler::MovType::Q)
+        assembler->movq(assembler::Indirect(ptr_reg, offset), newvar_reg);
+    else
+        assert(0);
+    // assembler->mov_generic(assembler::Indirect(ptr_reg, offset), newvar_reg, type);
 
     result->releaseIfNoUses();
 
@@ -2523,6 +2529,7 @@ PatchpointInitializationInfo initializePatchpoint3(void* slowpath_func, uint8_t*
     if (slowpath_start - start_addr > 20)
         _a.jmp(assembler::JumpDestination::fromStart(slowpath_start - start_addr));
     _a.fillWithNops();
+    _a.assemble(_a.startAddr(), _a.size());
 
     assembler::Assembler assem(slowpath_start, end_addr - slowpath_start);
     // if (regs_to_spill.size())
@@ -2554,6 +2561,7 @@ PatchpointInitializationInfo initializePatchpoint3(void* slowpath_func, uint8_t*
 
     assem.fillWithNops();
     assert(!assem.hasFailed());
+    assem.compile();
 
     return PatchpointInitializationInfo(slowpath_start, slowpath_rtn_addr, continue_addr, std::move(live_outs));
 }

@@ -1690,7 +1690,8 @@ BORROWED(Box*) typeLookup(BoxedClass* cls, BoxedString* attr, GetattrRewriteArgs
 
     // CAPI types defined inside external extension normally don't have this flag set while all types inside pyston set
     // it.
-    if (rewrite_args && !PyType_HasFeature(cls, Py_TPFLAGS_HAVE_VERSION_TAG)) {
+    if (rewrite_args
+        && (!PyType_HasFeature(cls, Py_TPFLAGS_HAVE_VERSION_TAG) || (cls->is_constant && cls->hasGenericGetattr()))) {
         assert(!rewrite_args->isSuccessful());
 
         RewriterVar* obj_saved = rewrite_args->obj;
@@ -1707,7 +1708,13 @@ BORROWED(Box*) typeLookup(BoxedClass* cls, BoxedString* attr, GetattrRewriteArgs
         //
         // TODO this can fail if we replace the mro with another mro that lives in the same
         // address.
-        obj_saved->addAttrGuard(offsetof(BoxedClass, tp_mro), (intptr_t)mro);
+        bool is_constant = (cls->is_constant && cls->hasGenericGetattr());
+        if (is_constant) {
+            rewrite_args->obj_hcls_guarded = true;
+            rewrite_args->obj_shape_guarded = true;
+            obj_saved->addGuard((intptr_t)cls);
+        } else
+            obj_saved->addAttrGuard(offsetof(BoxedClass, tp_mro), (intptr_t)mro);
 
         for (auto base : *mro) {
             if (rewrite_args) {

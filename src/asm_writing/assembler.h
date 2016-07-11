@@ -23,6 +23,8 @@
 #include "core/ast.h"
 #include "core/options.h"
 
+struct dasm_State;
+
 namespace pyston {
 namespace assembler {
 
@@ -69,9 +71,12 @@ enum class MovType {
 
 class Assembler {
 private:
+    mutable dasm_State* d;
+
+
     uint8_t* const start_addr, *const end_addr;
-    uint8_t* addr;
-    bool failed; // if the rewrite failed at the assembly-generation level for some reason
+    mutable uint8_t* addr;
+    mutable bool failed; // if the rewrite failed at the assembly-generation level for some reason
 
     static const uint8_t OPCODE_ADD = 0b000, OPCODE_SUB = 0b101, OPCODE_CMP = 0b111;
     static const uint8_t REX_B = 1, REX_X = 2, REX_R = 4, REX_W = 8;
@@ -93,7 +98,13 @@ private:
     int getModeFromOffset(int offset, int reg_idx) const;
 
 public:
-    Assembler(uint8_t* start, int size) : start_addr(start), end_addr(start + size), addr(start_addr), failed(false) {}
+    Assembler(uint8_t* start, int size);
+    ~Assembler();
+
+    int estSize() const;
+    void assemble(uint8_t* buf, int size) const;
+    void updateAddr() const;
+    void compile() { assemble(startAddr(), size()); }
 
 #ifndef NDEBUG
     inline void comment(const llvm::Twine& msg) { logger.log_comment(msg, addr - start_addr); }
@@ -204,12 +215,25 @@ public:
     void skipBytes(int num);
 
     uint8_t* startAddr() const { return start_addr; }
-    int bytesLeft() const { return end_addr - addr; }
-    int bytesWritten() const { return addr - start_addr; }
+    int bytesLeft() const {
+        updateAddr();
+        return end_addr - addr;
+    }
+    int bytesWritten() const {
+        updateAddr();
+        return addr - start_addr;
+    }
     int size() const { return end_addr - start_addr; }
-    uint8_t* curInstPointer() { return addr; }
+    uint8_t* curInstPointer() const {
+        assert(0);
+        updateAddr();
+        return addr;
+    }
     void setCurInstPointer(uint8_t* ptr) { addr = ptr; }
-    bool isExactlyFull() const { return addr == end_addr; }
+    bool isExactlyFull() const {
+        updateAddr();
+        return addr == end_addr;
+    }
     uint8_t* getStartAddr() { return start_addr; }
 };
 
