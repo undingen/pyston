@@ -149,6 +149,7 @@ public:
     // scratch size + space for passing additional args on the stack without having to adjust the SP when calling
     // functions with more than 6 args.
     static constexpr int sp_adjustment = scratch_size + num_stack_args * 8 + 8 /* = alignment */;
+    static constexpr assembler::RegisterSet additional_regs = assembler::RBX | assembler::R12 | assembler::R15;
 
 private:
     struct MemoryManager {
