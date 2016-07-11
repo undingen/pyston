@@ -105,10 +105,11 @@ private:
     ICSlotInfo* pickEntryForRewrite(const char* debug_name);
 
 public:
-    llvm::ArrayRef<assembler::Register> allocatable_registers;
+    assembler::RegisterSet allocatable_registers;
     ICInfo(void* start_addr, void* slowpath_rtn_addr, void* continue_addr, StackInfo stack_info, int size,
            llvm::CallingConv::ID calling_conv, LiveOutSet live_outs, assembler::GenericRegister return_register,
-           TypeRecorder* type_recorder, std::vector<Location> ic_global_decref_locations);
+           TypeRecorder* type_recorder, std::vector<Location> ic_global_decref_locations,
+           assembler::RegisterSet allocatable_registers = assembler::RegisterSet::std());
     ~ICInfo();
     void* const start_addr, *const slowpath_rtn_addr, *const continue_addr;
 

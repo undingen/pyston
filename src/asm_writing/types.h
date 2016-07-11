@@ -53,22 +53,93 @@ struct Register {
     static constexpr int numRegs() { return 16; }
 };
 
-const Register RAX(0);
-const Register RCX(1);
-const Register RDX(2);
-const Register RBX(3);
-const Register RSP(4);
-const Register RBP(5);
-const Register RSI(6);
-const Register RDI(7);
-const Register R8(8);
-const Register R9(9);
-const Register R10(10);
-const Register R11(11);
-const Register R12(12);
-const Register R13(13);
-const Register R14(14);
-const Register R15(15);
+constexpr Register RAX(0);
+constexpr Register RCX(1);
+constexpr Register RDX(2);
+constexpr Register RBX(3);
+constexpr Register RSP(4);
+constexpr Register RBP(5);
+constexpr Register RSI(6);
+constexpr Register RDI(7);
+constexpr Register R8(8);
+constexpr Register R9(9);
+constexpr Register R10(10);
+constexpr Register R11(11);
+constexpr Register R12(12);
+constexpr Register R13(13);
+constexpr Register R14(14);
+constexpr Register R15(15);
+
+struct RegisterSet {
+    typedef unsigned int Regs;
+    Regs regs;
+
+    constexpr explicit RegisterSet(Regs regs) : regs(regs) {}
+    constexpr explicit RegisterSet(Register reg) : regs(1ul << reg.regnum) {}
+
+    static constexpr int max_reg_num = Register::numRegs();
+    static constexpr Regs callee_save_mask = (1ul << RBX.regnum) | (1ul << RSP.regnum) | (1ul << RBP.regnum)
+                                             | (1ul << R12.regnum) | (1ul << R13.regnum) | (1ul << R14.regnum)
+                                             | (1ul << R15.regnum);
+
+    static constexpr RegisterSet std() {
+        return RegisterSet((1ul << RAX.regnum) | (1ul << RCX.regnum) | (1ul << RDX.regnum) | (1ul << RDI.regnum)
+                           | (1ul << RSI.regnum) | (1ul << R8.regnum) | (1ul << R9.regnum) | (1ul << R10.regnum)
+                           | (1ul << R11.regnum));
+    }
+
+    RegisterSet getCalleeSave() const { return RegisterSet(regs & callee_save_mask); }
+
+    bool isInside(Register reg) const { return regs & (1ul << reg.regnum); }
+    bool empty() const { return regs == 0; }
+
+    class iterator {
+    public:
+        const RegisterSet& set;
+        int i;
+        iterator(const RegisterSet& set, int i) : set(set), i(i) {}
+
+        iterator& operator++() {
+            do {
+                i++;
+            } while (i < max_reg_num && !set.isInside(Register(i)));
+            if (i > max_reg_num)
+                i = max_reg_num;
+            return *this;
+        }
+
+        bool operator==(const iterator& rhs) const { return i == rhs.i; }
+        bool operator!=(const iterator& rhs) const { return !(*this == rhs); }
+
+        Register operator*() {
+            return Register(i);
+        }
+    };
+
+    iterator begin() const {
+        if (empty())
+            return end();
+        for (int i = 0; i < max_reg_num; i++) {
+            if (isInside(Register(i)))
+                return iterator(*this, i);
+        }
+        return end();
+    }
+    iterator end() const { return iterator(*this, max_reg_num); }
+};
+
+constexpr inline RegisterSet operator|(RegisterSet a, RegisterSet b) {
+    return RegisterSet(a.regs | b.regs);
+}
+
+constexpr inline RegisterSet operator|(Register a, Register b) {
+    return RegisterSet(a) | RegisterSet(b);
+}
+
+constexpr inline RegisterSet operator|(RegisterSet a, Register b) {
+    return a | RegisterSet(b);
+}
+
 
 inline bool Register::isCalleeSave() {
     return *this == RBX || *this == RSP || *this == RBP || regnum >= 12;

@@ -131,9 +131,11 @@ std::unique_ptr<JitFragmentWriter> JitCodeBlock::newFragment(CFGBlock* block, in
     void* fragment_start = a.curInstPointer() - patch_jump_offset;
     long fragment_offset = a.bytesWritten() - patch_jump_offset;
     long bytes_left = a.bytesLeft() + patch_jump_offset;
+    constexpr assembler::RegisterSet bjit_allocatable_regs = assembler::RegisterSet::std() | assembler::R12
+                                                             | assembler::R15;
     std::unique_ptr<ICInfo> ic_info(new ICInfo(fragment_start, nullptr, nullptr, stack_info, bytes_left,
                                                llvm::CallingConv::C, live_outs, assembler::RAX, 0,
-                                               std::vector<Location>()));
+                                               std::vector<Location>(), bjit_allocatable_regs));
     std::unique_ptr<ICSlotRewrite> rewrite = ic_info->startRewrite("");
 
     return std::unique_ptr<JitFragmentWriter>(new JitFragmentWriter(block, std::move(ic_info), std::move(rewrite),
@@ -157,29 +159,10 @@ void JitCodeBlock::fragmentFinished(int bytes_written, int num_bytes_overlapping
     ic_info.appendDecrefInfosTo(decref_infos);
 }
 
-static const assembler::Register bjit_allocatable_regs[]
-    = { assembler::RAX, assembler::RCX, assembler::RDX,
-        // no RSP
-        // no RBP
-        assembler::RDI, assembler::RSI, assembler::R8,  assembler::R9,
-        assembler::R10, assembler::R11, assembler::R12, assembler::R15 };
-
-static const assembler::Register bjit_allocatable_regsR12[]
-    = { assembler::RAX, assembler::RCX, assembler::RDX,
-        // no RSP
-        // no RBP
-        assembler::RDI, assembler::RSI, assembler::R8,  assembler::R9, assembler::R10, assembler::R11, assembler::R12 };
-
-static const assembler::Register bjit_allocatable_regsR15[]
-    = { assembler::RAX, assembler::RCX, assembler::RDX,
-        // no RSP
-        // no RBP
-        assembler::RDI, assembler::RSI, assembler::R8,  assembler::R9, assembler::R10, assembler::R11, assembler::R15 };
-
 JitFragmentWriter::JitFragmentWriter(CFGBlock* block, std::unique_ptr<ICInfo> ic_info,
                                      std::unique_ptr<ICSlotRewrite> rewrite, int code_offset, int num_bytes_overlapping,
                                      void* entry_code, JitCodeBlock& code_block, int num_set)
-    : Rewriter(std::move(rewrite), 0, {}, /* needs_invalidation_support = */ false, bjit_allocatable_regs),
+    : Rewriter(std::move(rewrite), 0, {}, /* needs_invalidation_support = */ false),
       block(block),
       code_offset(code_offset),
       exit_info(),
@@ -1161,17 +1144,14 @@ void JitFragmentWriter::_emitPPCall(RewriterVar* result, void* func_addr, llvm::
     uint8_t* pp_end = rewrite->getSlotStart() + assembler->bytesWritten();
     assert(assembler->hasFailed() || (pp_start + pp_size + call_size == pp_end));
 
-    std::unique_ptr<ICSetupInfo> setup_info(ICSetupInfo::initialize(true, pp_size, ICSetupInfo::Generic, NULL));
+    assembler::RegisterSet regs = assembler::RegisterSet::std();
+    for (assembler::Register reg : { assembler::R12, assembler::R15 }) {
+        if (vars_by_location.count(reg) == 0)
+            regs = regs | assembler::RegisterSet(reg);
+    }
 
-    bool unused_r12 = vars_by_location.count(assembler::R12) == 0;
-    bool unused_r15 = vars_by_location.count(assembler::R15) == 0;
+    std::unique_ptr<ICSetupInfo> setup_info(ICSetupInfo::initialize(true, pp_size, ICSetupInfo::Generic, NULL, regs));
 
-    if (unused_r12 && unused_r15)
-        setup_info->allocatable_regs = bjit_allocatable_regs;
-    else if (unused_r12)
-        setup_info->allocatable_regs = bjit_allocatable_regsR12;
-    else if (unused_r15)
-        setup_info->allocatable_regs = bjit_allocatable_regsR15;
 
     // calculate available scratch space
     int pp_scratch_size = 0;
