@@ -111,19 +111,13 @@ struct RegisterSet {
         bool operator==(const iterator& rhs) const { return i == rhs.i; }
         bool operator!=(const iterator& rhs) const { return !(*this == rhs); }
 
-        Register operator*() {
-            return Register(i);
-        }
+        Register operator*() { return Register(i); }
     };
 
     iterator begin() const {
         if (empty())
             return end();
-        for (int i = 0; i < max_reg_num; i++) {
-            if (isInside(Register(i)))
-                return iterator(*this, i);
-        }
-        return end();
+        return iterator(*this, __builtin_ctz(regs));
     }
     iterator end() const { return iterator(*this, max_reg_num); }
 };

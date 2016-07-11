@@ -44,7 +44,8 @@ int ICSetupInfo::totalSize() const {
 
 static std::vector<std::pair<PatchpointInfo*, void* /* addr of func to call */>> new_patchpoints;
 
-ICSetupInfo* ICSetupInfo::initialize(bool has_return_value, int size, ICType type, TypeRecorder* type_recorder, assembler::RegisterSet allocatable_regs) {
+ICSetupInfo* ICSetupInfo::initialize(bool has_return_value, int size, ICType type, TypeRecorder* type_recorder,
+                                     assembler::RegisterSet allocatable_regs) {
     ICSetupInfo* rtn = new ICSetupInfo(type, size, has_return_value, type_recorder, allocatable_regs);
 
 

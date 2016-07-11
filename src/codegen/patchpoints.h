@@ -98,7 +98,8 @@ public:
         return llvm::CallingConv::C;
     }
 
-    static ICSetupInfo* initialize(bool has_return_value, int size, ICType type, TypeRecorder* type_recorder, assembler::RegisterSet allocatable_regs = assembler::RegisterSet::std());
+    static ICSetupInfo* initialize(bool has_return_value, int size, ICType type, TypeRecorder* type_recorder,
+                                   assembler::RegisterSet allocatable_regs = assembler::RegisterSet::std());
 };
 
 struct PatchpointInfo {
