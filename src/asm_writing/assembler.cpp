@@ -2,10 +2,10 @@
 ** This file has been pre-processed with DynASM.
 ** http://luajit.org/dynasm.html
 ** DynASM version 1.4.0, DynASM x64 version 1.4.0
-** DO NOT EDIT! The original file is in "src/asm_writing/assembler.dasc".
+** DO NOT EDIT! The original file is in "assembler.dasc".
 */
 
-#line 1 "src/asm_writing/assembler.dasc"
+#line 1 "assembler.dasc"
 // Copyright (c) 2014-2016 Dropbox, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,6 +28,7 @@
 #include "core/options.h"
 
 extern "C" {
+#define DASM_CHECKS 1
 #include "dasm_proto.h"
 #include "dasm_x86.h"
 }
@@ -35,7 +36,7 @@ extern "C" {
 #if DASM_VERSION != 10400
 #error "Version mismatch between DynASM and included encoding engine"
 #endif
-#line 27 "src/asm_writing/assembler.dasc"
+#line 28 "assembler.dasc"
 
 #define Dst &d
 
@@ -80,38 +81,38 @@ Assembler::Assembler(uint8_t* start, int size)
     //|.section code
 #define DASM_SECTION_CODE	0
 #define DASM_MAXSECTION		1
-#line 69 "src/asm_writing/assembler.dasc"
+#line 70 "assembler.dasc"
     dasm_init(&d, DASM_MAXSECTION);
     //|.actionlist bf_actions
-static const unsigned char bf_actions[470] = {
-  235,255,144,255,205,3,255,241,144,255,64,184,240,42,237,255,72,199,192,240,
-  35,237,255,72,199,128,253,240,3,233,237,255,72,137,192,240,131,240,35,255,
-  72,137,128,253,240,131,240,3,233,255,72,139,128,253,240,131,240,3,233,255,
-  64,139,128,253,240,131,240,19,233,255,64,138,128,253,240,131,240,3,233,255,
-  64,15,182,128,253,240,132,240,20,233,255,64,15,190,128,253,240,132,240,20,
-  233,255,64,15,183,128,253,240,132,240,20,233,255,64,15,191,128,253,240,132,
-  240,20,233,255,72,15,182,128,253,240,132,240,4,233,255,72,15,190,128,253,
-  240,132,240,4,233,255,72,15,183,128,253,240,132,240,4,233,255,72,15,191,128,
-  253,240,132,240,4,233,255,72,49,192,240,131,240,35,255,252,242,64,15,16,192,
-  240,132,240,52,255,252,242,64,15,17,128,253,240,132,240,20,233,255,252,242,
-  64,15,16,128,253,240,132,240,20,233,255,252,243,64,15,16,128,253,240,132,
-  240,20,233,255,252,243,64,15,90,192,240,132,240,52,255,64,80,240,42,255,64,
-  88,240,42,255,72,129,192,240,35,239,255,72,129,232,240,35,239,255,72,129,
-  128,253,240,3,233,239,255,64,252,255,128,253,240,11,233,255,64,252,255,136,
-  253,240,11,233,255,252,255,4,37,237,255,252,255,12,37,237,255,72,252,255,
-  128,253,240,3,233,255,72,252,255,136,253,240,3,233,255,72,252,255,4,37,237,
-  255,72,252,255,12,37,237,255,252,255,20,37,237,255,64,252,255,208,240,43,
-  255,64,252,255,144,253,240,11,233,255,195,255,72,57,192,240,131,240,35,255,
-  72,129,252,248,240,35,239,255,64,129,252,248,240,43,239,255,72,129,184,253,
-  240,3,233,239,255,64,129,184,253,240,11,233,239,255,72,59,128,253,240,131,
-  240,3,233,255,72,141,128,253,240,131,240,3,233,255,72,133,192,240,131,240,
-  35,255,252,233,245,255,64,252,255,160,253,240,11,233,255,15,133,245,255,15,
-  132,245,255,64,252,255,224,240,43,255,64,15,148,208,240,36,255,64,15,149,
-  208,240,36,255,201,255
+static const unsigned char bf_actions[467] = {
+  235,255,144,255,241,144,255,64,184,240,42,237,255,72,199,192,240,35,237,255,
+  72,199,128,253,240,3,233,237,255,72,137,192,240,131,240,35,255,72,137,128,
+  253,240,131,240,3,233,255,72,139,128,253,240,131,240,3,233,255,64,139,128,
+  253,240,131,240,19,233,255,64,138,128,253,240,131,240,3,233,255,64,15,182,
+  128,253,240,132,240,20,233,255,64,15,190,128,253,240,132,240,20,233,255,64,
+  15,183,128,253,240,132,240,20,233,255,64,15,191,128,253,240,132,240,20,233,
+  255,72,15,182,128,253,240,132,240,4,233,255,72,15,190,128,253,240,132,240,
+  4,233,255,72,15,183,128,253,240,132,240,4,233,255,72,15,191,128,253,240,132,
+  240,4,233,255,72,49,192,240,131,240,35,255,252,242,64,15,16,192,240,132,240,
+  52,255,252,242,64,15,17,128,253,240,132,240,20,233,255,252,242,64,15,16,128,
+  253,240,132,240,20,233,255,252,243,64,15,16,128,253,240,132,240,20,233,255,
+  252,243,64,15,90,192,240,132,240,52,255,64,80,240,42,255,64,88,240,42,255,
+  72,129,192,240,35,239,255,72,129,232,240,35,239,255,72,129,128,253,240,3,
+  233,239,255,64,252,255,128,253,240,11,233,255,64,252,255,136,253,240,11,233,
+  255,252,255,4,37,237,255,252,255,12,37,237,255,72,252,255,128,253,240,3,233,
+  255,72,252,255,136,253,240,3,233,255,72,252,255,4,37,237,255,72,252,255,12,
+  37,237,255,252,255,20,37,237,255,64,252,255,208,240,43,255,64,252,255,144,
+  253,240,11,233,255,195,255,72,57,192,240,131,240,35,255,72,129,252,248,240,
+  35,239,255,64,129,252,248,240,43,239,255,72,129,184,253,240,3,233,239,255,
+  64,129,184,253,240,11,233,239,255,72,59,128,253,240,131,240,3,233,255,72,
+  141,128,253,240,131,240,3,233,255,72,133,192,240,131,240,35,255,252,233,243,
+  255,64,252,255,160,253,240,11,233,255,15,133,243,255,15,132,243,255,64,252,
+  255,224,240,43,255,64,15,148,208,240,36,255,64,15,149,208,240,36,255,201,
+  255
 };
 
-#line 71 "src/asm_writing/assembler.dasc"
-    unsigned npc = 8;
+#line 72 "assembler.dasc"
+    unsigned npc = 10;
     dasm_setup(&d, bf_actions);
     dasm_growpc(&d, npc);
 }
@@ -126,7 +127,9 @@ Assembler::~Assembler() {
 
 int Assembler::estSize() const {
     size_t size = 0;
-    dasm_link(&d, &size);
+    assert(d);
+    int ret = dasm_link(&d, &size);
+    assert(ret == DASM_S_OK);
     return size;
 }
 
@@ -138,7 +141,9 @@ void Assembler::assemble(uint8_t* buf, int size) const {
     if (failed || estSize()>size)
         failed = true;
     else {
-        dasm_encode(&d, buf);
+        int ret = dasm_encode(&d, buf);
+        printf("%d\n", ret);
+        assert(ret == DASM_S_OK);
         dasm_free(&d);
         d = 0;
     }
@@ -167,19 +172,17 @@ GenericRegister GenericRegister::fromDwarf(int dwarf_regnum) {
 void Assembler::emitByte(uint8_t b) {
     //|.byte b
     dasm_put(Dst, 0, b);
-#line 126 "src/asm_writing/assembler.dasc"
+#line 131 "assembler.dasc"
 }
 
 void Assembler::nop() {
     //|nop
     dasm_put(Dst, 2);
-#line 130 "src/asm_writing/assembler.dasc"
+#line 135 "assembler.dasc"
 }
 
 void Assembler::trap() {
-    //|int 3
-    dasm_put(Dst, 4);
-#line 134 "src/asm_writing/assembler.dasc"
+    emitByte(0xcc);
 }
 
 void Assembler::mov(Immediate val, Register dest, bool force_64bit_load) {
@@ -188,98 +191,97 @@ void Assembler::mov(Immediate val, Register dest, bool force_64bit_load) {
     if (val.fitsInto32Bit()) {
         if (force_64bit_load) {
             //|.space 4, 0x90
-            dasm_put(Dst, 7, 4);
-#line 142 "src/asm_writing/assembler.dasc"
+            dasm_put(Dst, 4, 4);
+#line 147 "assembler.dasc"
         }
         //|mov Rd(dest.regnum), val.val
-        dasm_put(Dst, 10, (dest.regnum), val.val);
-#line 144 "src/asm_writing/assembler.dasc"
-        //|mov Rq(dest.regnum), val.val
+        dasm_put(Dst, 7, (dest.regnum), val.val);
+#line 149 "assembler.dasc"
     } else {
         //|mov Rq(dest.regnum), val.val
-        dasm_put(Dst, 16, (dest.regnum), val.val);
-#line 147 "src/asm_writing/assembler.dasc"
+        dasm_put(Dst, 13, (dest.regnum), val.val);
+#line 151 "assembler.dasc"
     }
 }
 
 void Assembler::movq(Immediate src, Indirect dest) {
     //|mov qword [Rq(dest.base.regnum)+dest.offset], src
-    dasm_put(Dst, 23, (dest.base.regnum), dest.offset, src);
-#line 152 "src/asm_writing/assembler.dasc"
+    dasm_put(Dst, 20, (dest.base.regnum), dest.offset, src);
+#line 156 "assembler.dasc"
 }
 
 void Assembler::mov(Register src, Register dest) {
     ASSERT(src != dest, "probably better to avoid calling this?");
     //|mov Rq(dest.regnum), Rq(src.regnum)
-    dasm_put(Dst, 32, (src.regnum), (dest.regnum));
-#line 157 "src/asm_writing/assembler.dasc"
+    dasm_put(Dst, 29, (src.regnum), (dest.regnum));
+#line 161 "assembler.dasc"
 }
 
 void Assembler::mov(Register src, Indirect dest) {
     //|mov qword [Rq(dest.base.regnum)+dest.offset], Rq(src.regnum)
-    dasm_put(Dst, 40, (src.regnum), (dest.base.regnum), dest.offset);
-#line 161 "src/asm_writing/assembler.dasc"
+    dasm_put(Dst, 37, (src.regnum), (dest.base.regnum), dest.offset);
+#line 165 "assembler.dasc"
 }
 
 void Assembler::mov(Indirect src, Register dest) {
     //|mov Rq(dest.regnum), qword [Rq(src.base.regnum)+src.offset]
-    dasm_put(Dst, 50, (dest.regnum), (src.base.regnum), src.offset);
-#line 165 "src/asm_writing/assembler.dasc"
+    dasm_put(Dst, 47, (dest.regnum), (src.base.regnum), src.offset);
+#line 169 "assembler.dasc"
 }
 void Assembler::movq(Indirect src, Register dest) {
     //|mov Rq(dest.regnum), qword [Rq(src.base.regnum)+src.offset]
-    dasm_put(Dst, 50, (dest.regnum), (src.base.regnum), src.offset);
-#line 168 "src/asm_writing/assembler.dasc"
+    dasm_put(Dst, 47, (dest.regnum), (src.base.regnum), src.offset);
+#line 172 "assembler.dasc"
 }
 void Assembler::movl(Indirect src, Register dest) {
     //|mov Rd(dest.regnum), dword [Rq(src.base.regnum)+src.offset]
-    dasm_put(Dst, 60, (dest.regnum), (src.base.regnum), src.offset);
-#line 171 "src/asm_writing/assembler.dasc"
+    dasm_put(Dst, 57, (dest.regnum), (src.base.regnum), src.offset);
+#line 175 "assembler.dasc"
 }
 void Assembler::movb(Indirect src, Register dest) {
     //|mov Rb(dest.regnum), byte [Rq(src.base.regnum)+src.offset]
-    dasm_put(Dst, 70, (dest.regnum), (src.base.regnum), src.offset);
-#line 174 "src/asm_writing/assembler.dasc"
+    dasm_put(Dst, 67, (dest.regnum), (src.base.regnum), src.offset);
+#line 178 "assembler.dasc"
 }
 void Assembler::movzbl(Indirect src, Register dest) {
     //|movzx Rd(dest.regnum), byte [Rq(src.base.regnum)+src.offset]
-    dasm_put(Dst, 80, (dest.regnum), (src.base.regnum), src.offset);
-#line 177 "src/asm_writing/assembler.dasc"
+    dasm_put(Dst, 77, (dest.regnum), (src.base.regnum), src.offset);
+#line 181 "assembler.dasc"
 }
 void Assembler::movsbl(Indirect src, Register dest) {
     //|movsx Rd(dest.regnum), byte [Rq(src.base.regnum)+src.offset]
-    dasm_put(Dst, 91, (dest.regnum), (src.base.regnum), src.offset);
-#line 180 "src/asm_writing/assembler.dasc"
+    dasm_put(Dst, 88, (dest.regnum), (src.base.regnum), src.offset);
+#line 184 "assembler.dasc"
 }
 void Assembler::movzwl(Indirect src, Register dest) {
     //|movzx Rd(dest.regnum), word [Rq(src.base.regnum)+src.offset]
-    dasm_put(Dst, 102, (dest.regnum), (src.base.regnum), src.offset);
-#line 183 "src/asm_writing/assembler.dasc"
+    dasm_put(Dst, 99, (dest.regnum), (src.base.regnum), src.offset);
+#line 187 "assembler.dasc"
 }
 void Assembler::movswl(Indirect src, Register dest) {
     //|movsx Rd(dest.regnum), word [Rq(src.base.regnum)+src.offset]
-    dasm_put(Dst, 113, (dest.regnum), (src.base.regnum), src.offset);
-#line 186 "src/asm_writing/assembler.dasc"
+    dasm_put(Dst, 110, (dest.regnum), (src.base.regnum), src.offset);
+#line 190 "assembler.dasc"
 }
 void Assembler::movzbq(Indirect src, Register dest) {
     //|movzx Rq(dest.regnum), byte [Rq(src.base.regnum)+src.offset]
-    dasm_put(Dst, 124, (dest.regnum), (src.base.regnum), src.offset);
-#line 189 "src/asm_writing/assembler.dasc"
+    dasm_put(Dst, 121, (dest.regnum), (src.base.regnum), src.offset);
+#line 193 "assembler.dasc"
 }
 void Assembler::movsbq(Indirect src, Register dest) {
     //|movsx Rq(dest.regnum), byte [Rq(src.base.regnum)+src.offset]
-    dasm_put(Dst, 135, (dest.regnum), (src.base.regnum), src.offset);
-#line 192 "src/asm_writing/assembler.dasc"
+    dasm_put(Dst, 132, (dest.regnum), (src.base.regnum), src.offset);
+#line 196 "assembler.dasc"
 }
 void Assembler::movzwq(Indirect src, Register dest) {
     //|movzx Rq(dest.regnum), word [Rq(src.base.regnum)+src.offset]
-    dasm_put(Dst, 146, (dest.regnum), (src.base.regnum), src.offset);
-#line 195 "src/asm_writing/assembler.dasc"
+    dasm_put(Dst, 143, (dest.regnum), (src.base.regnum), src.offset);
+#line 199 "assembler.dasc"
 }
 void Assembler::movswq(Indirect src, Register dest) {
     //|movsx Rq(dest.regnum), word [Rq(src.base.regnum)+src.offset]
-    dasm_put(Dst, 157, (dest.regnum), (src.base.regnum), src.offset);
-#line 198 "src/asm_writing/assembler.dasc"
+    dasm_put(Dst, 154, (dest.regnum), (src.base.regnum), src.offset);
+#line 202 "assembler.dasc"
 }
 void Assembler::movslq(Indirect src, Register dest) {
     assert(0);
@@ -288,38 +290,38 @@ void Assembler::movslq(Indirect src, Register dest) {
 
 void Assembler::clear_reg(Register reg) {
     //|xor Rq(reg.regnum), Rq(reg.regnum)
-    dasm_put(Dst, 168, (reg.regnum), (reg.regnum));
-#line 206 "src/asm_writing/assembler.dasc"
+    dasm_put(Dst, 165, (reg.regnum), (reg.regnum));
+#line 210 "assembler.dasc"
 }
 
 void Assembler::movsd(XMMRegister src, XMMRegister dest) {
     //|movsd xmm(dest.regnum), xmm(src.regnum)
-    dasm_put(Dst, 176, (dest.regnum), (src.regnum));
-#line 210 "src/asm_writing/assembler.dasc"
+    dasm_put(Dst, 173, (dest.regnum), (src.regnum));
+#line 214 "assembler.dasc"
 }
 
 void Assembler::movsd(XMMRegister src, Indirect dest) {
     //|movsd qword [Rq(dest.base.regnum)+dest.offset], xmm(src.regnum)
-    dasm_put(Dst, 187, (src.regnum), (dest.base.regnum), dest.offset);
-#line 214 "src/asm_writing/assembler.dasc"
+    dasm_put(Dst, 184, (src.regnum), (dest.base.regnum), dest.offset);
+#line 218 "assembler.dasc"
 }
 
 void Assembler::movsd(Indirect src, XMMRegister dest) {
     //|movsd xmm(dest.regnum), qword [Rq(src.base.regnum)+src.offset]
-    dasm_put(Dst, 200, (dest.regnum), (src.base.regnum), src.offset);
-#line 218 "src/asm_writing/assembler.dasc"
+    dasm_put(Dst, 197, (dest.regnum), (src.base.regnum), src.offset);
+#line 222 "assembler.dasc"
 }
 
 void Assembler::movss(Indirect src, XMMRegister dest) {
     //|movss xmm(dest.regnum), dword [Rq(src.base.regnum)+src.offset]
-    dasm_put(Dst, 213, (dest.regnum), (src.base.regnum), src.offset);
-#line 222 "src/asm_writing/assembler.dasc"
+    dasm_put(Dst, 210, (dest.regnum), (src.base.regnum), src.offset);
+#line 226 "assembler.dasc"
 }
 
 void Assembler::cvtss2sd(XMMRegister src, XMMRegister dest) {
     //|cvtss2sd xmm(dest.regnum), xmm(src.regnum)
-    dasm_put(Dst, 226, (dest.regnum), (src.regnum));
-#line 226 "src/asm_writing/assembler.dasc"
+    dasm_put(Dst, 223, (dest.regnum), (src.regnum));
+#line 230 "assembler.dasc"
 }
 
 void Assembler::push(Register reg) {
@@ -328,8 +330,8 @@ void Assembler::push(Register reg) {
     assert(reg != RSP); // this might work but most likely a bug
 
     //|push Rq(reg.regnum)
-    dasm_put(Dst, 237, (reg.regnum));
-#line 234 "src/asm_writing/assembler.dasc"
+    dasm_put(Dst, 234, (reg.regnum));
+#line 238 "assembler.dasc"
 }
 
 void Assembler::pop(Register reg) {
@@ -338,116 +340,116 @@ void Assembler::pop(Register reg) {
     assert(reg != RSP); // this might work but most likely a bug
 
     //|pop Rq(reg.regnum)
-    dasm_put(Dst, 242, (reg.regnum));
-#line 242 "src/asm_writing/assembler.dasc"
+    dasm_put(Dst, 239, (reg.regnum));
+#line 246 "assembler.dasc"
 }
 
 void Assembler::add(Immediate imm, Register reg) {
     //|add Rq(reg.regnum), imm.val
-    dasm_put(Dst, 247, (reg.regnum), imm.val);
-#line 246 "src/asm_writing/assembler.dasc"
+    dasm_put(Dst, 244, (reg.regnum), imm.val);
+#line 250 "assembler.dasc"
 }
 
 void Assembler::sub(Immediate imm, Register reg) {
     //|sub Rq(reg.regnum), imm.val
-    dasm_put(Dst, 254, (reg.regnum), imm.val);
-#line 250 "src/asm_writing/assembler.dasc"
+    dasm_put(Dst, 251, (reg.regnum), imm.val);
+#line 254 "assembler.dasc"
 }
 
 void Assembler::add(Immediate imm, Indirect mem) {
     //|add qword [Rq(mem.base.regnum)+mem.offset], imm.val
-    dasm_put(Dst, 261, (mem.base.regnum), mem.offset, imm.val);
-#line 254 "src/asm_writing/assembler.dasc"
+    dasm_put(Dst, 258, (mem.base.regnum), mem.offset, imm.val);
+#line 258 "assembler.dasc"
 }
 
 void Assembler::incl(Indirect mem) {
     //|inc dword [Rq(mem.base.regnum)+mem.offset]
-    dasm_put(Dst, 270, (mem.base.regnum), mem.offset);
-#line 258 "src/asm_writing/assembler.dasc"
+    dasm_put(Dst, 267, (mem.base.regnum), mem.offset);
+#line 262 "assembler.dasc"
 }
 
 void Assembler::decl(Indirect mem) {
     //|dec dword [Rq(mem.base.regnum)+mem.offset]
-    dasm_put(Dst, 279, (mem.base.regnum), mem.offset);
-#line 262 "src/asm_writing/assembler.dasc"
+    dasm_put(Dst, 276, (mem.base.regnum), mem.offset);
+#line 266 "assembler.dasc"
 }
 
 void Assembler::incl(Immediate imm) {
     //|inc dword [imm.val]
-    dasm_put(Dst, 288, imm.val);
-#line 266 "src/asm_writing/assembler.dasc"
+    dasm_put(Dst, 285, imm.val);
+#line 270 "assembler.dasc"
 }
 
 void Assembler::decl(Immediate imm) {
     //|dec dword [imm.val]
-    dasm_put(Dst, 294, imm.val);
-#line 270 "src/asm_writing/assembler.dasc"
+    dasm_put(Dst, 291, imm.val);
+#line 274 "assembler.dasc"
 }
 
 void Assembler::incq(Indirect mem) {
     //|inc qword [Rq(mem.base.regnum)+mem.offset]
-    dasm_put(Dst, 300, (mem.base.regnum), mem.offset);
-#line 274 "src/asm_writing/assembler.dasc"
+    dasm_put(Dst, 297, (mem.base.regnum), mem.offset);
+#line 278 "assembler.dasc"
 }
 
 void Assembler::decq(Indirect mem) {
     //|dec qword [Rq(mem.base.regnum)+mem.offset]
-    dasm_put(Dst, 309, (mem.base.regnum), mem.offset);
-#line 278 "src/asm_writing/assembler.dasc"
+    dasm_put(Dst, 306, (mem.base.regnum), mem.offset);
+#line 282 "assembler.dasc"
 }
 
 void Assembler::incq(Immediate imm) {
     //|inc qword [imm.val]
-    dasm_put(Dst, 318, imm.val);
-#line 282 "src/asm_writing/assembler.dasc"
+    dasm_put(Dst, 315, imm.val);
+#line 286 "assembler.dasc"
 }
 
 void Assembler::decq(Immediate imm) {
     //|dec qword [imm.val]
-    dasm_put(Dst, 325, imm.val);
-#line 286 "src/asm_writing/assembler.dasc"
+    dasm_put(Dst, 322, imm.val);
+#line 290 "assembler.dasc"
 }
 
 void Assembler::call(Immediate imm) {
     //|call qword [imm.val]
-    dasm_put(Dst, 332, imm.val);
-#line 290 "src/asm_writing/assembler.dasc"
+    dasm_put(Dst, 329, imm.val);
+#line 294 "assembler.dasc"
 }
 
 void Assembler::callq(Register r) {
     //|call Rq(r.regnum)
-    dasm_put(Dst, 338, (r.regnum));
-#line 294 "src/asm_writing/assembler.dasc"
+    dasm_put(Dst, 335, (r.regnum));
+#line 298 "assembler.dasc"
 }
 
 void Assembler::callq(Indirect mem) {
     //|call qword [Rq(mem.base.regnum)+mem.offset]
-    dasm_put(Dst, 345, (mem.base.regnum), mem.offset);
-#line 298 "src/asm_writing/assembler.dasc"
+    dasm_put(Dst, 342, (mem.base.regnum), mem.offset);
+#line 302 "assembler.dasc"
 }
 
 void Assembler::retq() {
     //|ret
-    dasm_put(Dst, 354);
-#line 302 "src/asm_writing/assembler.dasc"
+    dasm_put(Dst, 351);
+#line 306 "assembler.dasc"
 }
 
 
 void Assembler::cmp(Register reg1, Register reg2) {
     //|cmp Rq(reg2.regnum), Rq(reg1.regnum)
-    dasm_put(Dst, 356, (reg1.regnum), (reg2.regnum));
-#line 307 "src/asm_writing/assembler.dasc"
+    dasm_put(Dst, 353, (reg1.regnum), (reg2.regnum));
+#line 311 "assembler.dasc"
 }
 
 void Assembler::cmp(Register reg, Immediate imm, MovType type) {
     if (type == MovType::Q)
         //|cmp Rq(reg.regnum), imm.val
-        dasm_put(Dst, 364, (reg.regnum), imm.val);
-#line 312 "src/asm_writing/assembler.dasc"
+        dasm_put(Dst, 361, (reg.regnum), imm.val);
+#line 316 "assembler.dasc"
     else if (type == MovType::L)
         //|cmp Rd(reg.regnum), imm.val
-        dasm_put(Dst, 372, (reg.regnum), imm.val);
-#line 314 "src/asm_writing/assembler.dasc"
+        dasm_put(Dst, 369, (reg.regnum), imm.val);
+#line 318 "assembler.dasc"
     else
         assert(0);
 }
@@ -455,91 +457,92 @@ void Assembler::cmp(Register reg, Immediate imm, MovType type) {
 void Assembler::cmp(Indirect mem, Immediate imm, MovType type) {
     if (type == MovType::Q)
         //|cmp qword [Rq(mem.base.regnum)+mem.offset], imm.val
-        dasm_put(Dst, 380, (mem.base.regnum), mem.offset, imm.val);
-#line 321 "src/asm_writing/assembler.dasc"
+        dasm_put(Dst, 377, (mem.base.regnum), mem.offset, imm.val);
+#line 325 "assembler.dasc"
     else if (type == MovType::L)
         //|cmp dword [Rq(mem.base.regnum)+mem.offset], imm.val
-        dasm_put(Dst, 389, (mem.base.regnum), mem.offset, imm.val);
-#line 323 "src/asm_writing/assembler.dasc"
+        dasm_put(Dst, 386, (mem.base.regnum), mem.offset, imm.val);
+#line 327 "assembler.dasc"
     else
         assert(0);
 }
 
 void Assembler::cmp(Indirect mem, Register reg) {
     //|cmp Rq(reg.regnum), qword [Rq(mem.base.regnum)+mem.offset]
-    dasm_put(Dst, 398, (reg.regnum), (mem.base.regnum), mem.offset);
-#line 329 "src/asm_writing/assembler.dasc"
+    dasm_put(Dst, 395, (reg.regnum), (mem.base.regnum), mem.offset);
+#line 333 "assembler.dasc"
 }
 
 void Assembler::lea(Indirect mem, Register reg) {
     //|lea Rq(reg.regnum), qword [Rq(mem.base.regnum)+mem.offset]
-    dasm_put(Dst, 408, (reg.regnum), (mem.base.regnum), mem.offset);
-#line 333 "src/asm_writing/assembler.dasc"
+    dasm_put(Dst, 405, (reg.regnum), (mem.base.regnum), mem.offset);
+#line 337 "assembler.dasc"
 }
 
 void Assembler::test(Register reg1, Register reg2) {
     //|test Rq(reg2.regnum), Rq(reg1.regnum)
-    dasm_put(Dst, 418, (reg1.regnum), (reg2.regnum));
-#line 337 "src/asm_writing/assembler.dasc"
+    dasm_put(Dst, 415, (reg1.regnum), (reg2.regnum));
+#line 341 "assembler.dasc"
 }
 
 
 
 void Assembler::jmp_cond(JumpDestination dest, ConditionCode condition) {
-
+    if (condition == ConditionCode::COND_NOT_EQUAL)
+        jne(dest);
+    else if (condition == ConditionCode::COND_EQUAL)
+        je(dest);
+    else
+        assert(0);
 }
 
 void Assembler::jmp(JumpDestination dest) {
     assert(dest.type == JumpDestination::FROM_START);
-    int offset = dest.offset - (addr - start_addr) - 2;
-    //|jmp =>offset
-    dasm_put(Dst, 426, offset);
-#line 349 "src/asm_writing/assembler.dasc"
-
+    //|jmp &(start_addr+dest.offset)
+    dasm_put(Dst, 423, (ptrdiff_t)((start_addr+dest.offset)));
+#line 357 "assembler.dasc"
 }
 
 void Assembler::jmp(Indirect dest) {
     //|jmp qword [Rq(dest.base.regnum)+dest.offset]
-    dasm_put(Dst, 430, (dest.base.regnum), dest.offset);
-#line 354 "src/asm_writing/assembler.dasc"
+    dasm_put(Dst, 427, (dest.base.regnum), dest.offset);
+#line 361 "assembler.dasc"
 }
 
 void Assembler::jne(JumpDestination dest) {
-    int offset = dest.offset - (addr - start_addr) - 2;
-    //|jne =>offset
-    dasm_put(Dst, 439, offset);
-#line 359 "src/asm_writing/assembler.dasc"
+    //|jne &(start_addr+dest.offset)
+    dasm_put(Dst, 436, (ptrdiff_t)((start_addr+dest.offset)));
+#line 365 "assembler.dasc"
 }
 
 void Assembler::je(JumpDestination dest) {
-    int offset = dest.offset - (addr - start_addr) - 2;
-    //|je =>offset
-    dasm_put(Dst, 443, offset);
-#line 364 "src/asm_writing/assembler.dasc"
+    //|je &(start_addr+dest.offset)
+    dasm_put(Dst, 440, (ptrdiff_t)((start_addr+dest.offset)));
+#line 369 "assembler.dasc"
 }
 
 void Assembler::jmpq(Register dest) {
     //|jmp Rq(dest.regnum)
-    dasm_put(Dst, 447, (dest.regnum));
-#line 368 "src/asm_writing/assembler.dasc"
+    dasm_put(Dst, 444, (dest.regnum));
+#line 373 "assembler.dasc"
 }
 
 void Assembler::sete(Register reg) {
     //|sete Rb(reg.regnum)
-    dasm_put(Dst, 454, (reg.regnum));
-#line 372 "src/asm_writing/assembler.dasc"
+    dasm_put(Dst, 451, (reg.regnum));
+#line 377 "assembler.dasc"
 }
 
 void Assembler::setne(Register reg) {
     //|setne Rb(reg.regnum)
-    dasm_put(Dst, 461, (reg.regnum));
-#line 376 "src/asm_writing/assembler.dasc"
+    dasm_put(Dst, 458, (reg.regnum));
+#line 381 "assembler.dasc"
 }
 
 void Assembler::leave() {
     //|leave
-    dasm_put(Dst, 468);
-#line 380 "src/asm_writing/assembler.dasc"
+    dasm_put(Dst, 465);
+#line 385 "assembler.dasc"
 }
 
 uint8_t* Assembler::emitCall(void* ptr, Register scratch) {
@@ -600,16 +603,16 @@ void Assembler::fillWithNops() {
     updateAddr();
     assert(addr <= end_addr);
     //|.space end_addr - addr, 0x90
-    dasm_put(Dst, 7, end_addr - addr);
-#line 440 "src/asm_writing/assembler.dasc"
+    dasm_put(Dst, 4, end_addr - addr);
+#line 445 "assembler.dasc"
 }
 
 void Assembler::fillWithNopsExcept(int bytes) {
     assert(end_addr - addr >= bytes);
     updateAddr();
     //|.space end_addr - addr - bytes, 0x90
-    dasm_put(Dst, 7, end_addr - addr - bytes);
-#line 446 "src/asm_writing/assembler.dasc"
+    dasm_put(Dst, 4, end_addr - addr - bytes);
+#line 451 "assembler.dasc"
 }
 
 void Assembler::emitAnnotation(int num) {

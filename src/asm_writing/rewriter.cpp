@@ -2529,7 +2529,7 @@ PatchpointInitializationInfo initializePatchpoint3(void* slowpath_func, uint8_t*
     if (slowpath_start - start_addr > 20)
         _a.jmp(assembler::JumpDestination::fromStart(slowpath_start - start_addr));
     _a.fillWithNops();
-    _a.assemble(_a.startAddr(), _a.size());
+    _a.compile();
 
     assembler::Assembler assem(slowpath_start, end_addr - slowpath_start);
     // if (regs_to_spill.size())

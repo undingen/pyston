@@ -174,19 +174,18 @@ void ICSlotRewrite::commit(CommitHook* hook, std::vector<void*> gc_references,
         ic_entry->size = actual_size;
 
         // after resizing this slot we need to patch the jumps to the next slot
-        Assembler new_asm(assembler.getStartAddr(), original_size);
         for (auto&& jump : next_slot_jumps) {
             auto jmp_inst_offset = std::get<0>(jump);
             auto jmp_inst_end = std::get<1>(jump);
             auto jmp_condition = std::get<2>(jump);
-            new_asm.setCurInstPointer(assembler.getStartAddr() + jmp_inst_offset);
-            new_asm.jmp_cond(assembler::JumpDestination::fromStart(actual_size), jmp_condition);
+            Assembler new_asm(assembler.getStartAddr() + jmp_inst_offset, jmp_inst_end);
+            new_asm.jmp_cond(assembler::JumpDestination::fromStart(actual_size - jmp_inst_offset), jmp_condition);
 
             // we often end up using a smaller encoding so we have to make sure we fill the space with nops
             while (new_asm.bytesWritten() < jmp_inst_end)
                 new_asm.nop();
+            new_asm.compile();
         }
-        new_asm.compile();
 
         // put a jump to the slowpath at the beginning of the new slot
         Assembler asm_next_slot(assembler.getStartAddr() + actual_size, empty_space);

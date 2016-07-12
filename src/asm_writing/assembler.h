@@ -229,7 +229,9 @@ public:
         updateAddr();
         return addr;
     }
-    void setCurInstPointer(uint8_t* ptr) { addr = ptr; }
+    void setCurInstPointer(uint8_t* ptr) {
+        assert(0); addr = ptr;
+    }
     bool isExactlyFull() const {
         updateAddr();
         return addr == end_addr;

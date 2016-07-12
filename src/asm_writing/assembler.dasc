@@ -20,6 +20,7 @@
 #include "core/options.h"
 
 extern "C" {
+#define DASM_CHECKS 1
 #include "dasm_proto.h"
 #include "dasm_x86.h"
 }
@@ -68,7 +69,7 @@ Assembler::Assembler(uint8_t* start, int size)
     |.section code
     dasm_init(&d, DASM_MAXSECTION);
     |.actionlist bf_actions
-    unsigned npc = 8;
+    unsigned npc = 10;
     dasm_setup(&d, bf_actions);
     dasm_growpc(&d, npc);
 }
@@ -83,7 +84,9 @@ Assembler::~Assembler() {
 
 int Assembler::estSize() const {
     size_t size = 0;
-    dasm_link(&d, &size);
+    assert(d);
+    int ret = dasm_link(&d, &size);
+    assert(ret == DASM_S_OK);
     return size;
 }
 
@@ -95,7 +98,9 @@ void Assembler::assemble(uint8_t* buf, int size) const {
     if (failed || estSize()>size)
         failed = true;
     else {
-        dasm_encode(&d, buf);
+        int ret = dasm_encode(&d, buf);
+        printf("%d\n", ret);
+        assert(ret == DASM_S_OK);
         dasm_free(&d);
         d = 0;
     }
@@ -130,7 +135,7 @@ void Assembler::nop() {
 }
 
 void Assembler::trap() {
-    |int 3
+    emitByte(0xcc);
 }
 
 void Assembler::mov(Immediate val, Register dest, bool force_64bit_load) {
@@ -141,7 +146,6 @@ void Assembler::mov(Immediate val, Register dest, bool force_64bit_load) {
             |.space 4, 0x90
         }
         |mov Rd(dest.regnum), val.val
-        //|mov Rq(dest.regnum), val.val
     } else {
         |mov Rq(dest.regnum), val.val
     }
@@ -339,14 +343,17 @@ void Assembler::test(Register reg1, Register reg2) {
 
 
 void Assembler::jmp_cond(JumpDestination dest, ConditionCode condition) {
-
+    if (condition == ConditionCode::COND_NOT_EQUAL)
+        jne(dest);
+    else if (condition == ConditionCode::COND_EQUAL)
+        je(dest);
+    else
+        assert(0);
 }
 
 void Assembler::jmp(JumpDestination dest) {
     assert(dest.type == JumpDestination::FROM_START);
-    int offset = dest.offset - (addr - start_addr) - 2;
-    |jmp =>offset
-
+    |jmp &(start_addr+dest.offset)
 }
 
 void Assembler::jmp(Indirect dest) {
@@ -354,13 +361,11 @@ void Assembler::jmp(Indirect dest) {
 }
 
 void Assembler::jne(JumpDestination dest) {
-    int offset = dest.offset - (addr - start_addr) - 2;
-    |jne =>offset
+    |jne &(start_addr+dest.offset)
 }
 
 void Assembler::je(JumpDestination dest) {
-    int offset = dest.offset - (addr - start_addr) - 2;
-    |je =>offset
+    |je &(start_addr+dest.offset)
 }
 
 void Assembler::jmpq(Register dest) {
