@@ -241,7 +241,7 @@ int ICInfo::calculateSuggestedSize() {
     if (!times_rewritten)
         return slots[0].size;
 
-    int additional_space_per_slot = 30;
+    int additional_space_per_slot = 50;
     // if there are less rewrites than slots we can give a very accurate estimate
     if (times_rewritten < slots.size()) {
         // add up the sizes of all used slots
