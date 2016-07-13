@@ -57,7 +57,30 @@ const int dwarf_to_gp[] = {
 Register Register::fromDwarf(int dwarf_regnum) {
     assert(dwarf_regnum >= 0 && dwarf_regnum <= 16);
 
-    return Register(dwarf_to_gp[dwarf_regnum]);
+    Register reg(dwarf_to_gp[dwarf_regnum]);
+    assert(reg.getDwarfId() == dwarf_regnum);
+    return reg;
+}
+
+int Register::getDwarfId() const {
+    if (*this == RAX) return 0;
+    if (*this == RDX) return 1;
+    if (*this == RCX) return 2;
+    if (*this == RBX) return 3;
+    if (*this == RSI) return 4;
+    if (*this == RDI) return 5;
+    if (*this == RBP) return 6;
+    if (*this == RSP) return 7;
+    if (*this == R8) return 8;
+    if (*this == R9) return 9;
+    if (*this == R10) return 10;
+    if (*this == R11) return 11;
+    if (*this == R12) return 12;
+    if (*this == R13) return 13;
+    if (*this == R14) return 14;
+    if (*this == R15) return 15;
+    RELEASE_ASSERT(0, "unreachable");
+
 }
 
 GenericRegister GenericRegister::fromDwarf(int dwarf_regnum) {
