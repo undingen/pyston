@@ -721,5 +721,6 @@ void setupGenerator() {
     generator_cls->tp_iter = PyObject_SelfIter;
     generator_cls->tp_del = generator_del; // don't do giveAttr("__del__") because it should not be visible from python
     generator_cls->tpp_hasnext = generatorHasnextUnboxed;
+    generator_cls->tp_iternext = generatorNext<CAPI>;
 }
 }
