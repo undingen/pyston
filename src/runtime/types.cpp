@@ -187,22 +187,7 @@ Box* BoxedClass::callHasnextIC(Box* obj, bool null_on_nonexistent) {
 }
 
 extern "C" PyObject* PyIter_Next(PyObject* iter) noexcept {
-    Box* result = NULL;
-    if (iter->cls->tp_iternext != slot_tp_iternext)
-        result = (*iter->cls->tp_iternext)(iter);
-    else {
-        if (iter->cls->tpp_hasnext) {
-            try {
-                if (!pyston::hasnext(iter))
-                    return NULL;
-            } catch (ExcInfo e) {
-                setCAPIException(e);
-                return NULL;
-            }
-        }
-        result = iter->cls->call_nextIC(iter);
-    }
-
+    Box* result = iter->cls->tp_iternext(iter);
     if (result == NULL && PyErr_Occurred() && PyErr_ExceptionMatches(PyExc_StopIteration))
         PyErr_Clear();
     return result;

@@ -274,14 +274,7 @@ extern "C" Box* next(Box* iterator, Box* _default) noexcept {
         return NULL;
     }
 
-    Box* rtn;
-
-    if (iterator->cls->tp_iternext == slot_tp_iternext) {
-        rtn = iterator->cls->call_nextIC(iterator);
-    } else {
-        rtn = iterator->cls->tp_iternext(iterator);
-    }
-
+    Box* rtn = iterator->cls->tp_iternext(iterator);
     if (rtn != NULL) {
         return rtn;
     } else if (_default != NULL) {

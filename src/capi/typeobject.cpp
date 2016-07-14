@@ -800,8 +800,7 @@ PyObject* slot_tp_iter(PyObject* self) noexcept {
 /* Pyston change: static */ PyObject* slot_tp_iternext(PyObject* self) noexcept {
     STAT_TIMER(t0, "us_timer_slot_tpiternext", SLOT_AVOIDABILITY(self));
 
-    static PyObject* next_str;
-    return call_method(self, "next", &next_str, "()");
+    return self->cls->call_nextIC(self);
 }
 
 static llvm_compat_bool slotTppHasnext(PyObject* self) {
