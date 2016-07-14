@@ -43,6 +43,11 @@ extern "C" inline bool unboxBool(Box* b) {
     return b == Py_True;
     // return static_cast<BoxedBool*>(b)->b;
 }
+
+extern "C" inline bool hasnext(Box* b) __attribute__((visibility("default")));
+extern "C" inline bool hasnext(Box* o) {
+    return o->cls->tpp_hasnext(o);
+}
 }
 
 #endif

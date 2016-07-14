@@ -175,7 +175,7 @@ Box* BoxedClass::callHasnextIC(Box* obj, bool null_on_nonexistent) {
     assert(obj->cls == this);
 
     auto ic = hasnext_ic.get();
-    if (!ic) {
+    if (unlikely(!ic)) {
         ic = new CallattrIC();
         hasnext_ic.reset(ic);
     }
@@ -192,9 +192,7 @@ extern "C" PyObject* PyIter_Next(PyObject* iter) noexcept {
         result = (*iter->cls->tp_iternext)(iter);
     else {
         try {
-            Box* hasnext = iter->hasnextOrNullIC();
-            AUTO_XDECREF(hasnext);
-            if (hasnext && !hasnext->nonzeroIC())
+            if (!pyston::hasnext(iter))
                 return NULL;
         } catch (ExcInfo e) {
             setCAPIException(e);
