@@ -191,12 +191,14 @@ extern "C" PyObject* PyIter_Next(PyObject* iter) noexcept {
     if (iter->cls->tp_iternext != slot_tp_iternext)
         result = (*iter->cls->tp_iternext)(iter);
     else {
-        try {
-            if (!pyston::hasnext(iter))
+        if (iter->cls->tpp_hasnext) {
+            try {
+                if (!pyston::hasnext(iter))
+                    return NULL;
+            } catch (ExcInfo e) {
+                setCAPIException(e);
                 return NULL;
-        } catch (ExcInfo e) {
-            setCAPIException(e);
-            return NULL;
+            }
         }
         result = iter->cls->call_nextIC(iter);
     }
