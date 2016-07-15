@@ -359,25 +359,9 @@ Box* generatorHasnext(Box* s) {
     return boxBool(generatorHasnextUnboxed(s));
 }
 
-extern "C" Box* yield_capi(BoxedGenerator* obj, STOLEN(Box*) value, int num_live_values, ...) noexcept {
-    try {
-        llvm::SmallVector<Box*, 8> live_values;
-        live_values.reserve(num_live_values);
-        va_list ap;
-        va_start(ap, num_live_values);
-        for (int i = 0; i < num_live_values; ++i) {
-            live_values.push_back(va_arg(ap, Box*));
-        }
-        va_end(ap);
-
-        return yield(obj, value, live_values);
-    } catch (ExcInfo e) {
-        setCAPIException(e);
-        return NULL;
-    }
-}
-
-extern "C" Box* yield(BoxedGenerator* obj, STOLEN(Box*) value, llvm::ArrayRef<Box*> live_values) {
+template <ExceptionStyle S>
+static Box* yieldInternal(BoxedGenerator* obj, STOLEN(Box*) value,
+                          llvm::ArrayRef<Box*> live_values) noexcept(S == CAPI) {
     STAT_TIMER(t0, "us_timer_generator_switching", 0);
 
     assert(obj->cls == generator_cls);
@@ -419,12 +403,33 @@ extern "C" Box* yield(BoxedGenerator* obj, STOLEN(Box*) value, llvm::ArrayRef<Bo
         ExcInfo e = self->exception;
         self->exception = ExcInfo(NULL, NULL, NULL);
         Py_CLEAR(self->returnValue);
+        if (S == CAPI) {
+            setCAPIException(e);
+            return NULL;
+        }
         throw e;
     }
 
     Box* r = self->returnValue;
     self->returnValue = NULL;
     return r;
+}
+
+extern "C" Box* yield_capi(BoxedGenerator* obj, STOLEN(Box*) value, int num_live_values, ...) noexcept {
+    llvm::SmallVector<Box*, 8> live_values;
+    live_values.reserve(num_live_values);
+    va_list ap;
+    va_start(ap, num_live_values);
+    for (int i = 0; i < num_live_values; ++i) {
+        live_values.push_back(va_arg(ap, Box*));
+    }
+    va_end(ap);
+
+    return yieldInternal<CAPI>(obj, value, live_values);
+}
+
+extern "C" Box* yield(BoxedGenerator* obj, STOLEN(Box*) value, llvm::ArrayRef<Box*> live_values) {
+    return yieldInternal<CXX>(obj, value, live_values);
 }
 
 extern "C" BoxedGenerator* createGenerator(BoxedFunctionBase* function, Box* arg1, Box* arg2, Box* arg3, Box** args) {
