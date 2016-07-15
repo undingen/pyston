@@ -1024,5 +1024,6 @@ void setupFloat() {
     float_cls->tp_str = float_str;
     float_cls->tp_as_number->nb_power = float_pow;
     float_cls->tp_new = (newfunc)floatNewPacked;
+    float_cls->tp_richcompare = float_richcompare;
 }
 }
