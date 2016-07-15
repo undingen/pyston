@@ -224,6 +224,8 @@ CompiledFunction* compileFunction(FunctionMetadata* f, FunctionSpecialization* s
         exception_style = CAPI;
     else if (name->s() == "next")
         exception_style = CAPI;
+    else if (f->isGenerator())
+        exception_style = CAPI;
     else if (f->propagated_cxx_exceptions >= 100)
         exception_style = CAPI;
     else
