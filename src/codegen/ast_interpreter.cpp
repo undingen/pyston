@@ -1989,8 +1989,8 @@ Box* astInterpretFunction(FunctionMetadata* md, Box* closure, Box* generator, Bo
     assert((!globals) == source_info->scoping->areGlobalsFromModule());
     bool can_reopt = ENABLE_REOPT && !FORCE_INTERPRETER;
 
-    if (unlikely(can_reopt
-                 && (FORCE_OPTIMIZE || !ENABLE_INTERPRETER || md->times_interpreted > REOPT_THRESHOLD_BASELINE))) {
+    if (unlikely(can_reopt && (FORCE_OPTIMIZE || !ENABLE_INTERPRETER
+                               || (md->times_interpreted > REOPT_THRESHOLD_BASELINE || generator)))) {
         md->times_interpreted = 0;
 
         // EffortLevel new_effort = EffortLevel::MODERATE;
