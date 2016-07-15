@@ -792,7 +792,7 @@ Box* floatRepr(BoxedFloat* self) {
     return float_str_or_repr(self->d, 0, 'r');
 }
 
-Box* floatToInt(BoxedFloat* self) {
+Box* floatToInt(BoxedFloat* self) noexcept {
     double wholepart; /* integral portion of x, rounded toward 0 */
 
     (void)modf(self->d, &wholepart);
@@ -1025,5 +1025,6 @@ void setupFloat() {
     float_cls->tp_as_number->nb_power = float_pow;
     float_cls->tp_new = (newfunc)floatNewPacked;
     float_cls->tp_richcompare = float_richcompare;
+    float_as_number.nb_int = (unaryfunc)floatToInt;
 }
 }

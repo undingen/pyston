@@ -1193,6 +1193,16 @@ extern "C" Box* intInt(BoxedInt* self) {
     return boxInt(self->n);
 }
 
+static PyObject* int_int(BoxedInt* v) {
+    if (v->cls == int_cls)
+        return incref(v);
+    return boxInt(v->n);
+}
+
+static PyObject* int_long(BoxedInt* v) {
+    return boxLong(v->n);
+}
+
 Box* intFloat(BoxedInt* self) {
     if (!PyInt_Check(self))
         raiseExcHelper(TypeError, "descriptor '__float__' requires a 'int' object but received a '%s'",
@@ -1644,5 +1654,7 @@ void setupInt() {
 
     int_cls->tp_repr = (reprfunc)int_to_decimal_string;
     int_cls->tp_new = (newfunc)intNewPacked;
+    int_as_number.nb_int = (unaryfunc)int_int;
+    int_as_number.nb_long = (unaryfunc)int_long;
 }
 }
