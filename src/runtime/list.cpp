@@ -850,9 +850,36 @@ Box* listIAdd(BoxedList* self, Box* _rhs) {
 
     RELEASE_ASSERT(_rhs != self, "unsupported");
 
+    /*
     for (auto* b : _rhs->pyElements())
         listAppendInternalStolen(self, b);
+    */
+    Box* it = PyObject_GetIter(_rhs);
+    if (it == NULL)
+        return NULL;
+    AUTO_DECREF(it);
+    auto iternext = *it->cls->tp_iternext;
 
+    /* Run iterator to exhaustion. */
+    for (;;) {
+        PyObject* item = iternext(it);
+        if (item == NULL) {
+            if (PyErr_Occurred()) {
+                if (PyErr_ExceptionMatches(PyExc_StopIteration))
+                    PyErr_Clear();
+                else
+                    throwCAPIException();
+            }
+            break;
+        }
+        if (Py_SIZE(self) < self->capacity) {
+            /* steals ref */
+            PyList_SET_ITEM(self, Py_SIZE(self), item);
+            ++Py_SIZE(self);
+        } else {
+            listAppendInternalStolen(self, item);
+        }
+    }
     return incref(self);
 }
 
