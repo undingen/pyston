@@ -848,6 +848,48 @@ Box* listIAdd(BoxedList* self, Box* _rhs) {
         return incref(self);
     }
 
+    if (_rhs->cls == str_cls) {
+        BoxedString* rhs = static_cast<BoxedString*>(_rhs);
+
+        int s1 = self->size;
+        int s2 = rhs->ob_size;
+
+        if (s2 == 0) {
+            return incref(self);
+        }
+
+        self->ensure(s1 + s2);
+
+        self->size = s1 + s2;
+        for (int i = 0; i < s2; i++) {
+            self->elts->elts[i + s1] = incref(characters[rhs->s()[i] & UCHAR_MAX]);
+        }
+
+        return incref(self);
+    }
+
+    if (_rhs->cls == unicode_cls) {
+        PyUnicodeObject* rhs = reinterpret_cast<PyUnicodeObject*>(_rhs);
+
+        int s1 = self->size;
+        int s2 = rhs->length;
+
+        if (s2 == 0) {
+            return incref(self);
+        }
+
+        self->ensure(s1 + s2);
+
+        self->size = s1 + s2;
+        for (int i = 0; i < s2; i++) {
+            self->elts->elts[i + s1] = PyUnicode_FromUnicode(&rhs->str[i], 1);
+        }
+
+        return incref(self);
+    }
+
+
+
     RELEASE_ASSERT(_rhs != self, "unsupported");
 
     /*
@@ -867,6 +909,7 @@ Box* listIAdd(BoxedList* self, Box* _rhs) {
         return NULL;
     }
     self->ensure(n);
+
 
     /* Run iterator to exhaustion. */
     for (;;) {
