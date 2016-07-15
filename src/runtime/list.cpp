@@ -860,6 +860,14 @@ Box* listIAdd(BoxedList* self, Box* _rhs) {
     AUTO_DECREF(it);
     auto iternext = *it->cls->tp_iternext;
 
+    /* Guess a result list size. */
+    int n = _PyObject_LengthHint(_rhs, 8);
+    if (n == -1) {
+        Py_DECREF(it);
+        return NULL;
+    }
+    self->ensure(n);
+
     /* Run iterator to exhaustion. */
     for (;;) {
         PyObject* item = iternext(it);

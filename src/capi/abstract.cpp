@@ -742,6 +742,11 @@ extern "C" PyObject* _PyObject_CallMethod_SizeT(PyObject* o, const char* name, c
 }
 
 extern "C" Py_ssize_t PyObject_Size(PyObject* o) noexcept {
+    PySequenceMethods* m = o->cls->tp_as_sequence;
+    if (m != NULL && m->sq_length != NULL && m->sq_length != slot_sq_length)
+        return (*m->sq_length)(o);
+
+
     BoxedInt* r = lenInternal<ExceptionStyle::CAPI, NOT_REWRITABLE>(o, NULL);
     if (!r)
         return -1;
