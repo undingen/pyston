@@ -1210,6 +1210,114 @@ Box* listInit(BoxedList* self, Box* container) {
     Py_RETURN_NONE;
 }
 
+static PyObject* list_richcompare(PyObject* v, PyObject* w, int op) noexcept {
+    PyListObject* vl, *wl;
+    Py_ssize_t i;
+
+    if (!PyList_Check(v) || !PyList_Check(w)) {
+        Py_INCREF(Py_NotImplemented);
+        return Py_NotImplemented;
+    }
+
+    vl = (PyListObject*)v;
+    wl = (PyListObject*)w;
+
+    if (Py_SIZE(vl) != Py_SIZE(wl) && (op == Py_EQ || op == Py_NE)) {
+        /* Shortcut: if the lengths differ, the lists differ */
+        PyObject* res;
+        if (op == Py_EQ)
+            res = Py_False;
+        else
+            res = Py_True;
+        Py_INCREF(res);
+        return res;
+    }
+
+    /* Search for the first index where items are different */
+    for (i = 0; i < Py_SIZE(vl) && i < Py_SIZE(wl); i++) {
+        int k = PyObject_RichCompareBool(vl->ob_item[i], wl->ob_item[i], Py_EQ);
+        if (k < 0)
+            return NULL;
+        if (!k)
+            break;
+    }
+
+    if (i >= Py_SIZE(vl) || i >= Py_SIZE(wl)) {
+        /* No more items to compare -- compare sizes */
+        Py_ssize_t vs = Py_SIZE(vl);
+        Py_ssize_t ws = Py_SIZE(wl);
+        int cmp;
+        PyObject* res;
+        switch (op) {
+            case Py_LT:
+                cmp = vs < ws;
+                break;
+            case Py_LE:
+                cmp = vs <= ws;
+                break;
+            case Py_EQ:
+                cmp = vs == ws;
+                break;
+            case Py_NE:
+                cmp = vs != ws;
+                break;
+            case Py_GT:
+                cmp = vs > ws;
+                break;
+            case Py_GE:
+                cmp = vs >= ws;
+                break;
+            default:
+                return NULL; /* cannot happen */
+        }
+        if (cmp)
+            res = Py_True;
+        else
+            res = Py_False;
+        Py_INCREF(res);
+        return res;
+    }
+
+    /* We have an item that differs -- shortcuts for EQ/NE */
+    if (op == Py_EQ) {
+        Py_INCREF(Py_False);
+        return Py_False;
+    }
+    if (op == Py_NE) {
+        Py_INCREF(Py_True);
+        return Py_True;
+    }
+
+    /* Compare the final item again using the proper operator */
+    return PyObject_RichCompare(vl->ob_item[i], wl->ob_item[i], op);
+}
+
+
+static int list_init(PyListObject* self, PyObject* args, PyObject* kw) noexcept {
+    PyObject* arg = NULL;
+    static const char* kwlist[] = { "sequence", 0 };
+
+    if (!PyArg_ParseTupleAndKeywords(args, kw, "|O:list", (char**)kwlist, &arg))
+        return -1;
+
+    /* Verify list invariants established by PyType_GenericAlloc() */
+    assert(0 <= Py_SIZE(self));
+    assert(Py_SIZE(self) <= self->allocated || self->allocated == -1);
+    assert(self->ob_item != NULL || self->allocated == 0 || self->allocated == -1);
+
+    /* Empty previous contents */
+    if (self->ob_item != NULL) {
+        BoxedList::clear((Box*)self);
+    }
+    if (arg != NULL) {
+        PyObject* rv = _PyList_Extend(self, arg);
+        if (rv == NULL)
+            return -1;
+        Py_DECREF(rv);
+    }
+    return 0;
+}
+
 extern "C" PyObject* PyList_New(Py_ssize_t size) noexcept {
     try {
         BoxedList* l = new BoxedList();
@@ -1527,6 +1635,8 @@ void setupList() {
     list_cls->giveAttrBorrowed("__hash__", None);
     list_cls->freeze();
     list_cls->tp_iter = listIter;
+    list_cls->tp_init = (initproc)list_init;
+    list_cls->tp_richcompare = list_richcompare;
 
     list_cls->tp_as_sequence->sq_length = list_length;
     list_cls->tp_as_sequence->sq_concat = (binaryfunc)list_concat;
