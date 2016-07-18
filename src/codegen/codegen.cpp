@@ -80,11 +80,11 @@ void FunctionMetadata::addVersion(CompiledFunction* compiled) {
     if (compiled->entry_descriptor == NULL) {
         bool could_have_speculations = (source.get() != NULL);
         if (!could_have_speculations && compiled->effort == EffortLevel::MAXIMAL && compiled->spec->accepts_all_inputs
-            && compiled->spec->boxed_return_value) {
-            if (versions.size() == 0 || (versions.size() == 1 && !always_use_version.empty()))
-                always_use_version.get(compiled->exception_style) = compiled;
+            && compiled->spec->boxed_return_value
+            && (versions.size() == 0 || (versions.size() == 1 && !always_use_version.empty()))) {
+            always_use_version.get(compiled->exception_style) = compiled;
         } else
-            always_use_version.clear();
+            assert(always_use_version.empty());
 
         assert(compiled->spec->arg_types.size() == numReceivedArgs());
         versions.push_back(compiled);
