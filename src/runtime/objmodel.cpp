@@ -3963,8 +3963,8 @@ static CompiledFunction* pickVersion(FunctionMetadata* f, ExceptionStyle S, int 
                                      Box* oarg3, Box** oargs) {
     LOCK_REGION(codegen_rwlock.asWrite());
 
-    if (f->always_use_version && f->always_use_version->exception_style == S)
-        return f->always_use_version;
+    if (f->always_use_version.get(S))
+        return f->always_use_version.get(S);
     slowpath_pickversion.log();
 
     CompiledFunction* best_nonexcmatch = NULL;
