@@ -110,6 +110,7 @@ public:
     }
 
     bool empty() const { return !capi_val && !cxx_val; }
+    void clear() { *this = ExceptionSwitchable<T>(); }
 };
 
 template <typename R, typename... Args>
