@@ -3965,6 +3965,9 @@ static CompiledFunction* pickVersion(FunctionMetadata* f, ExceptionStyle S, int 
 
     if (f->always_use_version.get(S))
         return f->always_use_version.get(S);
+    ExceptionStyle other = S == CXX ? CAPI : CXX;
+    if (f->always_use_version.get(other))
+        return f->always_use_version.get(other);
     slowpath_pickversion.log();
 
     CompiledFunction* best_nonexcmatch = NULL;
