@@ -3961,17 +3961,18 @@ static inline RewriterVar* getArg(int idx, _CallRewriteArgsBase* rewrite_args) {
 static StatCounter slowpath_pickversion("slowpath_pickversion");
 template <ExceptionStyle S>
 static CompiledFunction* pickVersion(FunctionMetadata* f, int num_output_args, Box* oarg1, Box* oarg2, Box* oarg3,
-                                     Box** oargs) {
+                                     Box** oargs, bool full_lookup) {
     LOCK_REGION(codegen_rwlock.asWrite());
 
-    // if always_use_version is set use it even if the exception style does not match.
-    // But prefer using the correct style if both are available
-    if (f->always_use_version.get(S))
-        return f->always_use_version.get(S);
-    ExceptionStyle other = S == CAPI ? CXX : CAPI;
-    if (f->always_use_version.get(other))
-        return f->always_use_version.get(other);
-
+    if (!full_lookup) {
+        // if accepts_all_input_version is set use it even if the exception style does not match.
+        // But prefer using the correct style if both are available
+        if (f->accepts_all_input_version.get(S))
+            return f->accepts_all_input_version.get(S);
+        ExceptionStyle other_style = S == CAPI ? CXX : CAPI;
+        if (f->accepts_all_input_version.get(other_style))
+            return f->accepts_all_input_version.get(other_style);
+    }
 
     slowpath_pickversion.log();
 
@@ -4853,7 +4854,9 @@ Box* callCLFunc(FunctionMetadata* md, CallRewriteArgs* rewrite_args, int num_out
         rewrite_args = NULL;
     }
 
-    CompiledFunction* chosen_cf = pickVersion<S>(md, num_output_args, oarg1, oarg2, oarg3, oargs);
+    bool should_do_full_lookup = rewrite_args != NULL;
+    CompiledFunction* chosen_cf
+        = pickVersion<S>(md, num_output_args, oarg1, oarg2, oarg3, oargs, should_do_full_lookup);
 
     if (!chosen_cf) {
         if (rewrite_args) {
