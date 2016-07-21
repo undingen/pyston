@@ -37,6 +37,194 @@ AST::AST(AST_TYPE::AST_TYPE type) : type(type), lineno(++next_lineno) {
 
 #endif
 
+void AST::accept(ASTVisitor* v) {
+    switch (type) {
+
+#define FOREACH_TYPE(X)                                                                                                \
+    X(alias, 1)                                                                                                        \
+    X(arguments, 2)                                                                                                    \
+    X(Assert, 3)                                                                                                       \
+    X(Assign, 4)                                                                                                       \
+    X(Attribute, 5)                                                                                                    \
+    X(AugAssign, 6)                                                                                                    \
+    X(BinOp, 7)                                                                                                        \
+    X(BoolOp, 8)                                                                                                       \
+    X(Call, 9)                                                                                                         \
+    X(ClassDef, 10)                                                                                                    \
+    X(Compare, 11)                                                                                                     \
+    X(comprehension, 12)                                                                                               \
+    X(Delete, 13)                                                                                                      \
+    X(Dict, 14)                                                                                                        \
+    X(Exec, 16)                                                                                                        \
+    X(ExceptHandler, 17)                                                                                               \
+    X(ExtSlice, 18)                                                                                                    \
+    X(Expr, 19)                                                                                                        \
+    X(For, 20)                                                                                                         \
+    X(FunctionDef, 21)                                                                                                 \
+    X(GeneratorExp, 22)                                                                                                \
+    X(Global, 23)                                                                                                      \
+    X(If, 24)                                                                                                          \
+    X(IfExp, 25)                                                                                                       \
+    X(Import, 26)                                                                                                      \
+    X(ImportFrom, 27)                                                                                                  \
+    X(Index, 28)                                                                                                       \
+    X(keyword, 29)                                                                                                     \
+    X(Lambda, 30)                                                                                                      \
+    X(List, 31)                                                                                                        \
+    X(ListComp, 32)                                                                                                    \
+    X(Module, 33)                                                                                                      \
+    X(Num, 34)                                                                                                         \
+    X(Name, 35)                                                                                                        \
+    X(Pass, 37)                                                                                                        \
+    X(Print, 39)                                                                                                       \
+    X(Raise, 40)                                                                                                       \
+    X(Repr, 41)                                                                                                        \
+    X(Return, 42)                                                                                                      \
+    X(Slice, 44)                                                                                                       \
+    X(Str, 45)                                                                                                         \
+    X(Subscript, 46)                                                                                                   \
+    X(TryExcept, 47)                                                                                                   \
+    X(TryFinally, 48)                                                                                                  \
+    X(Tuple, 49)                                                                                                       \
+    X(UnaryOp, 50)                                                                                                     \
+    X(With, 51)                                                                                                        \
+    X(While, 52)                                                                                                       \
+    X(Yield, 53)                                                                                                       \
+    X(Continue, 70)                                                                                                    \
+    X(Break, 73)                                                                                                       \
+    X(DictComp, 15)                                                                                                    \
+    X(Set, 43)                                                                                                         \
+    X(Ellipsis, 87)                                                                                                    \
+    /* like Module, but used for eval. */                                                                              \
+    X(Expression, 88)                                                                                                  \
+    X(SetComp, 89)                                                                                                     \
+    X(Suite, 90)                                                                                                       \
+                                                                                                                       \
+    /* Pseudo-nodes that are specific to this compiler: */                                                             \
+    X(Branch, 200)                                                                                                     \
+    X(Jump, 201)                                                                                                       \
+    X(ClsAttribute, 202)                                                                                               \
+    X(AugBinOp, 203)                                                                                                   \
+    X(Invoke, 204)                                                                                                     \
+    X(LangPrimitive, 205)                                                                                              \
+    /* wraps a ClassDef to make it an expr */                                                                          \
+    X(MakeClass, 206)                                                                                                  \
+    /* wraps a FunctionDef to make it an expr */                                                                       \
+    X(MakeFunction, 207)
+
+#define Case(x, n)                                                                                                     \
+    case AST_TYPE::x:                                                                                                  \
+        ((AST_##x*)this)->accept(v);                                                                                   \
+        break;
+        FOREACH_TYPE(Case)
+        default:
+            RELEASE_ASSERT(0, "");
+    }
+}
+
+
+void* AST_expr::accept_expr(ExprVisitor* v) {
+    switch (type) {
+#define FOREACH_TYPE2(X)                                                                                               \
+    X(Attribute, 5)                                                                                                    \
+    X(BinOp, 7)                                                                                                        \
+    X(BoolOp, 8)                                                                                                       \
+    X(Call, 9)                                                                                                         \
+    X(Compare, 11)                                                                                                     \
+    X(Dict, 14)                                                                                                        \
+    X(GeneratorExp, 22)                                                                                                \
+    X(IfExp, 25)                                                                                                       \
+    X(Lambda, 30)                                                                                                      \
+    X(List, 31)                                                                                                        \
+    X(ListComp, 32)                                                                                                    \
+    X(Num, 34)                                                                                                         \
+    X(Name, 35)                                                                                                        \
+    X(Repr, 41)                                                                                                        \
+    X(Str, 45)                                                                                                         \
+    X(Subscript, 46)                                                                                                   \
+    X(Tuple, 49)                                                                                                       \
+    X(UnaryOp, 50)                                                                                                     \
+    X(Yield, 53)                                                                                                       \
+    X(DictComp, 15)                                                                                                    \
+    X(Set, 43)                                                                                                         \
+    /* like Module, but used for eval. */                                                                              \
+    X(SetComp, 89)                                                                                                     \
+                                                                                                                       \
+    /* Pseudo-nodes that are specific to this compiler: */                                                             \
+    X(ClsAttribute, 202)                                                                                               \
+    X(AugBinOp, 203)                                                                                                   \
+    X(LangPrimitive, 205)                                                                                              \
+    /* wraps a ClassDef to make it an expr */                                                                          \
+    X(MakeClass, 206)                                                                                                  \
+    /* wraps a FunctionDef to make it an expr */                                                                       \
+    X(MakeFunction, 207)
+
+#define Case2(x, n)                                                                                                    \
+    case AST_TYPE::x:                                                                                                  \
+        return ((AST_##x*)this)->accept_expr(v);
+        FOREACH_TYPE2(Case2)
+        default:
+            RELEASE_ASSERT(0, "");
+    }
+}
+
+
+
+void AST_stmt::accept_stmt(StmtVisitor* v) {
+    switch (type) {
+
+#define FOREACH_TYPE3(X)                                                                                               \
+    X(Assert, 3)                                                                                                       \
+    X(Assign, 4)                                                                                                       \
+    X(AugAssign, 6)                                                                                                    \
+    X(Break, 73)                                                                                                       \
+    X(ClassDef, 10)                                                                                                    \
+    X(Continue, 70)                                                                                                    \
+    X(Delete, 13)                                                                                                      \
+    X(Exec, 16)                                                                                                        \
+    X(Expr, 19)                                                                                                        \
+    X(For, 20)                                                                                                         \
+    X(FunctionDef, 21)                                                                                                 \
+    X(Global, 23)                                                                                                      \
+    X(If, 24)                                                                                                          \
+    X(Import, 26)                                                                                                      \
+    X(ImportFrom, 27)                                                                                                  \
+    X(Invoke, 204)                                                                                                     \
+    X(Jump, 201)                                                                                                       \
+    X(Pass, 37)                                                                                                        \
+    X(Print, 39)                                                                                                       \
+    X(Raise, 40)                                                                                                       \
+    X(Return, 42)                                                                                                      \
+    X(TryExcept, 47)                                                                                                   \
+    X(TryFinally, 48)                                                                                                  \
+    X(While, 52)                                                                                                       \
+    X(With, 51)
+
+#define Case3(x, n)                                                                                                    \
+    case AST_TYPE::x:                                                                                                  \
+        return ((AST_##x*)this)->accept_stmt(v);
+        FOREACH_TYPE3(Case3)
+        default:
+            break;
+    }
+}
+
+void* AST_slice::accept_slice(SliceVisitor* v) {
+    switch (type) {
+        case AST_TYPE::Ellipsis:
+            return ((AST_Ellipsis*)this)->accept_slice(v);
+        case AST_TYPE::ExtSlice:
+            return ((AST_ExtSlice*)this)->accept_slice(v);
+        case AST_TYPE::Index:
+            return ((AST_Index*)this)->accept_slice(v);
+        case AST_TYPE::Slice:
+            return ((AST_Slice*)this)->accept_slice(v);
+        default:
+            RELEASE_ASSERT(0, "");
+    }
+}
+
+
 llvm::StringRef getOpSymbol(int op_type) {
     switch (op_type) {
         case AST_TYPE::Add:

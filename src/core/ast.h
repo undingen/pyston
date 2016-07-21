@@ -146,7 +146,7 @@ namespace AST_TYPE {
 #define GENERATE_ENUM(ENUM, N) ENUM = N,
 #define GENERATE_STRING(STRING, N) m[N] = #STRING;
 
-enum AST_TYPE { FOREACH_TYPE(GENERATE_ENUM) };
+enum AST_TYPE : unsigned char { FOREACH_TYPE(GENERATE_ENUM) };
 
 static const char* stringify(int n) {
     static std::map<int, const char*> m;
@@ -167,12 +167,12 @@ class AST_keyword;
 
 class AST {
 public:
-    virtual ~AST() {}
-
+    uint32_t lineno;
+    uint16_t col_offset;
     const AST_TYPE::AST_TYPE type;
-    uint32_t lineno, col_offset;
 
-    virtual void accept(ASTVisitor* v) = 0;
+
+    void accept(ASTVisitor* v);
 
 // #define DEBUG_LINE_NUMBERS 1
 #ifdef DEBUG_LINE_NUMBERS
@@ -184,15 +184,15 @@ private:
 public:
     AST(AST_TYPE::AST_TYPE type);
 #else
-    AST(AST_TYPE::AST_TYPE type) : type(type), lineno(0), col_offset(0) {}
+    AST(AST_TYPE::AST_TYPE type) : lineno(0), col_offset(0), type(type) {}
 #endif
     AST(AST_TYPE::AST_TYPE type, uint32_t lineno, uint32_t col_offset = 0)
-        : type(type), lineno(lineno), col_offset(col_offset) {}
+        : lineno(lineno), col_offset(col_offset), type(type) {}
 };
 
 class AST_expr : public AST {
 public:
-    virtual void* accept_expr(ExprVisitor* v) = 0;
+    void* accept_expr(ExprVisitor* v);
 
     AST_expr(AST_TYPE::AST_TYPE type) : AST(type) {}
     AST_expr(AST_TYPE::AST_TYPE type, uint32_t lineno, uint32_t col_offset = 0) : AST(type, lineno, col_offset) {}
@@ -200,7 +200,7 @@ public:
 
 class AST_stmt : public AST {
 public:
-    virtual void accept_stmt(StmtVisitor* v) = 0;
+    void accept_stmt(StmtVisitor* v);
 
     int cxx_exception_count = 0;
 
@@ -209,7 +209,7 @@ public:
 
 class AST_slice : public AST {
 public:
-    virtual void* accept_slice(SliceVisitor* s) = 0;
+    void* accept_slice(SliceVisitor* s);
     AST_slice(AST_TYPE::AST_TYPE type) : AST(type) {}
     AST_slice(AST_TYPE::AST_TYPE type, uint32_t lineno, uint32_t col_offset = 0) : AST(type, lineno, col_offset) {}
 };
@@ -219,7 +219,7 @@ public:
     InternedString name, asname;
     int name_vreg = -1, asname_vreg = -1;
 
-    virtual void accept(ASTVisitor* v);
+    void accept(ASTVisitor* v);
 
     AST_alias(InternedString name, InternedString asname) : AST(AST_TYPE::alias), name(name), asname(asname) {}
 
@@ -235,7 +235,7 @@ public:
 
     AST_Name* kwarg = NULL, * vararg = NULL;
 
-    virtual void accept(ASTVisitor* v);
+    void accept(ASTVisitor* v);
 
     AST_arguments() : AST(AST_TYPE::arguments) {}
 
@@ -246,8 +246,8 @@ class AST_Assert : public AST_stmt {
 public:
     AST_expr* msg, *test;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void accept_stmt(StmtVisitor* v);
+    void accept(ASTVisitor* v);
+    void accept_stmt(StmtVisitor* v);
 
     AST_Assert() : AST_stmt(AST_TYPE::Assert) {}
 
@@ -259,8 +259,8 @@ public:
     std::vector<AST_expr*> targets;
     AST_expr* value;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void accept_stmt(StmtVisitor* v);
+    void accept(ASTVisitor* v);
+    void accept_stmt(StmtVisitor* v);
 
     AST_Assign() : AST_stmt(AST_TYPE::Assign) {}
 
@@ -273,8 +273,8 @@ public:
     AST_expr* target;
     AST_TYPE::AST_TYPE op_type;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void accept_stmt(StmtVisitor* v);
+    void accept(ASTVisitor* v);
+    void accept_stmt(StmtVisitor* v);
 
     AST_AugAssign() : AST_stmt(AST_TYPE::AugAssign) {}
 
@@ -286,8 +286,8 @@ public:
     AST_TYPE::AST_TYPE op_type;
     AST_expr* left, *right;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    void accept(ASTVisitor* v);
+    void* accept_expr(ExprVisitor* v);
 
     AST_AugBinOp() : AST_expr(AST_TYPE::AugBinOp) {}
 
@@ -300,8 +300,8 @@ public:
     AST_TYPE::AST_TYPE ctx_type;
     InternedString attr;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    void accept(ASTVisitor* v);
+    void* accept_expr(ExprVisitor* v);
 
     AST_Attribute() : AST_expr(AST_TYPE::Attribute) {}
 
@@ -316,8 +316,8 @@ public:
     AST_TYPE::AST_TYPE op_type;
     AST_expr* left, *right;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    void accept(ASTVisitor* v);
+    void* accept_expr(ExprVisitor* v);
 
     AST_BinOp() : AST_expr(AST_TYPE::BinOp) {}
 
@@ -329,8 +329,8 @@ public:
     AST_TYPE::AST_TYPE op_type;
     std::vector<AST_expr*> values;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    void accept(ASTVisitor* v);
+    void* accept_expr(ExprVisitor* v);
 
     AST_BoolOp() : AST_expr(AST_TYPE::BoolOp) {}
 
@@ -339,8 +339,8 @@ public:
 
 class AST_Break : public AST_stmt {
 public:
-    virtual void accept(ASTVisitor* v);
-    virtual void accept_stmt(StmtVisitor* v);
+    void accept(ASTVisitor* v);
+    void accept_stmt(StmtVisitor* v);
 
     AST_Break() : AST_stmt(AST_TYPE::Break) {}
 
@@ -353,8 +353,8 @@ public:
     std::vector<AST_expr*> args;
     std::vector<AST_keyword*> keywords;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    void accept(ASTVisitor* v);
+    void* accept_expr(ExprVisitor* v);
 
     AST_Call() : AST_expr(AST_TYPE::Call) {}
 
@@ -367,8 +367,8 @@ public:
     std::vector<AST_expr*> comparators;
     AST_expr* left;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    void accept(ASTVisitor* v);
+    void* accept_expr(ExprVisitor* v);
 
     AST_Compare() : AST_expr(AST_TYPE::Compare) {}
 
@@ -381,7 +381,7 @@ public:
     AST_expr* iter;
     std::vector<AST_expr*> ifs;
 
-    virtual void accept(ASTVisitor* v);
+    void accept(ASTVisitor* v);
 
     AST_comprehension() : AST(AST_TYPE::comprehension) {}
 
@@ -390,8 +390,8 @@ public:
 
 class AST_ClassDef : public AST_stmt {
 public:
-    virtual void accept(ASTVisitor* v);
-    virtual void accept_stmt(StmtVisitor* v);
+    void accept(ASTVisitor* v);
+    void accept_stmt(StmtVisitor* v);
 
     std::vector<AST_expr*> bases, decorator_list;
     std::vector<AST_stmt*> body;
@@ -404,8 +404,8 @@ public:
 
 class AST_Continue : public AST_stmt {
 public:
-    virtual void accept(ASTVisitor* v);
-    virtual void accept_stmt(StmtVisitor* v);
+    void accept(ASTVisitor* v);
+    void accept_stmt(StmtVisitor* v);
 
     AST_Continue() : AST_stmt(AST_TYPE::Continue) {}
 
@@ -416,8 +416,8 @@ class AST_Dict : public AST_expr {
 public:
     std::vector<AST_expr*> keys, values;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    void accept(ASTVisitor* v);
+    void* accept_expr(ExprVisitor* v);
 
     AST_Dict() : AST_expr(AST_TYPE::Dict) {}
 
@@ -429,8 +429,8 @@ public:
     std::vector<AST_comprehension*> generators;
     AST_expr* key, *value;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    void accept(ASTVisitor* v);
+    void* accept_expr(ExprVisitor* v);
 
     AST_DictComp() : AST_expr(AST_TYPE::DictComp) {}
 
@@ -440,8 +440,8 @@ public:
 class AST_Delete : public AST_stmt {
 public:
     std::vector<AST_expr*> targets;
-    virtual void accept(ASTVisitor* v);
-    virtual void accept_stmt(StmtVisitor* v);
+    void accept(ASTVisitor* v);
+    void accept_stmt(StmtVisitor* v);
 
     AST_Delete() : AST_stmt(AST_TYPE::Delete) {}
 
@@ -450,8 +450,8 @@ public:
 
 class AST_Ellipsis : public AST_slice {
 public:
-    virtual void accept(ASTVisitor* v);
-    virtual void* accept_slice(SliceVisitor* v);
+    void accept(ASTVisitor* v);
+    void* accept_slice(SliceVisitor* v);
 
     AST_Ellipsis() : AST_slice(AST_TYPE::Ellipsis) {}
 
@@ -462,8 +462,8 @@ class AST_Expr : public AST_stmt {
 public:
     AST_expr* value;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void accept_stmt(StmtVisitor* v);
+    void accept(ASTVisitor* v);
+    void accept_stmt(StmtVisitor* v);
 
     AST_Expr() : AST_stmt(AST_TYPE::Expr) {}
     AST_Expr(AST_expr* value) : AST_stmt(AST_TYPE::Expr), value(value) {}
@@ -477,7 +477,7 @@ public:
     AST_expr* type; // can be NULL for a bare "except:" clause
     AST_expr* name; // can be NULL if the exception doesn't get a name
 
-    virtual void accept(ASTVisitor* v);
+    void accept(ASTVisitor* v);
 
     AST_ExceptHandler() : AST(AST_TYPE::ExceptHandler) {}
 
@@ -490,8 +490,8 @@ public:
     AST_expr* globals;
     AST_expr* locals;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void accept_stmt(StmtVisitor* v);
+    void accept(ASTVisitor* v);
+    void accept_stmt(StmtVisitor* v);
 
     AST_Exec() : AST_stmt(AST_TYPE::Exec) {}
 
@@ -505,7 +505,7 @@ public:
 
     AST_expr* body;
 
-    virtual void accept(ASTVisitor* v);
+    void accept(ASTVisitor* v);
 
     AST_Expression(std::unique_ptr<InternedStringPool> interned_strings)
         : AST(AST_TYPE::Expression), interned_strings(std::move(interned_strings)) {}
@@ -517,8 +517,8 @@ class AST_ExtSlice : public AST_slice {
 public:
     std::vector<AST_slice*> dims;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void* accept_slice(SliceVisitor* v);
+    void accept(ASTVisitor* v);
+    void* accept_slice(SliceVisitor* v);
 
     AST_ExtSlice() : AST_slice(AST_TYPE::ExtSlice) {}
 
@@ -530,8 +530,8 @@ public:
     std::vector<AST_stmt*> body, orelse;
     AST_expr* target, *iter;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void accept_stmt(StmtVisitor* v);
+    void accept(ASTVisitor* v);
+    void accept_stmt(StmtVisitor* v);
 
     AST_For() : AST_stmt(AST_TYPE::For) {}
 
@@ -545,8 +545,8 @@ public:
     InternedString name;
     AST_arguments* args;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void accept_stmt(StmtVisitor* v);
+    void accept(ASTVisitor* v);
+    void accept_stmt(StmtVisitor* v);
 
     AST_FunctionDef() : AST_stmt(AST_TYPE::FunctionDef) {}
 
@@ -558,8 +558,8 @@ public:
     std::vector<AST_comprehension*> generators;
     AST_expr* elt;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    void accept(ASTVisitor* v);
+    void* accept_expr(ExprVisitor* v);
 
     AST_GeneratorExp() : AST_expr(AST_TYPE::GeneratorExp) {}
 
@@ -570,8 +570,8 @@ class AST_Global : public AST_stmt {
 public:
     std::vector<InternedString> names;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void accept_stmt(StmtVisitor* v);
+    void accept(ASTVisitor* v);
+    void accept_stmt(StmtVisitor* v);
 
     AST_Global() : AST_stmt(AST_TYPE::Global) {}
 
@@ -583,8 +583,8 @@ public:
     std::vector<AST_stmt*> body, orelse;
     AST_expr* test;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void accept_stmt(StmtVisitor* v);
+    void accept(ASTVisitor* v);
+    void accept_stmt(StmtVisitor* v);
 
     AST_If() : AST_stmt(AST_TYPE::If) {}
 
@@ -595,8 +595,8 @@ class AST_IfExp : public AST_expr {
 public:
     AST_expr* body, *test, *orelse;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    void accept(ASTVisitor* v);
+    void* accept_expr(ExprVisitor* v);
 
     AST_IfExp() : AST_expr(AST_TYPE::IfExp) {}
 
@@ -607,8 +607,8 @@ class AST_Import : public AST_stmt {
 public:
     std::vector<AST_alias*> names;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void accept_stmt(StmtVisitor* v);
+    void accept(ASTVisitor* v);
+    void accept_stmt(StmtVisitor* v);
 
     AST_Import() : AST_stmt(AST_TYPE::Import) {}
 
@@ -621,8 +621,8 @@ public:
     std::vector<AST_alias*> names;
     int level;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void accept_stmt(StmtVisitor* v);
+    void accept(ASTVisitor* v);
+    void accept_stmt(StmtVisitor* v);
 
     AST_ImportFrom() : AST_stmt(AST_TYPE::ImportFrom) {}
 
@@ -633,8 +633,8 @@ class AST_Index : public AST_slice {
 public:
     AST_expr* value;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void* accept_slice(SliceVisitor* v);
+    void accept(ASTVisitor* v);
+    void* accept_slice(SliceVisitor* v);
 
     AST_Index() : AST_slice(AST_TYPE::Index) {}
 
@@ -647,7 +647,7 @@ public:
     AST_expr* value;
     InternedString arg;
 
-    virtual void accept(ASTVisitor* v);
+    void accept(ASTVisitor* v);
 
     AST_keyword() : AST(AST_TYPE::keyword) {}
 
@@ -659,8 +659,8 @@ public:
     AST_arguments* args;
     AST_expr* body;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    void accept(ASTVisitor* v);
+    void* accept_expr(ExprVisitor* v);
 
     AST_Lambda() : AST_expr(AST_TYPE::Lambda) {}
 
@@ -672,8 +672,8 @@ public:
     std::vector<AST_expr*> elts;
     AST_TYPE::AST_TYPE ctx_type;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    void accept(ASTVisitor* v);
+    void* accept_expr(ExprVisitor* v);
 
     AST_List() : AST_expr(AST_TYPE::List) {}
 
@@ -685,8 +685,8 @@ public:
     std::vector<AST_comprehension*> generators;
     AST_expr* elt;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    void accept(ASTVisitor* v);
+    void* accept_expr(ExprVisitor* v);
 
     AST_ListComp() : AST_expr(AST_TYPE::ListComp) {}
 
@@ -700,7 +700,7 @@ public:
     // no lineno, col_offset attributes
     std::vector<AST_stmt*> body;
 
-    virtual void accept(ASTVisitor* v);
+    void accept(ASTVisitor* v);
 
     AST_Module(std::unique_ptr<InternedStringPool> interned_strings)
         : AST(AST_TYPE::Module), interned_strings(std::move(interned_strings)) {}
@@ -714,7 +714,7 @@ public:
 
     std::vector<AST_stmt*> body;
 
-    virtual void accept(ASTVisitor* v);
+    void accept(ASTVisitor* v);
 
     AST_Suite(std::unique_ptr<InternedStringPool> interned_strings)
         : AST(AST_TYPE::Suite), interned_strings(std::move(interned_strings)) {}
@@ -738,8 +738,8 @@ public:
 
     bool is_kill = false;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    void accept(ASTVisitor* v);
+    void* accept_expr(ExprVisitor* v);
 
     AST_Name(InternedString id, AST_TYPE::AST_TYPE ctx_type, int lineno, int col_offset = 0)
         : AST_expr(AST_TYPE::Name, lineno, col_offset),
@@ -769,8 +769,8 @@ public:
     };
     std::string n_long;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    void accept(ASTVisitor* v);
+    void* accept_expr(ExprVisitor* v);
 
     AST_Num() : AST_expr(AST_TYPE::Num) {}
 
@@ -781,8 +781,8 @@ class AST_Repr : public AST_expr {
 public:
     AST_expr* value;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    void accept(ASTVisitor* v);
+    void* accept_expr(ExprVisitor* v);
 
     AST_Repr() : AST_expr(AST_TYPE::Repr) {}
 
@@ -791,8 +791,8 @@ public:
 
 class AST_Pass : public AST_stmt {
 public:
-    virtual void accept(ASTVisitor* v);
-    virtual void accept_stmt(StmtVisitor* v);
+    void accept(ASTVisitor* v);
+    void accept_stmt(StmtVisitor* v);
 
     AST_Pass() : AST_stmt(AST_TYPE::Pass) {}
 
@@ -805,8 +805,8 @@ public:
     bool nl;
     std::vector<AST_expr*> values;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void accept_stmt(StmtVisitor* v);
+    void accept(ASTVisitor* v);
+    void accept_stmt(StmtVisitor* v);
 
     AST_Print() : AST_stmt(AST_TYPE::Print) {}
 
@@ -821,8 +821,8 @@ public:
     // Ie "raise Exception()" will have type==Exception(), inst==None, tback==None
     AST_expr* arg0, *arg1, *arg2;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void accept_stmt(StmtVisitor* v);
+    void accept(ASTVisitor* v);
+    void accept_stmt(StmtVisitor* v);
 
     AST_Raise() : AST_stmt(AST_TYPE::Raise), arg0(NULL), arg1(NULL), arg2(NULL) {}
 
@@ -833,8 +833,8 @@ class AST_Return : public AST_stmt {
 public:
     AST_expr* value;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void accept_stmt(StmtVisitor* v);
+    void accept(ASTVisitor* v);
+    void accept_stmt(StmtVisitor* v);
 
     AST_Return() : AST_stmt(AST_TYPE::Return) {}
 
@@ -845,8 +845,8 @@ class AST_Set : public AST_expr {
 public:
     std::vector<AST_expr*> elts;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    void accept(ASTVisitor* v);
+    void* accept_expr(ExprVisitor* v);
 
     AST_Set() : AST_expr(AST_TYPE::Set) {}
 
@@ -858,8 +858,8 @@ public:
     std::vector<AST_comprehension*> generators;
     AST_expr* elt;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    void accept(ASTVisitor* v);
+    void* accept_expr(ExprVisitor* v);
 
     AST_SetComp() : AST_expr(AST_TYPE::SetComp) {}
 
@@ -870,8 +870,8 @@ class AST_Slice : public AST_slice {
 public:
     AST_expr* lower, *upper, *step;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void* accept_slice(SliceVisitor* v);
+    void accept(ASTVisitor* v);
+    void* accept_slice(SliceVisitor* v);
 
     AST_Slice() : AST_slice(AST_TYPE::Slice) {}
 
@@ -890,8 +890,8 @@ public:
     // For UNICODE, it's the utf-8 encoded value.
     std::string str_data;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    void accept(ASTVisitor* v);
+    void* accept_expr(ExprVisitor* v);
 
     AST_Str() : AST_expr(AST_TYPE::Str), str_type(UNSET) {}
     AST_Str(std::string s) : AST_expr(AST_TYPE::Str), str_type(STR), str_data(std::move(s)) {}
@@ -905,8 +905,8 @@ public:
     AST_slice* slice;
     AST_TYPE::AST_TYPE ctx_type;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    void accept(ASTVisitor* v);
+    void* accept_expr(ExprVisitor* v);
 
     AST_Subscript() : AST_expr(AST_TYPE::Subscript) {}
 
@@ -918,8 +918,8 @@ public:
     std::vector<AST_stmt*> body, orelse;
     std::vector<AST_ExceptHandler*> handlers;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void accept_stmt(StmtVisitor* v);
+    void accept(ASTVisitor* v);
+    void accept_stmt(StmtVisitor* v);
 
     AST_TryExcept() : AST_stmt(AST_TYPE::TryExcept) {}
 
@@ -930,8 +930,8 @@ class AST_TryFinally : public AST_stmt {
 public:
     std::vector<AST_stmt*> body, finalbody;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void accept_stmt(StmtVisitor* v);
+    void accept(ASTVisitor* v);
+    void accept_stmt(StmtVisitor* v);
 
     AST_TryFinally() : AST_stmt(AST_TYPE::TryFinally) {}
 
@@ -943,8 +943,8 @@ public:
     std::vector<AST_expr*> elts;
     AST_TYPE::AST_TYPE ctx_type;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    void accept(ASTVisitor* v);
+    void* accept_expr(ExprVisitor* v);
 
     AST_Tuple() : AST_expr(AST_TYPE::Tuple) {}
 
@@ -956,8 +956,8 @@ public:
     AST_expr* operand;
     AST_TYPE::AST_TYPE op_type;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    void accept(ASTVisitor* v);
+    void* accept_expr(ExprVisitor* v);
 
     AST_UnaryOp() : AST_expr(AST_TYPE::UnaryOp) {}
 
@@ -969,8 +969,8 @@ public:
     AST_expr* test;
     std::vector<AST_stmt*> body, orelse;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void accept_stmt(StmtVisitor* v);
+    void accept(ASTVisitor* v);
+    void accept_stmt(StmtVisitor* v);
 
     AST_While() : AST_stmt(AST_TYPE::While) {}
 
@@ -982,8 +982,8 @@ public:
     AST_expr* optional_vars, *context_expr;
     std::vector<AST_stmt*> body;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void accept_stmt(StmtVisitor* v);
+    void accept(ASTVisitor* v);
+    void accept_stmt(StmtVisitor* v);
 
     AST_With() : AST_stmt(AST_TYPE::With) {}
 
@@ -994,8 +994,8 @@ class AST_Yield : public AST_expr {
 public:
     AST_expr* value;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    void accept(ASTVisitor* v);
+    void* accept_expr(ExprVisitor* v);
 
     AST_Yield() : AST_expr(AST_TYPE::Yield) {}
 
@@ -1006,8 +1006,8 @@ class AST_MakeFunction : public AST_expr {
 public:
     AST_FunctionDef* function_def;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    void accept(ASTVisitor* v);
+    void* accept_expr(ExprVisitor* v);
 
     AST_MakeFunction(AST_FunctionDef* fd)
         : AST_expr(AST_TYPE::MakeFunction, fd->lineno, fd->col_offset), function_def(fd) {}
@@ -1019,8 +1019,8 @@ class AST_MakeClass : public AST_expr {
 public:
     AST_ClassDef* class_def;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    void accept(ASTVisitor* v);
+    void* accept_expr(ExprVisitor* v);
 
     AST_MakeClass(AST_ClassDef* cd) : AST_expr(AST_TYPE::MakeClass, cd->lineno, cd->col_offset), class_def(cd) {}
 
@@ -1038,8 +1038,8 @@ public:
     AST_expr* test;
     CFGBlock* iftrue, *iffalse;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void accept_stmt(StmtVisitor* v);
+    void accept(ASTVisitor* v);
+    void accept_stmt(StmtVisitor* v);
 
     AST_Branch() : AST_stmt(AST_TYPE::Branch) {}
 
@@ -1050,8 +1050,8 @@ class AST_Jump : public AST_stmt {
 public:
     CFGBlock* target;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void accept_stmt(StmtVisitor* v);
+    void accept(ASTVisitor* v);
+    void accept_stmt(StmtVisitor* v);
 
     AST_Jump() : AST_stmt(AST_TYPE::Jump) {}
 
@@ -1063,8 +1063,8 @@ public:
     AST_expr* value;
     InternedString attr;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    void accept(ASTVisitor* v);
+    void* accept_expr(ExprVisitor* v);
 
     AST_ClsAttribute() : AST_expr(AST_TYPE::ClsAttribute) {}
 
@@ -1077,8 +1077,8 @@ public:
 
     CFGBlock* normal_dest, *exc_dest;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void accept_stmt(StmtVisitor* v);
+    void accept(ASTVisitor* v);
+    void accept_stmt(StmtVisitor* v);
 
     AST_Invoke(AST_stmt* stmt) : AST_stmt(AST_TYPE::Invoke), stmt(stmt) {}
 
@@ -1108,8 +1108,8 @@ public:
     } opcode;
     std::vector<AST_expr*> args;
 
-    virtual void accept(ASTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    void accept(ASTVisitor* v);
+    void* accept_expr(ExprVisitor* v);
 
     AST_LangPrimitive(Opcodes opcode) : AST_expr(AST_TYPE::LangPrimitive), opcode(opcode) {}
 
