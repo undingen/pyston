@@ -724,18 +724,18 @@ public:
 
 class AST_Name : public AST_expr {
 public:
-    AST_TYPE::AST_TYPE ctx_type;
     InternedString id;
+
+    // The interpreter and baseline JIT store variables with FAST and CLOSURE scopes in an array (vregs) this specifies
+    // the zero based index of this variable inside the vregs array. If uninitialized it's value is -1.
+    int vreg;
 
     // The resolved scope of this name.  Kind of hacky to be storing it in the AST node;
     // in CPython it ends up getting "cached" by being translated into one of a number of
     // different bytecodes.
     ScopeInfo::VarScopeType lookup_type;
 
-    // The interpreter and baseline JIT store variables with FAST and CLOSURE scopes in an array (vregs) this specifies
-    // the zero based index of this variable inside the vregs array. If uninitialized it's value is -1.
-    int vreg;
-
+    AST_TYPE::AST_TYPE ctx_type;
     bool is_kill = false;
 
     void accept(ASTVisitor* v);
@@ -743,17 +743,17 @@ public:
 
     AST_Name(InternedString id, AST_TYPE::AST_TYPE ctx_type, int lineno, int col_offset = 0)
         : AST_expr(AST_TYPE::Name, lineno, col_offset),
-          ctx_type(ctx_type),
           id(id),
+          vreg(-1),
           lookup_type(ScopeInfo::VarScopeType::UNKNOWN),
-          vreg(-1) {}
+          ctx_type(ctx_type) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Name;
 };
 
 class AST_Num : public AST_expr {
 public:
-    enum NumType {
+    enum NumType : unsigned char {
         // These values must correspond to the values in parse_ast.py
         INT = 0x10,
         FLOAT = 0x20,
@@ -880,7 +880,7 @@ public:
 
 class AST_Str : public AST_expr {
 public:
-    enum StrType {
+    enum StrType : unsigned char {
         UNSET = 0x00,
         STR = 0x10,
         UNICODE = 0x20,
@@ -1091,7 +1091,7 @@ public:
 // These are basically bytecodes, framed as pseudo-AST-nodes.
 class AST_LangPrimitive : public AST_expr {
 public:
-    enum Opcodes {
+    enum Opcodes : unsigned char {
         LANDINGPAD, // grabs the info about the last raised exception
         LOCALS,
         GET_ITER,
