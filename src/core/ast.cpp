@@ -225,6 +225,12 @@ void* AST_slice::accept_slice(SliceVisitor* v) {
 }
 
 
+void* AST::operator new(std::size_t n) {
+    static StatCounter s("num_ast_bytes");
+    s.log(n);
+    return malloc(n);
+}
+
 llvm::StringRef getOpSymbol(int op_type) {
     switch (op_type) {
         case AST_TYPE::Add:

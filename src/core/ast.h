@@ -188,6 +188,8 @@ public:
 #endif
     AST(AST_TYPE::AST_TYPE type, uint32_t lineno, uint32_t col_offset = 0)
         : lineno(lineno), col_offset(col_offset), type(type) {}
+
+    void* operator new(std::size_t n);
 };
 
 class AST_expr : public AST {
@@ -724,6 +726,7 @@ public:
 
 class AST_Name : public AST_expr {
 public:
+    AST_TYPE::AST_TYPE ctx_type;
     InternedString id;
 
     // The interpreter and baseline JIT store variables with FAST and CLOSURE scopes in an array (vregs) this specifies
@@ -735,7 +738,7 @@ public:
     // different bytecodes.
     ScopeInfo::VarScopeType lookup_type;
 
-    AST_TYPE::AST_TYPE ctx_type;
+
     bool is_kill = false;
 
     void accept(ASTVisitor* v);
@@ -743,10 +746,10 @@ public:
 
     AST_Name(InternedString id, AST_TYPE::AST_TYPE ctx_type, int lineno, int col_offset = 0)
         : AST_expr(AST_TYPE::Name, lineno, col_offset),
+          ctx_type(ctx_type),
           id(id),
           vreg(-1),
-          lookup_type(ScopeInfo::VarScopeType::UNKNOWN),
-          ctx_type(ctx_type) {}
+          lookup_type(ScopeInfo::VarScopeType::UNKNOWN) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Name;
 };
