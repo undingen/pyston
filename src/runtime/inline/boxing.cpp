@@ -51,5 +51,9 @@ extern "C" bool hasnext(Box* o) {
     return o->cls->tpp_hasnext(o);
 }
 
+extern "C" Py_ssize_t str_length(Box* a) noexcept {
+    return Py_SIZE(a);
+}
+
 // BoxedInt::BoxedInt(int64_t n) : Box(int_cls), n(n) {}
 }

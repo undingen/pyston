@@ -1339,7 +1339,7 @@ static_assert(MIN_INTERNED_INT < 0 && MAX_INTERNED_INT > 0, "");
 #define NUM_INTERNED_INTS ((-MIN_INTERNED_INT) + MAX_INTERNED_INT + 1)
 
 extern BoxedInt* interned_ints[NUM_INTERNED_INTS];
-extern "C" inline Box* boxInt(int64_t n) {
+extern "C" inline __attribute__((noinline)) Box* boxInt(int64_t n) {
     if (n >= MIN_INTERNED_INT && n <= MAX_INTERNED_INT) {
         return incref(interned_ints[(-MIN_INTERNED_INT) + n]);
     }

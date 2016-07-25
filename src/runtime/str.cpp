@@ -33,6 +33,7 @@
 #include "runtime/objmodel.h"
 #include "runtime/types.h"
 #include "runtime/util.h"
+#include "runtime/rewrite_args.h"
 
 extern "C" PyObject* string_count(PyStringObject* self, PyObject* args) noexcept;
 extern "C" PyObject* string_join(PyStringObject* self, PyObject* orig) noexcept;
@@ -1748,10 +1749,41 @@ static Box* str_slice(Box* o, Py_ssize_t i, Py_ssize_t j) noexcept {
     return PyString_FromStringAndSize(a->data() + i, j - i);
 }
 
+/*
 // Analoguous to CPython's, used for sq_ slots.
 static Py_ssize_t str_length(Box* a) noexcept {
     return Py_SIZE(a);
 }
+*/
+
+
+extern "C" Py_ssize_t str_length(Box* a) noexcept;
+
+void rewriter_str_length(CallRewriteArgs* rewrite_args, Box* a0) {
+auto v0 = rewrite_args->obj;
+//   tail call void @llvm.dbg.value(metadata %"class.pyston::Box"* %a, i64 0, metadata !12629, metadata !12630), !dbg !12631
+//    ignored debug info
+//   %ob_size = getelementptr inbounds %"class.pyston::Box"* %a, i64 1, !dbg !12632
+//    skipping
+//   %0 = bitcast %"class.pyston::Box"* %ob_size to i64*, !dbg !12632
+//    skipping
+//   %1 = load i64* %0, align 8, !dbg !12632
+#ifndef NDEBUG
+auto v2 = v0->getAttr(32);
+#else
+auto v2 = v0->getAttr(16);
+#endif
+//   ret i64 %1, !dbg !12633
+rewrite_args->out_rtn = v2;
+}
+llvm::DenseMap<void*, void*> capi_tracer;
+
+int __foo() {
+    capi_tracer[(void*)str_length] = (void*)rewriter_str_length;
+    return 42;
+}
+
+int aa = __foo();
 
 Box* strIsAlpha(BoxedString* self) {
     assert(PyString_Check(self));

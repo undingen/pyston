@@ -21,6 +21,8 @@
 #include "core/stats.h"
 #include "runtime/objmodel.h"
 #include "runtime/types.h"
+#include "runtime/rewrite_args.h"
+
 
 namespace pyston {
 
@@ -952,6 +954,17 @@ RewriterVar* Rewriter::loadConst(int64_t val, Location dest) {
 RewriterVar* Rewriter::call(bool has_side_effects, void* func_addr, llvm::ArrayRef<RewriterVar*> args,
                             llvm::ArrayRef<RewriterVar*> args_xmm, llvm::ArrayRef<RewriterVar*> additional_uses) {
     STAT_TIMER(t0, "us_timer_rewriter", 10);
+
+
+    if (capi_tracer.count(func_addr) && args.size() == 1) {
+        CallRewriteArgs rewrite_args(this, args[0], getReturnDestination());
+        typedef void (*FuncTy)(CallRewriteArgs*, Box* a);
+        auto f = (FuncTy)capi_tracer[func_addr];
+        f(&rewrite_args, NULL);
+        return rewrite_args.out_rtn;
+    }
+
+
     RewriterVar* result = createNewVar();
 
     ActionType type;

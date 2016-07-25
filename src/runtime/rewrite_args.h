@@ -240,6 +240,8 @@ public:
         : _CallRewriteArgsBase(*copy_from), out_success(false), out_rtn(NULL) {}
 };
 
+extern llvm::DenseMap<void*, void*> capi_tracer;
+
 class CallattrRewriteArgs : public _CallRewriteArgsBase, public _ReturnConventionBase {
 public:
     CallattrRewriteArgs(Rewriter* rewriter, RewriterVar* obj, Location destination)
