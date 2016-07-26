@@ -55,126 +55,187 @@ OutputFilename("o", cl::desc("Specify output filename"),
 static cl::opt<bool>
 Force("f", cl::desc("Enable binary output on terminals"));
 
-bool visistFunc(Function* f) {
-    bool changed = false;
+
+void printLambda(std::string code, std::string vars, std::string type = "MUTATION") {
+    outs() << "rewrite_args->rewriter->addAction([&](){ auto a = rewrite_args->rewriter->assembler;\n" << code << " }, " << vars << ", ActionType::" << type << ");";
+}
+
+std::string getValue(llvm::raw_ostream& o, llvm::DenseMap<Value*, std::string>& known_values, Value* v) {
+    if (!known_values.count(v)) {
+        if (auto I = dyn_cast_or_null<ConstantInt>(v)) {
+            return "r->loadConstant(" + std::to_string(I->getSExtValue()) + ")";
+        }
+
+        o << "unknown value: " << v << "\n";
+        return std::string("");
+    }
+    return known_values[v];
+}
+
+
+bool visitFunc(llvm::raw_ostream& o, Function* f) {
+    bool ok = true;
 
     LLVMContext &c = f->getContext();
 
 
-    if (f->getName() != "str_length")
-        return changed;
+    //if (f->getName().find("xrangeIteratorNext") == -1)
+    //   return changed;
 
-    f->dump();
+    //if (f->getName() != "str_length")
+    //    return changed;
+
+    // f->print(o);
 
 
-    outs()<< "\n\nvoid rewriter_" << f->getName() << "(_CallRewriteArgsBase* rewrite_args";
+    o << "\n\nvoid rewriter_" << f->getName() << "(CallRewriteArgs* rewrite_args";
 
     llvm::DenseMap<Value*, std::string> known_values;
+    int i = 0;
     for (auto&& arg : f->args()) {
-        outs() << ", Box* a" + std::to_string(known_values.size());
-        known_values[&arg] = "v" + std::to_string(known_values.size());
+        o << ", Box* a" + std::to_string(i++);
     }
-    outs()<<") {\n";
+    o << ") {\n";
+    o << "auto r = rewrite_args->rewriter;\n";
+
+    for (auto&& arg : f->args()) {
+        auto name = "v" + std::to_string(known_values.size());;
+        known_values[&arg] = name;
+        if (known_values.size() == 1)
+            o << "auto " << name << " = rewrite_args->obj;\n";
+        else
+            o << "auto " << name << " = rewrite_args->arg" << std::to_string(known_values.size()-1) << ";\n";
+    }
 
     auto DL = *f->getDataLayout();
+
+    bool no_guards_allowed = false;
 
     for (auto it = inst_begin(f), end = inst_end(f); it != end; ++it) {
         Instruction* I = &*it;
 
-        outs() << "// ";
-        I->dump();
+        o << "// " << *I << "\n";
 
 
         if (isa<DbgInfoIntrinsic>(I)) {
-            outs() << "//    ignored debug info\n";
+            o << "//    ignored debug info\n";
             continue;
-        }
-
-
-        if (auto GEP = dyn_cast_or_null<GetElementPtrInst>(I)) {
-            if (!known_values.count(GEP->getPointerOperand())) {
-                outs() << "unknown value: ";
-                GEP->getPointerOperand()->dump();
-                continue;
-            }
-
-            //if (GEP->getType()->getElementType() != llvm::Type::getInt64Ty(c)) {
-            if (DL.getPointerTypeSizeInBits(GEP->getType()) != 64) {
-                outs() << "unknown return type: " << DL.getPointerTypeSizeInBits(GEP->getType()) << " ";
-                GEP->getType()->dump();
-                continue;
-            }
-
-            APInt offset(DL.getPointerSizeInBits(GEP->getPointerAddressSpace()), 0);
-            if (!GEP->accumulateConstantOffset(DL, offset)) {
-                outs() << "non const gep\n";
-                continue;
-            }
-
-            outs() << "//    skipping\n";
+        } else if (auto GEP = dyn_cast_or_null<GetElementPtrInst>(I)) {
+            o << "//    skipping\n";
             continue;
-
-
-            auto v = known_values[GEP->getPointerOperand()];
-            auto new_var = "v" + std::to_string(known_values.size());
-            outs() << "auto " << new_var << " = " << v << "->getAttr(" << offset.getSExtValue() << "" << ")\n";
-
-            known_values[GEP] = new_var;
         }
         else if (auto BC = dyn_cast_or_null<BitCastInst>(I)) {
-            outs() << "//    skipping\n";
+            o << "//    skipping\n";
             continue;
         }
         else if (auto L = dyn_cast_or_null<LoadInst>(I)) {
             if (DL.getTypeSizeInBits(L->getType()) != 64) {
-                outs() << "unknown return type size: " << DL.getTypeSizeInBits(L->getType()) << " ";
-                L->getType()->dump();
+                o << "unknown return type size: " << DL.getTypeSizeInBits(L->getType()) << " " << L->getType() << "\n";
                 continue;
             }
 
             auto PT = L->getPointerOperand();
             auto PT_no_casts = PT->stripPointerCasts();
             if (auto GEP = dyn_cast_or_null<GetElementPtrInst>(PT_no_casts)) {
-                if (!known_values.count(GEP->getPointerOperand())) {
-                    outs() << "unknown value: ";
-                    GEP->getPointerOperand()->dump();
+                std::string v = getValue(o, known_values, GEP->getPointerOperand());
+                if (v.empty())
                     continue;
-                }
 
                 //if (GEP->getType()->getElementType() != llvm::Type::getInt64Ty(c)) {
                 if (DL.getPointerTypeSizeInBits(GEP->getType()) != 64) {
-                    outs() << "unknown return type: " << DL.getPointerTypeSizeInBits(GEP->getType()) << " ";
-                    GEP->getType()->dump();
+                    o << "unknown return type: " << DL.getPointerTypeSizeInBits(GEP->getType()) << " " << GEP->getType() << "\n";
                     continue;
                 }
 
                 APInt offset(DL.getPointerSizeInBits(GEP->getPointerAddressSpace()), 0);
                 if (!GEP->accumulateConstantOffset(DL, offset)) {
-                    outs() << "non const gep\n";
+                    o << "non const gep\n";
                     continue;
                 }
 
-                auto v = known_values[GEP->getPointerOperand()];
                 auto new_var = "v" + std::to_string(known_values.size() + 1);
-                outs() << "auto " << new_var << " = " << v << "->getAttr(" << offset.getSExtValue() << "" << ");\n";
+                o << "auto " << new_var << " = " << v << "->getAttr(" << offset.getSExtValue() << "" << ");\n";
 
                 known_values[L] = new_var;
-            }
-        } else if (auto R = dyn_cast_or_null<ReturnInst>(I)) {
-            if (!known_values.count(R->getReturnValue())) {
-                outs() << "unknown value: ";
-                R->getReturnValue()->dump();
+            } else {
+                o  << "unhandled\n";
+                //assert(0);
+                ok = false;
                 continue;
             }
-            if (R->getReturnValue()->getType()->isPointerTy())
-                assert(0);
-            outs() << "rewriter_args->r_ret = " << known_values[R->getReturnValue()] << ";\n";
+        } else if (auto S = dyn_cast_or_null<StoreInst>(I)) {
+            if (DL.getTypeSizeInBits(S->getPointerOperand()->getType()) != 64) {
+                o << "unknown return type size: " << DL.getTypeSizeInBits(S->getPointerOperand()->getType()) << " " << S->getPointerOperand() << "\n";
+                continue;
+            }
+
+            auto PT = S->getPointerOperand();
+            auto PT_no_casts = PT->stripPointerCasts();
+            if (auto GEP = dyn_cast_or_null<GetElementPtrInst>(PT_no_casts)) {
+                APInt offset(DL.getPointerSizeInBits(GEP->getPointerAddressSpace()), 0);
+                if (!GEP->accumulateConstantOffset(DL, offset)) {
+                    o << "non const gep\n";
+                    continue;
+                }
+
+                std::string v = getValue(o, known_values, S->getValueOperand());
+                if (v.empty())
+                    continue;
+
+                o << "d->setAttr(" << offset.getSExtValue() << ", " << v << ");\n";
+            } else {
+                o << "unhandled\n";
+                //assert(0);
+                ok = false;
+                continue;
+            }
+
+            no_guards_allowed = true;
+
+        } else if (auto R = dyn_cast_or_null<ReturnInst>(I)) {
+            if (!R->getReturnValue())
+                continue;
+
+            std::string v = getValue(o, known_values, R->getReturnValue());
+            if (v.empty())
+                continue;
+            o << "rewrite_args->out_rtn = " << v << ";\n";
+        } else if (auto A = dyn_cast_or_null<AddOperator>(I)) {
+            std::string lhs = getValue(o, known_values, A->getOperand(0));
+            if (lhs.empty())
+                continue;
+            std::string rhs = getValue(o, known_values, A->getOperand(1));
+            if (rhs.empty())
+                continue;
+            auto new_var = "v" + std::to_string(known_values.size() + 1);
+            o << new_var << " = " << lhs << "->add(" << rhs << ");\n";
+            known_values[A] = new_var;
+        } else if (auto C = dyn_cast_or_null<CallInst>(I)) {
+            auto F = C->getCalledFunction();
+            if (!F)
+                continue;
+
+            if (F->getName() != "boxInt") {
+                o << "unknown func " << F->getName() << "\n";
+                continue;
+            }
+
+            std::string op = getValue(o, known_values, C->getOperand(0));
+            if (op.empty())
+                continue;
+
+            auto new_var = "v" + std::to_string(known_values.size() + 1);
+            o << new_var << " = r->call(true, (void*)" << F->getName() << ", { " << op << " });\n";
+            known_values[C] = new_var;
+        } else {
+            ok = false;
+            o << "UNSUPPORTED inst!\n";
         }
     }
-    outs() << "} \n";
-    outs() << "capi_tracer[(void*)" << f->getName() << "] = " << "(void*)rewriter_" << f->getName() << ";\n";
+    o << "} \n";
 
-    return changed;
+
+    return ok;
 }
 
 int main(int argc, char **argv) {
@@ -198,11 +259,26 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    outs() << "llvm::DenseMap<void*, void*> capi_tracer;\n";
 
+    std::string dummy;
+    raw_string_ostream dummy_ostream(dummy);
+    std::vector<llvm::Function*> traced_funcs;
     for (Module::iterator I = M->begin(), E = M->end(); I != E; ++I) {
-        visistFunc(I);
+        if (visitFunc(dummy_ostream, I))
+            traced_funcs.push_back(I);
     }
+    for (auto&& F : traced_funcs) {
+        visitFunc(outs(), F);
+    }
+
+    outs() << "llvm::DenseMap<void*, void*> capi_tracer;\n";
+    outs() << "int __capi_tracer_init_func() {\n";
+    for (auto&& F : traced_funcs) {
+        outs() << "    capi_tracer[(void*)" << F->getName() << "] = " << "(void*)rewriter_" << F->getName() << ";\n";
+    }
+    outs() << "}\nstatic int __capi_tracer_init = __capi_tracer_init_func();\n";
+
+
 
 
     /*
