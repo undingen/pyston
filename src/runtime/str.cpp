@@ -1759,32 +1759,89 @@ static Py_ssize_t str_length(Box* a) noexcept {
 
 extern "C" Py_ssize_t str_length(Box* a) noexcept;
 
-void rewriter_str_length(CallRewriteArgs* rewrite_args, Box* a0) {
-    auto v0 = rewrite_args->obj;
-//   tail call void @llvm.dbg.value(metadata %"class.pyston::Box"* %a, i64 0, metadata !12629, metadata !12630), !dbg
-//   !12631
-//    ignored debug info
-//   %ob_size = getelementptr inbounds %"class.pyston::Box"* %a, i64 1, !dbg !12632
-//    skipping
-//   %0 = bitcast %"class.pyston::Box"* %ob_size to i64*, !dbg !12632
-//    skipping
-//   %1 = load i64* %0, align 8, !dbg !12632
-#ifndef NDEBUG
-    auto v2 = v0->getAttr(32);
-#else
-    auto v2 = v0->getAttr(16);
-#endif
-    //   ret i64 %1, !dbg !12633
-    rewrite_args->out_rtn = v2;
+
+
+Box* rewriter__ZN6pyston19BoxedXrangeIterator18xrangeIteratorNextEPNS_3BoxE(CallRewriteArgs* rewrite_args, Box* v0) {
+    // printf("inside rewriter__ZN6pyston19BoxedXrangeIterator18xrangeIteratorNextEPNS_3BoxE\n");
+    auto r = rewrite_args->rewriter;
+    auto r0 = rewrite_args->obj;
+    //   %1 = getelementptr inbounds %"class.pyston::Box"* %s, i64 2, i32 0
+    //    skipping
+    //   %2 = load i64* %1, align 8, !tbaa !3
+    auto r2 = r0->getAttr(32);
+    auto v2 = ((uint64_t*)v0)[32 / 8];
+    //   %3 = getelementptr inbounds %"class.pyston::Box"* %s, i64 2, i32 1
+    //    skipping
+    //   %4 = bitcast %"class.pyston::BoxedClass"** %3 to i64*
+    //    skipping
+    //   %5 = load i64* %4, align 8, !tbaa !9
+    auto r3 = r0->getAttr(40);
+    auto v3 = ((uint64_t*)v0)[40 / 8];
+    //   %6 = icmp slt i64 %2, %5
+    //    skipping
+    //   br i1 %6, label %_ZN6pyston19BoxedXrangeIterator25xrangeIteratorNextUnboxedEPNS_3BoxE.exit, label %7
+    auto r4 = r2->cmp(r3, assembler::ConditionCode::COND_LESS);
+    auto v4 = v2 < v3;
+    if (v4) {
+        r4->addGuard(1);
+        //   %9 = getelementptr inbounds %"class.pyston::Box"* %s, i64 1, i32 1
+        //    skipping
+        //   %10 = bitcast %"class.pyston::BoxedClass"** %9 to i64*
+        //    skipping
+        //   %11 = load i64* %10, align 8, !tbaa !11
+        auto r5 = r0->getAttr(24);
+        auto v5 = ((uint64_t*)v0)[24 / 8];
+        //   %12 = getelementptr inbounds %"class.pyston::Box"* %s, i64 3, i32 0
+        //    skipping
+        //   %13 = load i64* %12, align 8, !tbaa !12
+        auto r6 = r0->getAttr(48);
+        auto v6 = ((uint64_t*)v0)[48 / 8];
+        //   %14 = add nsw i64 %13, %11
+        auto r7 = r6->add(r5);
+        auto v7 = v6 + v5;
+        //   store i64 %14, i64* %10, align 8, !tbaa !11
+        r0->setAttr(24, r7);
+        ((uint64_t*)v0)[24 / 8] = v7;
+        //   %15 = add nsw i64 %2, 1
+        auto r8 = r2->add(r->loadConst(1));
+        auto v8 = v2 + 1;
+        //   store i64 %15, i64* %1, align 8, !tbaa !3
+        r0->setAttr(32, r8);
+        ((uint64_t*)v0)[32 / 8] = v8;
+
+        //   %16 = tail call %"class.pyston::Box"* @boxInt(i64 %11)
+        auto r9 = r->call(false, (void*)boxInt, { r5 })->setType(RefType::OWNED);
+        auto v9 = boxInt(v5);
+        //   ret %"class.pyston::Box"* %16
+        rewrite_args->out_rtn = r9;
+        return v9;
+    } else {
+        r4->addGuard(0);
+        //   %8 = load %"class.pyston::BoxedClass"** bitcast (%"class.pyston::Box"** @PyExc_StopIteration to
+        //   %"class.pyston::BoxedClass"**), align 8, !tbaa !10
+        assert(0);
+        //   tail call void (%"class.pyston::BoxedClass"*, i8*, ...)*
+        //   @_ZN6pyston14raiseExcHelperEPNS_10BoxedClassEPKcz(%"class.pyston::BoxedClass"* %8, i8* getelementptr
+        //   inbounds ([1 x i8]* @xrange.cpp.bc.str21, i64 0, i64 0)) #16
+        // unknown func _ZN6pyston14raiseExcHelperEPNS_10BoxedClassEPKcz
+        //   unreachable
+        return NULL;
+    }
+    return NULL;
 }
 llvm::DenseMap<void*, void*> capi_tracer;
-
-int __foo() {
-    capi_tracer[(void*)str_length] = (void*)rewriter_str_length;
+extern "C" void* _ZN6pyston19BoxedXrangeIterator18xrangeIteratorNextEPNS_3BoxE;
+int __capi_tracer_init_func() {
+#ifdef NDEBUG
+    printf("%p\n", &_ZN6pyston19BoxedXrangeIterator18xrangeIteratorNextEPNS_3BoxE);
+    capi_tracer[(void*)&_ZN6pyston19BoxedXrangeIterator18xrangeIteratorNextEPNS_3BoxE]
+        = (void*)rewriter__ZN6pyston19BoxedXrangeIterator18xrangeIteratorNextEPNS_3BoxE;
+#endif
     return 42;
 }
+int __capi_tracer_init = __capi_tracer_init_func();
 
-int aa = __foo();
+
 
 Box* strIsAlpha(BoxedString* self) {
     assert(PyString_Check(self));

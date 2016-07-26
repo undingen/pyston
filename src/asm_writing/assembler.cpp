@@ -696,7 +696,27 @@ void Assembler::pop(Register reg) {
     emitByte(0x58 + reg_idx);
 }
 
+void Assembler::add(Register reg1, Register reg2) {
+    int reg1_idx = reg1.regnum;
+    int reg2_idx = reg2.regnum;
 
+    int rex = REX_W;
+    if (reg1_idx >= 8) {
+        rex |= REX_R;
+        reg1_idx -= 8;
+    }
+    if (reg2_idx >= 8) {
+        rex |= REX_B;
+        reg2_idx -= 8;
+    }
+
+    assert(reg1_idx >= 0 && reg1_idx < 8);
+    assert(reg2_idx >= 0 && reg2_idx < 8);
+
+    emitRex(rex);
+    emitByte(0x01);
+    emitModRM(0b11, reg1_idx, reg2_idx);
+}
 
 void Assembler::add(Immediate imm, Register reg) {
     emitArith(imm, reg, OPCODE_ADD);

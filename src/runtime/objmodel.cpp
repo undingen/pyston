@@ -4939,24 +4939,37 @@ Box* callCLFunc(FunctionMetadata* md, CallRewriteArgs* rewrite_args, int num_out
             func_ptr = (void*)capiCallCxxHelper;
         }
 
-        if (closure)
-            arg_vec.push_back(rewrite_args->rewriter->loadConst((intptr_t)closure, Location::forArg(0)));
-        if (globals)
-            arg_vec.push_back(rewrite_args->rewriter->loadConst((intptr_t)globals, Location::forArg(0)));
-        if (num_output_args >= 1)
-            arg_vec.push_back(rewrite_args->arg1);
-        if (num_output_args >= 2)
-            arg_vec.push_back(rewrite_args->arg2);
-        if (num_output_args >= 3)
-            arg_vec.push_back(rewrite_args->arg3);
-        if (num_output_args >= 4)
-            arg_vec.push_back(rewrite_args->args);
+        if (capi_tracer.count(func_ptr) && num_output_args == 1) {
+            CallRewriteArgs new_rewrite_args(rewrite_args->rewriter, rewrite_args->arg1, rewrite_args->destination);
+            typedef Box* (*FuncTy)(CallRewriteArgs*, Box* a);
+            auto f = (FuncTy)capi_tracer[func_ptr];
+            Box* rtn = f(&new_rewrite_args, oarg1);
+            if (new_rewrite_args.out_rtn) {
+                rewrite_args->out_rtn = new_rewrite_args.out_rtn;
+                rewrite_args->rewriter->checkAndThrowCAPIException(rewrite_args->out_rtn);
+                rewrite_args->out_success = true;
+            }
+            return rtn;
+        } else {
+            if (closure)
+                arg_vec.push_back(rewrite_args->rewriter->loadConst((intptr_t)closure, Location::forArg(0)));
+            if (globals)
+                arg_vec.push_back(rewrite_args->rewriter->loadConst((intptr_t)globals, Location::forArg(0)));
+            if (num_output_args >= 1)
+                arg_vec.push_back(rewrite_args->arg1);
+            if (num_output_args >= 2)
+                arg_vec.push_back(rewrite_args->arg2);
+            if (num_output_args >= 3)
+                arg_vec.push_back(rewrite_args->arg3);
+            if (num_output_args >= 4)
+                arg_vec.push_back(rewrite_args->args);
 
-        rewrite_args->out_rtn = rewrite_args->rewriter->call(true, func_ptr, arg_vec)->setType(RefType::OWNED);
-        if (S == CXX && chosen_cf->exception_style == CAPI)
-            rewrite_args->rewriter->checkAndThrowCAPIException(rewrite_args->out_rtn);
+            rewrite_args->out_rtn = rewrite_args->rewriter->call(true, func_ptr, arg_vec)->setType(RefType::OWNED);
+            if (S == CXX && chosen_cf->exception_style == CAPI)
+                rewrite_args->rewriter->checkAndThrowCAPIException(rewrite_args->out_rtn);
 
-        rewrite_args->out_success = true;
+            rewrite_args->out_success = true;
+        }
     }
 
     if (chosen_cf->exception_style != S) {

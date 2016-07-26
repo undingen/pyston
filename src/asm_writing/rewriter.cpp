@@ -641,9 +641,39 @@ RewriterVar* RewriterVar::cmp(RewriterVar* other, assembler::ConditionCode cond)
     STAT_TIMER(t0, "us_timer_rewriter", 10);
 
     RewriterVar* result = rewriter->createNewVar();
-    rewriter->addAction([=]() { rewriter->_cmp(result, this, cond, other); }, { this, other },
-                        ActionType::NORMAL);
+    rewriter->addAction([=]() { rewriter->_cmp(result, other, cond, this); }, { this, other }, ActionType::NORMAL);
     return result;
+}
+
+RewriterVar* RewriterVar::add(RewriterVar* other) {
+    STAT_TIMER(t0, "us_timer_rewriter", 10);
+
+    RewriterVar* result = rewriter->createNewVar();
+    rewriter->addAction([=]() { rewriter->_add(result, this, other); }, { this, other }, ActionType::NORMAL);
+    return result;
+}
+
+void Rewriter::_add(RewriterVar* result, RewriterVar* v1, RewriterVar* v2) {
+    if (LOG_IC_ASSEMBLY)
+        assembler->comment("_cmp");
+
+    assembler::Register v1_reg = v1->getInReg(Location::any(), false);
+    assembler::Register v2_reg = v2->getInReg(Location::any(), false, v1_reg);
+
+    v1->bumpUseEarlyIfPossible();
+    v2->bumpUseEarlyIfPossible();
+
+    if (vars_by_location[v1_reg])
+        spillRegister(v1_reg);
+
+    result->initializeInReg(v1_reg);
+    assembler->add(v2_reg, v1_reg);
+
+    v1->bumpUseLateIfNecessary();
+    v2->bumpUseLateIfNecessary();
+
+    result->releaseIfNoUses();
+    assertConsistent();
 }
 
 
@@ -992,7 +1022,7 @@ RewriterVar* Rewriter::call(bool has_side_effects, void* func_addr, llvm::ArrayR
                             llvm::ArrayRef<RewriterVar*> args_xmm, llvm::ArrayRef<RewriterVar*> additional_uses) {
     STAT_TIMER(t0, "us_timer_rewriter", 10);
 
-
+    /*
     if (capi_tracer.count(func_addr) && args.size() == 1) {
         CallRewriteArgs rewrite_args(this, args[0], getReturnDestination());
         typedef void (*FuncTy)(CallRewriteArgs*, Box* a);
@@ -1000,7 +1030,7 @@ RewriterVar* Rewriter::call(bool has_side_effects, void* func_addr, llvm::ArrayR
         f(&rewrite_args, NULL);
         return rewrite_args.out_rtn;
     }
-
+    */
 
     RewriterVar* result = createNewVar();
 

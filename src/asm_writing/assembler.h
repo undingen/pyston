@@ -149,6 +149,7 @@ public:
     void push(Register reg);
     void pop(Register reg);
 
+    void add(Register reg1, Register reg2);
     void add(Immediate imm, Register reg);
     void add(Immediate imm, Indirect mem);
     void sub(Immediate imm, Register reg);

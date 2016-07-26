@@ -569,6 +569,7 @@ protected:
     void _cmp(RewriterVar* result, RewriterVar* var1, AST_TYPE::AST_TYPE cmp_type, RewriterVar* var2,
               Location loc = Location::any());
     void _cmp(RewriterVar* result, RewriterVar* v1, assembler::ConditionCode cond, RewriterVar* v2);
+    void _add(RewriterVar* result, RewriterVar* v1, RewriterVar* v2);
     void _toBool(RewriterVar* result, RewriterVar* var, Location loc = Location::any());
 
     // These do not call bumpUse on their arguments:
