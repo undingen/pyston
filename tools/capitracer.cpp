@@ -73,64 +73,27 @@ std::string getValue(llvm::raw_ostream& o, llvm::DenseMap<Value*, std::string>& 
 }
 
 
-bool visitFunc(llvm::raw_ostream& o, Function* f) {
-    bool ok = true;
+void visitBB(int level, llvm::raw_ostream& o, BasicBlock* bb, DataLayout& DL, bool& no_guards_allowed, bool& ok, llvm::DenseMap<Value*, std::string>& known_values) {
+    for (llvm::Instruction& II : *bb) {
+        llvm::Instruction* I = &II;
 
-    LLVMContext &c = f->getContext();
-
-
-    //if (f->getName().find("xrangeIteratorNext") == -1)
-    //   return changed;
-
-    //if (f->getName() != "str_length")
-    //    return changed;
-
-    // f->print(o);
-
-
-    o << "\n\nvoid rewriter_" << f->getName() << "(CallRewriteArgs* rewrite_args";
-
-    llvm::DenseMap<Value*, std::string> known_values;
-    int i = 0;
-    for (auto&& arg : f->args()) {
-        o << ", Box* a" + std::to_string(i++);
-    }
-    o << ") {\n";
-    o << "auto r = rewrite_args->rewriter;\n";
-
-    for (auto&& arg : f->args()) {
-        auto name = "v" + std::to_string(known_values.size());;
-        known_values[&arg] = name;
-        if (known_values.size() == 1)
-            o << "auto " << name << " = rewrite_args->obj;\n";
-        else
-            o << "auto " << name << " = rewrite_args->arg" << std::to_string(known_values.size()-1) << ";\n";
-    }
-
-    auto DL = *f->getDataLayout();
-
-    bool no_guards_allowed = false;
-
-    for (auto it = inst_begin(f), end = inst_end(f); it != end; ++it) {
-        Instruction* I = &*it;
-
-        o << "// " << *I << "\n";
+        o.indent(level) <<"// " << *I << "\n";
 
 
         if (isa<DbgInfoIntrinsic>(I)) {
-            o << "//    ignored debug info\n";
+            o.indent(level) << "//    ignored debug info\n";
             continue;
         } else if (auto GEP = dyn_cast_or_null<GetElementPtrInst>(I)) {
-            o << "//    skipping\n";
+            o.indent(level) << "//    skipping\n";
             continue;
         }
         else if (auto BC = dyn_cast_or_null<BitCastInst>(I)) {
-            o << "//    skipping\n";
+            o.indent(level) << "//    skipping\n";
             continue;
         }
         else if (auto L = dyn_cast_or_null<LoadInst>(I)) {
             if (DL.getTypeSizeInBits(L->getType()) != 64) {
-                o << "unknown return type size: " << DL.getTypeSizeInBits(L->getType()) << " " << L->getType() << "\n";
+                o.indent(level) << "unknown return type size: " << DL.getTypeSizeInBits(L->getType()) << " " << L->getType() << "\n";
                 continue;
             }
 
@@ -143,29 +106,29 @@ bool visitFunc(llvm::raw_ostream& o, Function* f) {
 
                 //if (GEP->getType()->getElementType() != llvm::Type::getInt64Ty(c)) {
                 if (DL.getPointerTypeSizeInBits(GEP->getType()) != 64) {
-                    o << "unknown return type: " << DL.getPointerTypeSizeInBits(GEP->getType()) << " " << GEP->getType() << "\n";
+                    o.indent(level) << "unknown return type: " << DL.getPointerTypeSizeInBits(GEP->getType()) << " " << GEP->getType() << "\n";
                     continue;
                 }
 
                 APInt offset(DL.getPointerSizeInBits(GEP->getPointerAddressSpace()), 0);
                 if (!GEP->accumulateConstantOffset(DL, offset)) {
-                    o << "non const gep\n";
+                    o.indent(level) << "non const gep\n";
                     continue;
                 }
 
                 auto new_var = "v" + std::to_string(known_values.size() + 1);
-                o << "auto " << new_var << " = " << v << "->getAttr(" << offset.getSExtValue() << "" << ");\n";
+                o.indent(level) << "auto " << new_var << " = " << v << "->getAttr(" << offset.getSExtValue() << "" << ");\n";
 
                 known_values[L] = new_var;
             } else {
-                o  << "unhandled\n";
+                o.indent(level)  << "unhandled\n";
                 //assert(0);
                 ok = false;
                 continue;
             }
         } else if (auto S = dyn_cast_or_null<StoreInst>(I)) {
             if (DL.getTypeSizeInBits(S->getPointerOperand()->getType()) != 64) {
-                o << "unknown return type size: " << DL.getTypeSizeInBits(S->getPointerOperand()->getType()) << " " << S->getPointerOperand() << "\n";
+                o.indent(level) << "unknown return type size: " << DL.getTypeSizeInBits(S->getPointerOperand()->getType()) << " " << S->getPointerOperand() << "\n";
                 continue;
             }
 
@@ -174,7 +137,7 @@ bool visitFunc(llvm::raw_ostream& o, Function* f) {
             if (auto GEP = dyn_cast_or_null<GetElementPtrInst>(PT_no_casts)) {
                 APInt offset(DL.getPointerSizeInBits(GEP->getPointerAddressSpace()), 0);
                 if (!GEP->accumulateConstantOffset(DL, offset)) {
-                    o << "non const gep\n";
+                    o.indent(level) << "non const gep\n";
                     continue;
                 }
 
@@ -182,9 +145,9 @@ bool visitFunc(llvm::raw_ostream& o, Function* f) {
                 if (v.empty())
                     continue;
 
-                o << "d->setAttr(" << offset.getSExtValue() << ", " << v << ");\n";
+                o.indent(level) << "d->setAttr(" << offset.getSExtValue() << ", " << v << ");\n";
             } else {
-                o << "unhandled\n";
+                o.indent(level) << "unhandled\n";
                 //assert(0);
                 ok = false;
                 continue;
@@ -199,7 +162,7 @@ bool visitFunc(llvm::raw_ostream& o, Function* f) {
             std::string v = getValue(o, known_values, R->getReturnValue());
             if (v.empty())
                 continue;
-            o << "rewrite_args->out_rtn = " << v << ";\n";
+            o.indent(level) << "rewrite_args->out_rtn = " << v << ";\n";
         } else if (auto A = dyn_cast_or_null<AddOperator>(I)) {
             std::string lhs = getValue(o, known_values, A->getOperand(0));
             if (lhs.empty())
@@ -208,7 +171,7 @@ bool visitFunc(llvm::raw_ostream& o, Function* f) {
             if (rhs.empty())
                 continue;
             auto new_var = "v" + std::to_string(known_values.size() + 1);
-            o << new_var << " = " << lhs << "->add(" << rhs << ");\n";
+            o.indent(level) << new_var << " = " << lhs << "->add(" << rhs << ");\n";
             known_values[A] = new_var;
         } else if (auto C = dyn_cast_or_null<CallInst>(I)) {
             auto F = C->getCalledFunction();
@@ -216,7 +179,7 @@ bool visitFunc(llvm::raw_ostream& o, Function* f) {
                 continue;
 
             if (F->getName() != "boxInt") {
-                o << "unknown func " << F->getName() << "\n";
+                o.indent(level) << "unknown func " << F->getName() << "\n";
                 continue;
             }
 
@@ -225,17 +188,76 @@ bool visitFunc(llvm::raw_ostream& o, Function* f) {
                 continue;
 
             auto new_var = "v" + std::to_string(known_values.size() + 1);
-            o << new_var << " = r->call(true, (void*)" << F->getName() << ", { " << op << " });\n";
+            o.indent(level) << new_var << " = r->call(true, (void*)" << F->getName() << ", { " << op << " });\n";
             known_values[C] = new_var;
+
+        } else if (auto B = dyn_cast_or_null<BranchInst>(I)) {
+            if (!B->isConditional())
+                continue;
+
+            auto btrue = B->getSuccessor(0);
+            o.indent(level) << "{ // " << btrue->getName() << "\n";
+            visitBB(level + 4, o, btrue, DL, no_guards_allowed, ok, known_values);
+            o.indent(level) << "}\n";
+
+
+            auto bfalse = B->getSuccessor(1);
+            o.indent(level) << "{ // " << bfalse->getName() << "\n";
+            visitBB(level + 4, o, bfalse, DL, no_guards_allowed, ok, known_values);
+            o.indent(level) << "}\n";
+
         } else {
             ok = false;
-            o << "UNSUPPORTED inst!\n";
+            o.indent(level) << "UNSUPPORTED inst!\n";
         }
     }
+}
+
+bool visitFunc(llvm::raw_ostream& o, Function* f) {
+    bool ok = true;
+
+    LLVMContext &c = f->getContext();
+
+
+    if (f->getName().find("xrangeIteratorNext") == -1)
+       return false;
+
+    //if (f->getName() != "str_length")
+    //    return changed;
+
+    f->print(o);
+
+
+    o << "\n\nvoid rewriter_" << f->getName() << "(CallRewriteArgs* rewrite_args";
+
+    llvm::DenseMap<Value*, std::string> known_values;
+    int i = 0;
+    for (auto&& arg : f->args()) {
+        o << ", Box* a" + std::to_string(i++);
+    }
+    o << ") {\n";
+    o.indent(4) << "auto r = rewrite_args->rewriter;\n";
+
+    for (auto&& arg : f->args()) {
+        auto name = "v" + std::to_string(known_values.size());;
+        known_values[&arg] = name;
+        if (known_values.size() == 1)
+            o.indent(4) << "auto " << name << " = rewrite_args->obj;\n";
+        else
+            o.indent(4) << "auto " << name << " = rewrite_args->arg" << std::to_string(known_values.size()-1) << ";\n";
+    }
+
+    auto DL = *f->getDataLayout();
+    bool no_guards_allowed = false;
+
+    for (auto&& bb : *f) {
+        visitBB(4, o, &bb, DL, no_guards_allowed, ok, known_values);
+    }
+
     o << "} \n";
 
 
-    return ok;
+    return true;
 }
 
 int main(int argc, char **argv) {
