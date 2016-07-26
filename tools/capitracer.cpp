@@ -143,7 +143,7 @@ void visitBB(int level, llvm::raw_ostream& o, BasicBlock* bb, DataLayout& DL, bo
 
                 auto new_var = std::to_string(known_values.size() + 1);
                 o.indent(level) << "auto r" << new_var << " = " << v.first << "->getAttr(" << offset.getSExtValue() << ");\n";
-                o.indent(level) << "auto v" << new_var << " = " << v.second << "[" << offset.getSExtValue() << "];\n";
+                o.indent(level) << "auto v" << new_var << " = " << v.second << "[" << offset.getSExtValue() << "/8];\n";
 
                 known_values[L] = std::make_pair("r" + new_var, "v" + new_var);
             } else {
@@ -167,12 +167,16 @@ void visitBB(int level, llvm::raw_ostream& o, BasicBlock* bb, DataLayout& DL, bo
                     continue;
                 }
 
+                auto d = getValue(o, known_values, GEP->getPointerOperand());
+                if (d.first.empty())
+                    continue;
+
                 auto v = getValue(o, known_values, S->getValueOperand());
                 if (v.first.empty())
                     continue;
 
-                o.indent(level) << "d->setAttr(" << offset.getSExtValue() << ", " << v.first << ");\n";
-                o.indent(level) << "d[" << offset.getSExtValue() << "] = " << v.second << ";\n";
+                o.indent(level) << d.first << "->setAttr(" << offset.getSExtValue() << ", " << v.first << ");\n";
+                o.indent(level) << d.second << "[" << offset.getSExtValue() << "/8] = " << v.second << ";\n";
             } else {
                 o.indent(level) << "unhandled\n";
                 //assert(0);
@@ -200,8 +204,8 @@ void visitBB(int level, llvm::raw_ostream& o, BasicBlock* bb, DataLayout& DL, bo
             if (rhs.first.empty())
                 continue;
             auto new_var = std::to_string(known_values.size() + 1);
-            o.indent(level) << "r" << new_var << " = " << lhs.first << "->add(" << rhs.first << ");\n";
-            o.indent(level) << "v" << new_var << " = " << lhs.second << " + " << rhs.second << ";\n";
+            o.indent(level) << "auto r" << new_var << " = " << lhs.first << "->add(" << rhs.first << ");\n";
+            o.indent(level) << "auto v" << new_var << " = " << lhs.second << " + " << rhs.second << ";\n";
             known_values[A] = std::make_pair("r" + new_var, "v" + new_var);
         } else if (auto C = dyn_cast_or_null<CallInst>(I)) {
             auto F = C->getCalledFunction();
@@ -218,8 +222,8 @@ void visitBB(int level, llvm::raw_ostream& o, BasicBlock* bb, DataLayout& DL, bo
                 continue;
 
             auto new_var = std::to_string(known_values.size() + 1);
-            o.indent(level) << "r" << new_var << " = r->call(true, (void*)" << F->getName() << ", { " << op.first << " });\n";
-            o.indent(level) << "v" << new_var << " = " << F->getName() << "(" << op.second << ");\n";
+            o.indent(level) << "auto r" << new_var << " = r->call(true, (void*)" << F->getName() << ", { " << op.first << " });\n";
+            o.indent(level) << "auto v" << new_var << " = " << F->getName() << "(" << op.second << ");\n";
             known_values[C] = std::make_pair("r" + new_var, "v" + new_var);
 
         } else if (auto B = dyn_cast_or_null<BranchInst>(I)) {
@@ -243,11 +247,11 @@ void visitBB(int level, llvm::raw_ostream& o, BasicBlock* bb, DataLayout& DL, bo
                 continue;
 
             auto new_var = std::to_string(known_values.size() + 1);
-            o.indent(level) << "r" << new_var << " = " << lhs.first << "->cmp(" << rhs.first << ", " << getPredicate(ICMP->getPredicate()) << ");\n";
-            o.indent(level) << "v" << new_var << " = " << lhs.second << " " << getPredicateCpp(ICMP->getPredicate()) << " " << rhs.second << ";\n";
+            o.indent(level) << "auto r" << new_var << " = " << lhs.first << "->cmp(" << rhs.first << ", " << getPredicate(ICMP->getPredicate()) << ");\n";
+            o.indent(level) << "auto v" << new_var << " = " << lhs.second << " " << getPredicateCpp(ICMP->getPredicate()) << " " << rhs.second << ";\n";
             known_values[C] = std::make_pair("r" + new_var, "v" + new_var);
 
-            o.indent(level) << "if ()\n";
+            o.indent(level) << "if (v" << new_var << ")\n";
 
             auto btrue = B->getSuccessor(0);
             o.indent(level) << "{\n";
@@ -277,11 +281,11 @@ bool visitFunc(llvm::raw_ostream& o, Function* f) {
     LLVMContext &c = f->getContext();
 
 
-    //if (f->getName().find("xrangeIteratorNext") == -1)
-    //   return false;
+    if (f->getName().find("xrangeIteratorNext") == -1)
+       return false;
 
-    if (f->getName() != "str_length")
-        return false;
+    //if (f->getName() != "str_length")
+    //    return false;
 
     f->print(o);
 
