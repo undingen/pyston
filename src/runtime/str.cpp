@@ -1760,8 +1760,9 @@ static Py_ssize_t str_length(Box* a) noexcept {
 extern "C" Py_ssize_t str_length(Box* a) noexcept;
 
 void rewriter_str_length(CallRewriteArgs* rewrite_args, Box* a0) {
-auto v0 = rewrite_args->obj;
-//   tail call void @llvm.dbg.value(metadata %"class.pyston::Box"* %a, i64 0, metadata !12629, metadata !12630), !dbg !12631
+    auto v0 = rewrite_args->obj;
+//   tail call void @llvm.dbg.value(metadata %"class.pyston::Box"* %a, i64 0, metadata !12629, metadata !12630), !dbg
+//   !12631
 //    ignored debug info
 //   %ob_size = getelementptr inbounds %"class.pyston::Box"* %a, i64 1, !dbg !12632
 //    skipping
@@ -1769,12 +1770,12 @@ auto v0 = rewrite_args->obj;
 //    skipping
 //   %1 = load i64* %0, align 8, !dbg !12632
 #ifndef NDEBUG
-auto v2 = v0->getAttr(32);
+    auto v2 = v0->getAttr(32);
 #else
-auto v2 = v0->getAttr(16);
+    auto v2 = v0->getAttr(16);
 #endif
-//   ret i64 %1, !dbg !12633
-rewrite_args->out_rtn = v2;
+    //   ret i64 %1, !dbg !12633
+    rewrite_args->out_rtn = v2;
 }
 llvm::DenseMap<void*, void*> capi_tracer;
 

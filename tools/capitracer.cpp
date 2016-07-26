@@ -60,20 +60,41 @@ void printLambda(std::string code, std::string vars, std::string type = "MUTATIO
     outs() << "rewrite_args->rewriter->addAction([&](){ auto a = rewrite_args->rewriter->assembler;\n" << code << " }, " << vars << ", ActionType::" << type << ");";
 }
 
-std::string getValue(llvm::raw_ostream& o, llvm::DenseMap<Value*, std::string>& known_values, Value* v) {
+std::pair<std::string, std::string> getValue(llvm::raw_ostream& o, llvm::DenseMap<Value*, std::pair<std::string, std::string>>& known_values, Value* v) {
     if (!known_values.count(v)) {
         if (auto I = dyn_cast_or_null<ConstantInt>(v)) {
-            return "r->loadConstant(" + std::to_string(I->getSExtValue()) + ")";
+            return std::make_pair("r->loadConstant(" + std::to_string(I->getSExtValue()) + ")", std::to_string(I->getSExtValue()));
         }
 
         o << "unknown value: " << v << "\n";
-        return std::string("");
+        return std::make_pair(std::string(""), std::string(""));
     }
     return known_values[v];
 }
 
+std::string getPredicate(CmpInst::Predicate pred) {
+    if (pred == CmpInst::ICMP_EQ)
+        return "assembler::ConditionCode::COND_EQUAL";
+    else if (pred == CmpInst::ICMP_NE)
+        return "assembler::ConditionCode::COND_NOT_EQUAL";
+    else if (pred == CmpInst::ICMP_SLT)
+        return "assembler::ConditionCode::COND_LESS";
+    assert(0);
+    return "";
+}
+std::string getPredicateCpp(CmpInst::Predicate pred) {
+    if (pred == CmpInst::ICMP_EQ)
+        return "==";
+    else if (pred == CmpInst::ICMP_NE)
+        return "!=";
+    else if (pred == CmpInst::ICMP_SLT)
+        return "<";
+    assert(0);
+    return "";
+}
 
-void visitBB(int level, llvm::raw_ostream& o, BasicBlock* bb, DataLayout& DL, bool& no_guards_allowed, bool& ok, llvm::DenseMap<Value*, std::string>& known_values) {
+
+void visitBB(int level, llvm::raw_ostream& o, BasicBlock* bb, DataLayout& DL, bool& no_guards_allowed, bool& ok, llvm::DenseMap<Value*, std::pair<std::string, std::string>>& known_values) {
     for (llvm::Instruction& II : *bb) {
         llvm::Instruction* I = &II;
 
@@ -91,6 +112,10 @@ void visitBB(int level, llvm::raw_ostream& o, BasicBlock* bb, DataLayout& DL, bo
             o.indent(level) << "//    skipping\n";
             continue;
         }
+        else if (auto ICMP = dyn_cast_or_null<ICmpInst>(I)) {
+            o.indent(level) << "//    skipping\n";
+            continue;
+        }
         else if (auto L = dyn_cast_or_null<LoadInst>(I)) {
             if (DL.getTypeSizeInBits(L->getType()) != 64) {
                 o.indent(level) << "unknown return type size: " << DL.getTypeSizeInBits(L->getType()) << " " << L->getType() << "\n";
@@ -100,8 +125,8 @@ void visitBB(int level, llvm::raw_ostream& o, BasicBlock* bb, DataLayout& DL, bo
             auto PT = L->getPointerOperand();
             auto PT_no_casts = PT->stripPointerCasts();
             if (auto GEP = dyn_cast_or_null<GetElementPtrInst>(PT_no_casts)) {
-                std::string v = getValue(o, known_values, GEP->getPointerOperand());
-                if (v.empty())
+                auto v = getValue(o, known_values, GEP->getPointerOperand());
+                if (v.first.empty())
                     continue;
 
                 //if (GEP->getType()->getElementType() != llvm::Type::getInt64Ty(c)) {
@@ -116,10 +141,11 @@ void visitBB(int level, llvm::raw_ostream& o, BasicBlock* bb, DataLayout& DL, bo
                     continue;
                 }
 
-                auto new_var = "v" + std::to_string(known_values.size() + 1);
-                o.indent(level) << "auto " << new_var << " = " << v << "->getAttr(" << offset.getSExtValue() << "" << ");\n";
+                auto new_var = std::to_string(known_values.size() + 1);
+                o.indent(level) << "auto r" << new_var << " = " << v.first << "->getAttr(" << offset.getSExtValue() << ");\n";
+                o.indent(level) << "auto v" << new_var << " = " << v.second << "[" << offset.getSExtValue() << "];\n";
 
-                known_values[L] = new_var;
+                known_values[L] = std::make_pair("r" + new_var, "v" + new_var);
             } else {
                 o.indent(level)  << "unhandled\n";
                 //assert(0);
@@ -141,11 +167,12 @@ void visitBB(int level, llvm::raw_ostream& o, BasicBlock* bb, DataLayout& DL, bo
                     continue;
                 }
 
-                std::string v = getValue(o, known_values, S->getValueOperand());
-                if (v.empty())
+                auto v = getValue(o, known_values, S->getValueOperand());
+                if (v.first.empty())
                     continue;
 
-                o.indent(level) << "d->setAttr(" << offset.getSExtValue() << ", " << v << ");\n";
+                o.indent(level) << "d->setAttr(" << offset.getSExtValue() << ", " << v.first << ");\n";
+                o.indent(level) << "d[" << offset.getSExtValue() << "] = " << v.second << ";\n";
             } else {
                 o.indent(level) << "unhandled\n";
                 //assert(0);
@@ -159,20 +186,23 @@ void visitBB(int level, llvm::raw_ostream& o, BasicBlock* bb, DataLayout& DL, bo
             if (!R->getReturnValue())
                 continue;
 
-            std::string v = getValue(o, known_values, R->getReturnValue());
-            if (v.empty())
+            auto v = getValue(o, known_values, R->getReturnValue());
+            if (v.first.empty())
                 continue;
-            o.indent(level) << "rewrite_args->out_rtn = " << v << ";\n";
+            o.indent(level) << "rewrite_args->out_rtn = " << v.first << ";\n";
+            o.indent(level) << "return " << v.second << ";\n";
+            break;
         } else if (auto A = dyn_cast_or_null<AddOperator>(I)) {
-            std::string lhs = getValue(o, known_values, A->getOperand(0));
-            if (lhs.empty())
+            auto lhs = getValue(o, known_values, A->getOperand(0));
+            if (lhs.first.empty())
                 continue;
-            std::string rhs = getValue(o, known_values, A->getOperand(1));
-            if (rhs.empty())
+            auto rhs = getValue(o, known_values, A->getOperand(1));
+            if (rhs.first.empty())
                 continue;
-            auto new_var = "v" + std::to_string(known_values.size() + 1);
-            o.indent(level) << new_var << " = " << lhs << "->add(" << rhs << ");\n";
-            known_values[A] = new_var;
+            auto new_var = std::to_string(known_values.size() + 1);
+            o.indent(level) << "r" << new_var << " = " << lhs.first << "->add(" << rhs.first << ");\n";
+            o.indent(level) << "v" << new_var << " = " << lhs.second << " + " << rhs.second << ";\n";
+            known_values[A] = std::make_pair("r" + new_var, "v" + new_var);
         } else if (auto C = dyn_cast_or_null<CallInst>(I)) {
             auto F = C->getCalledFunction();
             if (!F)
@@ -183,29 +213,57 @@ void visitBB(int level, llvm::raw_ostream& o, BasicBlock* bb, DataLayout& DL, bo
                 continue;
             }
 
-            std::string op = getValue(o, known_values, C->getOperand(0));
-            if (op.empty())
+            auto op = getValue(o, known_values, C->getOperand(0));
+            if (op.first.empty())
                 continue;
 
-            auto new_var = "v" + std::to_string(known_values.size() + 1);
-            o.indent(level) << new_var << " = r->call(true, (void*)" << F->getName() << ", { " << op << " });\n";
-            known_values[C] = new_var;
+            auto new_var = std::to_string(known_values.size() + 1);
+            o.indent(level) << "r" << new_var << " = r->call(true, (void*)" << F->getName() << ", { " << op.first << " });\n";
+            o.indent(level) << "v" << new_var << " = " << F->getName() << "(" << op.second << ");\n";
+            known_values[C] = std::make_pair("r" + new_var, "v" + new_var);
 
         } else if (auto B = dyn_cast_or_null<BranchInst>(I)) {
-            if (!B->isConditional())
+            if (!B->isConditional()) {
+                o.indent(level) << "we only support conditional branches for now\n";
+                continue;
+            }
+
+            auto cond = B->getCondition();
+            auto ICMP = dyn_cast_or_null<ICmpInst>(cond);
+            if (!ICMP) {
+                o.indent(level) << "we only support icmp branches for now " << cond << "\n";
+                continue;
+            }
+
+            auto lhs = getValue(o, known_values, ICMP->getOperand(0));
+            if (lhs.first.empty())
+                continue;
+            auto rhs = getValue(o, known_values, ICMP->getOperand(1));
+            if (rhs.first.empty())
                 continue;
 
+            auto new_var = std::to_string(known_values.size() + 1);
+            o.indent(level) << "r" << new_var << " = " << lhs.first << "->cmp(" << rhs.first << ", " << getPredicate(ICMP->getPredicate()) << ");\n";
+            o.indent(level) << "v" << new_var << " = " << lhs.second << " " << getPredicateCpp(ICMP->getPredicate()) << " " << rhs.second << ";\n";
+            known_values[C] = std::make_pair("r" + new_var, "v" + new_var);
+
+            o.indent(level) << "if ()\n";
+
             auto btrue = B->getSuccessor(0);
-            o.indent(level) << "{ // " << btrue->getName() << "\n";
+            o.indent(level) << "{\n";
+            o.indent(level + 4) << "r" << new_var << "->addGuardNot(0);\n";
             visitBB(level + 4, o, btrue, DL, no_guards_allowed, ok, known_values);
-            o.indent(level) << "}\n";
+            o.indent(level) << "} else {\n";
 
 
             auto bfalse = B->getSuccessor(1);
-            o.indent(level) << "{ // " << bfalse->getName() << "\n";
+            o.indent(level + 4) << "r" << new_var << "->addGuard(0);\n";
             visitBB(level + 4, o, bfalse, DL, no_guards_allowed, ok, known_values);
             o.indent(level) << "}\n";
-
+            break;
+        } else if (auto U = dyn_cast_or_null<UnreachableInst>(I)) {
+            o.indent(level) << "return;\n";
+            break;
         } else {
             ok = false;
             o.indent(level) << "UNSUPPORTED inst!\n";
@@ -219,40 +277,41 @@ bool visitFunc(llvm::raw_ostream& o, Function* f) {
     LLVMContext &c = f->getContext();
 
 
-    if (f->getName().find("xrangeIteratorNext") == -1)
-       return false;
+    //if (f->getName().find("xrangeIteratorNext") == -1)
+    //   return false;
 
-    //if (f->getName() != "str_length")
-    //    return changed;
+    if (f->getName() != "str_length")
+        return false;
 
     f->print(o);
 
 
     o << "\n\nvoid rewriter_" << f->getName() << "(CallRewriteArgs* rewrite_args";
 
-    llvm::DenseMap<Value*, std::string> known_values;
+    llvm::DenseMap<Value*, std::pair<std::string, std::string>> known_values;
     int i = 0;
     for (auto&& arg : f->args()) {
-        o << ", Box* a" + std::to_string(i++);
+        o << ", Box* v" + std::to_string(i++);
     }
     o << ") {\n";
     o.indent(4) << "auto r = rewrite_args->rewriter;\n";
 
     for (auto&& arg : f->args()) {
-        auto name = "v" + std::to_string(known_values.size());;
-        known_values[&arg] = name;
+        auto name = std::to_string(known_values.size());
+        known_values[&arg] = std::make_pair("r" + name, "v" + name);
         if (known_values.size() == 1)
-            o.indent(4) << "auto " << name << " = rewrite_args->obj;\n";
+            o.indent(4) << "auto r" << name << " = rewrite_args->obj;\n";
         else
-            o.indent(4) << "auto " << name << " = rewrite_args->arg" << std::to_string(known_values.size()-1) << ";\n";
+            o.indent(4) << "auto r" << name << " = rewrite_args->arg" << std::to_string(known_values.size()-1) << ";\n";
     }
 
     auto DL = *f->getDataLayout();
     bool no_guards_allowed = false;
 
-    for (auto&& bb : *f) {
-        visitBB(4, o, &bb, DL, no_guards_allowed, ok, known_values);
-    }
+    //for (auto&& bb : *f) {
+    //    visitBB(4, o, &bb, DL, no_guards_allowed, ok, known_values);
+    //}
+    visitBB(4, o, &f->getEntryBlock(), DL, no_guards_allowed, ok, known_values);
 
     o << "} \n";
 

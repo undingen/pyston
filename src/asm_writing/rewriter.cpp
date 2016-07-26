@@ -637,6 +637,16 @@ RewriterVar* RewriterVar::cmp(AST_TYPE::AST_TYPE cmp_type, RewriterVar* other, L
     return result;
 }
 
+RewriterVar* RewriterVar::cmp(RewriterVar* other, assembler::ConditionCode cond) {
+    STAT_TIMER(t0, "us_timer_rewriter", 10);
+
+    RewriterVar* result = rewriter->createNewVar();
+    rewriter->addAction([=]() { rewriter->_cmp(result, this, cond, other); }, { this, other },
+                        ActionType::NORMAL);
+    return result;
+}
+
+
 void Rewriter::_cmp(RewriterVar* result, RewriterVar* v1, AST_TYPE::AST_TYPE cmp_type, RewriterVar* v2, Location dest) {
     if (LOG_IC_ASSEMBLY)
         assembler->comment("_cmp");
@@ -664,6 +674,33 @@ void Rewriter::_cmp(RewriterVar* result, RewriterVar* v1, AST_TYPE::AST_TYPE cmp
         default:
             RELEASE_ASSERT(0, "%d", cmp_type);
     }
+
+    v1->bumpUseLateIfNecessary();
+    v2->bumpUseLateIfNecessary();
+
+    result->releaseIfNoUses();
+    assertConsistent();
+}
+
+void Rewriter::_cmp(RewriterVar* result, RewriterVar* v1, assembler::ConditionCode cond, RewriterVar* v2) {
+    if (LOG_IC_ASSEMBLY)
+        assembler->comment("_cmp");
+
+    assembler::Register v1_reg = v1->getInReg(Location::any(), false, assembler::RAX);
+    assembler::Register v2_reg = v2->getInReg(Location::any(), false, assembler::RAX);
+    assert(v1_reg != v2_reg); // TODO how do we ensure this?
+
+    v1->bumpUseEarlyIfPossible();
+    v2->bumpUseEarlyIfPossible();
+
+    // sete and setne has special register requirements
+    auto set_inst_valid_registers = assembler::RAX | assembler::RBX | assembler::RCX | assembler::RDX;
+    auto valid_registers = set_inst_valid_registers & allocatable_regs;
+    assembler::Register newvar_reg = allocReg(assembler::RAX, Location::any(), valid_registers);
+    result->initializeInReg(newvar_reg);
+    assembler->clear_reg(newvar_reg);
+    assembler->cmp(v1_reg, v2_reg);
+    assembler->set_cond(newvar_reg, cond);
 
     v1->bumpUseLateIfNecessary();
     v2->bumpUseLateIfNecessary();

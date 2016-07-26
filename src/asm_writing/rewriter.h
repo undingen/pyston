@@ -177,6 +177,9 @@ public:
     void replaceAttr(int offset, RewriterVar* new_val, bool prev_nullable);
 
     RewriterVar* cmp(AST_TYPE::AST_TYPE cmp_type, RewriterVar* other, Location loc = Location::any());
+
+    RewriterVar* cmp(RewriterVar* other, assembler::ConditionCode cond);
+
     RewriterVar* toBool(Location loc = Location::any());
     RewriterVar* add(RewriterVar* other);
 
@@ -565,6 +568,7 @@ protected:
     void _setAttr(RewriterVar* var, int offset, RewriterVar* other);
     void _cmp(RewriterVar* result, RewriterVar* var1, AST_TYPE::AST_TYPE cmp_type, RewriterVar* var2,
               Location loc = Location::any());
+    void _cmp(RewriterVar* result, RewriterVar* v1, assembler::ConditionCode cond, RewriterVar* v2);
     void _toBool(RewriterVar* result, RewriterVar* var, Location loc = Location::any());
 
     // These do not call bumpUse on their arguments:
