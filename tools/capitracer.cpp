@@ -15,6 +15,8 @@
 #include <cstdio>
 #include <iostream>
 #include <unordered_map>
+#include <unordered_set>
+#include <list>
 
 #include "llvm/ADT/Triple.h"
 #include "llvm/Analysis/Passes.h"
@@ -114,12 +116,31 @@ std::pair<std::string, std::string> getOpcodeStr(BinaryOperator::BinaryOps op) {
     return std::make_pair(std::string(), std::string());
 }
 
+std::list<BasicBlock*> bbs_to_visit;
+std::unordered_set<BasicBlock*> blocks_visited;
 llvm::DenseMap<BasicBlock*, std::string> bbs;
 void visitBB(int level, llvm::raw_ostream& o, BasicBlock* bb, DataLayout& DL, bool& no_guards_allowed, bool& ok, llvm::DenseMap<Value*, std::pair<std::string, std::string>>& known_values) {
-    std::string bb_name = "bb_" + std::to_string(bbs.size());
-    o.indent(level) << bb_name << ":\n";
-    assert(!bbs.count(bb));
-    bbs[bb] = bb_name;
+    if (level > 4 && !bb->getSinglePredecessor()) {
+        bbs_to_visit.push_back(bb);
+        if (!bbs.count(bb)) {
+            std::string bb_name = "bb_" + std::to_string(bbs.size());
+            bbs[bb] = bb_name;
+        }
+        o.indent(level + 4) << "goto " << bbs[bb] << ";\n";
+        return;
+    }
+    if (blocks_visited.count(bb)) {
+        o.indent(level + 4) << "goto " << bbs[bb] << ";\n";
+        return;
+    }
+    if (!bbs.count(bb)) {
+        std::string bb_name = "bb_" + std::to_string(bbs.size());
+        bbs[bb] = bb_name;
+    }
+    blocks_visited.insert(bb);
+
+    o.indent(level) << bbs[bb] << ":\n";
+
 
     for (llvm::Instruction& II : *bb) {
         llvm::Instruction* I = &II;
@@ -170,6 +191,7 @@ void visitBB(int level, llvm::raw_ostream& o, BasicBlock* bb, DataLayout& DL, bo
                 auto new_var = createNewVar(known_values, L);
                 o.indent(level) << "auto " << new_var.first << " = " << v.first << "->getAttr(" << offset.getSExtValue() << ");\n";
                 std::string t = L->getType() == Type::getInt64Ty(bb->getContext()) ? "uint64_t" : "Box*";
+                assert(offset.getSExtValue() % 8 == 0);
                 o.indent(level) << "auto " << new_var.second << " = " << "((" << t << "*)"  << v.second << ")[" << offset.getSExtValue() << "/8];\n";
             } else if (auto GV = dyn_cast_or_null<GlobalVariable>(PT_no_casts)) {
 
@@ -218,6 +240,7 @@ void visitBB(int level, llvm::raw_ostream& o, BasicBlock* bb, DataLayout& DL, bo
 
                 o.indent(level) << d.first << "->setAttr(" << offset.getSExtValue() << ", " << v.first << ");\n";
                 std::string t = S->getValueOperand()->getType() == Type::getInt64Ty(bb->getContext()) ? "uint64_t" : "Box*";
+                assert(offset.getSExtValue() % 8 == 0);
                 o.indent(level) << "((" << t << "*)" << d.second << ")[" << offset.getSExtValue() << "/8] = " << v.second << ";\n";
             } else {
                 if (!known_values.count(PT_no_casts)) {
@@ -286,10 +309,7 @@ void visitBB(int level, llvm::raw_ostream& o, BasicBlock* bb, DataLayout& DL, bo
         } else if (auto B = dyn_cast_or_null<BranchInst>(I)) {
             if (!B->isConditional()) {
                 o.indent(level) << "{\n";
-                if (bbs.count(B->getSuccessor(0)))
-                    o.indent(level + 4) << "goto " << bbs[B->getSuccessor(0)] << ";\n";
-                else
-                    visitBB(level + 4, o, B->getSuccessor(0), DL, no_guards_allowed, ok, known_values);
+                visitBB(level + 4, o, B->getSuccessor(0), DL, no_guards_allowed, ok, known_values);
                 o.indent(level) << "}\n";
                 break;
             }
@@ -316,19 +336,13 @@ void visitBB(int level, llvm::raw_ostream& o, BasicBlock* bb, DataLayout& DL, bo
             auto btrue = B->getSuccessor(0);
             o.indent(level) << "{\n";
             o.indent(level + 4) << new_var.first << "->addGuardNotEq(0);\n";
-            if (bbs.count(btrue))
-                o.indent(level + 4) << "goto " << bbs[btrue] << ";\n";
-            else
-                visitBB(level + 4, o, btrue, DL, no_guards_allowed, ok, known_values);
+            visitBB(level + 4, o, btrue, DL, no_guards_allowed, ok, known_values);
             o.indent(level) << "} else {\n";
 
 
             auto bfalse = B->getSuccessor(1);
             o.indent(level + 4) << new_var.first << "->addGuard(0);\n";
-            if (bbs.count(bfalse))
-                o.indent(level + 4) << "goto " << bbs[bfalse] << ";\n";
-            else
-                visitBB(level + 4, o, bfalse, DL, no_guards_allowed, ok, known_values);
+            visitBB(level + 4, o, bfalse, DL, no_guards_allowed, ok, known_values);
             o.indent(level) << "}\n";
             break;
         } else if (auto U = dyn_cast_or_null<UnreachableInst>(I)) {
@@ -363,6 +377,8 @@ bool visitFunc(llvm::raw_ostream& o, Function* f) {
 
     llvm::DenseMap<Value*, std::pair<std::string, std::string>> known_values;
     bbs.clear();
+    bbs_to_visit.clear();
+    blocks_visited.clear();
     int i = 0;
     for (auto&& arg : f->args()) {
         o << ", Box* v" + std::to_string(i++);
@@ -385,7 +401,17 @@ bool visitFunc(llvm::raw_ostream& o, Function* f) {
     //for (auto&& bb : *f) {
     //    visitBB(4, o, &bb, DL, no_guards_allowed, ok, known_values);
     //}
-    visitBB(4, o, &f->getEntryBlock(), DL, no_guards_allowed, ok, known_values);
+    bbs_to_visit.push_back(&f->getEntryBlock());
+    while (!bbs_to_visit.empty()) {
+        auto bb = bbs_to_visit.front();
+        bbs_to_visit.pop_front();
+        if (blocks_visited.count(bb))
+            continue;
+        o << "{\n";
+        visitBB(4, o, bb, DL, no_guards_allowed, ok, known_values);
+        o << "}\n";
+    }
+
 
     o << "} \n";
 
