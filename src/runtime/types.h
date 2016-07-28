@@ -125,7 +125,7 @@ extern BoxedModule* sys_module, *builtins_module, *math_module, *time_module, *t
 }
 
 extern "C" inline Box* boxBool(bool b) __attribute__((visibility("default")));
-extern "C" inline Box* __attribute__((noinline)) boxBool(bool b) {
+extern "C" inline Box* /*__attribute__((noinline))*/ boxBool(bool b) {
     if (b)
         Py_RETURN_TRUE;
     else

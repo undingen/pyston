@@ -173,6 +173,19 @@ void visitBB(int level, llvm::raw_ostream& o, BasicBlock* bb, DataLayout& DL, bo
 
     o.indent(level) << bbs[bb] << ":\n";
 
+    for (auto&& phi : phis) {
+        for (auto I=phi.first->block_begin(), E=phi.first->block_end(); I!=E; ++I) {
+            if (*I == bb) {
+                auto vv = phi.first->getIncomingValueForBlock(bb);
+                if (auto GV = dyn_cast_or_null<GlobalVariable>(vv)){
+                    o.indent(level) << phi.second.first << " = r->loadConst((uint64_t)&" << GV->getName() << ");\n";
+                    o.indent(level) << phi.second.second << " = &" << GV->getName() << ";\n";
+                }
+                break;
+            }
+        }
+    }
+
 
     for (llvm::Instruction& II : *bb) {
         llvm::Instruction* I = &II;
