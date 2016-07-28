@@ -154,6 +154,8 @@ public:
     void add(Immediate imm, Indirect mem);
     void sub(Immediate imm, Register reg);
 
+    void and_(Register reg1, Register reg2);
+
     void incl(Indirect mem);
     void decl(Indirect mem);
     void incl(Immediate mem);

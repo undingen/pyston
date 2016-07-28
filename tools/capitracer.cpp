@@ -83,6 +83,24 @@ std::pair<std::string, std::string> createNewVar(llvm::DenseMap<Value*, std::pai
     return rtn;
 }
 
+std::unordered_map<PHINode*, std::pair<std::string, std::string>> phis;
+std::pair<std::string, std::string> getDestVar(llvm::DenseMap<Value*, std::pair<std::string, std::string>>& known_values, Value *v) {
+    auto prepend = std::make_pair(std::string(""), std::string(""));
+    for (auto&& phi : phis) {
+        for (auto&& vv : phi.first->incoming_values()) {
+            if (vv == v) {
+                prepend = phi.second;
+            }
+        }
+    }
+    auto var = createNewVar(known_values, v);
+    std::string pre = "auto ";
+    if (prepend.first.empty())
+        return std::make_pair(pre + var.first, pre + var.second);
+    return std::make_pair(pre + var.first + " = " + prepend.first, pre + var.second + " = " + prepend.second);
+
+}
+
 std::string getPredicate(CmpInst::Predicate pred) {
     if (pred == CmpInst::ICMP_EQ)
         return "assembler::ConditionCode::COND_EQUAL";
@@ -92,6 +110,12 @@ std::string getPredicate(CmpInst::Predicate pred) {
         return "assembler::ConditionCode::COND_LESS";
     else if (pred == CmpInst::ICMP_SGT)
         return "assembler::ConditionCode::COND_GREATER";
+    else if (pred == CmpInst::ICMP_SLE)
+        return "assembler::ConditionCode::COND_NOT_GREATER";
+    else if (pred == CmpInst::ICMP_SGE)
+        return "assembler::ConditionCode::COND_NOT_LESS";
+
+    printf("%d\n", (int)pred);
     assert(0);
     return "";
 }
@@ -104,6 +128,11 @@ std::string getPredicateCpp(CmpInst::Predicate pred) {
         return "<";
     else if (pred == CmpInst::ICMP_SGT)
         return ">";
+    else if (pred == CmpInst::ICMP_SLE)
+        return "<=";
+    else if (pred == CmpInst::ICMP_SGE)
+        return ">=";
+    printf("%d\n", (int)pred);
     assert(0);
     return "";
 }
@@ -115,6 +144,9 @@ std::pair<std::string, std::string> getOpcodeStr(BinaryOperator::BinaryOps op) {
     assert(0);
     return std::make_pair(std::string(), std::string());
 }
+
+
+
 
 std::list<BasicBlock*> bbs_to_visit;
 std::unordered_set<BasicBlock*> blocks_visited;
@@ -160,8 +192,16 @@ void visitBB(int level, llvm::raw_ostream& o, BasicBlock* bb, DataLayout& DL, bo
             continue;
         }
         else if (auto ICMP = dyn_cast_or_null<ICmpInst>(I)) {
-            o.indent(level) << "//    skipping\n";
-            continue;
+            auto lhs = getValue(o, known_values, ICMP->getOperand(0));
+            if (lhs.first.empty())
+                continue;
+            auto rhs = getValue(o, known_values, ICMP->getOperand(1));
+            if (rhs.first.empty())
+                continue;
+
+            auto new_var = getDestVar(known_values, ICMP);
+            o.indent(level) << new_var.first << " = " << lhs.first << "->cmp(" << rhs.first << ", " << getPredicate(ICMP->getPredicate()) << ");\n";
+            o.indent(level) << new_var.second << " = " << lhs.second << " " << getPredicateCpp(ICMP->getPredicate()) << " " << rhs.second << ";\n";
         }
         else if (auto L = dyn_cast_or_null<LoadInst>(I)) {
             if (DL.getTypeSizeInBits(L->getType()) != 64) {
@@ -188,16 +228,16 @@ void visitBB(int level, llvm::raw_ostream& o, BasicBlock* bb, DataLayout& DL, bo
                     continue;
                 }
 
-                auto new_var = createNewVar(known_values, L);
-                o.indent(level) << "auto " << new_var.first << " = " << v.first << "->getAttr(" << offset.getSExtValue() << ");\n";
+                auto new_var = getDestVar(known_values, L);
+                o.indent(level) << new_var.first << " = " << v.first << "->getAttr(" << offset.getSExtValue() << ");\n";
                 std::string t = L->getType() == Type::getInt64Ty(bb->getContext()) ? "uint64_t" : "Box*";
                 assert(offset.getSExtValue() % 8 == 0);
-                o.indent(level) << "auto " << new_var.second << " = " << "((" << t << "*)"  << v.second << ")[" << offset.getSExtValue() << "/8];\n";
+                o.indent(level) << new_var.second << " = " << "((" << t << "*)"  << v.second << ")[" << offset.getSExtValue() << "/8];\n";
             } else if (auto GV = dyn_cast_or_null<GlobalVariable>(PT_no_casts)) {
 
-                auto new_var = createNewVar(known_values, L);
-                o.indent(level) << "auto " << new_var.first << " = r->loadConst((uint64_t)" << GV->getName() << ");\n";
-                o.indent(level) << "auto " << new_var.second << " = " << GV->getName() << ";\n";
+                auto new_var = getDestVar(known_values, L);
+                o.indent(level) << new_var.first << " = r->loadConst((uint64_t)" << GV->getName() << ");\n";
+                o.indent(level) << new_var.second << " = " << GV->getName() << ";\n";
             } else {
                 if (!known_values.count(PT_no_casts)) {
                     o.indent(level)  << "unhandled\n";
@@ -210,10 +250,10 @@ void visitBB(int level, llvm::raw_ostream& o, BasicBlock* bb, DataLayout& DL, bo
                 if (v.first.empty())
                     continue;
 
-                auto new_var = createNewVar(known_values, L);
-                o.indent(level) << "auto " << new_var.first << " = " << v.first << "->getAttr(0);\n";
+                auto new_var = getDestVar(known_values, L);
+                o.indent(level) << new_var.first << " = " << v.first << "->getAttr(0);\n";
                 std::string t = L->getType() == Type::getInt64Ty(bb->getContext()) ? "uint64_t" : "Box*";
-                o.indent(level) << "auto " << new_var.second << " = *((" << t << "*)"  << v.second << ");\n";
+                o.indent(level) << new_var.second << " = *((" << t << "*)"  << v.second << ");\n";
             }
         } else if (auto S = dyn_cast_or_null<StoreInst>(I)) {
             if (DL.getTypeSizeInBits(S->getPointerOperand()->getType()) != 64) {
@@ -285,15 +325,15 @@ void visitBB(int level, llvm::raw_ostream& o, BasicBlock* bb, DataLayout& DL, bo
 
             auto op = getOpcodeStr(A->getOpcode());
 
-            auto new_var = createNewVar(known_values, A);
-            o.indent(level) << "auto " << new_var.first << " = " << lhs.first << "->" << op.first << "(" << rhs.first << ");\n";
-            o.indent(level) << "auto " << new_var.second << " = " << lhs.second << " " << op.second << " " << rhs.second << ";\n";
+            auto new_var = getDestVar(known_values, A);
+            o.indent(level) << new_var.first << " = " << lhs.first << "->" << op.first << "(" << rhs.first << ");\n";
+            o.indent(level) << new_var.second << " = " << lhs.second << " " << op.second << " " << rhs.second << ";\n";
         } else if (auto C = dyn_cast_or_null<CallInst>(I)) {
             auto F = C->getCalledFunction();
             if (!F)
                 continue;
 
-            if (F->getName() != "boxInt") {
+            if (F->getName() != "boxInt" && F->getName() != "boxBool") {
                 o.indent(level) << "unknown func " << F->getName() << "\n";
                 continue;
             }
@@ -302,9 +342,9 @@ void visitBB(int level, llvm::raw_ostream& o, BasicBlock* bb, DataLayout& DL, bo
             if (op.first.empty())
                 continue;
 
-            auto new_var = createNewVar(known_values, C);
-            o.indent(level) << "auto " << new_var.first << " = r->call(false, (void*)" << F->getName() << ", { " << op.first << " })->setType(RefType::OWNED);\n";
-            o.indent(level) << "auto " << new_var.second << " = " << F->getName() << "(" << op.second << ");\n";
+            auto new_var = getDestVar(known_values, C);
+            o.indent(level) << new_var.first << " = r->call(false, (void*)" << F->getName() << ", { " << op.first << " })->setType(RefType::OWNED);\n";
+            o.indent(level) << new_var.second << " = " << F->getName() << "(" << op.second << ");\n";
 
         } else if (auto B = dyn_cast_or_null<BranchInst>(I)) {
             if (!B->isConditional()) {
@@ -315,22 +355,10 @@ void visitBB(int level, llvm::raw_ostream& o, BasicBlock* bb, DataLayout& DL, bo
             }
 
             auto cond = B->getCondition();
-            auto ICMP = dyn_cast_or_null<ICmpInst>(cond);
-            if (!ICMP) {
-                o.indent(level) << "we only support icmp branches for now " << cond << "\n";
-                continue;
-            }
-
-            auto lhs = getValue(o, known_values, ICMP->getOperand(0));
-            if (lhs.first.empty())
-                continue;
-            auto rhs = getValue(o, known_values, ICMP->getOperand(1));
-            if (rhs.first.empty())
+            auto new_var = getValue(o, known_values, cond);
+            if (new_var.first.empty())
                 continue;
 
-            auto new_var = createNewVar(known_values, B);
-            o.indent(level) << "auto " << new_var.first << " = " << lhs.first << "->cmp(" << rhs.first << ", " << getPredicate(ICMP->getPredicate()) << ");\n";
-            o.indent(level) << "auto " << new_var.second << " = " << lhs.second << " " << getPredicateCpp(ICMP->getPredicate()) << " " << rhs.second << ";\n";
             o.indent(level) << "if (" << new_var.second << ")\n";
 
             auto btrue = B->getSuccessor(0);
@@ -348,6 +376,9 @@ void visitBB(int level, llvm::raw_ostream& o, BasicBlock* bb, DataLayout& DL, bo
         } else if (auto U = dyn_cast_or_null<UnreachableInst>(I)) {
             o.indent(level) << "RELEASE_ASSERT(0, \"unreachable\");\n";
             break;
+        } else if (auto PHI = dyn_cast_or_null<PHINode>(I)) {
+            assert(phis.count(PHI));
+            known_values[PHI] = phis[PHI];
         } else {
             ok = false;
             o.indent(level) << "UNSUPPORTED inst!\n";
@@ -379,6 +410,11 @@ bool visitFunc(llvm::raw_ostream& o, Function* f) {
     bbs.clear();
     bbs_to_visit.clear();
     blocks_visited.clear();
+    phis.clear();
+
+
+
+
     int i = 0;
     for (auto&& arg : f->args()) {
         o << ", Box* v" + std::to_string(i++);
@@ -393,6 +429,16 @@ bool visitFunc(llvm::raw_ostream& o, Function* f) {
             o.indent(4) << "auto r" << name << " = rewrite_args->obj;\n";
         else
             o.indent(4) << "auto r" << name << " = rewrite_args->arg" << std::to_string(known_values.size()-1) << ";\n";
+    }
+
+
+    for (auto I = inst_begin(*f), E = inst_end(*f); I != E; ++I) {
+        if (auto PHI = dyn_cast_or_null<PHINode>(&*I)) {
+            auto name = "_phi_" + std::to_string(phis.size());
+            phis[PHI] = std::make_pair("r" + name, "v" + name);
+            o.indent(4) << "RewriterVar* r" << name << " = NULL;\n";
+            o.indent(4) << "Box* v" << name << " = NULL;\n";
+        }
     }
 
     auto DL = *f->getDataLayout();

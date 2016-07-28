@@ -181,7 +181,9 @@ public:
     RewriterVar* cmp(RewriterVar* other, assembler::ConditionCode cond);
 
     RewriterVar* toBool(Location loc = Location::any());
+
     RewriterVar* add(RewriterVar* other);
+    RewriterVar* and_(RewriterVar* other);
 
     RewriterVar* setType(RefType type);
     RewriterVar* setNullable(bool nullable) {
@@ -570,6 +572,7 @@ protected:
               Location loc = Location::any());
     void _cmp(RewriterVar* result, RewriterVar* v1, assembler::ConditionCode cond, RewriterVar* v2);
     void _add(RewriterVar* result, RewriterVar* v1, RewriterVar* v2);
+    void _and(RewriterVar* result, RewriterVar* v1, RewriterVar* v2);
     void _toBool(RewriterVar* result, RewriterVar* var, Location loc = Location::any());
 
     // These do not call bumpUse on their arguments:

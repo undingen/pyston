@@ -653,9 +653,17 @@ RewriterVar* RewriterVar::add(RewriterVar* other) {
     return result;
 }
 
+RewriterVar* RewriterVar::and_(RewriterVar* other) {
+    STAT_TIMER(t0, "us_timer_rewriter", 10);
+
+    RewriterVar* result = rewriter->createNewVar();
+    rewriter->addAction([=]() { rewriter->_and(result, this, other); }, { this, other }, ActionType::NORMAL);
+    return result;
+}
+
 void Rewriter::_add(RewriterVar* result, RewriterVar* v1, RewriterVar* v2) {
     if (LOG_IC_ASSEMBLY)
-        assembler->comment("_cmp");
+        assembler->comment("_add");
 
     assembler::Register v1_reg = v1->getInReg(Location::any(), false);
     assembler::Register v2_reg = v2->getInReg(Location::any(), false, v1_reg);
@@ -676,6 +684,28 @@ void Rewriter::_add(RewriterVar* result, RewriterVar* v1, RewriterVar* v2) {
     assertConsistent();
 }
 
+void Rewriter::_and(RewriterVar* result, RewriterVar* v1, RewriterVar* v2) {
+    if (LOG_IC_ASSEMBLY)
+        assembler->comment("_and");
+
+    assembler::Register v1_reg = v1->getInReg(Location::any(), false);
+    assembler::Register v2_reg = v2->getInReg(Location::any(), false, v1_reg);
+
+    v1->bumpUseEarlyIfPossible();
+    v2->bumpUseEarlyIfPossible();
+
+    if (vars_by_location[v1_reg])
+        spillRegister(v1_reg);
+
+    result->initializeInReg(v1_reg);
+    assembler->and_(v2_reg, v1_reg);
+
+    v1->bumpUseLateIfNecessary();
+    v2->bumpUseLateIfNecessary();
+
+    result->releaseIfNoUses();
+    assertConsistent();
+}
 
 void Rewriter::_cmp(RewriterVar* result, RewriterVar* v1, AST_TYPE::AST_TYPE cmp_type, RewriterVar* v2, Location dest) {
     if (LOG_IC_ASSEMBLY)
@@ -1022,15 +1052,15 @@ RewriterVar* Rewriter::call(bool has_side_effects, void* func_addr, llvm::ArrayR
                             llvm::ArrayRef<RewriterVar*> args_xmm, llvm::ArrayRef<RewriterVar*> additional_uses) {
     STAT_TIMER(t0, "us_timer_rewriter", 10);
 
-    /*
-    if (capi_tracer.count(func_addr) && args.size() == 1) {
+
+    if (capi_tracer_simple.count(func_addr) && args.size() == 1) {
         CallRewriteArgs rewrite_args(this, args[0], getReturnDestination());
-        typedef void (*FuncTy)(CallRewriteArgs*, Box* a);
-        auto f = (FuncTy)capi_tracer[func_addr];
-        f(&rewrite_args, NULL);
+        typedef void (*FuncTy)(CallRewriteArgs*);
+        auto f = (FuncTy)capi_tracer_simple[func_addr];
+        f(&rewrite_args);
         return rewrite_args.out_rtn;
     }
-    */
+
 
     RewriterVar* result = createNewVar();
 
