@@ -86,6 +86,7 @@ struct RegisterSet {
 
     bool isInside(Register reg) const { return regs & (1ul << reg.regnum); }
     bool empty() const { return regs == 0; }
+    RegisterSet remove(RegisterSet regs_to_remove) const { return RegisterSet(regs & ~(regs_to_remove.regs)); }
 
     class iterator {
     public:

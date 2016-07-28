@@ -280,6 +280,8 @@ private:
     // that the register will still contain your value when you go to use it
     assembler::Register getInReg(Location l = Location::any(), bool allow_constant_in_reg = false,
                                  Location otherThan = Location::any());
+    assembler::Register getInReg(Location l, bool allow_constant_in_reg,
+                                 Location otherThan, assembler::RegisterSet valid_registers);
     assembler::XMMRegister getInXMMReg(Location l = Location::any());
 
     assembler::Register initializeInReg(Location l = Location::any());

@@ -746,9 +746,11 @@ void Rewriter::_cmp(RewriterVar* result, RewriterVar* v1, assembler::ConditionCo
     if (LOG_IC_ASSEMBLY)
         assembler->comment("_cmp");
 
-    assembler::Register v1_reg = v1->getInReg(Location::any(), false, assembler::RAX);
-    assembler::Register v2_reg = v2->getInReg(Location::any(), false, assembler::RAX);
-    assert(v1_reg != v2_reg); // TODO how do we ensure this?
+    assembler::Register v1_reg = v1->getInReg(assembler::RDX, true, assembler::RAX, allocatable_regs.remove(assembler::RAX));
+    assembler::Register v2_reg = v2->getInReg(assembler::RDI, true, assembler::RAX, allocatable_regs.remove(assembler::RAX | v1_reg));
+    RELEASE_ASSERT(v1_reg != v2_reg, ""); // TODO how do we ensure this?
+    RELEASE_ASSERT(v1_reg != assembler::RAX, "");
+    RELEASE_ASSERT(v2_reg != assembler::RAX, "");
 
     v1->bumpUseEarlyIfPossible();
     v2->bumpUseEarlyIfPossible();
@@ -888,6 +890,10 @@ void Rewriter::comment(const llvm::Twine& msg) {
 #endif
 
 assembler::Register RewriterVar::getInReg(Location dest, bool allow_constant_in_reg, Location otherThan) {
+    return getInReg(dest, allow_constant_in_reg, otherThan, rewriter->allocatable_regs);
+}
+
+assembler::Register RewriterVar::getInReg(Location dest, bool allow_constant_in_reg, Location otherThan, assembler::RegisterSet valid_registers) {
     assert(dest.type == Location::Register || dest.type == Location::AnyReg);
 
 #ifndef NDEBUG
@@ -897,14 +903,14 @@ assembler::Register RewriterVar::getInReg(Location dest, bool allow_constant_in_
 #endif
 
     if (locations.size() == 0 && this->is_constant) {
-        assembler::Register reg = rewriter->allocReg(dest, otherThan);
+        assembler::Register reg = rewriter->allocReg(dest, otherThan, valid_registers);
         rewriter->const_loader.loadConstIntoReg(this->constant_value, reg);
         rewriter->addLocationToVar(this, reg);
         return reg;
     }
 
     if (locations.size() == 0 && isScratchAllocation()) {
-        assembler::Register reg = rewriter->allocReg(dest, otherThan);
+        assembler::Register reg = rewriter->allocReg(dest, otherThan, valid_registers);
         auto addr = rewriter->indirectFor(getScratchLocation());
         rewriter->assembler->lea(addr, reg);
         rewriter->addLocationToVar(this, reg);
@@ -924,11 +930,11 @@ assembler::Register RewriterVar::getInReg(Location dest, bool allow_constant_in_
     for (Location l : locations) {
         if (l.type == Location::Register) {
             assembler::Register reg = l.asRegister();
-            if (dest.type != Location::AnyReg) {
+            if (dest.type != Location::AnyReg || Location(reg) == otherThan) {
                 assembler::Register dest_reg = dest.asRegister();
                 assert(dest_reg != reg); // should have been caught by the previous case
 
-                rewriter->allocReg(dest, otherThan);
+                rewriter->allocReg(dest, otherThan, valid_registers);
 
                 rewriter->assembler->mov(reg, dest_reg);
                 rewriter->addLocationToVar(this, dest_reg);
@@ -946,7 +952,7 @@ assembler::Register RewriterVar::getInReg(Location dest, bool allow_constant_in_
     assert(locations.size() == 1);
     Location l(*locations.begin());
 
-    assembler::Register reg = rewriter->allocReg(dest, otherThan);
+    assembler::Register reg = rewriter->allocReg(dest, otherThan, valid_registers);
     if (rewriter->failed)
         return reg;
 

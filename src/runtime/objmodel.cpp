@@ -5926,6 +5926,21 @@ Box* compareInternal(Box* lhs, Box* rhs, int op_type, CompareRewriteArgs* rewrit
 
         assert(!lhs->cls->is_user_defined);
 
+        if (capi_tracer.count((void*)lhs->cls->tp_richcompare)) {
+            CallRewriteArgs new_rewrite_args(rewrite_args->rewriter, rewrite_args->lhs, rewrite_args->destination);
+            new_rewrite_args.arg1 = rewrite_args->rhs;
+            new_rewrite_args.arg2 = rewrite_args->rewriter->loadConst(cpython_op_type);
+            typedef Box* (*FuncTy)(CallRewriteArgs*, Box* a, Box* b, int);
+            auto f = (FuncTy)capi_tracer[(void*)lhs->cls->tp_richcompare];
+            Box* rtn = f(&new_rewrite_args, lhs, rhs, cpython_op_type);
+            if (new_rewrite_args.out_rtn) {
+                rewrite_args->out_rtn = new_rewrite_args.out_rtn;
+                //rewrite_args->rewriter->checkAndThrowCAPIException(rewrite_args->out_rtn);
+                rewrite_args->out_success = true;
+            }
+            return rtn;
+        }
+
         Box* r = lhs->cls->tp_richcompare(lhs, rhs, cpython_op_type);
         RELEASE_ASSERT(r != NotImplemented, "%s returned notimplemented?", lhs->cls->tp_name);
         if (rewrite_args) {

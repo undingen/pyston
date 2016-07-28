@@ -1451,32 +1451,7 @@ static int64_t int_hash(BoxedInt* o) noexcept {
     return n;
 }
 
-static PyObject* int_richcompare(PyObject* v, PyObject* w, int op) noexcept {
-    if (!PyInt_Check(v) || !PyInt_Check(w)) {
-        Py_INCREF(Py_NotImplemented);
-        return Py_NotImplemented;
-    }
-
-    int64_t lhs = static_cast<BoxedInt*>(v)->n;
-    int64_t rhs = static_cast<BoxedInt*>(w)->n;
-
-    switch (op) {
-        case Py_EQ:
-            return boxBool(lhs == rhs);
-        case Py_NE:
-            return boxBool(lhs != rhs);
-        case Py_LT:
-            return boxBool(lhs < rhs);
-        case Py_LE:
-            return boxBool(lhs <= rhs);
-        case Py_GT:
-            return boxBool(lhs > rhs);
-        case Py_GE:
-            return boxBool(lhs >= rhs);
-        default:
-            RELEASE_ASSERT(0, "%d", op);
-    }
-}
+extern "C" PyObject* int_richcompare(PyObject* v, PyObject* w, int op) noexcept;
 
 static PyObject* int_getnewargs(BoxedInt* v) noexcept {
     return Py_BuildValue("(l)", v->n);
