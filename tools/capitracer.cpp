@@ -73,7 +73,21 @@ public:
     bool empty() const { return r.empty() && cpp.empty(); }
 };
 
-Snippet getValue(llvm::raw_ostream& o, llvm::DenseMap<Value*, Snippet>& known_values, Value* v) {
+class FunctionTracer {
+    llvm::raw_ostream& o;
+
+    llvm::DenseMap<Value*, Snippet> known_values;
+    std::list<BasicBlock*> bbs_to_visit;
+    std::unordered_set<BasicBlock*> blocks_visited;
+    llvm::DenseMap<BasicBlock*, std::string> bbs;
+    std::unordered_map<PHINode*, Snippet> phis;
+
+public:
+    FunctionTracer(llvm::raw_ostream& o) : o(o) {}
+
+private:
+
+Snippet getValue(Value* v) {
     if (!known_values.count(v)) {
         if (auto I = dyn_cast_or_null<ConstantInt>(v)) {
             return Snippet("r->loadConst(" + std::to_string(I->getSExtValue()) + ")", std::to_string(I->getSExtValue()));
@@ -85,7 +99,7 @@ Snippet getValue(llvm::raw_ostream& o, llvm::DenseMap<Value*, Snippet>& known_va
     return known_values[v];
 }
 
-Snippet createNewVar(llvm::DenseMap<Value*, Snippet>& known_values, Value *v) {
+Snippet createNewVar(Value *v) {
     auto new_var = std::to_string(known_values.size() + 1);
     assert(!known_values.count(v));
     auto rtn = Snippet("r" + new_var, "v" + new_var);;
@@ -93,8 +107,8 @@ Snippet createNewVar(llvm::DenseMap<Value*, Snippet>& known_values, Value *v) {
     return rtn;
 }
 
-std::unordered_map<PHINode*, Snippet> phis;
-Snippet getDestVar(llvm::DenseMap<Value*, Snippet>& known_values, Value *v) {
+
+Snippet getDestVar(Value *v) {
     auto prepend = Snippet(std::string(""), std::string(""));
     for (auto&& phi : phis) {
         for (auto&& vv : phi.first->incoming_values()) {
@@ -103,7 +117,7 @@ Snippet getDestVar(llvm::DenseMap<Value*, Snippet>& known_values, Value *v) {
             }
         }
     }
-    auto var = createNewVar(known_values, v);
+    auto var = createNewVar(v);
     std::string pre = "auto ";
     if (prepend.empty())
         return Snippet(pre + var.r, pre + var.cpp);
@@ -172,10 +186,8 @@ std::string getTypeStr(Type* t, LLVMContext& c) {
 }
 
 
-std::list<BasicBlock*> bbs_to_visit;
-std::unordered_set<BasicBlock*> blocks_visited;
-llvm::DenseMap<BasicBlock*, std::string> bbs;
-void visitBB(int level, llvm::raw_ostream& o, BasicBlock* bb, DataLayout& DL, bool& no_guards_allowed, bool& ok, llvm::DenseMap<Value*, Snippet>& known_values) {
+
+void visitBB(int level, BasicBlock* bb, DataLayout& DL, bool& no_guards_allowed, bool& ok) {
     if (level > 8 && !bb->getSinglePredecessor()) {
         bbs_to_visit.push_back(bb);
         if (!bbs.count(bb)) {
@@ -229,14 +241,14 @@ void visitBB(int level, llvm::raw_ostream& o, BasicBlock* bb, DataLayout& DL, bo
             continue;
         }
         else if (auto ICMP = dyn_cast_or_null<ICmpInst>(I)) {
-            auto lhs = getValue(o, known_values, ICMP->getOperand(0));
+            auto lhs = getValue(ICMP->getOperand(0));
             if (lhs.empty())
                 continue;
-            auto rhs = getValue(o, known_values, ICMP->getOperand(1));
+            auto rhs = getValue(ICMP->getOperand(1));
             if (rhs.empty())
                 continue;
 
-            auto new_var = getDestVar(known_values, ICMP);
+            auto new_var = getDestVar(ICMP);
             o.indent(level) << new_var.r << " = " << lhs.r << "->cmp(" << rhs.r << ", " << getPredicate(ICMP->getPredicate()) << ");\n";
             o.indent(level) << new_var.cpp << " = " << getPredicateCpp(ICMP->getPredicate(), lhs.cpp, rhs.cpp) << ";\n";
         }
@@ -249,7 +261,7 @@ void visitBB(int level, llvm::raw_ostream& o, BasicBlock* bb, DataLayout& DL, bo
             auto PT = L->getPointerOperand();
             auto PT_no_casts = PT->stripPointerCasts();
             if (auto GEP = dyn_cast_or_null<GetElementPtrInst>(PT_no_casts)) {
-                auto v = getValue(o, known_values, GEP->getPointerOperand());
+                auto v = getValue(GEP->getPointerOperand());
                 if (v.empty())
                     continue;
 
@@ -265,14 +277,14 @@ void visitBB(int level, llvm::raw_ostream& o, BasicBlock* bb, DataLayout& DL, bo
                     continue;
                 }
 
-                auto new_var = getDestVar(known_values, L);
+                auto new_var = getDestVar(L);
                 o.indent(level) << new_var.r << " = " << v.r << "->getAttr(" << offset.getSExtValue() << ");\n";
                 std::string t = getTypeStr(L->getType(), bb->getContext());
                 assert(offset.getSExtValue() % 8 == 0);
                 o.indent(level) << new_var.cpp << " = " << "((" << t << "*)"  << v.cpp << ")[" << offset.getSExtValue() << "/8];\n";
             } else if (auto GV = dyn_cast_or_null<GlobalVariable>(PT_no_casts)) {
 
-                auto new_var = getDestVar(known_values, L);
+                auto new_var = getDestVar(L);
                 o.indent(level) << new_var.r << " = r->loadConst((uint64_t)" << GV->getName() << ");\n";
                 o.indent(level) << new_var.cpp << " = " << GV->getName() << ";\n";
             } else {
@@ -283,11 +295,11 @@ void visitBB(int level, llvm::raw_ostream& o, BasicBlock* bb, DataLayout& DL, bo
                     continue;
                 }
 
-                auto v = getValue(o, known_values, PT_no_casts);
+                auto v = getValue(PT_no_casts);
                 if (v.empty())
                     continue;
 
-                auto new_var = getDestVar(known_values, L);
+                auto new_var = getDestVar(L);
                 o.indent(level) << new_var.r << " = " << v.r << "->getAttr(0);\n";
                 std::string t = getTypeStr(L->getType(), bb->getContext());
                 o.indent(level) << new_var.cpp << " = *((" << t << "*)"  << v.cpp << ");\n";
@@ -307,11 +319,11 @@ void visitBB(int level, llvm::raw_ostream& o, BasicBlock* bb, DataLayout& DL, bo
                     continue;
                 }
 
-                auto d = getValue(o, known_values, GEP->getPointerOperand());
+                auto d = getValue(GEP->getPointerOperand());
                 if (d.empty())
                     continue;
 
-                auto v = getValue(o, known_values, S->getValueOperand());
+                auto v = getValue(S->getValueOperand());
                 if (v.empty())
                     continue;
 
@@ -327,11 +339,11 @@ void visitBB(int level, llvm::raw_ostream& o, BasicBlock* bb, DataLayout& DL, bo
                     continue;
                 }
 
-                auto d = getValue(o, known_values, PT_no_casts);
+                auto d = getValue(PT_no_casts);
                 if (d.empty())
                     continue;
 
-                auto v = getValue(o, known_values, S->getValueOperand());
+                auto v = getValue(S->getValueOperand());
                 if (v.empty())
                     continue;
 
@@ -346,23 +358,23 @@ void visitBB(int level, llvm::raw_ostream& o, BasicBlock* bb, DataLayout& DL, bo
             if (!R->getReturnValue())
                 continue;
 
-            auto v = getValue(o, known_values, R->getReturnValue());
+            auto v = getValue(R->getReturnValue());
             if (v.empty())
                 continue;
             o.indent(level) << "rewrite_args->out_rtn = " << v.r << ";\n";
             o.indent(level) << "return " << v.cpp << ";\n";
             break;
         } else if (auto A = dyn_cast_or_null<BinaryOperator>(I)) {
-            auto lhs = getValue(o, known_values, A->getOperand(0));
+            auto lhs = getValue(A->getOperand(0));
             if (lhs.empty())
                 continue;
-            auto rhs = getValue(o, known_values, A->getOperand(1));
+            auto rhs = getValue(A->getOperand(1));
             if (rhs.empty())
                 continue;
 
             auto op = getOpcodeStr(A->getOpcode());
 
-            auto new_var = getDestVar(known_values, A);
+            auto new_var = getDestVar(A);
             o.indent(level) << new_var.r << " = " << lhs.r << "->" << op.r << "(" << rhs.r << ");\n";
             o.indent(level) << new_var.cpp << " = " << lhs.cpp << " " << op.cpp << " " << rhs.cpp << ";\n";
         } else if (auto C = dyn_cast_or_null<CallInst>(I)) {
@@ -375,24 +387,24 @@ void visitBB(int level, llvm::raw_ostream& o, BasicBlock* bb, DataLayout& DL, bo
                 continue;
             }
 
-            auto op = getValue(o, known_values, C->getOperand(0));
+            auto op = getValue(C->getOperand(0));
             if (op.empty())
                 continue;
 
-            auto new_var = getDestVar(known_values, C);
+            auto new_var = getDestVar(C);
             o.indent(level) << new_var.r << " = r->call(false, (void*)" << F->getName() << ", { " << op.r << " })->setType(RefType::OWNED);\n";
             o.indent(level) << new_var.cpp << " = " << F->getName() << "(" << op.cpp << ");\n";
 
         } else if (auto B = dyn_cast_or_null<BranchInst>(I)) {
             if (!B->isConditional()) {
                 o.indent(level) << "{\n";
-                visitBB(level + 4, o, B->getSuccessor(0), DL, no_guards_allowed, ok, known_values);
+                visitBB(level + 4, B->getSuccessor(0), DL, no_guards_allowed, ok);
                 o.indent(level) << "}\n";
                 break;
             }
 
             auto cond = B->getCondition();
-            auto new_var = getValue(o, known_values, cond);
+            auto new_var = getValue(cond);
             if (new_var.empty())
                 continue;
 
@@ -401,13 +413,13 @@ void visitBB(int level, llvm::raw_ostream& o, BasicBlock* bb, DataLayout& DL, bo
             auto btrue = B->getSuccessor(0);
             o.indent(level) << "{\n";
             o.indent(level + 4) << new_var.r << "->addGuardNotEq(0);\n";
-            visitBB(level + 4, o, btrue, DL, no_guards_allowed, ok, known_values);
+            visitBB(level + 4, btrue, DL, no_guards_allowed, ok);
             o.indent(level) << "} else {\n";
 
 
             auto bfalse = B->getSuccessor(1);
             o.indent(level + 4) << new_var.r << "->addGuard(0);\n";
-            visitBB(level + 4, o, bfalse, DL, no_guards_allowed, ok, known_values);
+            visitBB(level + 4, bfalse, DL, no_guards_allowed, ok);
             o.indent(level) << "}\n";
             break;
         } else if (auto U = dyn_cast_or_null<UnreachableInst>(I)) {
@@ -423,7 +435,8 @@ void visitBB(int level, llvm::raw_ostream& o, BasicBlock* bb, DataLayout& DL, bo
     }
 }
 
-bool visitFunc(llvm::raw_ostream& o, Function* f) {
+public:
+bool visitFunc(Function* f) {
     bool ok = true;
 
     LLVMContext &c = f->getContext();
@@ -444,11 +457,7 @@ bool visitFunc(llvm::raw_ostream& o, Function* f) {
     o << "\n\n";
     o << getTypeStr(f->getReturnType(), f->getContext()) << " " << f->getName() << "(CallRewriteArgs* rewrite_args";
 
-    llvm::DenseMap<Value*, Snippet> known_values;
-    bbs.clear();
-    bbs_to_visit.clear();
-    blocks_visited.clear();
-    phis.clear();
+
 
 
 
@@ -485,9 +494,6 @@ bool visitFunc(llvm::raw_ostream& o, Function* f) {
     auto DL = *f->getDataLayout();
     bool no_guards_allowed = false;
 
-    //for (auto&& bb : *f) {
-    //    visitBB(4, o, &bb, DL, no_guards_allowed, ok, known_values);
-    //}
     bbs_to_visit.push_back(&f->getEntryBlock());
     while (!bbs_to_visit.empty()) {
         auto bb = bbs_to_visit.front();
@@ -495,7 +501,7 @@ bool visitFunc(llvm::raw_ostream& o, Function* f) {
         if (blocks_visited.count(bb))
             continue;
         o.indent(4) << "{\n";
-        visitBB(8, o, bb, DL, no_guards_allowed, ok, known_values);
+        visitBB(8, bb, DL, no_guards_allowed, ok);
         o.indent(4) << "}\n";
     }
 
@@ -505,6 +511,7 @@ bool visitFunc(llvm::raw_ostream& o, Function* f) {
 
     return true;
 }
+};
 
 int main(int argc, char **argv) {
     sys::PrintStackTraceOnErrorSignal();
@@ -538,11 +545,13 @@ int main(int argc, char **argv) {
     std::vector<llvm::Function*> traced_funcs;
     for (Module::iterator I = M->begin(), E = M->end(); I != E; ++I) {
         fpm.run(*I);
-        if (visitFunc(dummy_ostream, I))
+        FunctionTracer tracer(dummy_ostream);
+        if (tracer.visitFunc(I))
             traced_funcs.push_back(I);
     }
     for (auto&& F : traced_funcs) {
-        visitFunc(outs(), F);
+        FunctionTracer tracer(outs());
+        tracer.visitFunc(F);
     }
 
     outs() << "llvm::DenseMap<void*, void*> capi_tracer;\n";
