@@ -342,8 +342,8 @@ public:
     virtual bool visit_importfrom(AST_ImportFrom* node) { return false; }
 
     virtual bool visit_assign(AST_Assign* node) {
-        for (int i = 0; i < node->targets.size(); i++) {
-            _doSet(node->targets[i]);
+        for (auto&& target : node->targets) {
+            _doSet(target);
         }
         return true;
     }

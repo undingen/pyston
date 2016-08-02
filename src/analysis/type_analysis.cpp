@@ -547,8 +547,8 @@ private:
 
     void visit_assign(AST_Assign* node) override {
         CompilerType* t = getType(node->value);
-        for (int i = 0; i < node->targets.size(); i++) {
-            _doSet(node->targets[i], t);
+        for (auto&& target : node->targets) {
+            _doSet(target, t);
         }
     }
 

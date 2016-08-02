@@ -476,12 +476,12 @@ void AST_Assign::accept(ASTVisitor* v) {
         return;
 
     value->accept(v);
-    for (int i = 0; i < targets.size(); i++) {
+    for (auto&& target : targets) {
         // Targets are assigned to left-to-right, so this is valid:
         // x = x.a = object()
         // but this is not:
         // x.a = x = object()
-        targets[i]->accept(v);
+        target->accept(v);
     }
 }
 
@@ -1297,8 +1297,8 @@ bool PrintVisitor::visit_assert(AST_Assert* node) {
 }
 
 bool PrintVisitor::visit_assign(AST_Assign* node) {
-    for (int i = 0; i < node->targets.size(); i++) {
-        node->targets[i]->accept(this);
+    for (auto&& target : node->targets) {
+        target->accept(this);
         stream << " = ";
     }
     node->value->accept(this);

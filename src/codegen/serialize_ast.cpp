@@ -123,6 +123,13 @@ private:
         }
     }
 
+    void writeExprVector(const std::forward_list<AST_expr*>& vec) {
+        writeShort(std::distance(vec.begin(), vec.end()));
+        for (auto* e : vec) {
+            writeExpr(e);
+        }
+    }
+
     void writeStmt(AST_stmt* e) {
         writeByte(e->type);
         writeByte(0xae); // check byte

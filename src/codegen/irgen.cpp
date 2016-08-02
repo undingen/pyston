@@ -728,10 +728,10 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
 
                     if (stmt->type == AST_TYPE::Assign) {
                         auto asgn = ast_cast<AST_Assign>(stmt);
-                        assert(asgn->targets.size() == 1);
-                        if (asgn->targets[0]->type == AST_TYPE::Name) {
-                            InternedString name = ast_cast<AST_Name>(asgn->targets[0])->id;
-                            int vreg = ast_cast<AST_Name>(asgn->targets[0])->vreg;
+                        // assert(asgn->targets.size() == 1);
+                        if (asgn->targets.front()->type == AST_TYPE::Name) {
+                            InternedString name = ast_cast<AST_Name>(asgn->targets.front())->id;
+                            int vreg = ast_cast<AST_Name>(asgn->targets.front())->vreg;
                             assert(name.c_str()[0] == '#'); // it must be a temporary
                             // You might think I need to check whether `name' is being assigned globally or locally,
                             // since a global assign doesn't affect the symbol table. However, the CFG pass only

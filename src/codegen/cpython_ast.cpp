@@ -553,7 +553,8 @@ public:
             case Assign_kind: {
                 auto r = new AST_Assign();
                 auto v = stmt->v.Assign;
-                r->targets = convert<expr_ty, AST_expr*>(v.targets);
+                auto vec = convert<expr_ty, AST_expr*>(v.targets);
+                r->targets.insert_after(r->targets.before_begin(), vec.begin(), vec.end());
                 r->value = convert(v.value);
                 return r;
             }

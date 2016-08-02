@@ -647,7 +647,7 @@ private:
         assign->lineno = val->lineno;
 
         if (target->type == AST_TYPE::Name) {
-            assign->targets.push_back(remapName(ast_cast<AST_Name>(target)));
+            assign->targets.push_front(remapName(ast_cast<AST_Name>(target)));
             push_back(assign);
         } else if (target->type == AST_TYPE::Subscript) {
             AST_Subscript* s = ast_cast<AST_Subscript>(target);
@@ -660,7 +660,7 @@ private:
             s_target->col_offset = s->col_offset;
             s_target->lineno = s->lineno;
 
-            assign->targets.push_back(s_target);
+            assign->targets.push_front(s_target);
             push_back(assign);
         } else if (target->type == AST_TYPE::Attribute) {
             AST_Attribute* a = ast_cast<AST_Attribute>(target);
@@ -673,7 +673,7 @@ private:
             a_target->col_offset = a->col_offset;
             a_target->lineno = a->lineno;
 
-            assign->targets.push_back(a_target);
+            assign->targets.push_front(a_target);
             push_back(assign);
         } else if (target->type == AST_TYPE::Tuple || target->type == AST_TYPE::List) {
             std::vector<AST_expr*>* elts;
@@ -694,7 +694,7 @@ private:
 
             // A little hackery: push the assign, even though we're not done constructing it yet,
             // so that we can iteratively push more stuff after it
-            assign->targets.push_back(new_target);
+            assign->targets.push_front(new_target);
             push_back(assign);
 
             for (int i = 0; i < elts->size(); i++) {
@@ -1124,7 +1124,7 @@ private:
 
         InternedString rtn_name = internString("#comp_rtn");
         auto asgn = new AST_Assign();
-        asgn->targets.push_back(makeName(rtn_name, AST_TYPE::Store, node->lineno));
+        asgn->targets.push_front(makeName(rtn_name, AST_TYPE::Store, node->lineno));
         asgn->value = new ResultType();
         asgn->lineno = node->lineno;
         func->function_def->body.push_back(asgn);
@@ -1531,9 +1531,9 @@ public:
 
         if (node->type == AST_TYPE::Assign) {
             AST_Assign* asgn = ast_cast<AST_Assign>(node);
-            assert(asgn->targets.size() == 1);
-            if (asgn->targets[0]->type == AST_TYPE::Name) {
-                AST_Name* target = ast_cast<AST_Name>(asgn->targets[0]);
+            // assert(asgn->targets.size() == 1);
+            if (asgn->targets.front()->type == AST_TYPE::Name) {
+                AST_Name* target = ast_cast<AST_Name>(asgn->targets.front());
                 if (target->id.s()[0] != '#') {
 // assigning to a non-temporary
 #ifndef NDEBUG
@@ -1613,7 +1613,7 @@ public:
         target->elts.push_back(makeName(exc_info.exc_type_name, AST_TYPE::Store, node->lineno));
         target->elts.push_back(makeName(exc_info.exc_value_name, AST_TYPE::Store, node->lineno));
         target->elts.push_back(makeName(exc_info.exc_traceback_name, AST_TYPE::Store, node->lineno));
-        exc_asgn->targets.push_back(target);
+        exc_asgn->targets.push_front(target);
 
         exc_asgn->value = new AST_LangPrimitive(AST_LangPrimitive::LANDINGPAD);
         curblock->push_back(exc_asgn);
@@ -1840,13 +1840,15 @@ public:
     bool visit_assign(AST_Assign* node) override {
         AST_expr* remapped_value = remapExpr(node->value);
 
-        for (int i = 0; i < node->targets.size(); i++) {
+        int i = 0;
+        int num = std::distance(node->targets.begin(), node->targets.end());
+        for (auto&& target : node->targets) {
             AST_expr* val;
-            if (i == node->targets.size() - 1)
+            if (i == num - 1)
                 val = remapped_value;
             else
                 val = _dup(remapped_value);
-            pushAssign(node->targets[i], val);
+            pushAssign(target, val);
         }
         return true;
     }
@@ -2865,7 +2867,7 @@ CFG* computeCFG(SourceInfo* source, std::vector<AST_stmt*> body, const ParamName
     if (source->ast->type == AST_TYPE::ClassDef) {
         // A classdef always starts with "__module__ = __name__"
         AST_Assign* module_assign = new AST_Assign();
-        module_assign->targets.push_back(
+        module_assign->targets.push_front(
             new AST_Name(source->getInternedStrings().get("__module__"), AST_TYPE::Store, source->ast->lineno));
 
         if (source->scoping->areGlobalsFromModule()) {
@@ -2885,7 +2887,7 @@ CFG* computeCFG(SourceInfo* source, std::vector<AST_stmt*> body, const ParamName
             AST_Expr* first_expr = ast_cast<AST_Expr>(body[0]);
             if (first_expr->value->type == AST_TYPE::Str) {
                 AST_Assign* doc_assign = new AST_Assign();
-                doc_assign->targets.push_back(
+                doc_assign->targets.push_front(
                     new AST_Name(source->getInternedStrings().get("__doc__"), AST_TYPE::Store, source->ast->lineno));
                 doc_assign->value = first_expr->value;
                 doc_assign->lineno = source->ast->lineno;

@@ -21,6 +21,7 @@
 #include <stdint.h>
 #include <string>
 #include <vector>
+#include <forward_list>
 
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_ostream.h"
@@ -226,7 +227,7 @@ public:
     AST_alias(InternedString name, InternedString asname) : AST(AST_TYPE::alias), name(name), asname(asname) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::alias;
-}__attribute__((packed));
+} __attribute__((packed));
 
 class AST_Name;
 
@@ -258,7 +259,7 @@ public:
 
 class AST_Assign : public AST_stmt {
 public:
-    std::vector<AST_expr*> targets;
+    std::forward_list<AST_expr*> targets;
     AST_expr* value;
 
     void accept(ASTVisitor* v);
