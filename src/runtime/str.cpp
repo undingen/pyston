@@ -1766,7 +1766,7 @@ void rewriter_str_length(CallRewriteArgs* rewrite_args) {
     //    skipping
     //   %2 = load i64* %1, align 8, !tbaa !3
     auto r2 = r0->getAttr(16);
-    //auto v2 = ((uint64_t*)v0)[16/8];
+    // auto v2 = ((uint64_t*)v0)[16/8];
     //   ret i64 %2
     rewrite_args->out_rtn = r2;
 }
@@ -2106,468 +2106,431 @@ Box* /*__attribute__((optimize("-O0")))*/ rewriter_int_richcompare(CallRewriteAr
 }
 
 #else
-Box* __attribute__((optimize("-O0"))) rewriter_int_richcompare(CallRewriteArgs* rewrite_args, Box* v0, Box* v1, int v2) {
+Box* __attribute__((optimize("-O0")))
+rewriter_int_richcompare(CallRewriteArgs* rewrite_args, Box* v0, Box* v1, int v2) {
     auto r = rewrite_args->rewriter;
     auto r0 = rewrite_args->obj;
     auto r1 = rewrite_args->arg1;
     auto r2 = rewrite_args->arg2;
     RewriterVar* r_phi_0 = NULL;
     Box** v_phi_0 = NULL;
-{
-    bb_0:
-    //   %1 = getelementptr inbounds %"class.pyston::Box"* %v, i64 0, i32 1
-    //    skipping
-    //   %2 = load %"class.pyston::BoxedClass"** %1, align 8, !tbaa !3
-    auto r4 = r0->getAttr(8);
-    auto v4 = ((Box**)v0)[8/8];
-    //   %3 = getelementptr inbounds %"class.pyston::BoxedClass"* %2, i64 0, i32 19
-    //    skipping
-    //   %4 = load i64* %3, align 8, !tbaa !9
-    auto r5 = r4->getAttr(168);
-    auto v5 = ((uint64_t*)v4)[168/8];
-    //   %5 = and i64 %4, 8388608
-    auto r6 = r5->and_(r->loadConst(8388608));
-    auto v6 = v5 & 8388608;
-    //   %6 = icmp eq i64 %5, 0
-    auto r7 = r6->cmp(r->loadConst(0), assembler::ConditionCode::COND_EQUAL);
-    auto v7 = v6 == 0;
-    //   br i1 %6, label %14, label %7
-    if (v7)
     {
-        r7->addGuardNotEq(0);
+    bb_0:
+        //   %1 = getelementptr inbounds %"class.pyston::Box"* %v, i64 0, i32 1
+        //    skipping
+        //   %2 = load %"class.pyston::BoxedClass"** %1, align 8, !tbaa !3
+        auto r4 = r0->getAttr(8);
+        auto v4 = ((Box**)v0)[8 / 8];
+        //   %3 = getelementptr inbounds %"class.pyston::BoxedClass"* %2, i64 0, i32 19
+        //    skipping
+        //   %4 = load i64* %3, align 8, !tbaa !9
+        auto r5 = r4->getAttr(168);
+        auto v5 = ((uint64_t*)v4)[168 / 8];
+        //   %5 = and i64 %4, 8388608
+        auto r6 = r5->and_(r->loadConst(8388608));
+        auto v6 = v5 & 8388608;
+        //   %6 = icmp eq i64 %5, 0
+        auto r7 = r6->cmp(r->loadConst(0), assembler::ConditionCode::COND_EQUAL);
+        auto v7 = v6 == 0;
+        //   br i1 %6, label %14, label %7
+        if (v7) {
+            r7->addGuardNotEq(0);
             goto bb_1;
-    } else {
-        r7->addGuard(0);
-        bb_2:
-        //   %8 = getelementptr inbounds %"class.pyston::Box"* %w, i64 0, i32 1
-        //    skipping
-        //   %9 = load %"class.pyston::BoxedClass"** %8, align 8, !tbaa !3
-        auto r8 = r1->getAttr(8);
-        auto v8 = ((Box**)v1)[8/8];
-        //   %10 = getelementptr inbounds %"class.pyston::BoxedClass"* %9, i64 0, i32 19
-        //    skipping
-        //   %11 = load i64* %10, align 8, !tbaa !9
-        auto r9 = r8->getAttr(168);
-        auto v9 = ((uint64_t*)v8)[168/8];
-        //   %12 = and i64 %11, 8388608
-        auto r10 = r9->and_(r->loadConst(8388608));
-        auto v10 = v9 & 8388608;
-        //   %13 = icmp eq i64 %12, 0
-        auto r11 = r10->cmp(r->loadConst(0), assembler::ConditionCode::COND_EQUAL);
-        auto v11 = v10 == 0;
-        //   br i1 %13, label %14, label %19
-        if (v11)
-        {
-            r11->addGuardNotEq(0);
-                goto bb_1;
         } else {
-            r11->addGuard(0);
+            r7->addGuard(0);
+        bb_2:
+            //   %8 = getelementptr inbounds %"class.pyston::Box"* %w, i64 0, i32 1
+            //    skipping
+            //   %9 = load %"class.pyston::BoxedClass"** %8, align 8, !tbaa !3
+            auto r8 = r1->getAttr(8);
+            auto v8 = ((Box**)v1)[8 / 8];
+            //   %10 = getelementptr inbounds %"class.pyston::BoxedClass"* %9, i64 0, i32 19
+            //    skipping
+            //   %11 = load i64* %10, align 8, !tbaa !9
+            auto r9 = r8->getAttr(168);
+            auto v9 = ((uint64_t*)v8)[168 / 8];
+            //   %12 = and i64 %11, 8388608
+            auto r10 = r9->and_(r->loadConst(8388608));
+            auto v10 = v9 & 8388608;
+            //   %13 = icmp eq i64 %12, 0
+            auto r11 = r10->cmp(r->loadConst(0), assembler::ConditionCode::COND_EQUAL);
+            auto v11 = v10 == 0;
+            //   br i1 %13, label %14, label %19
+            if (v11) {
+                r11->addGuardNotEq(0);
+                goto bb_1;
+            } else {
+                r11->addGuard(0);
             bb_3:
-            //   %20 = getelementptr inbounds %"class.pyston::Box"* %v, i64 1, i32 0
-            //    skipping
-            //   %21 = load i64* %20, align 8, !tbaa !23
-            auto r12 = r0->getAttr(16);
-            auto v12 = ((uint64_t*)v0)[16/8];
-            //   %22 = getelementptr inbounds %"class.pyston::Box"* %w, i64 1, i32 0
-            //    skipping
-            //   %23 = load i64* %22, align 8, !tbaa !23
-            auto r13 = r1->getAttr(16);
-            auto v13 = ((uint64_t*)v1)[16/8];
-            //   br label %NodeBlock9
-            {
-                bb_4:
-                //   %Pivot10 = icmp slt i32 %op, 3
-                auto r14 = r2->cmp(r->loadConst(3), assembler::ConditionCode::COND_LESS);
-                auto v14 = v2 < 3;
-                //   br i1 %Pivot10, label %NodeBlock1, label %NodeBlock7
-                if (v14)
+                //   %20 = getelementptr inbounds %"class.pyston::Box"* %v, i64 1, i32 0
+                //    skipping
+                //   %21 = load i64* %20, align 8, !tbaa !23
+                auto r12 = r0->getAttr(16);
+                auto v12 = ((uint64_t*)v0)[16 / 8];
+                //   %22 = getelementptr inbounds %"class.pyston::Box"* %w, i64 1, i32 0
+                //    skipping
+                //   %23 = load i64* %22, align 8, !tbaa !23
+                auto r13 = r1->getAttr(16);
+                auto v13 = ((uint64_t*)v1)[16 / 8];
+                //   br label %NodeBlock9
                 {
-                    r14->addGuardNotEq(0);
+                bb_4:
+                    //   %Pivot10 = icmp slt i32 %op, 3
+                    auto r14 = r2->cmp(r->loadConst(3), assembler::ConditionCode::COND_LESS);
+                    auto v14 = v2 < 3;
+                    //   br i1 %Pivot10, label %NodeBlock1, label %NodeBlock7
+                    if (v14) {
+                        r14->addGuardNotEq(0);
                     bb_5:
-                    //   %Pivot2 = icmp slt i32 %op, 1
-                    auto r15 = r2->cmp(r->loadConst(1), assembler::ConditionCode::COND_LESS);
-                    auto v15 = v2 < 1;
-                    //   br i1 %Pivot2, label %LeafBlock, label %NodeBlock
-                    if (v15)
-                    {
-                        r15->addGuardNotEq(0);
+                        //   %Pivot2 = icmp slt i32 %op, 1
+                        auto r15 = r2->cmp(r->loadConst(1), assembler::ConditionCode::COND_LESS);
+                        auto v15 = v2 < 1;
+                        //   br i1 %Pivot2, label %LeafBlock, label %NodeBlock
+                        if (v15) {
+                            r15->addGuardNotEq(0);
                         bb_6:
-                        //   %SwitchLeaf = icmp eq i32 %op, 0
-                        auto r16 = r2->cmp(r->loadConst(0), assembler::ConditionCode::COND_EQUAL);
-                        auto v16 = v2 == 0;
-                        //   br i1 %SwitchLeaf, label %48, label %NewDefault
-                        if (v16)
-                        {
-                            r16->addGuardNotEq(0);
+                            //   %SwitchLeaf = icmp eq i32 %op, 0
+                            auto r16 = r2->cmp(r->loadConst(0), assembler::ConditionCode::COND_EQUAL);
+                            auto v16 = v2 == 0;
+                            //   br i1 %SwitchLeaf, label %48, label %NewDefault
+                            if (v16) {
+                                r16->addGuardNotEq(0);
                             bb_7:
-                            //   %49 = icmp slt i64 %21, %23
-                            auto r17 = r12->cmp(r13, assembler::ConditionCode::COND_LESS);
-                            auto v17 = v12 < v13;
-                            //   br i1 %49, label %50, label %55
-                            if (v17)
-                            {
-                                r17->addGuardNotEq(0);
+                                //   %49 = icmp slt i64 %21, %23
+                                auto r17 = r12->cmp(r13, assembler::ConditionCode::COND_LESS);
+                                auto v17 = v12 < v13;
+                                //   br i1 %49, label %50, label %55
+                                if (v17) {
+                                    r17->addGuardNotEq(0);
                                 bb_8:
-                                r_phi_0 = r->loadConst((uint64_t)&pyston_True);
-                                v_phi_0 = &pyston_True;
-                                //   %51 = load %"class.pyston::Box"** @pyston_True, align 8, !tbaa !21
-                                auto r18 = r->loadConst((uint64_t)pyston_True);
-                                auto v18 = pyston_True;
-                                //   %52 = getelementptr inbounds %"class.pyston::Box"* %51, i64 0, i32 0
-                                //    skipping
-                                //   %53 = load i64* %52, align 8, !tbaa !22
-                                auto r19 = r18->getAttr(0);
-                                auto v19 = *((uint64_t*)v18);
-                                //   %54 = add nsw i64 %53, 1
-                                auto r20 = r19->add(r->loadConst(1));
-                                auto v20 = v19 + 1;
-                                //   store i64 %54, i64* %52, align 8, !tbaa !22
-                                r18->setAttr(0, r20);
-                                *((uint64_t*)v18) = v20;
-                                //   br label %boxBool.exit
-                                {
-                                        goto bb_9;
-                                }
-                            } else {
-                                r17->addGuard(0);
-                                bb_10:
-                                r_phi_0 = r->loadConst((uint64_t)&pyston_False);
-                                v_phi_0 = &pyston_False;
-                                //   %56 = load %"class.pyston::Box"** @pyston_False, align 8, !tbaa !21
-                                auto r21 = r->loadConst((uint64_t)pyston_False);
-                                auto v21 = pyston_False;
-                                //   %57 = getelementptr inbounds %"class.pyston::Box"* %56, i64 0, i32 0
-                                //    skipping
-                                //   %58 = load i64* %57, align 8, !tbaa !22
-                                auto r22 = r21->getAttr(0);
-                                auto v22 = *((uint64_t*)v21);
-                                //   %59 = add nsw i64 %58, 1
-                                auto r23 = r22->add(r->loadConst(1));
-                                auto v23 = v22 + 1;
-                                //   store i64 %59, i64* %57, align 8, !tbaa !22
-                                r21->setAttr(0, r23);
-                                *((uint64_t*)v21) = v23;
-                                //   br label %boxBool.exit
-                                {
-                                        goto bb_9;
-                                }
-                            }
-                        } else {
-                            r16->addGuard(0);
-                                goto bb_11;
-                        }
-                    } else {
-                        r15->addGuard(0);
-                        bb_12:
-                        //   %Pivot = icmp slt i32 %op, 2
-                        auto r24 = r2->cmp(r->loadConst(2), assembler::ConditionCode::COND_LESS);
-                        auto v24 = v2 < 2;
-                        //   br i1 %Pivot, label %60, label %24
-                        if (v24)
-                        {
-                            r24->addGuardNotEq(0);
-                            bb_13:
-                            //   %61 = icmp sgt i64 %21, %23
-                            auto r25 = r12->cmp(r13, assembler::ConditionCode::COND_GREATER);
-                            auto v25 = v12 > v13;
-                            //   br i1 %61, label %67, label %62
-                            if (v25)
-                            {
-                                r25->addGuardNotEq(0);
-                                bb_14:
-                                r_phi_0 = r->loadConst((uint64_t)&pyston_False);
-                                v_phi_0 = &pyston_False;
-                                //   %68 = load %"class.pyston::Box"** @pyston_False, align 8, !tbaa !21
-                                auto r26 = r->loadConst((uint64_t)pyston_False);
-                                auto v26 = pyston_False;
-                                //   %69 = getelementptr inbounds %"class.pyston::Box"* %68, i64 0, i32 0
-                                //    skipping
-                                //   %70 = load i64* %69, align 8, !tbaa !22
-                                auto r27 = r26->getAttr(0);
-                                auto v27 = *((uint64_t*)v26);
-                                //   %71 = add nsw i64 %70, 1
-                                auto r28 = r27->add(r->loadConst(1));
-                                auto v28 = v27 + 1;
-                                //   store i64 %71, i64* %69, align 8, !tbaa !22
-                                r26->setAttr(0, r28);
-                                *((uint64_t*)v26) = v28;
-                                //   br label %boxBool.exit
-                                {
-                                        goto bb_9;
-                                }
-                            } else {
-                                r25->addGuard(0);
-                                bb_15:
-                                r_phi_0 = r->loadConst((uint64_t)&pyston_True);
-                                v_phi_0 = &pyston_True;
-                                //   %63 = load %"class.pyston::Box"** @pyston_True, align 8, !tbaa !21
-                                auto r29 = r->loadConst((uint64_t)pyston_True);
-                                auto v29 = pyston_True;
-                                //   %64 = getelementptr inbounds %"class.pyston::Box"* %63, i64 0, i32 0
-                                //    skipping
-                                //   %65 = load i64* %64, align 8, !tbaa !22
-                                auto r30 = r29->getAttr(0);
-                                auto v30 = *((uint64_t*)v29);
-                                //   %66 = add nsw i64 %65, 1
-                                auto r31 = r30->add(r->loadConst(1));
-                                auto v31 = v30 + 1;
-                                //   store i64 %66, i64* %64, align 8, !tbaa !22
-                                r29->setAttr(0, r31);
-                                *((uint64_t*)v29) = v31;
-                                //   br label %boxBool.exit
-                                {
-                                        goto bb_9;
-                                }
-                            }
-                        } else {
-                            r24->addGuard(0);
-                            bb_16:
-                            //   %25 = icmp eq i64 %21, %23
-                            auto r32 = r12->cmp(r13, assembler::ConditionCode::COND_EQUAL);
-                            auto v32 = v12 == v13;
-                            //   br i1 %25, label %26, label %31
-                            if (v32)
-                            {
-                                r32->addGuardNotEq(0);
-                                bb_17:
-                                r_phi_0 = r->loadConst((uint64_t)&pyston_True);
-                                v_phi_0 = &pyston_True;
-                                //   %27 = load %"class.pyston::Box"** @pyston_True, align 8, !tbaa !21
-                                auto r33 = r->loadConst((uint64_t)pyston_True);
-                                auto v33 = pyston_True;
-                                //   %28 = getelementptr inbounds %"class.pyston::Box"* %27, i64 0, i32 0
-                                //    skipping
-                                //   %29 = load i64* %28, align 8, !tbaa !22
-                                auto r34 = r33->getAttr(0);
-                                auto v34 = *((uint64_t*)v33);
-                                //   %30 = add nsw i64 %29, 1
-                                auto r35 = r34->add(r->loadConst(1));
-                                auto v35 = v34 + 1;
-                                //   store i64 %30, i64* %28, align 8, !tbaa !22
-                                r33->setAttr(0, r35);
-                                *((uint64_t*)v33) = v35;
-                                //   br label %boxBool.exit
-                                {
-                                        goto bb_9;
-                                }
-                            } else {
-                                r32->addGuard(0);
-                                bb_18:
-                                r_phi_0 = r->loadConst((uint64_t)&pyston_False);
-                                v_phi_0 = &pyston_False;
-                                //   %32 = load %"class.pyston::Box"** @pyston_False, align 8, !tbaa !21
-                                auto r36 = r->loadConst((uint64_t)pyston_False);
-                                auto v36 = pyston_False;
-                                //   %33 = getelementptr inbounds %"class.pyston::Box"* %32, i64 0, i32 0
-                                //    skipping
-                                //   %34 = load i64* %33, align 8, !tbaa !22
-                                auto r37 = r36->getAttr(0);
-                                auto v37 = *((uint64_t*)v36);
-                                //   %35 = add nsw i64 %34, 1
-                                auto r38 = r37->add(r->loadConst(1));
-                                auto v38 = v37 + 1;
-                                //   store i64 %35, i64* %33, align 8, !tbaa !22
-                                r36->setAttr(0, r38);
-                                *((uint64_t*)v36) = v38;
-                                //   br label %boxBool.exit
-                                {
-                                        goto bb_9;
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    r14->addGuard(0);
-                    bb_19:
-                    //   %Pivot8 = icmp slt i32 %op, 4
-                    auto r39 = r2->cmp(r->loadConst(4), assembler::ConditionCode::COND_LESS);
-                    auto v39 = v2 < 4;
-                    //   br i1 %Pivot8, label %36, label %NodeBlock5
-                    if (v39)
-                    {
-                        r39->addGuardNotEq(0);
-                        bb_20:
-                        //   %37 = icmp eq i64 %21, %23
-                        auto r40 = r12->cmp(r13, assembler::ConditionCode::COND_EQUAL);
-                        auto v40 = v12 == v13;
-                        //   br i1 %37, label %43, label %38
-                        if (v40)
-                        {
-                            r40->addGuardNotEq(0);
-                            bb_21:
-                            r_phi_0 = r->loadConst((uint64_t)&pyston_False);
-                            v_phi_0 = &pyston_False;
-                            //   %44 = load %"class.pyston::Box"** @pyston_False, align 8, !tbaa !21
-                            auto r41 = r->loadConst((uint64_t)pyston_False);
-                            auto v41 = pyston_False;
-                            //   %45 = getelementptr inbounds %"class.pyston::Box"* %44, i64 0, i32 0
-                            //    skipping
-                            //   %46 = load i64* %45, align 8, !tbaa !22
-                            auto r42 = r41->getAttr(0);
-                            auto v42 = *((uint64_t*)v41);
-                            //   %47 = add nsw i64 %46, 1
-                            auto r43 = r42->add(r->loadConst(1));
-                            auto v43 = v42 + 1;
-                            //   store i64 %47, i64* %45, align 8, !tbaa !22
-                            r41->setAttr(0, r43);
-                            *((uint64_t*)v41) = v43;
-                            //   br label %boxBool.exit
-                            {
-                                    goto bb_9;
-                            }
-                        } else {
-                            r40->addGuard(0);
-                            bb_22:
-                            r_phi_0 = r->loadConst((uint64_t)&pyston_True);
-                            v_phi_0 = &pyston_True;
-                            //   %39 = load %"class.pyston::Box"** @pyston_True, align 8, !tbaa !21
-                            auto r44 = r->loadConst((uint64_t)pyston_True);
-                            auto v44 = pyston_True;
-                            //   %40 = getelementptr inbounds %"class.pyston::Box"* %39, i64 0, i32 0
-                            //    skipping
-                            //   %41 = load i64* %40, align 8, !tbaa !22
-                            auto r45 = r44->getAttr(0);
-                            auto v45 = *((uint64_t*)v44);
-                            //   %42 = add nsw i64 %41, 1
-                            auto r46 = r45->add(r->loadConst(1));
-                            auto v46 = v45 + 1;
-                            //   store i64 %42, i64* %40, align 8, !tbaa !22
-                            r44->setAttr(0, r46);
-                            *((uint64_t*)v44) = v46;
-                            //   br label %boxBool.exit
-                            {
-                                    goto bb_9;
-                            }
-                        }
-                    } else {
-                        r39->addGuard(0);
-                        bb_23:
-                        //   %Pivot6 = icmp slt i32 %op, 5
-                        auto r47 = r2->cmp(r->loadConst(5), assembler::ConditionCode::COND_LESS);
-                        auto v47 = v2 < 5;
-                        //   br i1 %Pivot6, label %72, label %LeafBlock3
-                        if (v47)
-                        {
-                            r47->addGuardNotEq(0);
-                            bb_24:
-                            //   %73 = icmp sgt i64 %21, %23
-                            auto r48 = r12->cmp(r13, assembler::ConditionCode::COND_GREATER);
-                            auto v48 = v12 > v13;
-                            //   br i1 %73, label %74, label %79
-                            if (v48)
-                            {
-                                r48->addGuardNotEq(0);
-                                bb_25:
-                                r_phi_0 = r->loadConst((uint64_t)&pyston_True);
-                                v_phi_0 = &pyston_True;
-                                //   %75 = load %"class.pyston::Box"** @pyston_True, align 8, !tbaa !21
-                                auto r49 = r->loadConst((uint64_t)pyston_True);
-                                auto v49 = pyston_True;
-                                //   %76 = getelementptr inbounds %"class.pyston::Box"* %75, i64 0, i32 0
-                                //    skipping
-                                //   %77 = load i64* %76, align 8, !tbaa !22
-                                auto r50 = r49->getAttr(0);
-                                auto v50 = *((uint64_t*)v49);
-                                //   %78 = add nsw i64 %77, 1
-                                auto r51 = r50->add(r->loadConst(1));
-                                auto v51 = v50 + 1;
-                                //   store i64 %78, i64* %76, align 8, !tbaa !22
-                                r49->setAttr(0, r51);
-                                *((uint64_t*)v49) = v51;
-                                //   br label %boxBool.exit
-                                {
-                                        goto bb_9;
-                                }
-                            } else {
-                                r48->addGuard(0);
-                                bb_26:
-                                r_phi_0 = r->loadConst((uint64_t)&pyston_False);
-                                v_phi_0 = &pyston_False;
-                                //   %80 = load %"class.pyston::Box"** @pyston_False, align 8, !tbaa !21
-                                auto r52 = r->loadConst((uint64_t)pyston_False);
-                                auto v52 = pyston_False;
-                                //   %81 = getelementptr inbounds %"class.pyston::Box"* %80, i64 0, i32 0
-                                //    skipping
-                                //   %82 = load i64* %81, align 8, !tbaa !22
-                                auto r53 = r52->getAttr(0);
-                                auto v53 = *((uint64_t*)v52);
-                                //   %83 = add nsw i64 %82, 1
-                                auto r54 = r53->add(r->loadConst(1));
-                                auto v54 = v53 + 1;
-                                //   store i64 %83, i64* %81, align 8, !tbaa !22
-                                r52->setAttr(0, r54);
-                                *((uint64_t*)v52) = v54;
-                                //   br label %boxBool.exit
-                                {
-                                        goto bb_9;
-                                }
-                            }
-                        } else {
-                            r47->addGuard(0);
-                            bb_27:
-                            //   %SwitchLeaf4 = icmp eq i32 %op, 5
-                            auto r55 = r2->cmp(r->loadConst(5), assembler::ConditionCode::COND_EQUAL);
-                            auto v55 = v2 == 5;
-                            //   br i1 %SwitchLeaf4, label %84, label %NewDefault
-                            if (v55)
-                            {
-                                r55->addGuardNotEq(0);
-                                bb_28:
-                                //   %85 = icmp slt i64 %21, %23
-                                auto r56 = r12->cmp(r13, assembler::ConditionCode::COND_LESS);
-                                auto v56 = v12 < v13;
-                                //   br i1 %85, label %91, label %86
-                                if (v56)
-                                {
-                                    r56->addGuardNotEq(0);
-                                    bb_29:
-                                    r_phi_0 = r->loadConst((uint64_t)&pyston_False);
-                                    v_phi_0 = &pyston_False;
-                                    //   %92 = load %"class.pyston::Box"** @pyston_False, align 8, !tbaa !21
-                                    auto r57 = r->loadConst((uint64_t)pyston_False);
-                                    auto v57 = pyston_False;
-                                    //   %93 = getelementptr inbounds %"class.pyston::Box"* %92, i64 0, i32 0
-                                    //    skipping
-                                    //   %94 = load i64* %93, align 8, !tbaa !22
-                                    auto r58 = r57->getAttr(0);
-                                    auto v58 = *((uint64_t*)v57);
-                                    //   %95 = add nsw i64 %94, 1
-                                    auto r59 = r58->add(r->loadConst(1));
-                                    auto v59 = v58 + 1;
-                                    //   store i64 %95, i64* %93, align 8, !tbaa !22
-                                    r57->setAttr(0, r59);
-                                    *((uint64_t*)v57) = v59;
-                                    //   br label %boxBool.exit
-                                    {
-                                            goto bb_9;
-                                    }
-                                } else {
-                                    r56->addGuard(0);
-                                    bb_30:
                                     r_phi_0 = r->loadConst((uint64_t)&pyston_True);
                                     v_phi_0 = &pyston_True;
-                                    //   %87 = load %"class.pyston::Box"** @pyston_True, align 8, !tbaa !21
-                                    auto r60 = r->loadConst((uint64_t)pyston_True);
-                                    auto v60 = pyston_True;
-                                    //   %88 = getelementptr inbounds %"class.pyston::Box"* %87, i64 0, i32 0
+                                    //   %51 = load %"class.pyston::Box"** @pyston_True, align 8, !tbaa !21
+                                    auto r18 = r->loadConst((uint64_t)pyston_True);
+                                    auto v18 = pyston_True;
+                                    //   %52 = getelementptr inbounds %"class.pyston::Box"* %51, i64 0, i32 0
                                     //    skipping
-                                    //   %89 = load i64* %88, align 8, !tbaa !22
-                                    auto r61 = r60->getAttr(0);
-                                    auto v61 = *((uint64_t*)v60);
-                                    //   %90 = add nsw i64 %89, 1
-                                    auto r62 = r61->add(r->loadConst(1));
-                                    auto v62 = v61 + 1;
-                                    //   store i64 %90, i64* %88, align 8, !tbaa !22
-                                    r60->setAttr(0, r62);
-                                    *((uint64_t*)v60) = v62;
+                                    //   %53 = load i64* %52, align 8, !tbaa !22
+                                    auto r19 = r18->getAttr(0);
+                                    auto v19 = *((uint64_t*)v18);
+                                    //   %54 = add nsw i64 %53, 1
+                                    auto r20 = r19->add(r->loadConst(1));
+                                    auto v20 = v19 + 1;
+                                    //   store i64 %54, i64* %52, align 8, !tbaa !22
+                                    r18->setAttr(0, r20);
+                                    *((uint64_t*)v18) = v20;
                                     //   br label %boxBool.exit
-                                    {
-                                            goto bb_9;
-                                    }
+                                    { goto bb_9; }
+                                } else {
+                                    r17->addGuard(0);
+                                bb_10:
+                                    r_phi_0 = r->loadConst((uint64_t)&pyston_False);
+                                    v_phi_0 = &pyston_False;
+                                    //   %56 = load %"class.pyston::Box"** @pyston_False, align 8, !tbaa !21
+                                    auto r21 = r->loadConst((uint64_t)pyston_False);
+                                    auto v21 = pyston_False;
+                                    //   %57 = getelementptr inbounds %"class.pyston::Box"* %56, i64 0, i32 0
+                                    //    skipping
+                                    //   %58 = load i64* %57, align 8, !tbaa !22
+                                    auto r22 = r21->getAttr(0);
+                                    auto v22 = *((uint64_t*)v21);
+                                    //   %59 = add nsw i64 %58, 1
+                                    auto r23 = r22->add(r->loadConst(1));
+                                    auto v23 = v22 + 1;
+                                    //   store i64 %59, i64* %57, align 8, !tbaa !22
+                                    r21->setAttr(0, r23);
+                                    *((uint64_t*)v21) = v23;
+                                    //   br label %boxBool.exit
+                                    { goto bb_9; }
                                 }
                             } else {
-                                r55->addGuard(0);
+                                r16->addGuard(0);
+                                goto bb_11;
+                            }
+                        } else {
+                            r15->addGuard(0);
+                        bb_12:
+                            //   %Pivot = icmp slt i32 %op, 2
+                            auto r24 = r2->cmp(r->loadConst(2), assembler::ConditionCode::COND_LESS);
+                            auto v24 = v2 < 2;
+                            //   br i1 %Pivot, label %60, label %24
+                            if (v24) {
+                                r24->addGuardNotEq(0);
+                            bb_13:
+                                //   %61 = icmp sgt i64 %21, %23
+                                auto r25 = r12->cmp(r13, assembler::ConditionCode::COND_GREATER);
+                                auto v25 = v12 > v13;
+                                //   br i1 %61, label %67, label %62
+                                if (v25) {
+                                    r25->addGuardNotEq(0);
+                                bb_14:
+                                    r_phi_0 = r->loadConst((uint64_t)&pyston_False);
+                                    v_phi_0 = &pyston_False;
+                                    //   %68 = load %"class.pyston::Box"** @pyston_False, align 8, !tbaa !21
+                                    auto r26 = r->loadConst((uint64_t)pyston_False);
+                                    auto v26 = pyston_False;
+                                    //   %69 = getelementptr inbounds %"class.pyston::Box"* %68, i64 0, i32 0
+                                    //    skipping
+                                    //   %70 = load i64* %69, align 8, !tbaa !22
+                                    auto r27 = r26->getAttr(0);
+                                    auto v27 = *((uint64_t*)v26);
+                                    //   %71 = add nsw i64 %70, 1
+                                    auto r28 = r27->add(r->loadConst(1));
+                                    auto v28 = v27 + 1;
+                                    //   store i64 %71, i64* %69, align 8, !tbaa !22
+                                    r26->setAttr(0, r28);
+                                    *((uint64_t*)v26) = v28;
+                                    //   br label %boxBool.exit
+                                    { goto bb_9; }
+                                } else {
+                                    r25->addGuard(0);
+                                bb_15:
+                                    r_phi_0 = r->loadConst((uint64_t)&pyston_True);
+                                    v_phi_0 = &pyston_True;
+                                    //   %63 = load %"class.pyston::Box"** @pyston_True, align 8, !tbaa !21
+                                    auto r29 = r->loadConst((uint64_t)pyston_True);
+                                    auto v29 = pyston_True;
+                                    //   %64 = getelementptr inbounds %"class.pyston::Box"* %63, i64 0, i32 0
+                                    //    skipping
+                                    //   %65 = load i64* %64, align 8, !tbaa !22
+                                    auto r30 = r29->getAttr(0);
+                                    auto v30 = *((uint64_t*)v29);
+                                    //   %66 = add nsw i64 %65, 1
+                                    auto r31 = r30->add(r->loadConst(1));
+                                    auto v31 = v30 + 1;
+                                    //   store i64 %66, i64* %64, align 8, !tbaa !22
+                                    r29->setAttr(0, r31);
+                                    *((uint64_t*)v29) = v31;
+                                    //   br label %boxBool.exit
+                                    { goto bb_9; }
+                                }
+                            } else {
+                                r24->addGuard(0);
+                            bb_16:
+                                //   %25 = icmp eq i64 %21, %23
+                                auto r32 = r12->cmp(r13, assembler::ConditionCode::COND_EQUAL);
+                                auto v32 = v12 == v13;
+                                //   br i1 %25, label %26, label %31
+                                if (v32) {
+                                    r32->addGuardNotEq(0);
+                                bb_17:
+                                    r_phi_0 = r->loadConst((uint64_t)&pyston_True);
+                                    v_phi_0 = &pyston_True;
+                                    //   %27 = load %"class.pyston::Box"** @pyston_True, align 8, !tbaa !21
+                                    auto r33 = r->loadConst((uint64_t)pyston_True);
+                                    auto v33 = pyston_True;
+                                    //   %28 = getelementptr inbounds %"class.pyston::Box"* %27, i64 0, i32 0
+                                    //    skipping
+                                    //   %29 = load i64* %28, align 8, !tbaa !22
+                                    auto r34 = r33->getAttr(0);
+                                    auto v34 = *((uint64_t*)v33);
+                                    //   %30 = add nsw i64 %29, 1
+                                    auto r35 = r34->add(r->loadConst(1));
+                                    auto v35 = v34 + 1;
+                                    //   store i64 %30, i64* %28, align 8, !tbaa !22
+                                    r33->setAttr(0, r35);
+                                    *((uint64_t*)v33) = v35;
+                                    //   br label %boxBool.exit
+                                    { goto bb_9; }
+                                } else {
+                                    r32->addGuard(0);
+                                bb_18:
+                                    r_phi_0 = r->loadConst((uint64_t)&pyston_False);
+                                    v_phi_0 = &pyston_False;
+                                    //   %32 = load %"class.pyston::Box"** @pyston_False, align 8, !tbaa !21
+                                    auto r36 = r->loadConst((uint64_t)pyston_False);
+                                    auto v36 = pyston_False;
+                                    //   %33 = getelementptr inbounds %"class.pyston::Box"* %32, i64 0, i32 0
+                                    //    skipping
+                                    //   %34 = load i64* %33, align 8, !tbaa !22
+                                    auto r37 = r36->getAttr(0);
+                                    auto v37 = *((uint64_t*)v36);
+                                    //   %35 = add nsw i64 %34, 1
+                                    auto r38 = r37->add(r->loadConst(1));
+                                    auto v38 = v37 + 1;
+                                    //   store i64 %35, i64* %33, align 8, !tbaa !22
+                                    r36->setAttr(0, r38);
+                                    *((uint64_t*)v36) = v38;
+                                    //   br label %boxBool.exit
+                                    { goto bb_9; }
+                                }
+                            }
+                        }
+                    } else {
+                        r14->addGuard(0);
+                    bb_19:
+                        //   %Pivot8 = icmp slt i32 %op, 4
+                        auto r39 = r2->cmp(r->loadConst(4), assembler::ConditionCode::COND_LESS);
+                        auto v39 = v2 < 4;
+                        //   br i1 %Pivot8, label %36, label %NodeBlock5
+                        if (v39) {
+                            r39->addGuardNotEq(0);
+                        bb_20:
+                            //   %37 = icmp eq i64 %21, %23
+                            auto r40 = r12->cmp(r13, assembler::ConditionCode::COND_EQUAL);
+                            auto v40 = v12 == v13;
+                            //   br i1 %37, label %43, label %38
+                            if (v40) {
+                                r40->addGuardNotEq(0);
+                            bb_21:
+                                r_phi_0 = r->loadConst((uint64_t)&pyston_False);
+                                v_phi_0 = &pyston_False;
+                                //   %44 = load %"class.pyston::Box"** @pyston_False, align 8, !tbaa !21
+                                auto r41 = r->loadConst((uint64_t)pyston_False);
+                                auto v41 = pyston_False;
+                                //   %45 = getelementptr inbounds %"class.pyston::Box"* %44, i64 0, i32 0
+                                //    skipping
+                                //   %46 = load i64* %45, align 8, !tbaa !22
+                                auto r42 = r41->getAttr(0);
+                                auto v42 = *((uint64_t*)v41);
+                                //   %47 = add nsw i64 %46, 1
+                                auto r43 = r42->add(r->loadConst(1));
+                                auto v43 = v42 + 1;
+                                //   store i64 %47, i64* %45, align 8, !tbaa !22
+                                r41->setAttr(0, r43);
+                                *((uint64_t*)v41) = v43;
+                                //   br label %boxBool.exit
+                                { goto bb_9; }
+                            } else {
+                                r40->addGuard(0);
+                            bb_22:
+                                r_phi_0 = r->loadConst((uint64_t)&pyston_True);
+                                v_phi_0 = &pyston_True;
+                                //   %39 = load %"class.pyston::Box"** @pyston_True, align 8, !tbaa !21
+                                auto r44 = r->loadConst((uint64_t)pyston_True);
+                                auto v44 = pyston_True;
+                                //   %40 = getelementptr inbounds %"class.pyston::Box"* %39, i64 0, i32 0
+                                //    skipping
+                                //   %41 = load i64* %40, align 8, !tbaa !22
+                                auto r45 = r44->getAttr(0);
+                                auto v45 = *((uint64_t*)v44);
+                                //   %42 = add nsw i64 %41, 1
+                                auto r46 = r45->add(r->loadConst(1));
+                                auto v46 = v45 + 1;
+                                //   store i64 %42, i64* %40, align 8, !tbaa !22
+                                r44->setAttr(0, r46);
+                                *((uint64_t*)v44) = v46;
+                                //   br label %boxBool.exit
+                                { goto bb_9; }
+                            }
+                        } else {
+                            r39->addGuard(0);
+                        bb_23:
+                            //   %Pivot6 = icmp slt i32 %op, 5
+                            auto r47 = r2->cmp(r->loadConst(5), assembler::ConditionCode::COND_LESS);
+                            auto v47 = v2 < 5;
+                            //   br i1 %Pivot6, label %72, label %LeafBlock3
+                            if (v47) {
+                                r47->addGuardNotEq(0);
+                            bb_24:
+                                //   %73 = icmp sgt i64 %21, %23
+                                auto r48 = r12->cmp(r13, assembler::ConditionCode::COND_GREATER);
+                                auto v48 = v12 > v13;
+                                //   br i1 %73, label %74, label %79
+                                if (v48) {
+                                    r48->addGuardNotEq(0);
+                                bb_25:
+                                    r_phi_0 = r->loadConst((uint64_t)&pyston_True);
+                                    v_phi_0 = &pyston_True;
+                                    //   %75 = load %"class.pyston::Box"** @pyston_True, align 8, !tbaa !21
+                                    auto r49 = r->loadConst((uint64_t)pyston_True);
+                                    auto v49 = pyston_True;
+                                    //   %76 = getelementptr inbounds %"class.pyston::Box"* %75, i64 0, i32 0
+                                    //    skipping
+                                    //   %77 = load i64* %76, align 8, !tbaa !22
+                                    auto r50 = r49->getAttr(0);
+                                    auto v50 = *((uint64_t*)v49);
+                                    //   %78 = add nsw i64 %77, 1
+                                    auto r51 = r50->add(r->loadConst(1));
+                                    auto v51 = v50 + 1;
+                                    //   store i64 %78, i64* %76, align 8, !tbaa !22
+                                    r49->setAttr(0, r51);
+                                    *((uint64_t*)v49) = v51;
+                                    //   br label %boxBool.exit
+                                    { goto bb_9; }
+                                } else {
+                                    r48->addGuard(0);
+                                bb_26:
+                                    r_phi_0 = r->loadConst((uint64_t)&pyston_False);
+                                    v_phi_0 = &pyston_False;
+                                    //   %80 = load %"class.pyston::Box"** @pyston_False, align 8, !tbaa !21
+                                    auto r52 = r->loadConst((uint64_t)pyston_False);
+                                    auto v52 = pyston_False;
+                                    //   %81 = getelementptr inbounds %"class.pyston::Box"* %80, i64 0, i32 0
+                                    //    skipping
+                                    //   %82 = load i64* %81, align 8, !tbaa !22
+                                    auto r53 = r52->getAttr(0);
+                                    auto v53 = *((uint64_t*)v52);
+                                    //   %83 = add nsw i64 %82, 1
+                                    auto r54 = r53->add(r->loadConst(1));
+                                    auto v54 = v53 + 1;
+                                    //   store i64 %83, i64* %81, align 8, !tbaa !22
+                                    r52->setAttr(0, r54);
+                                    *((uint64_t*)v52) = v54;
+                                    //   br label %boxBool.exit
+                                    { goto bb_9; }
+                                }
+                            } else {
+                                r47->addGuard(0);
+                            bb_27:
+                                //   %SwitchLeaf4 = icmp eq i32 %op, 5
+                                auto r55 = r2->cmp(r->loadConst(5), assembler::ConditionCode::COND_EQUAL);
+                                auto v55 = v2 == 5;
+                                //   br i1 %SwitchLeaf4, label %84, label %NewDefault
+                                if (v55) {
+                                    r55->addGuardNotEq(0);
+                                bb_28:
+                                    //   %85 = icmp slt i64 %21, %23
+                                    auto r56 = r12->cmp(r13, assembler::ConditionCode::COND_LESS);
+                                    auto v56 = v12 < v13;
+                                    //   br i1 %85, label %91, label %86
+                                    if (v56) {
+                                        r56->addGuardNotEq(0);
+                                    bb_29:
+                                        r_phi_0 = r->loadConst((uint64_t)&pyston_False);
+                                        v_phi_0 = &pyston_False;
+                                        //   %92 = load %"class.pyston::Box"** @pyston_False, align 8, !tbaa !21
+                                        auto r57 = r->loadConst((uint64_t)pyston_False);
+                                        auto v57 = pyston_False;
+                                        //   %93 = getelementptr inbounds %"class.pyston::Box"* %92, i64 0, i32 0
+                                        //    skipping
+                                        //   %94 = load i64* %93, align 8, !tbaa !22
+                                        auto r58 = r57->getAttr(0);
+                                        auto v58 = *((uint64_t*)v57);
+                                        //   %95 = add nsw i64 %94, 1
+                                        auto r59 = r58->add(r->loadConst(1));
+                                        auto v59 = v58 + 1;
+                                        //   store i64 %95, i64* %93, align 8, !tbaa !22
+                                        r57->setAttr(0, r59);
+                                        *((uint64_t*)v57) = v59;
+                                        //   br label %boxBool.exit
+                                        { goto bb_9; }
+                                    } else {
+                                        r56->addGuard(0);
+                                    bb_30:
+                                        r_phi_0 = r->loadConst((uint64_t)&pyston_True);
+                                        v_phi_0 = &pyston_True;
+                                        //   %87 = load %"class.pyston::Box"** @pyston_True, align 8, !tbaa !21
+                                        auto r60 = r->loadConst((uint64_t)pyston_True);
+                                        auto v60 = pyston_True;
+                                        //   %88 = getelementptr inbounds %"class.pyston::Box"* %87, i64 0, i32 0
+                                        //    skipping
+                                        //   %89 = load i64* %88, align 8, !tbaa !22
+                                        auto r61 = r60->getAttr(0);
+                                        auto v61 = *((uint64_t*)v60);
+                                        //   %90 = add nsw i64 %89, 1
+                                        auto r62 = r61->add(r->loadConst(1));
+                                        auto v62 = v61 + 1;
+                                        //   store i64 %90, i64* %88, align 8, !tbaa !22
+                                        r60->setAttr(0, r62);
+                                        *((uint64_t*)v60) = v62;
+                                        //   br label %boxBool.exit
+                                        { goto bb_9; }
+                                    }
+                                } else {
+                                    r55->addGuard(0);
                                     goto bb_11;
+                                }
                             }
                         }
                     }
@@ -2575,60 +2538,157 @@ Box* __attribute__((optimize("-O0"))) rewriter_int_richcompare(CallRewriteArgs* 
             }
         }
     }
-}
-{
+    {
     bb_1:
-    r_phi_0 = r->loadConst((uint64_t)&NotImplemented);
-    v_phi_0 = &NotImplemented;
-    //   %15 = load %"class.pyston::Box"** @NotImplemented, align 8, !tbaa !21
-    auto r63 = r->loadConst((uint64_t)NotImplemented);
-    auto v63 = NotImplemented;
-    //   %16 = getelementptr inbounds %"class.pyston::Box"* %15, i64 0, i32 0
-    //    skipping
-    //   %17 = load i64* %16, align 8, !tbaa !22
-    auto r64 = r63->getAttr(0);
-    auto v64 = *((uint64_t*)v63);
-    //   %18 = add nsw i64 %17, 1
-    auto r65 = r64->add(r->loadConst(1));
-    auto v65 = v64 + 1;
-    //   store i64 %18, i64* %16, align 8, !tbaa !22
-    r63->setAttr(0, r65);
-    *((uint64_t*)v63) = v65;
-    //   br label %boxBool.exit
-    {
-            goto bb_9;
+        r_phi_0 = r->loadConst((uint64_t)&NotImplemented);
+        v_phi_0 = &NotImplemented;
+        //   %15 = load %"class.pyston::Box"** @NotImplemented, align 8, !tbaa !21
+        auto r63 = r->loadConst((uint64_t)NotImplemented);
+        auto v63 = NotImplemented;
+        //   %16 = getelementptr inbounds %"class.pyston::Box"* %15, i64 0, i32 0
+        //    skipping
+        //   %17 = load i64* %16, align 8, !tbaa !22
+        auto r64 = r63->getAttr(0);
+        auto v64 = *((uint64_t*)v63);
+        //   %18 = add nsw i64 %17, 1
+        auto r65 = r64->add(r->loadConst(1));
+        auto v65 = v64 + 1;
+        //   store i64 %18, i64* %16, align 8, !tbaa !22
+        r63->setAttr(0, r65);
+        *((uint64_t*)v63) = v65;
+        //   br label %boxBool.exit
+        { goto bb_9; }
     }
-}
-{
+    {
     bb_9:
-    //   %.0.in = phi %"class.pyston::Box"** [ @NotImplemented, %14 ], [ @pyston_True, %26 ], [ @pyston_False, %31 ], [ @pyston_True, %38 ], [ @pyston_False, %43 ], [ @pyston_True, %50 ], [ @pyston_False, %55 ], [ @pyston_True, %62 ], [ @pyston_False, %67 ], [ @pyston_True, %74 ], [ @pyston_False, %79 ], [ @pyston_True, %86 ], [ @pyston_False, %91 ]
-    //   %.0 = load %"class.pyston::Box"** %.0.in, align 8
-    auto r67 = r_phi_0->getAttr(0);
-    auto v67 = *((Box**)v_phi_0);
-    //   ret %"class.pyston::Box"* %.0
-    rewrite_args->out_rtn = r67;
-    return v67;
-}
-{
-    bb_11:
-    //   br label %96
+        //   %.0.in = phi %"class.pyston::Box"** [ @NotImplemented, %14 ], [ @pyston_True, %26 ], [ @pyston_False, %31
+        //   ], [ @pyston_True, %38 ], [ @pyston_False, %43 ], [ @pyston_True, %50 ], [ @pyston_False, %55 ], [
+        //   @pyston_True, %62 ], [ @pyston_False, %67 ], [ @pyston_True, %74 ], [ @pyston_False, %79 ], [ @pyston_True,
+        //   %86 ], [ @pyston_False, %91 ]
+        //   %.0 = load %"class.pyston::Box"** %.0.in, align 8
+        auto r67 = r_phi_0->getAttr(0);
+        auto v67 = *((Box**)v_phi_0);
+        //   ret %"class.pyston::Box"* %.0
+        rewrite_args->out_rtn = r67;
+        return v67;
+    }
     {
+    bb_11:
+        //   br label %96
+        {
         bb_31:
-        //   %97 = load %struct._IO_FILE** @stderr, align 8, !tbaa !21
-        auto r68 = r->loadConst((uint64_t)stderr);
-        auto v68 = stderr;
+            //   %97 = load %struct._IO_FILE** @stderr, align 8, !tbaa !21
+            auto r68 = r->loadConst((uint64_t)stderr);
+            auto v68 = stderr;
 
-        //   unreachable
-        RELEASE_ASSERT(0, "unreachable");
+            //   unreachable
+            RELEASE_ASSERT(0, "unreachable");
+        }
     }
 }
-}
-
-
 
 
 
 #endif
+
+
+Box* listGetitemInt(CallRewriteArgs* rewrite_args, Box* v0, Box* v1) {
+    auto r = rewrite_args->rewriter;
+    auto r0 = rewrite_args->obj;
+    auto r1 = rewrite_args->arg1;
+    RewriterVar* r_phi_0 = NULL;
+    uint64_t v_phi_0;
+    {
+        bb_1:
+        //   %1 = getelementptr inbounds %"class.pyston::BoxVar"* %slice, i64 0, i32 1
+        //    skipping
+        //   %2 = load i64* %1, align 8, !tbaa !3
+        auto r3 = r_phi_0 = r1->getAttr(16);
+        auto v3 = v_phi_0 = ((uint64_t*)v1)[16/8];
+        //   %3 = icmp slt i64 %2, 0
+        auto r4 = r3->cmp(r->loadConst(0), assembler::ConditionCode::COND_LESS);
+        auto v4 = (int64_t)v3 < (int64_t)0;
+        //   %4 = getelementptr inbounds %"class.pyston::BoxedList"* %self, i64 0, i32 1
+        //    skipping
+        //   %5 = load i64* %4, align 8, !tbaa !8
+        auto r5 = r0->getAttr(16);
+        auto v5 = ((uint64_t*)v0)[16/8];
+        //   br i1 %3, label %6, label %.thread.i
+        if (v4)
+        {
+            r4->addGuardNotEq(0);
+            bb_2:
+            //   %7 = add nsw i64 %5, %2
+            auto r6 = r_phi_0 = r5->add(r3);
+            auto v6 = v_phi_0 = v5 + v3;
+            //   %8 = icmp slt i64 %7, 0
+            auto r7 = r6->cmp(r->loadConst(0), assembler::ConditionCode::COND_LESS);
+            auto v7 = (int64_t)v6 < (int64_t)0;
+            //   br i1 %8, label %10, label %.thread.i
+            if (v7)
+            {
+                r7->addGuardNotEq(0);
+                    goto bb_3;
+            } else {
+                r7->addGuard(0);
+                    goto bb_4;
+            }
+        } else {
+            r4->addGuard(0);
+                goto bb_4;
+        }
+    }
+    {
+        bb_3:
+        //   %11 = load %"class.pyston::BoxedClass"** bitcast (%"class.pyston::Box"** @PyExc_IndexError to %"class.pyston::BoxedClass"**), align 8, !tbaa !11
+        auto r8 = r->loadConst((uint64_t)PyExc_IndexError);
+        auto v8 = PyExc_IndexError;
+        //   tail call void (%"class.pyston::BoxedClass"*, i8*, ...)* @_ZN6pyston14raiseExcHelperEPNS_10BoxedClassEPKcz(%"class.pyston::BoxedClass"*
+        //   unreachable
+        RELEASE_ASSERT(0, "unreachable");
+    }
+    {
+        bb_4:
+        //   %.01.i = phi i64 [ %7, %6 ], [ %2, %0 ]
+        //   %9 = icmp slt i64 %.01.i, %5
+        auto r10 = r_phi_0->cmp(r5, assembler::ConditionCode::COND_LESS);
+        auto v10 = (int64_t)v_phi_0 < (int64_t)v5;
+        //   br i1 %9, label %_ZN6pystonL18listGetitemUnboxedEPNS_9BoxedListEl.exit, label %10
+        if (v10)
+        {
+            r10->addGuardNotEq(0);
+            bb_5:
+            //   %12 = getelementptr inbounds %"class.pyston::BoxedList"* %self, i64 0, i32 2
+            //    skipping
+            //   %13 = load %"struct.pyston::HCAttrs::AttrList"** %12, align 8, !tbaa !12
+            auto r11 = r0->getAttr(24);
+            auto v11 = ((Box**)v0)[24/8];
+            //   %14 = getelementptr inbounds %"struct.pyston::HCAttrs::AttrList"* %13, i64 0, i32 0, i64 %.01.i
+            //    skipping
+            //   %15 = load %"class.pyston::Box"** %14, align 8, !tbaa !11
+            auto r12 = r11->getAttr(r_phi_0);
+            auto v12 = *(Box**)((char*)v11 + v_phi_0));
+            //   %16 = getelementptr inbounds %"class.pyston::Box"* %15, i64 0, i32 0
+            //    skipping
+            //   %17 = load i64* %16, align 8, !tbaa !13
+            auto r13 = r12->getAttr(0);
+            auto v13 = *((uint64_t*)v12);
+            //   %18 = add nsw i64 %17, 1
+            auto r14 = r13->add(r->loadConst(1));
+            auto v14 = v13 + 1;
+            //   store i64 %18, i64* %16, align 8, !tbaa !13
+            r12->setAttr(0, r14);
+            *((uint64_t*)v12) = v14;
+            //   ret %"class.pyston::Box"* %15
+            rewrite_args->out_rtn = r12;
+            return v12;
+        } else {
+            r10->addGuard(0);
+                goto bb_3;
+        }
+    }
+}
+
 
 
 llvm::DenseMap<void*, void*> capi_tracer;
@@ -2637,9 +2697,11 @@ extern "C" void* _ZN6pyston19BoxedXrangeIterator18xrangeIteratorNextEPNS_3BoxE, 
 int __capi_tracer_init_func() {
 #ifdef NDEBUG
 
-    capi_tracer[(void*)&_ZN6pyston19BoxedXrangeIterator18xrangeIteratorNextEPNS_3BoxE]    = (void*)rewriter__ZN6pyston19BoxedXrangeIterator18xrangeIteratorNextEPNS_3BoxE;
+    capi_tracer[(void*)&_ZN6pyston19BoxedXrangeIterator18xrangeIteratorNextEPNS_3BoxE]    =
+   (void*)rewriter__ZN6pyston19BoxedXrangeIterator18xrangeIteratorNextEPNS_3BoxE;
     capi_tracer_simple[(void*)str_length] = (void*)rewriter_str_length;
     capi_tracer[(void*)&int_richcompare] = (void*)rewriter_int_richcompare;
+    capi_tracer[(void*)listGetitemInt] = (void*)rewriter_listGetitemInt;
 
 #endif
 

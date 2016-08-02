@@ -59,11 +59,6 @@ static cl::opt<bool>
 Force("f", cl::desc("Enable binary output on terminals"));
 
 
-void printLambda(std::string code, std::string vars, std::string type = "MUTATION") {
-    outs() << "rewrite_args->rewriter->addAction([&](){ auto a = rewrite_args->rewriter->assembler;\n" << code << " }, " << vars << ", ActionType::" << type << ");";
-}
-
-
 class Snippet {
 public:
     std::string r, cpp;
@@ -92,6 +87,20 @@ Snippet getValue(Value* v) {
         if (auto I = dyn_cast_or_null<ConstantInt>(v)) {
             return Snippet("r->loadConst(" + std::to_string(I->getSExtValue()) + ")", std::to_string(I->getSExtValue()));
         }
+        /*
+        if (auto I = dyn_cast_or_null<ConstantDataSequential>(v)) {
+            assert(I->isCString());
+            printf("%s\n", I->getAsCString().data());
+            std::string escaped = I->getAsCString().data();
+            return Snippet("r->loadConst(\"" + escaped + "\")", "\"" + escaped + "\"");
+        }
+
+        if (auto CE = dyn_cast_or_null<ConstantExpr>(v)) {
+            if (CE->getOpcode() == Instruction::GetElementPtr)
+                return getValue(CE->getOperand(0));
+        }
+        */
+        //v->dump();
 
         o << "unknown value: " << *v << "\n";
         return Snippet(std::string(""), std::string(""));
@@ -150,15 +159,15 @@ std::string getPredicateCpp(CmpInst::Predicate pred, std::string lhs, std::strin
     if (pred == CmpInst::ICMP_EQ)
         return lhs + " == " + rhs;
     else if (pred == CmpInst::ICMP_NE)
-        return lhs + "!=";
+        return lhs + " != " + rhs;
     else if (pred == CmpInst::ICMP_SLT)
-        return lhs + "<";
+        return "(int64_t)" + lhs + " < (int64_t)" + rhs;
     else if (pred == CmpInst::ICMP_SGT)
-        return lhs + ">";
+        return "(int64_t)" + lhs + " > (int64_t)" + rhs;
     else if (pred == CmpInst::ICMP_SLE)
-        return lhs + "<=";
+        return "(int64_t)" + lhs + " <= (int64_t)" + rhs;
     else if (pred == CmpInst::ICMP_SGE)
-        return lhs + ">=";
+        return "(int64_t)" + lhs + " >= (int64_t)" + rhs;
     else if (pred == CmpInst::ICMP_ULT)
         return "(uint64_t)" + lhs + "< (uint64_t)" + rhs;
     printf("%d\n", (int)pred);
@@ -190,10 +199,8 @@ std::string getTypeStr(Type* t, LLVMContext& c) {
 void visitBB(int level, BasicBlock* bb, DataLayout& DL, bool& no_guards_allowed, bool& ok) {
     if (level > 8 && !bb->getSinglePredecessor()) {
         bbs_to_visit.push_back(bb);
-        if (!bbs.count(bb)) {
-            std::string bb_name = "bb_" + std::to_string(bbs.size());
-            bbs[bb] = bb_name;
-        }
+        if (!bbs.count(bb))
+            bbs[bb] = "bb_" + std::to_string(bbs.size());
         o.indent(level + 4) << "goto " << bbs[bb] << ";\n";
         return;
     }
@@ -201,10 +208,8 @@ void visitBB(int level, BasicBlock* bb, DataLayout& DL, bool& no_guards_allowed,
         o.indent(level + 4) << "goto " << bbs[bb] << ";\n";
         return;
     }
-    if (!bbs.count(bb)) {
-        std::string bb_name = "bb_" + std::to_string(bbs.size());
-        bbs[bb] = bb_name;
-    }
+    if (!bbs.count(bb))
+        bbs[bb] = "bb_" + std::to_string(bbs.size());
     blocks_visited.insert(bb);
 
     o.indent(level) << bbs[bb] << ":\n";
@@ -273,15 +278,25 @@ void visitBB(int level, BasicBlock* bb, DataLayout& DL, bool& no_guards_allowed,
 
                 APInt offset(DL.getPointerSizeInBits(GEP->getPointerAddressSpace()), 0);
                 if (!GEP->accumulateConstantOffset(DL, offset)) {
-                    o.indent(level) << "non const gep\n";
-                    continue;
+                    // TODO add more checking..
+                    //for (int i=0; i<GEP->getNumIndices() -1: ++i) {
+                        //assert(GEP->getOperand(i) == )
+                    //}
+                    auto offset = getValue(GEP->getOperand(GEP->getNumIndices()));
+
+                    auto new_var = getDestVar(L);
+                    o.indent(level) << new_var.r << " = " << v.r << "->getAttr(" << offset.r << ");\n";
+                    std::string t = getTypeStr(L->getType(), bb->getContext());
+                    o.indent(level) << new_var.cpp << " = " << "*(" << t << "*)((char*)" << v.cpp << " + " << offset.cpp << "));\n";
+                } else {
+                    auto new_var = getDestVar(L);
+                    o.indent(level) << new_var.r << " = " << v.r << "->getAttr(" << offset.getSExtValue() << ");\n";
+                    std::string t = getTypeStr(L->getType(), bb->getContext());
+                    assert(offset.getSExtValue() % 8 == 0);
+                    o.indent(level) << new_var.cpp << " = " << "((" << t << "*)"  << v.cpp << ")[" << offset.getSExtValue() << "/8];\n";
                 }
 
-                auto new_var = getDestVar(L);
-                o.indent(level) << new_var.r << " = " << v.r << "->getAttr(" << offset.getSExtValue() << ");\n";
-                std::string t = getTypeStr(L->getType(), bb->getContext());
-                assert(offset.getSExtValue() % 8 == 0);
-                o.indent(level) << new_var.cpp << " = " << "((" << t << "*)"  << v.cpp << ")[" << offset.getSExtValue() << "/8];\n";
+
             } else if (auto GV = dyn_cast_or_null<GlobalVariable>(PT_no_casts)) {
 
                 auto new_var = getDestVar(L);
@@ -382,18 +397,28 @@ void visitBB(int level, BasicBlock* bb, DataLayout& DL, bool& no_guards_allowed,
             if (!F)
                 continue;
 
-            if (F->getName() != "boxInt" && F->getName() != "boxBool") {
+
+            if (F->getName() != "boxInt" && F->getName() != "boxBool" && F->getName() != "fprintf") {
                 o.indent(level) << "unknown func " << F->getName() << "\n";
                 continue;
             }
 
-            auto op = getValue(C->getOperand(0));
-            if (op.empty())
-                continue;
+            Snippet operands;
+            for (auto&& op : C->arg_operands()) {
+                auto op_snippet = getValue(op);
+                if (op_snippet.empty())
+                    assert(0);
+                if (!operands.r.empty())
+                    operands.r += ", ";
+                if (!operands.cpp.empty())
+                    operands.cpp += ", ";
+                operands.r += op_snippet.r;
+                operands.cpp += op_snippet.cpp;
+            }
 
             auto new_var = getDestVar(C);
-            o.indent(level) << new_var.r << " = r->call(false, (void*)" << F->getName() << ", { " << op.r << " })->setType(RefType::OWNED);\n";
-            o.indent(level) << new_var.cpp << " = " << F->getName() << "(" << op.cpp << ");\n";
+            o.indent(level) << new_var.r << " = r->call(false, (void*)" << F->getName() << ", { " << operands.r << " })->setType(RefType::OWNED);\n";
+            o.indent(level) << new_var.cpp << " = " << F->getName() << "(" << operands.cpp << ");\n";
 
         } else if (auto B = dyn_cast_or_null<BranchInst>(I)) {
             if (!B->isConditional()) {
@@ -445,11 +470,15 @@ bool visitFunc(Function* f) {
     //if (f->getName().find("xrangeIteratorNext") == -1)
     //  return false;
 
-    if (f->getName() != "str_length")
-        return false;
+    //if (f->getName() != "str_length")
+    //    return false;
 
     //if (f->getName() != "int_richcompare")
     //    return false;
+
+
+    if (f->getName() != "listGetitemInt")
+        return false;
 
     f->print(o);
 
@@ -487,7 +516,7 @@ bool visitFunc(Function* f) {
             o.indent(4) << "RewriterVar* " << name_pair.r << " = NULL;\n";
 
             std::string t = getTypeStr(PHI->getType(), f->getContext());
-            o.indent(4) << t << " " << name_pair.cpp << " = NULL;\n";
+            o.indent(4) << t << " " << name_pair.cpp << ";\n";
         }
     }
 
@@ -537,6 +566,7 @@ int main(int argc, char **argv) {
     llvm::legacy::FunctionPassManager fpm(&*M);
     //fpm.add(createDemoteRegisterToMemoryPass());
     fpm.add(createLowerSwitchPass());
+    fpm.add(createSeparateConstOffsetFromGEPPass(NULL, true));
     fpm.doInitialization();
 
 

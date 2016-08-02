@@ -420,6 +420,15 @@ void Rewriter::_addAttrGuard(RewriterVar* var, int offset, RewriterVar* val_cons
     assertConsistent();
 }
 
+RewriterVar* RewriterVar::getAttr(RewriterVar* offset, Location dest, assembler::MovType type) {
+    STAT_TIMER(t0, "us_timer_rewriter", 10);
+
+    assert(!offset->isConstant());
+
+    RewriterVar* new_var_with_offset = add(offset);
+    return new_var_with_offset->getAttr(0, dest, type);
+}
+
 RewriterVar* RewriterVar::getAttr(int offset, Location dest, assembler::MovType type) {
     STAT_TIMER(t0, "us_timer_rewriter", 10);
 
@@ -648,28 +657,28 @@ RewriterVar* RewriterVar::cmp(RewriterVar* other, assembler::ConditionCode cond)
 
     if (isConstant() && other->isConstant()) {
         switch (cond) {
-        case assembler::ConditionCode::COND_BELOW:
-            return rewriter->loadConst((uint64_t)constant_value < (uint64_t)other->constant_value);
-        case assembler::ConditionCode::COND_NOT_BELOW:
-            return rewriter->loadConst(!((uint64_t)constant_value < (uint64_t)other->constant_value));
-        case assembler::ConditionCode::COND_EQUAL:
-            return rewriter->loadConst(constant_value == other->constant_value);
-        case assembler::ConditionCode::COND_NOT_EQUAL:
-            return rewriter->loadConst(constant_value != other->constant_value);
-        case assembler::ConditionCode::COND_NOT_ABOVE:
-            return rewriter->loadConst(!(constant_value > other->constant_value));
-        case assembler::ConditionCode::COND_ABOVE:
-            return rewriter->loadConst((constant_value > other->constant_value));
-        case assembler::ConditionCode::COND_LESS:
-            return rewriter->loadConst(((int64_t)constant_value < (int64_t)other->constant_value));
-        case assembler::ConditionCode::COND_NOT_LESS:
-            return rewriter->loadConst(!((int64_t)constant_value < (int64_t)other->constant_value));
-        case assembler::ConditionCode::COND_NOT_GREATER:
-            return rewriter->loadConst(!((int64_t)constant_value > (int64_t)other->constant_value));
-        case assembler::ConditionCode::COND_GREATER:
-            return rewriter->loadConst(((int64_t)constant_value > (int64_t)other->constant_value));
-        default:
-            RELEASE_ASSERT(0, "unknown");
+            case assembler::ConditionCode::COND_BELOW:
+                return rewriter->loadConst((uint64_t)constant_value < (uint64_t)other->constant_value);
+            case assembler::ConditionCode::COND_NOT_BELOW:
+                return rewriter->loadConst(!((uint64_t)constant_value < (uint64_t)other->constant_value));
+            case assembler::ConditionCode::COND_EQUAL:
+                return rewriter->loadConst(constant_value == other->constant_value);
+            case assembler::ConditionCode::COND_NOT_EQUAL:
+                return rewriter->loadConst(constant_value != other->constant_value);
+            case assembler::ConditionCode::COND_NOT_ABOVE:
+                return rewriter->loadConst(!(constant_value > other->constant_value));
+            case assembler::ConditionCode::COND_ABOVE:
+                return rewriter->loadConst((constant_value > other->constant_value));
+            case assembler::ConditionCode::COND_LESS:
+                return rewriter->loadConst(((int64_t)constant_value < (int64_t)other->constant_value));
+            case assembler::ConditionCode::COND_NOT_LESS:
+                return rewriter->loadConst(!((int64_t)constant_value < (int64_t)other->constant_value));
+            case assembler::ConditionCode::COND_NOT_GREATER:
+                return rewriter->loadConst(!((int64_t)constant_value > (int64_t)other->constant_value));
+            case assembler::ConditionCode::COND_GREATER:
+                return rewriter->loadConst(((int64_t)constant_value > (int64_t)other->constant_value));
+            default:
+                RELEASE_ASSERT(0, "unknown");
         };
     }
 
@@ -779,8 +788,10 @@ void Rewriter::_cmp(RewriterVar* result, RewriterVar* v1, assembler::ConditionCo
     if (LOG_IC_ASSEMBLY)
         assembler->comment("_cmp");
 
-    assembler::Register v1_reg = v1->getInReg(Location::any(), true, assembler::RAX, allocatable_regs.remove(assembler::RAX));
-    assembler::Register v2_reg = v2->getInReg(assembler::RDI, true, assembler::RAX, allocatable_regs.remove(assembler::RAX | v1_reg));
+    assembler::Register v1_reg
+        = v1->getInReg(Location::any(), true, assembler::RAX, allocatable_regs.remove(assembler::RAX));
+    assembler::Register v2_reg
+        = v2->getInReg(assembler::RDI, true, assembler::RAX, allocatable_regs.remove(assembler::RAX | v1_reg));
     RELEASE_ASSERT(v1_reg != v2_reg, ""); // TODO how do we ensure this?
     RELEASE_ASSERT(v1_reg != assembler::RAX, "");
     RELEASE_ASSERT(v2_reg != assembler::RAX, "");
@@ -926,7 +937,8 @@ assembler::Register RewriterVar::getInReg(Location dest, bool allow_constant_in_
     return getInReg(dest, allow_constant_in_reg, otherThan, rewriter->allocatable_regs);
 }
 
-assembler::Register RewriterVar::getInReg(Location dest, bool allow_constant_in_reg, Location otherThan, assembler::RegisterSet valid_registers) {
+assembler::Register RewriterVar::getInReg(Location dest, bool allow_constant_in_reg, Location otherThan,
+                                          assembler::RegisterSet valid_registers) {
     assert(dest.type == Location::Register || dest.type == Location::AnyReg);
 
 #ifndef NDEBUG

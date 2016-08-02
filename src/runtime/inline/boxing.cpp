@@ -82,6 +82,22 @@ extern "C" PyObject* int_richcompare(PyObject* v, PyObject* w, int op) noexcept 
     }
 }
 
+static inline BORROWED(Box*) listGetitemUnboxed(BoxedList* self, int64_t n) {
+    assert(PyList_Check(self));
+    if (n < 0)
+        n = self->size + n;
+
+    if (n < 0 || n >= self->size) {
+        raiseExcHelper(IndexError, "list index out of range");
+    }
+    Box* rtn = self->elts->elts[n];
+    return rtn;
+}
+
+extern "C" Box* listGetitemInt(BoxedList* self, BoxedInt* slice) {
+    assert(PyInt_Check(slice));
+    return incref(listGetitemUnboxed(self, slice->n));
+}
 
 // BoxedInt::BoxedInt(int64_t n) : Box(int_cls), n(n) {}
 }

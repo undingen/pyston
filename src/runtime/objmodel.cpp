@@ -5935,7 +5935,7 @@ Box* compareInternal(Box* lhs, Box* rhs, int op_type, CompareRewriteArgs* rewrit
             Box* rtn = f(&new_rewrite_args, lhs, rhs, cpython_op_type);
             if (new_rewrite_args.out_rtn) {
                 rewrite_args->out_rtn = new_rewrite_args.out_rtn;
-                //rewrite_args->rewriter->checkAndThrowCAPIException(rewrite_args->out_rtn);
+                // rewrite_args->rewriter->checkAndThrowCAPIException(rewrite_args->out_rtn);
                 rewrite_args->out_success = true;
             }
             return rtn;

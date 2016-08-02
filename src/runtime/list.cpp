@@ -258,10 +258,7 @@ static inline BORROWED(Box*) listGetitemUnboxed(BoxedList* self, int64_t n) {
     return rtn;
 }
 
-extern "C" Box* listGetitemInt(BoxedList* self, BoxedInt* slice) {
-    assert(PyInt_Check(slice));
-    return incref(listGetitemUnboxed(self, slice->n));
-}
+extern "C" Box* listGetitemInt(BoxedList* self, BoxedInt* slice);
 
 extern "C" BORROWED(PyObject*) PyList_GetItem(PyObject* op, Py_ssize_t i) noexcept {
     RELEASE_ASSERT(PyList_Check(op), "");

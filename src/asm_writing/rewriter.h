@@ -149,6 +149,9 @@ public:
     void addGuardNotEq(uint64_t val);
     void addGuardNotLt0();
     void addAttrGuard(int offset, uint64_t val, bool negate = false);
+
+    RewriterVar* getAttr(RewriterVar* offset, Location loc = Location::any(), assembler::MovType type = assembler::MovType::Q);
+
     RewriterVar* getAttr(int offset, Location loc = Location::any(), assembler::MovType type = assembler::MovType::Q);
     // getAttrFloat casts to double (maybe I should make that separate?)
     RewriterVar* getAttrFloat(int offset, Location loc = Location::any());
@@ -280,8 +283,8 @@ private:
     // that the register will still contain your value when you go to use it
     assembler::Register getInReg(Location l = Location::any(), bool allow_constant_in_reg = false,
                                  Location otherThan = Location::any());
-    assembler::Register getInReg(Location l, bool allow_constant_in_reg,
-                                 Location otherThan, assembler::RegisterSet valid_registers);
+    assembler::Register getInReg(Location l, bool allow_constant_in_reg, Location otherThan,
+                                 assembler::RegisterSet valid_registers);
     assembler::XMMRegister getInXMMReg(Location l = Location::any());
 
     assembler::Register initializeInReg(Location l = Location::any());
