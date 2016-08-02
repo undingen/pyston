@@ -190,7 +190,7 @@ public:
         : lineno(lineno), col_offset(col_offset), type(type) {}
 
     void* operator new(std::size_t n);
-};
+} __attribute__((packed));
 
 class AST_expr : public AST {
 public:
@@ -198,7 +198,7 @@ public:
 
     AST_expr(AST_TYPE::AST_TYPE type) : AST(type) {}
     AST_expr(AST_TYPE::AST_TYPE type, uint32_t lineno, uint32_t col_offset = 0) : AST(type, lineno, col_offset) {}
-};
+} __attribute__((packed));
 
 class AST_stmt : public AST {
 public:
@@ -207,14 +207,14 @@ public:
     int cxx_exception_count = 0;
 
     AST_stmt(AST_TYPE::AST_TYPE type) : AST(type) {}
-};
+} __attribute__((packed));
 
 class AST_slice : public AST {
 public:
     void* accept_slice(SliceVisitor* s);
     AST_slice(AST_TYPE::AST_TYPE type) : AST(type) {}
     AST_slice(AST_TYPE::AST_TYPE type, uint32_t lineno, uint32_t col_offset = 0) : AST(type, lineno, col_offset) {}
-};
+} __attribute__((packed));
 
 class AST_alias : public AST {
 public:
@@ -226,7 +226,7 @@ public:
     AST_alias(InternedString name, InternedString asname) : AST(AST_TYPE::alias), name(name), asname(asname) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::alias;
-};
+}__attribute__((packed));
 
 class AST_Name;
 
@@ -242,7 +242,7 @@ public:
     AST_arguments() : AST(AST_TYPE::arguments) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::arguments;
-};
+} __attribute__((packed));
 
 class AST_Assert : public AST_stmt {
 public:
@@ -254,7 +254,7 @@ public:
     AST_Assert() : AST_stmt(AST_TYPE::Assert) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Assert;
-};
+} __attribute__((packed));
 
 class AST_Assign : public AST_stmt {
 public:
@@ -267,7 +267,7 @@ public:
     AST_Assign() : AST_stmt(AST_TYPE::Assign) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Assign;
-};
+} __attribute__((packed));
 
 class AST_AugAssign : public AST_stmt {
 public:
@@ -281,7 +281,7 @@ public:
     AST_AugAssign() : AST_stmt(AST_TYPE::AugAssign) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::AugAssign;
-};
+} __attribute__((packed));
 
 class AST_AugBinOp : public AST_expr {
 public:
@@ -294,7 +294,7 @@ public:
     AST_AugBinOp() : AST_expr(AST_TYPE::AugBinOp) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::AugBinOp;
-};
+} __attribute__((packed));
 
 class AST_Attribute : public AST_expr {
 public:
@@ -311,7 +311,7 @@ public:
         : AST_expr(AST_TYPE::Attribute), value(value), ctx_type(ctx_type), attr(attr) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Attribute;
-};
+} __attribute__((packed));
 
 class AST_BinOp : public AST_expr {
 public:
@@ -324,7 +324,7 @@ public:
     AST_BinOp() : AST_expr(AST_TYPE::BinOp) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::BinOp;
-};
+} __attribute__((packed));
 
 class AST_BoolOp : public AST_expr {
 public:
@@ -337,7 +337,7 @@ public:
     AST_BoolOp() : AST_expr(AST_TYPE::BoolOp) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::BoolOp;
-};
+} __attribute__((packed));
 
 class AST_Break : public AST_stmt {
 public:
@@ -347,7 +347,7 @@ public:
     AST_Break() : AST_stmt(AST_TYPE::Break) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Break;
-};
+} __attribute__((packed));
 
 class AST_Call : public AST_expr {
 public:
@@ -361,7 +361,7 @@ public:
     AST_Call() : AST_expr(AST_TYPE::Call) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Call;
-};
+} __attribute__((packed));
 
 class AST_Compare : public AST_expr {
 public:
@@ -375,7 +375,7 @@ public:
     AST_Compare() : AST_expr(AST_TYPE::Compare) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Compare;
-};
+} __attribute__((packed));
 
 class AST_comprehension : public AST {
 public:
@@ -388,7 +388,7 @@ public:
     AST_comprehension() : AST(AST_TYPE::comprehension) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::comprehension;
-};
+} __attribute__((packed));
 
 class AST_ClassDef : public AST_stmt {
 public:
@@ -402,7 +402,7 @@ public:
     AST_ClassDef() : AST_stmt(AST_TYPE::ClassDef) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::ClassDef;
-};
+} __attribute__((packed));
 
 class AST_Continue : public AST_stmt {
 public:
@@ -412,7 +412,7 @@ public:
     AST_Continue() : AST_stmt(AST_TYPE::Continue) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Continue;
-};
+} __attribute__((packed));
 
 class AST_Dict : public AST_expr {
 public:
@@ -424,7 +424,7 @@ public:
     AST_Dict() : AST_expr(AST_TYPE::Dict) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Dict;
-};
+} __attribute__((packed));
 
 class AST_DictComp : public AST_expr {
 public:
@@ -437,7 +437,7 @@ public:
     AST_DictComp() : AST_expr(AST_TYPE::DictComp) {}
 
     const static AST_TYPE::AST_TYPE TYPE = AST_TYPE::DictComp;
-};
+} __attribute__((packed));
 
 class AST_Delete : public AST_stmt {
 public:
@@ -448,7 +448,7 @@ public:
     AST_Delete() : AST_stmt(AST_TYPE::Delete) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Delete;
-};
+} __attribute__((packed));
 
 class AST_Ellipsis : public AST_slice {
 public:
@@ -458,7 +458,7 @@ public:
     AST_Ellipsis() : AST_slice(AST_TYPE::Ellipsis) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Ellipsis;
-};
+} __attribute__((packed));
 
 class AST_Expr : public AST_stmt {
 public:
@@ -471,7 +471,7 @@ public:
     AST_Expr(AST_expr* value) : AST_stmt(AST_TYPE::Expr), value(value) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Expr;
-};
+} __attribute__((packed));
 
 class AST_ExceptHandler : public AST {
 public:
@@ -484,7 +484,7 @@ public:
     AST_ExceptHandler() : AST(AST_TYPE::ExceptHandler) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::ExceptHandler;
-};
+} __attribute__((packed));
 
 class AST_Exec : public AST_stmt {
 public:
@@ -498,7 +498,7 @@ public:
     AST_Exec() : AST_stmt(AST_TYPE::Exec) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Exec;
-};
+} __attribute__((packed));
 
 // (Alternative to AST_Module, used for, e.g., eval)
 class AST_Expression : public AST {
@@ -513,7 +513,7 @@ public:
         : AST(AST_TYPE::Expression), interned_strings(std::move(interned_strings)) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Expression;
-};
+} __attribute__((packed));
 
 class AST_ExtSlice : public AST_slice {
 public:
@@ -525,7 +525,7 @@ public:
     AST_ExtSlice() : AST_slice(AST_TYPE::ExtSlice) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::ExtSlice;
-};
+} __attribute__((packed));
 
 class AST_For : public AST_stmt {
 public:
@@ -538,7 +538,7 @@ public:
     AST_For() : AST_stmt(AST_TYPE::For) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::For;
-};
+} __attribute__((packed));
 
 class AST_FunctionDef : public AST_stmt {
 public:
@@ -553,7 +553,7 @@ public:
     AST_FunctionDef() : AST_stmt(AST_TYPE::FunctionDef) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::FunctionDef;
-};
+} __attribute__((packed));
 
 class AST_GeneratorExp : public AST_expr {
 public:
@@ -566,7 +566,7 @@ public:
     AST_GeneratorExp() : AST_expr(AST_TYPE::GeneratorExp) {}
 
     const static AST_TYPE::AST_TYPE TYPE = AST_TYPE::GeneratorExp;
-};
+} __attribute__((packed));
 
 class AST_Global : public AST_stmt {
 public:
@@ -578,7 +578,7 @@ public:
     AST_Global() : AST_stmt(AST_TYPE::Global) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Global;
-};
+} __attribute__((packed));
 
 class AST_If : public AST_stmt {
 public:
@@ -591,7 +591,7 @@ public:
     AST_If() : AST_stmt(AST_TYPE::If) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::If;
-};
+} __attribute__((packed));
 
 class AST_IfExp : public AST_expr {
 public:
@@ -603,7 +603,7 @@ public:
     AST_IfExp() : AST_expr(AST_TYPE::IfExp) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::IfExp;
-};
+} __attribute__((packed));
 
 class AST_Import : public AST_stmt {
 public:
@@ -615,7 +615,7 @@ public:
     AST_Import() : AST_stmt(AST_TYPE::Import) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Import;
-};
+} __attribute__((packed));
 
 class AST_ImportFrom : public AST_stmt {
 public:
@@ -629,7 +629,7 @@ public:
     AST_ImportFrom() : AST_stmt(AST_TYPE::ImportFrom) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::ImportFrom;
-};
+} __attribute__((packed));
 
 class AST_Index : public AST_slice {
 public:
@@ -641,7 +641,7 @@ public:
     AST_Index() : AST_slice(AST_TYPE::Index) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Index;
-};
+} __attribute__((packed));
 
 class AST_keyword : public AST {
 public:
@@ -654,7 +654,7 @@ public:
     AST_keyword() : AST(AST_TYPE::keyword) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::keyword;
-};
+} __attribute__((packed));
 
 class AST_Lambda : public AST_expr {
 public:
@@ -667,7 +667,7 @@ public:
     AST_Lambda() : AST_expr(AST_TYPE::Lambda) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Lambda;
-};
+} __attribute__((packed));
 
 class AST_List : public AST_expr {
 public:
@@ -680,7 +680,7 @@ public:
     AST_List() : AST_expr(AST_TYPE::List) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::List;
-};
+} __attribute__((packed));
 
 class AST_ListComp : public AST_expr {
 public:
@@ -693,7 +693,7 @@ public:
     AST_ListComp() : AST_expr(AST_TYPE::ListComp) {}
 
     const static AST_TYPE::AST_TYPE TYPE = AST_TYPE::ListComp;
-};
+} __attribute__((packed));
 
 class AST_Module : public AST {
 public:
@@ -708,7 +708,7 @@ public:
         : AST(AST_TYPE::Module), interned_strings(std::move(interned_strings)) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Module;
-};
+} __attribute__((packed));
 
 class AST_Suite : public AST {
 public:
@@ -722,7 +722,7 @@ public:
         : AST(AST_TYPE::Suite), interned_strings(std::move(interned_strings)) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Suite;
-};
+} __attribute__((packed));
 
 class AST_Name : public AST_expr {
 public:
@@ -752,7 +752,7 @@ public:
           lookup_type(ScopeInfo::VarScopeType::UNKNOWN) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Name;
-};
+} __attribute__((packed));
 
 class AST_Num : public AST_expr {
 public:
@@ -778,7 +778,7 @@ public:
     AST_Num() : AST_expr(AST_TYPE::Num) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Num;
-};
+} __attribute__((packed));
 
 class AST_Repr : public AST_expr {
 public:
@@ -790,7 +790,7 @@ public:
     AST_Repr() : AST_expr(AST_TYPE::Repr) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Repr;
-};
+} __attribute__((packed));
 
 class AST_Pass : public AST_stmt {
 public:
@@ -800,7 +800,7 @@ public:
     AST_Pass() : AST_stmt(AST_TYPE::Pass) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Pass;
-};
+} __attribute__((packed));
 
 class AST_Print : public AST_stmt {
 public:
@@ -814,7 +814,7 @@ public:
     AST_Print() : AST_stmt(AST_TYPE::Print) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Print;
-};
+} __attribute__((packed));
 
 class AST_Raise : public AST_stmt {
 public:
@@ -830,7 +830,7 @@ public:
     AST_Raise() : AST_stmt(AST_TYPE::Raise), arg0(NULL), arg1(NULL), arg2(NULL) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Raise;
-};
+} __attribute__((packed));
 
 class AST_Return : public AST_stmt {
 public:
@@ -842,7 +842,7 @@ public:
     AST_Return() : AST_stmt(AST_TYPE::Return) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Return;
-};
+} __attribute__((packed));
 
 class AST_Set : public AST_expr {
 public:
@@ -854,7 +854,7 @@ public:
     AST_Set() : AST_expr(AST_TYPE::Set) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Set;
-};
+} __attribute__((packed));
 
 class AST_SetComp : public AST_expr {
 public:
@@ -867,7 +867,7 @@ public:
     AST_SetComp() : AST_expr(AST_TYPE::SetComp) {}
 
     const static AST_TYPE::AST_TYPE TYPE = AST_TYPE::SetComp;
-};
+} __attribute__((packed));
 
 class AST_Slice : public AST_slice {
 public:
@@ -879,7 +879,7 @@ public:
     AST_Slice() : AST_slice(AST_TYPE::Slice) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Slice;
-};
+} __attribute__((packed));
 
 class AST_Str : public AST_expr {
 public:
@@ -900,7 +900,7 @@ public:
     AST_Str(std::string s) : AST_expr(AST_TYPE::Str), str_type(STR), str_data(std::move(s)) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Str;
-};
+} __attribute__((packed));
 
 class AST_Subscript : public AST_expr {
 public:
@@ -914,7 +914,7 @@ public:
     AST_Subscript() : AST_expr(AST_TYPE::Subscript) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Subscript;
-};
+} __attribute__((packed));
 
 class AST_TryExcept : public AST_stmt {
 public:
@@ -927,7 +927,7 @@ public:
     AST_TryExcept() : AST_stmt(AST_TYPE::TryExcept) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::TryExcept;
-};
+} __attribute__((packed));
 
 class AST_TryFinally : public AST_stmt {
 public:
@@ -939,7 +939,7 @@ public:
     AST_TryFinally() : AST_stmt(AST_TYPE::TryFinally) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::TryFinally;
-};
+} __attribute__((packed));
 
 class AST_Tuple : public AST_expr {
 public:
@@ -952,7 +952,7 @@ public:
     AST_Tuple() : AST_expr(AST_TYPE::Tuple) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Tuple;
-};
+} __attribute__((packed));
 
 class AST_UnaryOp : public AST_expr {
 public:
@@ -965,7 +965,7 @@ public:
     AST_UnaryOp() : AST_expr(AST_TYPE::UnaryOp) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::UnaryOp;
-};
+} __attribute__((packed));
 
 class AST_While : public AST_stmt {
 public:
@@ -978,7 +978,7 @@ public:
     AST_While() : AST_stmt(AST_TYPE::While) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::While;
-};
+} __attribute__((packed));
 
 class AST_With : public AST_stmt {
 public:
@@ -991,7 +991,7 @@ public:
     AST_With() : AST_stmt(AST_TYPE::With) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::With;
-};
+} __attribute__((packed));
 
 class AST_Yield : public AST_expr {
 public:
@@ -1003,7 +1003,7 @@ public:
     AST_Yield() : AST_expr(AST_TYPE::Yield) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Yield;
-};
+} __attribute__((packed));
 
 class AST_MakeFunction : public AST_expr {
 public:
@@ -1016,7 +1016,7 @@ public:
         : AST_expr(AST_TYPE::MakeFunction, fd->lineno, fd->col_offset), function_def(fd) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::MakeFunction;
-};
+} __attribute__((packed));
 
 class AST_MakeClass : public AST_expr {
 public:
@@ -1028,7 +1028,7 @@ public:
     AST_MakeClass(AST_ClassDef* cd) : AST_expr(AST_TYPE::MakeClass, cd->lineno, cd->col_offset), class_def(cd) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::MakeClass;
-};
+} __attribute__((packed));
 
 
 // AST pseudo-nodes that will get added during CFG-construction.  These don't exist in the input AST, but adding them in
@@ -1047,7 +1047,7 @@ public:
     AST_Branch() : AST_stmt(AST_TYPE::Branch) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Branch;
-};
+} __attribute__((packed));
 
 class AST_Jump : public AST_stmt {
 public:
@@ -1059,7 +1059,7 @@ public:
     AST_Jump() : AST_stmt(AST_TYPE::Jump) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Jump;
-};
+} __attribute__((packed));
 
 class AST_ClsAttribute : public AST_expr {
 public:
@@ -1072,7 +1072,7 @@ public:
     AST_ClsAttribute() : AST_expr(AST_TYPE::ClsAttribute) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::ClsAttribute;
-};
+} __attribute__((packed));
 
 class AST_Invoke : public AST_stmt {
 public:
@@ -1086,7 +1086,7 @@ public:
     AST_Invoke(AST_stmt* stmt) : AST_stmt(AST_TYPE::Invoke), stmt(stmt) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Invoke;
-};
+} __attribute__((packed));
 
 // "LangPrimitive" represents operations that "primitive" to the language,
 // but aren't directly *exactly* representable as normal Python.
@@ -1117,7 +1117,7 @@ public:
     AST_LangPrimitive(Opcodes opcode) : AST_expr(AST_TYPE::LangPrimitive), opcode(opcode) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::LangPrimitive;
-};
+} __attribute__((packed));
 
 template <typename T> T* ast_cast(AST* node) {
     assert(!node || node->type == T::TYPE);
