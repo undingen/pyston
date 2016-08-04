@@ -479,8 +479,7 @@ Value ASTInterpreter::doBinOp(AST_expr* node, Value left, Value right, int op, B
 }
 
 void ASTInterpreter::doStore(AST_Name* node, STOLEN(Value) value) {
-    if (node->lookup_type == ScopeInfo::VarScopeType::UNKNOWN)
-        node->lookup_type = scope_info->getScopeTypeOfName(node->id);
+    assert(node->lookup_type != ScopeInfo::VarScopeType::UNKNOWN);
 
     InternedString name = node->id;
     ScopeInfo::VarScopeType vst = node->lookup_type;
@@ -760,7 +759,7 @@ Box* ASTInterpreter::doOSR(AST_Jump* node) {
         if (!liveness->isLiveAtEnd(sym.second, current_block)) {
             dead_vregs.push_back(sym.second);
         } else if (phis->isRequiredAfter(sym.second, current_block)) {
-            assert(scope_info->getScopeTypeOfName(sym.first) != ScopeInfo::VarScopeType::GLOBAL);
+            //assert(scope_info->getScopeTypeOfName(sym.first) != ScopeInfo::VarScopeType::GLOBAL);
         } else {
         }
     }
@@ -1377,8 +1376,7 @@ Value ASTInterpreter::visit_delete(AST_Delete* node) {
             }
             case AST_TYPE::Name: {
                 AST_Name* target = (AST_Name*)target_;
-                if (target->lookup_type == ScopeInfo::VarScopeType::UNKNOWN)
-                    target->lookup_type = scope_info->getScopeTypeOfName(target->id);
+                assert(target->lookup_type != ScopeInfo::VarScopeType::UNKNOWN);
                 ScopeInfo::VarScopeType vst = target->lookup_type;
                 if (vst == ScopeInfo::VarScopeType::GLOBAL) {
                     if (jit)
@@ -1698,9 +1696,7 @@ Value ASTInterpreter::visit_str(AST_Str* node) {
 }
 
 Value ASTInterpreter::visit_name(AST_Name* node) {
-    if (node->lookup_type == ScopeInfo::VarScopeType::UNKNOWN) {
-        node->lookup_type = scope_info->getScopeTypeOfName(node->id);
-    }
+    assert(node->lookup_type != ScopeInfo::VarScopeType::UNKNOWN);
 
     switch (node->lookup_type) {
         case ScopeInfo::VarScopeType::GLOBAL: {

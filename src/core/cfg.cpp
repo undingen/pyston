@@ -3146,6 +3146,7 @@ CFG* computeCFG(SourceInfo* source, std::vector<AST_stmt*> body, const ParamName
     }
 
     rtn->getVRegInfo().assignVRegs(rtn, param_names, source->getScopeInfo());
+    source->getScopeInfo()->clear();
 
     return rtn;
 }

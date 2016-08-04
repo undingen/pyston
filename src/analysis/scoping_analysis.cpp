@@ -349,6 +349,7 @@ public:
         }
 
         takes_closure = got_from_closure || passthrough_accesses;
+        getAllDerefVarsAndInfo();
     }
 
     ~ScopeInfoBase() override { delete this->usage; }
@@ -364,6 +365,8 @@ public:
     VarScopeType getScopeTypeOfName(InternedString name) override {
         if (name.isCompilerCreatedName())
             return VarScopeType::FAST;
+
+        assert(usage);
 
         ScopeNameUsageEntry r;
         auto it = usage->results.find(name);
@@ -393,7 +396,7 @@ public:
     bool areLocalsFromModule() override { return false; }
 
     DerefInfo getDerefInfo(InternedString name) override {
-        assert(getScopeTypeOfName(name) == VarScopeType::DEREF);
+        // assert(getScopeTypeOfName(name) == VarScopeType::DEREF);
 
         // TODO pre-compute this?
 
@@ -416,12 +419,12 @@ public:
     }
 
     size_t getClosureOffset(InternedString name) override {
-        assert(getScopeTypeOfName(name) == VarScopeType::CLOSURE);
+        // assert(getScopeTypeOfName(name) == VarScopeType::CLOSURE);
         return closure_offsets[name];
     }
 
     size_t getClosureSize() override {
-        assert(createsClosure());
+        // assert(createsClosure());
         return closure_offsets.size();
     }
 
@@ -458,6 +461,11 @@ public:
                 });
         }
         return allDerefVarsAndInfo;
+    }
+
+    virtual void clear() {
+        delete usage;
+        usage = NULL;
     }
 };
 

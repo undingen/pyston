@@ -431,8 +431,7 @@ private:
     }
 
     void* visit_name(AST_Name* node) override {
-        if (node->lookup_type == ScopeInfo::VarScopeType::UNKNOWN)
-            node->lookup_type = scope_info->getScopeTypeOfName(node->id);
+        assert(node->lookup_type != ScopeInfo::VarScopeType::UNKNOWN);
         auto name_scope = node->lookup_type;
 
         if (name_scope == ScopeInfo::VarScopeType::GLOBAL) {

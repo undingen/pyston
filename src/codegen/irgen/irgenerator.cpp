@@ -1356,7 +1356,8 @@ private:
         bool is_kill = irstate->getLiveness()->isKill(node, myblock);
         assert(!is_kill || node->id.s()[0] == '#');
 
-        ScopeInfo::VarScopeType vst = scope_info->getScopeTypeOfName(node->id);
+        ScopeInfo::VarScopeType vst = node->lookup_type;
+        assert(vst != ScopeInfo::VarScopeType::UNKNOWN);
         if (vst == ScopeInfo::VarScopeType::GLOBAL) {
             assert(!is_kill);
             return _getGlobal(node, unw_info);
@@ -2003,8 +2004,7 @@ private:
     void _doSet(AST_Name* name, CompilerVariable* val, const UnwindInfo& unw_info) {
         auto scope_info = irstate->getScopeInfo();
         auto vst = name->lookup_type;
-        if (vst == ScopeInfo::VarScopeType::UNKNOWN)
-            vst = scope_info->getScopeTypeOfName(name->id);
+        assert(vst != ScopeInfo::VarScopeType::UNKNOWN);
         assert(vst != ScopeInfo::VarScopeType::DEREF);
         _doSet(name->vreg, name->id, vst, val, unw_info);
     }
@@ -2211,8 +2211,9 @@ private:
             return;
         }
 
-        auto scope_info = irstate->getScopeInfo();
-        ScopeInfo::VarScopeType vst = scope_info->getScopeTypeOfName(target->id);
+        ScopeInfo::VarScopeType vst = target->lookup_type;
+        assert(vst != ScopeInfo::VarScopeType::UNKNOWN);
+
         if (vst == ScopeInfo::VarScopeType::GLOBAL) {
             // Can't use delattr since the errors are different:
             emitter.createCall2(unw_info, g.funcs.delGlobal, irstate->getGlobals(),
@@ -2674,18 +2675,6 @@ private:
         }
     }
 
-    void loadArgument(InternedString name, ConcreteCompilerType* t, llvm::Value* v, const UnwindInfo& unw_info) {
-        assert(name.s() != FRAME_INFO_PTR_NAME);
-        CompilerVariable* var = unboxVar(t, v);
-        auto cfg = irstate->getSourceInfo()->cfg;
-        auto vst = irstate->getScopeInfo()->getScopeTypeOfName(name);
-        int vreg = -1;
-        if (vst == ScopeInfo::VarScopeType::FAST || vst == ScopeInfo::VarScopeType::CLOSURE) {
-            vreg = cfg->getVRegInfo().getVReg(name);
-        }
-        _doSet(vreg, name, vst, var, unw_info);
-    }
-
     void loadArgument(AST_expr* name, ConcreteCompilerType* t, llvm::Value* v, const UnwindInfo& unw_info) {
         CompilerVariable* var = unboxVar(t, v);
         _doSet(name, var, unw_info);
@@ -2714,9 +2703,9 @@ private:
                 popDefinedVar(vreg, true);
                 symbol_table[vreg] = NULL;
             } else if (irstate->getPhis()->isRequiredAfter(vreg, myblock)) {
-                assert(!cfg->getVRegInfo().vregHasName(vreg)
-                       || scope_info->getScopeTypeOfName(cfg->getVRegInfo().getName(vreg))
-                              != ScopeInfo::VarScopeType::GLOBAL);
+                //assert(!cfg->getVRegInfo().vregHasName(vreg)
+                //       || scope_info->getScopeTypeOfName(cfg->getVRegInfo().getName(vreg))
+                //              != ScopeInfo::VarScopeType::GLOBAL);
                 ConcreteCompilerType* phi_type = types->getTypeAtBlockEnd(vreg, myblock);
                 assert(phi_type->isUsable());
                 // printf("Converting %s from %s to %s\n", p.first.c_str(),
@@ -2742,7 +2731,7 @@ private:
             auto name = irstate->getCFG()->getVRegInfo().getName(vreg);
             if (VERBOSITY() >= 3)
                 printf("phi will be required for %s\n", name.c_str());
-            assert(scope_info->getScopeTypeOfName(name) != ScopeInfo::VarScopeType::GLOBAL);
+            //assert(scope_info->getScopeTypeOfName(name) != ScopeInfo::VarScopeType::GLOBAL);
             CompilerVariable*& cur = symbol_table[vreg];
 
             if (cur != NULL) {
@@ -2900,8 +2889,8 @@ public:
         assert(name.s() != PASSED_CLOSURE_NAME);
         assert(name.s() != PASSED_GENERATOR_NAME);
         assert(name.s()[0] != '!');
-        ASSERT(irstate->getScopeInfo()->getScopeTypeOfName(name) != ScopeInfo::VarScopeType::GLOBAL, "%s",
-               name.c_str());
+        //ASSERT(irstate->getScopeInfo()->getScopeTypeOfName(name) != ScopeInfo::VarScopeType::GLOBAL, "%s",
+        //       name.c_str());
 
         int vreg = irstate->getSourceInfo()->cfg->getVRegInfo().getVReg(name);
         giveLocalSymbol(vreg, var);
@@ -3005,12 +2994,12 @@ public:
 
         int i = 0;
         for (; i < param_names.args.size(); i++) {
-            loadArgument(internString(param_names.args[i]), arg_types[i], python_parameters[i],
+            loadArgument(param_names.arg_names[i], arg_types[i], python_parameters[i],
                          UnwindInfo::cantUnwind());
         }
 
         if (param_names.vararg.size()) {
-            loadArgument(internString(param_names.vararg), arg_types[i], python_parameters[i],
+            loadArgument(param_names.vararg_name, arg_types[i], python_parameters[i],
                          UnwindInfo::cantUnwind());
             i++;
         }
@@ -3041,7 +3030,7 @@ public:
             emitter.refConsumed(passed_dict, null_check);
             emitter.refConsumed(created_dict, isnull_terminator);
 
-            loadArgument(internString(param_names.kwarg), arg_types[i], phi, UnwindInfo::cantUnwind());
+            loadArgument(param_names.kwarg_name, arg_types[i], phi, UnwindInfo::cantUnwind());
             i++;
         }
 

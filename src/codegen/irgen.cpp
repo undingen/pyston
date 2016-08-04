@@ -736,7 +736,7 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
                             // You might think I need to check whether `name' is being assigned globally or locally,
                             // since a global assign doesn't affect the symbol table. However, the CFG pass only
                             // generates invoke-assigns to temporary variables. Just to be sure, we assert:
-                            assert(source->getScopeInfo()->getScopeTypeOfName(name) != ScopeInfo::VarScopeType::GLOBAL);
+                            //assert(source->getScopeInfo()->getScopeTypeOfName(name) != ScopeInfo::VarScopeType::GLOBAL);
 
                             // TODO: inefficient
                             sym_table = new SymbolTable(*sym_table);

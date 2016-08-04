@@ -404,14 +404,6 @@ void DefinednessAnalysis::run(VRegMap<DefinednessAnalysis::DefinitionLevel> init
         // required.resize(nvregs, /* value= */ false);
 
         for (int vreg = 0; vreg < nvregs; vreg++) {
-#ifndef NDEBUG
-            if (vreg_info.vregHasName(vreg)) {
-                ScopeInfo::VarScopeType vst = scope_info->getScopeTypeOfName(vreg_info.getName(vreg));
-                ASSERT(vst != ScopeInfo::VarScopeType::GLOBAL && vst != ScopeInfo::VarScopeType::NAME, "%s",
-                       vreg_info.getName(vreg).c_str());
-            }
-#endif
-
             auto status = p.second[vreg];
             // assert(p.second.count(name));
             // auto status = p.second.find(name)->second;
