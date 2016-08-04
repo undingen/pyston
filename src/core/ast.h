@@ -171,7 +171,6 @@ class AST_keyword;
 class AST {
 public:
     uint32_t lineno;
-    uint16_t col_offset;
     const AST_TYPE::AST_TYPE type;
 
 
@@ -187,10 +186,9 @@ private:
 public:
     AST(AST_TYPE::AST_TYPE type);
 #else
-    AST(AST_TYPE::AST_TYPE type) : lineno(0), col_offset(0), type(type) {}
+    AST(AST_TYPE::AST_TYPE type) : lineno(0), type(type) {}
 #endif
-    AST(AST_TYPE::AST_TYPE type, uint32_t lineno, uint32_t col_offset = 0)
-        : lineno(lineno), col_offset(col_offset), type(type) {}
+    AST(AST_TYPE::AST_TYPE type, uint32_t lineno) : lineno(lineno), type(type) {}
 
     void* operator new(std::size_t n);
 } PACKED;
@@ -200,7 +198,7 @@ public:
     void* accept_expr(ExprVisitor* v);
 
     AST_expr(AST_TYPE::AST_TYPE type) : AST(type) {}
-    AST_expr(AST_TYPE::AST_TYPE type, uint32_t lineno, uint32_t col_offset = 0) : AST(type, lineno, col_offset) {}
+    AST_expr(AST_TYPE::AST_TYPE type, uint32_t lineno) : AST(type, lineno) {}
 } PACKED;
 
 class AST_stmt : public AST {
@@ -216,7 +214,7 @@ class AST_slice : public AST {
 public:
     void* accept_slice(SliceVisitor* s);
     AST_slice(AST_TYPE::AST_TYPE type) : AST(type) {}
-    AST_slice(AST_TYPE::AST_TYPE type, uint32_t lineno, uint32_t col_offset = 0) : AST(type, lineno, col_offset) {}
+    AST_slice(AST_TYPE::AST_TYPE type, uint32_t lineno) : AST(type, lineno) {}
 } PACKED;
 
 class AST_alias : public AST {
@@ -747,8 +745,8 @@ public:
     void accept(ASTVisitor* v);
     void* accept_expr(ExprVisitor* v);
 
-    AST_Name(InternedString id, AST_TYPE::AST_TYPE ctx_type, int lineno, int col_offset = 0)
-        : AST_expr(AST_TYPE::Name, lineno, col_offset),
+    AST_Name(InternedString id, AST_TYPE::AST_TYPE ctx_type, int lineno)
+        : AST_expr(AST_TYPE::Name, lineno),
           ctx_type(ctx_type),
           id(id),
           vreg(-1),
@@ -1015,8 +1013,7 @@ public:
     void accept(ASTVisitor* v);
     void* accept_expr(ExprVisitor* v);
 
-    AST_MakeFunction(AST_FunctionDef* fd)
-        : AST_expr(AST_TYPE::MakeFunction, fd->lineno, fd->col_offset), function_def(fd) {}
+    AST_MakeFunction(AST_FunctionDef* fd) : AST_expr(AST_TYPE::MakeFunction, fd->lineno), function_def(fd) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::MakeFunction;
 } PACKED;
@@ -1028,7 +1025,7 @@ public:
     void accept(ASTVisitor* v);
     void* accept_expr(ExprVisitor* v);
 
-    AST_MakeClass(AST_ClassDef* cd) : AST_expr(AST_TYPE::MakeClass, cd->lineno, cd->col_offset), class_def(cd) {}
+    AST_MakeClass(AST_ClassDef* cd) : AST_expr(AST_TYPE::MakeClass, cd->lineno), class_def(cd) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::MakeClass;
 } PACKED;
