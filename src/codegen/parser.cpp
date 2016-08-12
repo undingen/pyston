@@ -1118,6 +1118,9 @@ static std::vector<char> _reparse(const char* fn, const std::string& cache_fn, A
     return file_data;
 }
 
+
+extern bool inside_cfg_phase;
+
 // Parsing the file is somewhat expensive since we have to shell out to cpython;
 // it's not a huge deal right now, but this caching version can significantly cut down
 // on the startup time (40ms -> 10ms).
@@ -1232,7 +1235,11 @@ AST_Module* caching_parse_file(const char* fn, FutureFlags inherited_flags) {
         if (good) {
             std::unique_ptr<BufferedReader> reader(
                 new BufferedReader(file_data, MAGIC_STRING_LENGTH + LENGTH_LENGTH + CHECKSUM_LENGTH));
+
+
+            inside_cfg_phase = true;
             AST* rtn = readASTMisc(reader.get());
+            inside_cfg_phase = false;
             reader->fill();
 
             if (rtn && reader->bytesBuffered() == 0) {

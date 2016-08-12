@@ -27,6 +27,17 @@
 
 namespace pyston {
 
+extern bool inside_cfg_phase;
+void* AST::operator new(size_t s) {
+    bool tmp = inside_cfg_phase;
+    inside_cfg_phase = true;
+    static StatCounter num_ast_total_bytes("num_ast_total_bytes");
+    num_ast_total_bytes.log(s);
+    void* ptr = malloc(s);
+    inside_cfg_phase = tmp;
+    return ptr;
+}
+
 #ifdef DEBUG_LINE_NUMBERS
 int AST::next_lineno = 100000;
 

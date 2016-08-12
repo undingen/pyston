@@ -757,8 +757,11 @@ public:
     }
 };
 
+extern bool inside_cfg_phase;
 AST* cpythonToPystonAST(mod_ty mod, llvm::StringRef fn) {
+    inside_cfg_phase = true;
     Converter c(fn);
     return c.convert(mod);
+    inside_cfg_phase = false;
 }
 }

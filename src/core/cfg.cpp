@@ -18,6 +18,7 @@
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
+#include <malloc.h>
 
 #include "Python.h"
 
@@ -2862,7 +2863,37 @@ void VRegInfo::assignVRegs(CFG* cfg, const ParamNames& param_names, ScopeInfo* s
 #endif
 }
 
+static StatCounter num_cfg_phase_total_bytes("num_cfg_phase_total_bytes");
+bool inside_cfg_phase;
+
+extern "C" void* __libc_malloc(size_t s);
+extern "C" void* malloc(size_t s) {
+    void* ptr = __libc_malloc(s);
+    if (inside_cfg_phase)
+        num_cfg_phase_total_bytes.log(malloc_usable_size(ptr));
+    return ptr;
+}
+
+extern "C" void __libc_free(void* p);
+extern "C" void free(void* p) {
+    if (inside_cfg_phase)
+        num_cfg_phase_total_bytes.log(-malloc_usable_size(p));
+    __libc_free(p);
+}
+
+extern "C" void* __libc_realloc(void* p, size_t s);
+extern "C" void* realloc(void* p, size_t s) {
+    if (inside_cfg_phase)
+        num_cfg_phase_total_bytes.log(-malloc_usable_size(p));
+    void* ptr = __libc_realloc(p, s);
+    if (inside_cfg_phase)
+        num_cfg_phase_total_bytes.log(malloc_usable_size(ptr));
+    return ptr;
+}
+
 CFG* computeCFG(SourceInfo* source, const ParamNames& param_names) {
+    inside_cfg_phase = true;
+
     STAT_TIMER(t0, "us_timer_computecfg", 0);
 
     auto body = source->getBody();
@@ -3160,6 +3191,7 @@ CFG* computeCFG(SourceInfo* source, const ParamNames& param_names) {
 
     rtn->getVRegInfo().assignVRegs(rtn, param_names, source->getScopeInfo());
 
+    inside_cfg_phase = false;
     return rtn;
 }
 

@@ -188,6 +188,8 @@ public:
 #endif
     AST(AST_TYPE::AST_TYPE type, uint32_t lineno, uint32_t col_offset = 0)
         : type(type), lineno(lineno), col_offset(col_offset) {}
+
+    static void* operator new(size_t);
 };
 
 class AST_expr : public AST {
