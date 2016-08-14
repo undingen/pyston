@@ -212,7 +212,7 @@ class AST_stmt : public AST {
 public:
     void accept_stmt(StmtVisitor* v);
 
-    int cxx_exception_count = 0;
+    unsigned short cxx_exception_count = 0;
 
     AST_stmt(AST_TYPE::AST_TYPE type) : AST(type) {}
 
