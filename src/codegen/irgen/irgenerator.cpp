@@ -2139,6 +2139,11 @@ private:
         }
     }
 
+    void doAssign(AST_AssignVReg* node, const UnwindInfo& unw_info) {
+        CompilerVariable* val = evalExpr(node->value, unw_info);
+        _doSet(&node->target, val, unw_info);
+    }
+
     void doDelete(AST_Delete* node, const UnwindInfo& unw_info) {
         for (AST_expr* target : node->targets) {
             switch (target->type) {
@@ -2600,6 +2605,9 @@ private:
                 break;
             case AST_TYPE::Assign:
                 doAssign(ast_cast<AST_Assign>(node), unw_info);
+                break;
+            case AST_TYPE::AssignVReg:
+                doAssign(ast_cast<AST_AssignVReg>(node), unw_info);
                 break;
             case AST_TYPE::Delete:
                 doDelete(ast_cast<AST_Delete>(node), unw_info);

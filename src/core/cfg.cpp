@@ -634,7 +634,6 @@ private:
         AST_Assign* assign = new AST_Assign();
         assign->value = val;
         assign->lineno = val->lineno;
-
         if (target->type == AST_TYPE::Name) {
             assign->targets.push_back(remapName(ast_cast<AST_Name>(target)));
             push_back(assign);
@@ -696,8 +695,10 @@ private:
 
     void pushAssign(InternedString id, AST_expr* val) {
         assert(val);
-        AST_expr* name = makeName(id, AST_TYPE::Store, val->lineno, 0);
-        pushAssign(name, val);
+        AST_AssignVReg* assign = new AST_AssignVReg(id, AST_TYPE::Store, val->lineno);
+        assign->value = val;
+        assign->lineno = val->lineno;
+        push_back(assign);
     }
 
     AST_stmt* makeExpr(AST_expr* expr) {
@@ -3095,7 +3096,29 @@ CFG* computeCFG(SourceInfo* source, const ParamNames& param_names) {
     }
 
     rtn->getVRegInfo().assignVRegs(rtn, param_names, source->getScopeInfo());
+    /*
+        for (CFGBlock* b : rtn->blocks) {
+            for (int i=0, e = b->body.size(); i<e; ++i) {
+                AST* node = b->body[i];
+                if (node->type == AST_TYPE::Assign) {
+                    AST_Assign* assign = static_cast<AST_Assign*>(node);
+                    if (assign->targets.size() != 1 || assign->targets[0]->type != AST_TYPE::Name)
+                        continue;
+                    AST_Name* target = static_cast<AST_Name*>(assign->targets[0]);
 
+                    AST_AssignVReg* assign_vreg = new AST_AssignVReg(target->id, target->ctx_type, target->lineno);
+                    assign_vreg->lineno = assign->lineno;
+                    assign_vreg->target.vreg = target->vreg;
+                    assign_vreg->target.is_kill = target->is_kill;
+                    assign_vreg->target.lookup_type = target->lookup_type;
+                    assign_vreg->value = assign->value;
+                    b->body[i] = assign_vreg;
+                    delete target;
+                    delete assign;
+                }
+            }
+        }
+    */
     return rtn;
 }
 

@@ -531,6 +531,7 @@ public:
 
     bool visit_assert(AST_Assert* node) override { return false; }
     bool visit_assign(AST_Assign* node) override { return false; }
+    bool visit_assign(AST_AssignVReg* node) override { return false; }
     bool visit_augassign(AST_AugAssign* node) override { return false; }
     bool visit_attribute(AST_Attribute* node) override { return false; }
     bool visit_binop(AST_BinOp* node) override { return false; }

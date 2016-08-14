@@ -37,6 +37,18 @@ AST::AST(AST_TYPE::AST_TYPE type) : type(type), lineno(++next_lineno) {
 
 #endif
 
+void* AST::operator new(size_t c) {
+    static StatCounter num_ast_total_bytes("num_ast_total_bytes");
+    num_ast_total_bytes.log(c);
+    return malloc(c);
+}
+
+void* AST_Name::operator new(size_t c) {
+    static StatCounter num_ast_name_total_bytes("num_ast_name_total_bytes");
+    num_ast_name_total_bytes.log(c);
+    return malloc(c);
+}
+
 void* AST_slice::accept_slice(SliceVisitor* v) {
     switch (type) {
         case AST_TYPE::Ellipsis:
@@ -308,6 +320,19 @@ void AST_Assign::accept(ASTVisitor* v) {
 }
 
 void AST_Assign::accept_stmt(StmtVisitor* v) {
+    v->visit_assign(this);
+}
+
+void AST_AssignVReg::accept(ASTVisitor* v) {
+    bool skip = v->visit_assign(this);
+    if (skip)
+        return;
+
+    value->accept(v);
+    target.accept(v);
+}
+
+void AST_AssignVReg::accept_stmt(StmtVisitor* v) {
     v->visit_assign(this);
 }
 
@@ -1123,6 +1148,13 @@ bool PrintVisitor::visit_assign(AST_Assign* node) {
         node->targets[i]->accept(this);
         stream << " = ";
     }
+    node->value->accept(this);
+    return true;
+}
+
+bool PrintVisitor::visit_assign(AST_AssignVReg* node) {
+    node->target.accept(this);
+    stream << " = ";
     node->value->accept(this);
     return true;
 }
@@ -2005,6 +2037,10 @@ public:
         return false;
     }
     virtual bool visit_assign(AST_Assign* node) {
+        output->push_back(node);
+        return false;
+    }
+    virtual bool visit_assign(AST_AssignVReg* node) {
         output->push_back(node);
         return false;
     }

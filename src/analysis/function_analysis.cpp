@@ -342,6 +342,11 @@ public:
         return true;
     }
 
+    virtual bool visit_assign(AST_AssignVReg* node) {
+        _doSet(&node->target);
+        return true;
+    }
+
     virtual bool visit_arguments(AST_arguments* node) {
         if (node->kwarg)
             _doSet(node->kwarg);

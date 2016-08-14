@@ -39,6 +39,7 @@ namespace AST_TYPE {
     A(arguments, 2)                                                                                                    \
     S(Assert, 3)                                                                                                       \
     S(Assign, 4)                                                                                                       \
+    S(AssignVReg, 210 + 4)                                                                                             \
     E(Attribute, 5)                                                                                                    \
     S(AugAssign, 6)                                                                                                    \
     E(BinOp, 7)                                                                                                        \
@@ -188,7 +189,10 @@ public:
 #endif
     AST(AST_TYPE::AST_TYPE type, uint32_t lineno) : type(type), lineno(lineno) {}
 
-    ~AST() { RELEASE_ASSERT(0, "not implemented currently"); }
+    static void* operator new(size_t);
+
+protected:
+    ~AST() {}
 } PACKED;
 
 class AST_expr : public AST {
@@ -197,6 +201,9 @@ public:
 
     AST_expr(AST_TYPE::AST_TYPE type) : AST(type) {}
     AST_expr(AST_TYPE::AST_TYPE type, uint32_t lineno) : AST(type, lineno) {}
+
+protected:
+    ~AST_expr() {}
 } PACKED;
 
 class AST_stmt : public AST {
@@ -206,6 +213,9 @@ public:
     int cxx_exception_count = 0;
 
     AST_stmt(AST_TYPE::AST_TYPE type) : AST(type) {}
+
+protected:
+    ~AST_stmt() {}
 } PACKED;
 
 class AST_slice : public AST {
@@ -213,6 +223,9 @@ public:
     void* accept_slice(SliceVisitor* s);
     AST_slice(AST_TYPE::AST_TYPE type) : AST(type) {}
     AST_slice(AST_TYPE::AST_TYPE type, uint32_t lineno) : AST(type, lineno) {}
+
+protected:
+    ~AST_slice() {}
 } PACKED;
 
 class AST_alias : public AST {
@@ -222,7 +235,9 @@ public:
 
     void accept(ASTVisitor* v);
 
+
     AST_alias(InternedString name, InternedString asname) : AST(AST_TYPE::alias), name(name), asname(asname) {}
+    ~AST_alias() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::alias;
 };
@@ -239,6 +254,7 @@ public:
     void accept(ASTVisitor* v);
 
     AST_arguments() : AST(AST_TYPE::arguments) {}
+    ~AST_arguments() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::arguments;
 };
@@ -251,6 +267,7 @@ public:
     void accept_stmt(StmtVisitor* v);
 
     AST_Assert() : AST_stmt(AST_TYPE::Assert) {}
+    ~AST_Assert() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Assert;
 } PACKED;
@@ -264,6 +281,7 @@ public:
     void accept_stmt(StmtVisitor* v);
 
     AST_Assign() : AST_stmt(AST_TYPE::Assign) {}
+    ~AST_Assign() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Assign;
 };
@@ -278,6 +296,7 @@ public:
     void accept_stmt(StmtVisitor* v);
 
     AST_AugAssign() : AST_stmt(AST_TYPE::AugAssign) {}
+    ~AST_AugAssign() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::AugAssign;
 } PACKED;
@@ -291,6 +310,7 @@ public:
     void* accept_expr(ExprVisitor* v);
 
     AST_AugBinOp() : AST_expr(AST_TYPE::AugBinOp) {}
+    ~AST_AugBinOp() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::AugBinOp;
 } PACKED;
@@ -308,6 +328,7 @@ public:
 
     AST_Attribute(AST_expr* value, AST_TYPE::AST_TYPE ctx_type, InternedString attr)
         : AST_expr(AST_TYPE::Attribute), value(value), ctx_type(ctx_type), attr(attr) {}
+    ~AST_Attribute() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Attribute;
 };
@@ -321,6 +342,7 @@ public:
     void* accept_expr(ExprVisitor* v);
 
     AST_BinOp() : AST_expr(AST_TYPE::BinOp) {}
+    ~AST_BinOp() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::BinOp;
 } PACKED;
@@ -334,6 +356,7 @@ public:
     void* accept_expr(ExprVisitor* v);
 
     AST_BoolOp() : AST_expr(AST_TYPE::BoolOp) {}
+    ~AST_BoolOp() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::BoolOp;
 };
@@ -344,6 +367,7 @@ public:
     void accept_stmt(StmtVisitor* v);
 
     AST_Break() : AST_stmt(AST_TYPE::Break) {}
+    ~AST_Break() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Break;
 } PACKED;
@@ -358,6 +382,7 @@ public:
     void* accept_expr(ExprVisitor* v);
 
     AST_Call() : AST_expr(AST_TYPE::Call) {}
+    ~AST_Call() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Call;
 };
@@ -372,6 +397,7 @@ public:
     void* accept_expr(ExprVisitor* v);
 
     AST_Compare() : AST_expr(AST_TYPE::Compare) {}
+    ~AST_Compare() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Compare;
 };
@@ -385,6 +411,7 @@ public:
     void accept(ASTVisitor* v);
 
     AST_comprehension() : AST(AST_TYPE::comprehension) {}
+    ~AST_comprehension() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::comprehension;
 };
@@ -399,6 +426,7 @@ public:
     InternedString name;
 
     AST_ClassDef() : AST_stmt(AST_TYPE::ClassDef) {}
+    ~AST_ClassDef() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::ClassDef;
 };
@@ -409,6 +437,7 @@ public:
     void accept_stmt(StmtVisitor* v);
 
     AST_Continue() : AST_stmt(AST_TYPE::Continue) {}
+    ~AST_Continue() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Continue;
 } PACKED;
@@ -421,6 +450,7 @@ public:
     void* accept_expr(ExprVisitor* v);
 
     AST_Dict() : AST_expr(AST_TYPE::Dict) {}
+    ~AST_Dict() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Dict;
 };
@@ -434,6 +464,7 @@ public:
     void* accept_expr(ExprVisitor* v);
 
     AST_DictComp() : AST_expr(AST_TYPE::DictComp) {}
+    ~AST_DictComp() {}
 
     const static AST_TYPE::AST_TYPE TYPE = AST_TYPE::DictComp;
 };
@@ -445,6 +476,7 @@ public:
     void accept_stmt(StmtVisitor* v);
 
     AST_Delete() : AST_stmt(AST_TYPE::Delete) {}
+    ~AST_Delete() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Delete;
 };
@@ -455,6 +487,7 @@ public:
     void* accept_slice(SliceVisitor* v);
 
     AST_Ellipsis() : AST_slice(AST_TYPE::Ellipsis) {}
+    ~AST_Ellipsis() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Ellipsis;
 } PACKED;
@@ -468,6 +501,7 @@ public:
 
     AST_Expr() : AST_stmt(AST_TYPE::Expr) {}
     AST_Expr(AST_expr* value) : AST_stmt(AST_TYPE::Expr), value(value) {}
+    ~AST_Expr() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Expr;
 } PACKED;
@@ -481,6 +515,7 @@ public:
     void accept(ASTVisitor* v);
 
     AST_ExceptHandler() : AST(AST_TYPE::ExceptHandler) {}
+    ~AST_ExceptHandler() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::ExceptHandler;
 };
@@ -495,6 +530,7 @@ public:
     void accept_stmt(StmtVisitor* v);
 
     AST_Exec() : AST_stmt(AST_TYPE::Exec) {}
+    ~AST_Exec() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Exec;
 } PACKED;
@@ -511,6 +547,7 @@ public:
 
     AST_Expression(std::unique_ptr<InternedStringPool> interned_strings)
         : AST(AST_TYPE::Expression), interned_strings(std::move(interned_strings)) {}
+    ~AST_Expression() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Expression;
 };
@@ -523,6 +560,7 @@ public:
     void* accept_slice(SliceVisitor* v);
 
     AST_ExtSlice() : AST_slice(AST_TYPE::ExtSlice) {}
+    ~AST_ExtSlice() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::ExtSlice;
 };
@@ -536,6 +574,7 @@ public:
     void accept_stmt(StmtVisitor* v);
 
     AST_For() : AST_stmt(AST_TYPE::For) {}
+    ~AST_For() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::For;
 };
@@ -551,6 +590,7 @@ public:
     void accept_stmt(StmtVisitor* v);
 
     AST_FunctionDef() : AST_stmt(AST_TYPE::FunctionDef) {}
+    ~AST_FunctionDef() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::FunctionDef;
 };
@@ -564,6 +604,7 @@ public:
     void* accept_expr(ExprVisitor* v);
 
     AST_GeneratorExp() : AST_expr(AST_TYPE::GeneratorExp) {}
+    ~AST_GeneratorExp() {}
 
     const static AST_TYPE::AST_TYPE TYPE = AST_TYPE::GeneratorExp;
 };
@@ -576,6 +617,7 @@ public:
     void accept_stmt(StmtVisitor* v);
 
     AST_Global() : AST_stmt(AST_TYPE::Global) {}
+    ~AST_Global() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Global;
 };
@@ -589,6 +631,7 @@ public:
     void accept_stmt(StmtVisitor* v);
 
     AST_If() : AST_stmt(AST_TYPE::If) {}
+    ~AST_If() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::If;
 };
@@ -601,6 +644,7 @@ public:
     void* accept_expr(ExprVisitor* v);
 
     AST_IfExp() : AST_expr(AST_TYPE::IfExp) {}
+    ~AST_IfExp() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::IfExp;
 } PACKED;
@@ -613,6 +657,7 @@ public:
     void accept_stmt(StmtVisitor* v);
 
     AST_Import() : AST_stmt(AST_TYPE::Import) {}
+    ~AST_Import() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Import;
 };
@@ -627,6 +672,7 @@ public:
     void accept_stmt(StmtVisitor* v);
 
     AST_ImportFrom() : AST_stmt(AST_TYPE::ImportFrom) {}
+    ~AST_ImportFrom() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::ImportFrom;
 };
@@ -639,6 +685,7 @@ public:
     void* accept_slice(SliceVisitor* v);
 
     AST_Index() : AST_slice(AST_TYPE::Index) {}
+    ~AST_Index() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Index;
 } PACKED;
@@ -652,6 +699,7 @@ public:
     void accept(ASTVisitor* v);
 
     AST_keyword() : AST(AST_TYPE::keyword) {}
+    ~AST_keyword() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::keyword;
 };
@@ -665,6 +713,7 @@ public:
     void* accept_expr(ExprVisitor* v);
 
     AST_Lambda() : AST_expr(AST_TYPE::Lambda) {}
+    ~AST_Lambda() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Lambda;
 } PACKED;
@@ -678,6 +727,7 @@ public:
     void* accept_expr(ExprVisitor* v);
 
     AST_List() : AST_expr(AST_TYPE::List) {}
+    ~AST_List() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::List;
 };
@@ -691,6 +741,7 @@ public:
     void* accept_expr(ExprVisitor* v);
 
     AST_ListComp() : AST_expr(AST_TYPE::ListComp) {}
+    ~AST_ListComp() {}
 
     const static AST_TYPE::AST_TYPE TYPE = AST_TYPE::ListComp;
 };
@@ -706,6 +757,7 @@ public:
 
     AST_Module(std::unique_ptr<InternedStringPool> interned_strings)
         : AST(AST_TYPE::Module), interned_strings(std::move(interned_strings)) {}
+    ~AST_Module() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Module;
 };
@@ -720,6 +772,7 @@ public:
 
     AST_Suite(std::unique_ptr<InternedStringPool> interned_strings)
         : AST(AST_TYPE::Suite), interned_strings(std::move(interned_strings)) {}
+    ~AST_Suite() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Suite;
 };
@@ -749,6 +802,9 @@ public:
           id(id),
           lookup_type(ScopeInfo::VarScopeType::UNKNOWN),
           vreg(-1) {}
+    ~AST_Name() {}
+
+    static void* operator new(size_t);
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Name;
 };
@@ -775,6 +831,7 @@ public:
     void* accept_expr(ExprVisitor* v);
 
     AST_Num() : AST_expr(AST_TYPE::Num) {}
+    ~AST_Num() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Num;
 };
@@ -787,6 +844,7 @@ public:
     void* accept_expr(ExprVisitor* v);
 
     AST_Repr() : AST_expr(AST_TYPE::Repr) {}
+    ~AST_Repr() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Repr;
 } PACKED;
@@ -797,6 +855,7 @@ public:
     void accept_stmt(StmtVisitor* v);
 
     AST_Pass() : AST_stmt(AST_TYPE::Pass) {}
+    ~AST_Pass() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Pass;
 } PACKED;
@@ -811,6 +870,7 @@ public:
     void accept_stmt(StmtVisitor* v);
 
     AST_Print() : AST_stmt(AST_TYPE::Print) {}
+    ~AST_Print() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Print;
 };
@@ -827,6 +887,7 @@ public:
     void accept_stmt(StmtVisitor* v);
 
     AST_Raise() : AST_stmt(AST_TYPE::Raise), arg0(NULL), arg1(NULL), arg2(NULL) {}
+    ~AST_Raise() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Raise;
 } PACKED;
@@ -839,6 +900,7 @@ public:
     void accept_stmt(StmtVisitor* v);
 
     AST_Return() : AST_stmt(AST_TYPE::Return) {}
+    ~AST_Return() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Return;
 } PACKED;
@@ -851,6 +913,7 @@ public:
     void* accept_expr(ExprVisitor* v);
 
     AST_Set() : AST_expr(AST_TYPE::Set) {}
+    ~AST_Set() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Set;
 };
@@ -864,6 +927,7 @@ public:
     void* accept_expr(ExprVisitor* v);
 
     AST_SetComp() : AST_expr(AST_TYPE::SetComp) {}
+    ~AST_SetComp() {}
 
     const static AST_TYPE::AST_TYPE TYPE = AST_TYPE::SetComp;
 };
@@ -876,6 +940,7 @@ public:
     void* accept_slice(SliceVisitor* v);
 
     AST_Slice() : AST_slice(AST_TYPE::Slice) {}
+    ~AST_Slice() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Slice;
 } PACKED;
@@ -897,6 +962,7 @@ public:
 
     AST_Str() : AST_expr(AST_TYPE::Str), str_type(UNSET) {}
     AST_Str(std::string s) : AST_expr(AST_TYPE::Str), str_type(STR), str_data(std::move(s)) {}
+    ~AST_Str() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Str;
 };
@@ -911,6 +977,7 @@ public:
     void* accept_expr(ExprVisitor* v);
 
     AST_Subscript() : AST_expr(AST_TYPE::Subscript) {}
+    ~AST_Subscript() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Subscript;
 } PACKED;
@@ -924,6 +991,7 @@ public:
     void accept_stmt(StmtVisitor* v);
 
     AST_TryExcept() : AST_stmt(AST_TYPE::TryExcept) {}
+    ~AST_TryExcept() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::TryExcept;
 };
@@ -936,6 +1004,7 @@ public:
     void accept_stmt(StmtVisitor* v);
 
     AST_TryFinally() : AST_stmt(AST_TYPE::TryFinally) {}
+    ~AST_TryFinally() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::TryFinally;
 };
@@ -949,6 +1018,7 @@ public:
     void* accept_expr(ExprVisitor* v);
 
     AST_Tuple() : AST_expr(AST_TYPE::Tuple) {}
+    ~AST_Tuple() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Tuple;
 };
@@ -962,6 +1032,7 @@ public:
     void* accept_expr(ExprVisitor* v);
 
     AST_UnaryOp() : AST_expr(AST_TYPE::UnaryOp) {}
+    ~AST_UnaryOp() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::UnaryOp;
 } PACKED;
@@ -975,6 +1046,7 @@ public:
     void accept_stmt(StmtVisitor* v);
 
     AST_While() : AST_stmt(AST_TYPE::While) {}
+    ~AST_While() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::While;
 };
@@ -988,6 +1060,7 @@ public:
     void accept_stmt(StmtVisitor* v);
 
     AST_With() : AST_stmt(AST_TYPE::With) {}
+    ~AST_With() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::With;
 };
@@ -1000,6 +1073,7 @@ public:
     void* accept_expr(ExprVisitor* v);
 
     AST_Yield() : AST_expr(AST_TYPE::Yield) {}
+    ~AST_Yield() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Yield;
 } PACKED;
@@ -1012,6 +1086,7 @@ public:
     void* accept_expr(ExprVisitor* v);
 
     AST_MakeFunction(AST_FunctionDef* fd) : AST_expr(AST_TYPE::MakeFunction, fd->lineno), function_def(fd) {}
+    ~AST_MakeFunction() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::MakeFunction;
 } PACKED;
@@ -1024,6 +1099,7 @@ public:
     void* accept_expr(ExprVisitor* v);
 
     AST_MakeClass(AST_ClassDef* cd) : AST_expr(AST_TYPE::MakeClass, cd->lineno), class_def(cd) {}
+    ~AST_MakeClass() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::MakeClass;
 } PACKED;
@@ -1043,6 +1119,7 @@ public:
     void accept_stmt(StmtVisitor* v);
 
     AST_Branch() : AST_stmt(AST_TYPE::Branch) {}
+    ~AST_Branch() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Branch;
 } PACKED;
@@ -1055,6 +1132,7 @@ public:
     void accept_stmt(StmtVisitor* v);
 
     AST_Jump() : AST_stmt(AST_TYPE::Jump) {}
+    ~AST_Jump() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Jump;
 } PACKED;
@@ -1068,6 +1146,7 @@ public:
     void* accept_expr(ExprVisitor* v);
 
     AST_ClsAttribute() : AST_expr(AST_TYPE::ClsAttribute) {}
+    ~AST_ClsAttribute() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::ClsAttribute;
 };
@@ -1082,9 +1161,26 @@ public:
     void accept_stmt(StmtVisitor* v);
 
     AST_Invoke(AST_stmt* stmt) : AST_stmt(AST_TYPE::Invoke), stmt(stmt) {}
+    ~AST_Invoke() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Invoke;
 } PACKED;
+
+
+class AST_AssignVReg : public AST_stmt {
+public:
+    AST_Name target;
+    AST_expr* value;
+
+    void accept(ASTVisitor* v);
+    void accept_stmt(StmtVisitor* v);
+
+    AST_AssignVReg(InternedString id, AST_TYPE::AST_TYPE ctx_type, int lineno)
+        : AST_stmt(AST_TYPE::AssignVReg), target(id, ctx_type, lineno) {}
+    ~AST_AssignVReg() {}
+
+    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::AssignVReg;
+};
 
 // "LangPrimitive" represents operations that "primitive" to the language,
 // but aren't directly *exactly* representable as normal Python.
@@ -1113,6 +1209,7 @@ public:
     void* accept_expr(ExprVisitor* v);
 
     AST_LangPrimitive(Opcodes opcode) : AST_expr(AST_TYPE::LangPrimitive), opcode(opcode) {}
+    ~AST_LangPrimitive() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::LangPrimitive;
 };
@@ -1175,6 +1272,7 @@ public:
     virtual bool visit_arguments(AST_arguments* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_assert(AST_Assert* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_assign(AST_Assign* node) { RELEASE_ASSERT(0, ""); }
+    virtual bool visit_assign(AST_AssignVReg* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_augassign(AST_AugAssign* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_augbinop(AST_AugBinOp* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_attribute(AST_Attribute* node) { RELEASE_ASSERT(0, ""); }
@@ -1248,6 +1346,7 @@ public:
     virtual bool visit_arguments(AST_arguments* node) { return false; }
     virtual bool visit_assert(AST_Assert* node) { return false; }
     virtual bool visit_assign(AST_Assign* node) { return false; }
+    virtual bool visit_assign(AST_AssignVReg* node) { return false; }
     virtual bool visit_augassign(AST_AugAssign* node) { return false; }
     virtual bool visit_augbinop(AST_AugBinOp* node) { return false; }
     virtual bool visit_attribute(AST_Attribute* node) { return false; }
@@ -1353,6 +1452,7 @@ public:
 
     virtual void visit_assert(AST_Assert* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_assign(AST_Assign* node) { RELEASE_ASSERT(0, ""); }
+    virtual void visit_assign(AST_AssignVReg* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_augassign(AST_AugAssign* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_break(AST_Break* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_classdef(AST_ClassDef* node) { RELEASE_ASSERT(0, ""); }
@@ -1406,6 +1506,7 @@ public:
     virtual bool visit_arguments(AST_arguments* node);
     virtual bool visit_assert(AST_Assert* node);
     virtual bool visit_assign(AST_Assign* node);
+    virtual bool visit_assign(AST_AssignVReg* node);
     virtual bool visit_augassign(AST_AugAssign* node);
     virtual bool visit_augbinop(AST_AugBinOp* node);
     virtual bool visit_attribute(AST_Attribute* node);

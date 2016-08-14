@@ -547,6 +547,10 @@ private:
             _doSet(node->targets[i], t);
         }
     }
+    void visit_assign(AST_AssignVReg* node) override {
+        CompilerType* t = getType(node->value);
+        _doSet(&node->target, t);
+    }
 
     void visit_branch(AST_Branch* node) override {
         if (EXPAND_UNNEEDED) {

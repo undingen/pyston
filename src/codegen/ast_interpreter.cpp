@@ -83,6 +83,7 @@ private:
 
     Value visit_assert(AST_Assert* node);
     Value visit_assign(AST_Assign* node);
+    Value visit_assign(AST_AssignVReg* node);
     Value visit_binop(AST_BinOp* node);
     Value visit_call(AST_Call* node);
     Value visit_compare(AST_Compare* node);
@@ -1031,6 +1032,10 @@ Value ASTInterpreter::visit_stmt(AST_stmt* node) {
             rtn = visit_assign((AST_Assign*)node);
             ASTInterpreterJitInterface::pendingCallsCheckHelper();
             break;
+        case AST_TYPE::AssignVReg:
+            rtn = visit_assign((AST_AssignVReg*)node);
+            ASTInterpreterJitInterface::pendingCallsCheckHelper();
+            break;
         case AST_TYPE::Delete:
             rtn = visit_delete((AST_Delete*)node);
             ASTInterpreterJitInterface::pendingCallsCheckHelper();
@@ -1430,6 +1435,13 @@ Value ASTInterpreter::visit_assign(AST_Assign* node) {
     doStore(node->targets[0], v);
     return Value();
 }
+
+Value ASTInterpreter::visit_assign(AST_AssignVReg* node) {
+    Value v = visit_expr(node->value);
+    doStore(&node->target, v);
+    return Value();
+}
+
 
 Value ASTInterpreter::visit_print(AST_Print* node) {
     assert(node->values.size() <= 1 && "cfg should have lowered it to 0 or 1 values");
@@ -2167,6 +2179,13 @@ extern "C" Box* astInterpretDeoptFromASM(FunctionMetadata* md, AST_expr* after_e
             assert(asgn->targets.size() == 1);
             assert(asgn->targets[0]->type == AST_TYPE::Name);
             auto name = ast_cast<AST_Name>(asgn->targets[0]);
+            assert(name->id.s()[0] == '#');
+            interpreter.addSymbol(name->vreg, expr_val, true);
+            break;
+        } else if (enclosing_stmt->type == AST_TYPE::AssignVReg) {
+            auto asgn = ast_cast<AST_AssignVReg>(enclosing_stmt);
+            RELEASE_ASSERT(asgn->value == after_expr, "%p %p", asgn->value, after_expr);
+            auto name = ast_cast<AST_Name>(&asgn->target);
             assert(name->id.s()[0] == '#');
             interpreter.addSymbol(name->vreg, expr_val, true);
             break;
