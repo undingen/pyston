@@ -37,16 +37,11 @@ AST::AST(AST_TYPE::AST_TYPE type) : type(type), lineno(++next_lineno) {
 
 #endif
 
+static llvm::BumpPtrAllocatorImpl<llvm::MallocAllocator> ast_allocator;
 void* AST::operator new(size_t c) {
     static StatCounter num_ast_total_bytes("num_ast_total_bytes");
     num_ast_total_bytes.log(c);
-    return malloc(c);
-}
-
-void* AST_Name::operator new(size_t c) {
-    static StatCounter num_ast_name_total_bytes("num_ast_name_total_bytes");
-    num_ast_name_total_bytes.log(c);
-    return malloc(c);
+    return ast_allocator.Allocate(c, 8);
 }
 
 void* AST_slice::accept_slice(SliceVisitor* v) {

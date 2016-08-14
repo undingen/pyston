@@ -74,7 +74,7 @@ public:
     //  import dis
     //  print dis.dis(g)
 
-    enum class VarScopeType {
+    enum class VarScopeType : char {
         FAST,
         GLOBAL,
         CLOSURE,

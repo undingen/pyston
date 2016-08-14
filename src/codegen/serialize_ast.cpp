@@ -116,7 +116,7 @@ private:
         }
     }
 
-    void writeExprVector(const std::vector<AST_expr*>& vec) {
+    void writeExprVector(llvm::ArrayRef<AST_expr*> vec) {
         writeShort(vec.size());
         for (auto* e : vec) {
             writeExpr(e);
@@ -183,7 +183,7 @@ private:
     }
     virtual bool visit_assign(AST_Assign* node) {
         writeLineno(node->lineno);
-        writeExprVector(node->targets);
+        writeExprVector(node->targets.getArrayRef());
         writeExpr(node->value);
         return true;
     }

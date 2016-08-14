@@ -22,6 +22,8 @@
 #include <string>
 #include <vector>
 
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/PointerUnion.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -272,9 +274,43 @@ public:
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Assert;
 } PACKED;
 
+template <typename T> struct CompactVec {
+    typedef std::vector<T> VecType;
+    typedef llvm::PointerUnion<T, VecType*> PU;
+    PU pu;
+
+    llvm::ArrayRef<T> getArrayRef() const {
+        if (pu.isNull())
+            return llvm::ArrayRef<T>();
+        if (pu.template is<T>())
+            return pu.template get<T>();
+        return *pu.template get<VecType*>();
+    }
+
+    llvm::ArrayRef<T> operator()() const { return getArrayRef(); }
+
+    void push_back(T v) {
+        auto s = size();
+        if (likely(s == 0)) {
+            pu = PU(v);
+        } else if (s == 1) {
+            VecType* vec = new VecType;
+            vec->push_back(pu.template get<T>());
+            vec->push_back(v);
+            pu = PU(vec);
+        } else {
+            pu.template get<VecType*>()->push_back(v);
+        }
+    }
+
+    size_t size() const { return getArrayRef().size(); }
+
+    T operator[](size_t i) const { return getArrayRef()[i]; }
+};
+
 class AST_Assign : public AST_stmt {
 public:
-    std::vector<AST_expr*> targets;
+    CompactVec<AST_expr*> targets;
     AST_expr* value;
 
     void accept(ASTVisitor* v);
@@ -780,18 +816,20 @@ public:
 class AST_Name : public AST_expr {
 public:
     AST_TYPE::AST_TYPE ctx_type;
-    InternedString id;
 
     // The resolved scope of this name.  Kind of hacky to be storing it in the AST node;
     // in CPython it ends up getting "cached" by being translated into one of a number of
     // different bytecodes.
     ScopeInfo::VarScopeType lookup_type;
 
+    bool is_kill = false;
+    InternedString id;
+
     // The interpreter and baseline JIT store variables with FAST and CLOSURE scopes in an array (vregs) this specifies
     // the zero based index of this variable inside the vregs array. If uninitialized it's value is -1.
     int vreg;
 
-    bool is_kill = false;
+
 
     void accept(ASTVisitor* v);
     void* accept_expr(ExprVisitor* v);
@@ -799,15 +837,15 @@ public:
     AST_Name(InternedString id, AST_TYPE::AST_TYPE ctx_type, int lineno)
         : AST_expr(AST_TYPE::Name, lineno),
           ctx_type(ctx_type),
-          id(id),
           lookup_type(ScopeInfo::VarScopeType::UNKNOWN),
+          id(id),
           vreg(-1) {}
     ~AST_Name() {}
 
-    static void* operator new(size_t);
+    // static void* operator new(size_t);
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Name;
-};
+} PACKED;
 
 class AST_Num : public AST_expr {
 public:
@@ -1180,7 +1218,7 @@ public:
     ~AST_AssignVReg() {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::AssignVReg;
-};
+} PACKED;
 
 // "LangPrimitive" represents operations that "primitive" to the language,
 // but aren't directly *exactly* representable as normal Python.

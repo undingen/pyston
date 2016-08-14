@@ -627,7 +627,10 @@ struct stmt_dispatcher {
     ResultPtr read(pypa::AstAssign& a) {
         AST_Assign* ptr = new AST_Assign();
         location(ptr, a);
-        readVector(ptr->targets, a.targets, interned_strings);
+        std::vector<AST_expr*> vec;
+        readVector(vec, a.targets, interned_strings);
+        for (auto&& e : vec)
+            ptr->targets.push_back(e);
         ptr->value = readItem(a.value, interned_strings);
         return ptr;
     }

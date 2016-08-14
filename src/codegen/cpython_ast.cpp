@@ -549,7 +549,11 @@ public:
             case Assign_kind: {
                 auto r = new AST_Assign();
                 auto v = stmt->v.Assign;
-                r->targets = convert<expr_ty, AST_expr*>(v.targets);
+                std::vector<AST_expr*> vec;
+                vec = convert<expr_ty, AST_expr*>(v.targets);
+                ;
+                for (auto&& e : vec)
+                    r->targets.push_back(e);
                 r->value = convert(v.value);
                 return r;
             }

@@ -171,6 +171,15 @@ static void readExprVector(std::vector<AST_expr*>& vec, BufferedReader* reader) 
     }
 }
 
+static void readExprVector(CompactVec<AST_expr*>& vec, BufferedReader* reader) {
+    int num_elts = reader->readShort();
+    if (VERBOSITY("parsing") >= 3)
+        printf("%d elts to read\n", num_elts);
+    for (int i = 0; i < num_elts; i++) {
+        vec.push_back(readASTExpr(reader));
+    }
+}
+
 static void readSliceVector(std::vector<AST_slice*>& vec, BufferedReader* reader) {
     int num_elts = reader->readShort();
     if (VERBOSITY("parsing") >= 3)
