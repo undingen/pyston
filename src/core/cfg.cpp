@@ -662,7 +662,7 @@ private:
             assign->targets.push_back(a_target);
             push_back(assign);
         } else if (target->type == AST_TYPE::Tuple || target->type == AST_TYPE::List) {
-            std::vector<AST_expr*>* elts;
+            CompactVec<AST_expr*>* elts;
             if (target->type == AST_TYPE::Tuple) {
                 AST_Tuple* _t = ast_cast<AST_Tuple>(target);
                 assert(_t->ctx_type == AST_TYPE::Store);
@@ -1017,7 +1017,7 @@ private:
     // This is a helper function used for generator expressions and comprehensions.
     // TODO(rntz): use this to handle unscoped (i.e. list) comprehensions as well?
     void emitComprehensionLoops(int lineno, std::vector<AST_stmt*>* insert_point,
-                                const std::vector<AST_comprehension*>& comprehensions, AST_expr* first_generator,
+                                const CompactVec<AST_comprehension*>& comprehensions, AST_expr* first_generator,
                                 std::function<void(std::vector<AST_stmt*>*)> do_yield) {
         for (int i = 0; i < comprehensions.size(); i++) {
             AST_comprehension* c = comprehensions[i];
@@ -1190,7 +1190,7 @@ private:
         AST_LangPrimitive* rtn = new AST_LangPrimitive(node->opcode);
         rtn->lineno = node->lineno;
 
-        for (AST_expr* arg : node->args) {
+        for (AST_expr* arg : node->args.getArrayRef()) {
             rtn->args.push_back(remapExpr(arg));
         }
         return rtn;

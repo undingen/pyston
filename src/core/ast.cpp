@@ -265,6 +265,11 @@ template <class T> static void visitVector(const std::vector<T*>& vec, ASTVisito
         vec[i]->accept(v);
     }
 }
+template <class T> static void visitVector(CompactVec<T*> vec, ASTVisitor* v) {
+    for (int i = 0; i < vec.size(); i++) {
+        vec[i]->accept(v);
+    }
+}
 
 void AST_alias::accept(ASTVisitor* v) {
     bool skip = v->visit_alias(this);
@@ -735,7 +740,7 @@ void AST_LangPrimitive::accept(ASTVisitor* v) {
     if (skip)
         return;
 
-    visitVector(args, v);
+    visitVector(args.getArrayRef(), v);
 }
 
 void* AST_LangPrimitive::accept_expr(ExprVisitor* v) {

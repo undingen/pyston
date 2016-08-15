@@ -279,9 +279,24 @@ template <typename T> struct CompactVec {
     typedef llvm::PointerUnion<T, VecType*> PU;
     PU pu;
 
-    llvm::ArrayRef<T> getArrayRef() const {
+    CompactVec() {}
+    CompactVec(llvm::ArrayRef<T> init) {
+        for (auto&& e : init) {
+            push_back(e);
+        }
+    }
+
+    CompactVec& operator=(llvm::ArrayRef<T> init) {
+        pu = PU();
+        for (auto&& e : init) {
+            push_back(e);
+        }
+        return *this;
+    }
+
+    std::vector<T> getArrayRef() const {
         if (pu.isNull())
-            return llvm::ArrayRef<T>();
+            return std::vector<T>();
         if (pu.template is<T>()) {
             T e = pu.template get<T>();
             return { e };
@@ -289,7 +304,7 @@ template <typename T> struct CompactVec {
         return *pu.template get<VecType*>();
     }
 
-    llvm::ArrayRef<T> operator()() const { return getArrayRef(); }
+    std::vector<T> operator()() const { return getArrayRef(); }
 
     void push_back(T v) {
         auto s = size();
@@ -306,8 +321,34 @@ template <typename T> struct CompactVec {
     }
 
     size_t size() const { return getArrayRef().size(); }
+    bool empty() const { return size() == 0; }
 
     T operator[](size_t i) const { return getArrayRef()[i]; }
+
+
+    class iterator {
+    public:
+        const CompactVec<T>& vec;
+        int i;
+        iterator(const CompactVec<T>& vec, int i = 0) : vec(vec), i(i) {}
+
+        iterator& operator++() {
+            ++i;
+            if (vec.size() <= i)
+                i = -1;
+            return *this;
+        }
+
+        bool operator==(const iterator& rhs) const { return i == rhs.i; }
+        bool operator!=(const iterator& rhs) const { return !(*this == rhs); }
+
+        T operator*() { return vec[i]; }
+    };
+
+    iterator begin() const { return empty() ? end() : iterator(*this); }
+    iterator end() const { return iterator(*this, -1); }
+
+    T back() const { return getArrayRef().back(); }
 };
 
 class AST_Assign : public AST_stmt {
@@ -388,7 +429,7 @@ public:
 class AST_BoolOp : public AST_expr {
 public:
     AST_TYPE::AST_TYPE op_type;
-    std::vector<AST_expr*> values;
+    CompactVec<AST_expr*> values;
 
     void accept(ASTVisitor* v);
     void* accept_expr(ExprVisitor* v);
@@ -413,8 +454,8 @@ public:
 class AST_Call : public AST_expr {
 public:
     AST_expr* starargs, *kwargs, *func;
-    std::vector<AST_expr*> args;
-    std::vector<AST_keyword*> keywords;
+    CompactVec<AST_expr*> args;
+    CompactVec<AST_keyword*> keywords;
 
     void accept(ASTVisitor* v);
     void* accept_expr(ExprVisitor* v);
@@ -428,7 +469,7 @@ public:
 class AST_Compare : public AST_expr {
 public:
     std::vector<AST_TYPE::AST_TYPE> ops;
-    std::vector<AST_expr*> comparators;
+    CompactVec<AST_expr*> comparators;
     AST_expr* left;
 
     void accept(ASTVisitor* v);
@@ -444,7 +485,7 @@ class AST_comprehension : public AST {
 public:
     AST_expr* target;
     AST_expr* iter;
-    std::vector<AST_expr*> ifs;
+    CompactVec<AST_expr*> ifs;
 
     void accept(ASTVisitor* v);
 
@@ -459,7 +500,7 @@ public:
     void accept(ASTVisitor* v);
     void accept_stmt(StmtVisitor* v);
 
-    std::vector<AST_expr*> bases, decorator_list;
+    CompactVec<AST_expr*> bases, decorator_list;
     std::vector<AST_stmt*> body;
     InternedString name;
 
@@ -482,7 +523,7 @@ public:
 
 class AST_Dict : public AST_expr {
 public:
-    std::vector<AST_expr*> keys, values;
+    CompactVec<AST_expr*> keys, values;
 
     void accept(ASTVisitor* v);
     void* accept_expr(ExprVisitor* v);
@@ -495,7 +536,7 @@ public:
 
 class AST_DictComp : public AST_expr {
 public:
-    std::vector<AST_comprehension*> generators;
+    CompactVec<AST_comprehension*> generators;
     AST_expr* key, *value;
 
     void accept(ASTVisitor* v);
@@ -509,7 +550,7 @@ public:
 
 class AST_Delete : public AST_stmt {
 public:
-    std::vector<AST_expr*> targets;
+    CompactVec<AST_expr*> targets;
     void accept(ASTVisitor* v);
     void accept_stmt(StmtVisitor* v);
 
@@ -620,7 +661,7 @@ public:
 class AST_FunctionDef : public AST_stmt {
 public:
     std::vector<AST_stmt*> body;
-    std::vector<AST_expr*> decorator_list;
+    CompactVec<AST_expr*> decorator_list;
     InternedString name; // if the name is not set this is a lambda
     AST_arguments* args;
 
@@ -635,7 +676,7 @@ public:
 
 class AST_GeneratorExp : public AST_expr {
 public:
-    std::vector<AST_comprehension*> generators;
+    CompactVec<AST_comprehension*> generators;
     AST_expr* elt;
 
     void accept(ASTVisitor* v);
@@ -689,7 +730,7 @@ public:
 
 class AST_Import : public AST_stmt {
 public:
-    std::vector<AST_alias*> names;
+    CompactVec<AST_alias*> names;
 
     void accept(ASTVisitor* v);
     void accept_stmt(StmtVisitor* v);
@@ -703,7 +744,7 @@ public:
 class AST_ImportFrom : public AST_stmt {
 public:
     InternedString module;
-    std::vector<AST_alias*> names;
+    CompactVec<AST_alias*> names;
     int level;
 
     void accept(ASTVisitor* v);
@@ -758,7 +799,7 @@ public:
 
 class AST_List : public AST_expr {
 public:
-    std::vector<AST_expr*> elts;
+    CompactVec<AST_expr*> elts;
     AST_TYPE::AST_TYPE ctx_type;
 
     void accept(ASTVisitor* v);
@@ -772,7 +813,7 @@ public:
 
 class AST_ListComp : public AST_expr {
 public:
-    std::vector<AST_comprehension*> generators;
+    CompactVec<AST_comprehension*> generators;
     AST_expr* elt;
 
     void accept(ASTVisitor* v);
@@ -904,7 +945,7 @@ class AST_Print : public AST_stmt {
 public:
     AST_expr* dest;
     bool nl;
-    std::vector<AST_expr*> values;
+    CompactVec<AST_expr*> values;
 
     void accept(ASTVisitor* v);
     void accept_stmt(StmtVisitor* v);
@@ -947,7 +988,7 @@ public:
 
 class AST_Set : public AST_expr {
 public:
-    std::vector<AST_expr*> elts;
+    CompactVec<AST_expr*> elts;
 
     void accept(ASTVisitor* v);
     void* accept_expr(ExprVisitor* v);
@@ -960,7 +1001,7 @@ public:
 
 class AST_SetComp : public AST_expr {
 public:
-    std::vector<AST_comprehension*> generators;
+    CompactVec<AST_comprehension*> generators;
     AST_expr* elt;
 
     void accept(ASTVisitor* v);
@@ -1025,7 +1066,7 @@ public:
 class AST_TryExcept : public AST_stmt {
 public:
     std::vector<AST_stmt*> body, orelse;
-    std::vector<AST_ExceptHandler*> handlers;
+    CompactVec<AST_ExceptHandler*> handlers;
 
     void accept(ASTVisitor* v);
     void accept_stmt(StmtVisitor* v);
@@ -1051,7 +1092,7 @@ public:
 
 class AST_Tuple : public AST_expr {
 public:
-    std::vector<AST_expr*> elts;
+    CompactVec<AST_expr*> elts;
     AST_TYPE::AST_TYPE ctx_type;
 
     void accept(ASTVisitor* v);
@@ -1243,7 +1284,7 @@ public:
         HASNEXT,
         PRINT_EXPR,
     } opcode;
-    std::vector<AST_expr*> args;
+    CompactVec<AST_expr*> args;
 
     void accept(ASTVisitor* v);
     void* accept_expr(ExprVisitor* v);

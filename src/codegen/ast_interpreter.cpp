@@ -548,7 +548,7 @@ void ASTInterpreter::doStore(AST_expr* node, STOLEN(Value) value) {
         }
 
         unsigned i = 0;
-        for (AST_expr* e : tuple->elts) {
+        for (AST_expr* e : tuple->elts.getArrayRef()) {
             doStore(e, Value(array[i], jit ? array_vars[i] : NULL));
             ++i;
         }
@@ -567,7 +567,7 @@ void ASTInterpreter::doStore(AST_expr* node, STOLEN(Value) value) {
         }
 
         unsigned i = 0;
-        for (AST_expr* e : list->elts) {
+        for (AST_expr* e : list->elts.getArrayRef()) {
             doStore(e, Value(array[i], jit ? array_vars[i] : NULL));
             ++i;
         }
@@ -1229,7 +1229,7 @@ Value ASTInterpreter::visit_makeFunction(AST_MakeFunction* mkfn) {
 
     std::vector<Value> decorators;
     decorators.reserve(node->decorator_list.size());
-    for (AST_expr* d : node->decorator_list)
+    for (AST_expr* d : node->decorator_list.getArrayRef())
         decorators.push_back(visit_expr(d));
 
     Value func = createFunction(node, args, node->body);
@@ -1254,13 +1254,13 @@ Value ASTInterpreter::visit_makeClass(AST_MakeClass* mkclass) {
     BoxedTuple* basesTuple = BoxedTuple::create(node->bases.size());
     AUTO_DECREF(basesTuple);
     int base_idx = 0;
-    for (AST_expr* b : node->bases) {
+    for (AST_expr* b : node->bases.getArrayRef()) {
         basesTuple->elts[base_idx++] = visit_expr(b).o;
     }
 
     std::vector<Box*> decorators;
     decorators.reserve(node->decorator_list.size());
-    for (AST_expr* d : node->decorator_list)
+    for (AST_expr* d : node->decorator_list.getArrayRef())
         decorators.push_back(visit_expr(d).o);
 
     BoxedClosure* closure = NULL;
@@ -1344,7 +1344,7 @@ Value ASTInterpreter::visit_global(AST_Global* node) {
 }
 
 Value ASTInterpreter::visit_delete(AST_Delete* node) {
-    for (AST_expr* target_ : node->targets) {
+    for (AST_expr* target_ : node->targets.getArrayRef()) {
         switch (target_->type) {
             case AST_TYPE::Subscript: {
                 AST_Subscript* sub = (AST_Subscript*)target_;
@@ -1565,7 +1565,7 @@ Value ASTInterpreter::visit_call(AST_Call* node) {
     args.reserve(node->args.size());
     args_vars.reserve(node->args.size());
 
-    for (AST_expr* e : node->args) {
+    for (AST_expr* e : node->args.getArrayRef()) {
         Value v = visit_expr(e);
         args.push_back(v.o);
         args_vars.push_back(v);
@@ -1575,7 +1575,7 @@ Value ASTInterpreter::visit_call(AST_Call* node) {
     if (node->keywords.size())
         keyword_names = getKeywordNameStorage(node);
 
-    for (AST_keyword* k : node->keywords) {
+    for (AST_keyword* k : node->keywords.getArrayRef()) {
         Value v = visit_expr(k->value);
         args.push_back(v.o);
         args_vars.push_back(v);
@@ -1676,7 +1676,8 @@ Value ASTInterpreter::visit_set(AST_Set* node) {
         // important for {1, 1L}
         llvm::SmallVector<RewriterVar*, 8> items;
         BoxedSet* set = (BoxedSet*)createSet();
-        for (auto it = node->elts.rbegin(), it_end = node->elts.rend(); it != it_end; ++it) {
+        auto vec = node->elts.getArrayRef();
+        for (auto it = vec.rbegin(), it_end = vec.rend(); it != it_end; ++it) {
             Value v = visit_expr(*it);
             _setAddStolen(set, v.o);
             items.push_back(v);

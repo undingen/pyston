@@ -147,6 +147,24 @@ public:
             }
         }
     }
+    void checkDuplicateArgs(AST* parent, CompactVec<AST_expr*> args, std::set<InternedString>* seen) {
+        for (auto arg : args.getArrayRef()) {
+            if (arg->type == AST_TYPE::Name) {
+                auto name_node = static_cast<AST_Name*>(arg);
+                if (seen->find(name_node->id) != seen->end()) {
+                    char buf[1024];
+                    snprintf(buf, sizeof(buf), "duplicate argument '%s' in function definition", name_node->id.c_str());
+                    raiseSyntaxError(buf, parent->lineno, fn, "", true);
+                }
+                seen->insert(name_node->id);
+            } else if (arg->type == AST_TYPE::Tuple) {
+                auto slice_node = static_cast<AST_Tuple*>(arg);
+                checkDuplicateArgs(parent, slice_node->elts, seen);
+            } else {
+                RELEASE_ASSERT(0, "");
+            }
+        }
+    }
 
 #define CASE(N)                                                                                                        \
     case N:                                                                                                            \

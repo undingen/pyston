@@ -90,7 +90,7 @@ FutureFlags getFutureFlags(llvm::ArrayRef<AST_stmt*> body, const char* file) {
                 // still at the top of the file, so just set the appropriate
                 // future flag for each imported option.
 
-                for (AST_alias* alias : static_cast<AST_ImportFrom*>(stmt)->names) {
+                for (AST_alias* alias : static_cast<AST_ImportFrom*>(stmt)->names.getArrayRef()) {
                     auto option_name = alias->name;
                     auto iter = future_options.find(option_name.s());
                     if (iter == future_options.end()) {

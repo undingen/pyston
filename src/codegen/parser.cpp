@@ -200,6 +200,18 @@ template <class T> static void readMiscVector(std::vector<T*>& vec, BufferedRead
     }
 }
 
+template <class T> static void readMiscVector(CompactVec<T*>& vec, BufferedReader* reader) {
+    int num_elts = reader->readShort();
+    if (VERBOSITY("parsing") >= 3)
+        printf("%d elts to read\n", num_elts);
+    for (int i = 0; i < num_elts; i++) {
+        AST* read = readASTMisc(reader);
+        assert(read->type == T::TYPE);
+        vec.push_back(static_cast<T*>(read));
+    }
+}
+
+
 AST_alias* read_alias(BufferedReader* reader) {
     InternedString asname = reader->readAndInternString();
     InternedString name = reader->readAndInternString();

@@ -204,8 +204,26 @@ void readVector(std::vector<AST_keyword*>& t, pypa::AstExprList& items, Interned
     }
 }
 
+void readVector(CompactVec<AST_keyword*>& t, pypa::AstExprList& items, InternedStringPool& interned_strings) {
+    for (auto& item : items) {
+        assert(item->type == pypa::AstType::Keyword);
+        t.push_back(readItem(static_cast<pypa::AstKeyword&>(*item), interned_strings));
+    }
+}
+
 template <typename T, typename U>
 void readVector(std::vector<T*>& t, std::vector<U>& u, InternedStringPool& interned_strings) {
+    for (auto& item : u) {
+        if (!item) {
+            t.push_back(nullptr);
+        } else {
+            t.push_back(readItem(*item, interned_strings));
+        }
+    }
+}
+
+template <typename T, typename U>
+void readVector(CompactVec<T*>& t, std::vector<U>& u, InternedStringPool& interned_strings) {
     for (auto& item : u) {
         if (!item) {
             t.push_back(nullptr);
@@ -227,11 +245,39 @@ void readVector(std::vector<AST_expr*>& t, pypa::AstExpression& u, InternedStrin
     }
 }
 
+void readVector(CompactVec<AST_expr*>& t, pypa::AstExpression& u, InternedStringPool& interned_strings) {
+    if (u.type == pypa::AstType::Tuple) {
+        pypa::AstTuple& e = static_cast<pypa::AstTuple&>(u);
+        for (auto& item : e.elements) {
+            assert(item);
+            t.push_back(readItem(*item, interned_strings));
+        }
+    } else {
+        t.push_back(readItem(u, interned_strings));
+    }
+}
+
 void readVector(std::vector<AST_slice*>& t, pypa::AstSliceType& u, InternedStringPool& interned_strings) {
     t.push_back(readItem(u, interned_strings));
 }
 
+void readVector(CompactVec<AST_slice*>& t, pypa::AstSliceType& u, InternedStringPool& interned_strings) {
+    t.push_back(readItem(u, interned_strings));
+}
+
 void readVector(std::vector<AST_stmt*>& t, pypa::AstStatement& u, InternedStringPool& interned_strings) {
+    if (u.type == pypa::AstType::Suite) {
+        pypa::AstSuite& e = static_cast<pypa::AstSuite&>(u);
+        for (auto& item : e.items) {
+            assert(item);
+            t.push_back(readItem(*item, interned_strings));
+        }
+    } else {
+        t.push_back(readItem(u, interned_strings));
+    }
+}
+
+void readVector(CompactVec<AST_stmt*>& t, pypa::AstStatement& u, InternedStringPool& interned_strings) {
     if (u.type == pypa::AstType::Suite) {
         pypa::AstSuite& e = static_cast<pypa::AstSuite&>(u);
         for (auto& item : e.items) {
@@ -264,13 +310,32 @@ void readVector(std::vector<AST_comprehension*>& t, pypa::AstExprList& u, Intern
     }
 }
 
+void readVector(CompactVec<AST_comprehension*>& t, pypa::AstExprList& u, InternedStringPool& interned_strings) {
+    for (auto& e : u) {
+        assert(e && e->type == pypa::AstType::Comprehension);
+        t.push_back(readItem(static_cast<pypa::AstComprehension&>(*e), interned_strings));
+    }
+}
+
 void readVector(std::vector<AST_slice*>& t, pypa::AstSliceTypePtr u, InternedStringPool& interned_strings) {
     if (u) {
         readVector(t, *u, interned_strings);
     }
 }
 
+void readVector(CompactVec<AST_slice*>& t, pypa::AstSliceTypePtr u, InternedStringPool& interned_strings) {
+    if (u) {
+        readVector(t, *u, interned_strings);
+    }
+}
+
 void readVector(std::vector<AST_stmt*>& t, pypa::AstStmt u, InternedStringPool& interned_strings) {
+    if (u) {
+        readVector(t, *u, interned_strings);
+    }
+}
+
+void readVector(CompactVec<AST_stmt*>& t, pypa::AstStmt u, InternedStringPool& interned_strings) {
     if (u) {
         readVector(t, *u, interned_strings);
     }
