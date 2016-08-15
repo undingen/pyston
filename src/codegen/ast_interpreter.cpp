@@ -482,8 +482,7 @@ Value ASTInterpreter::doBinOp(AST_expr* node, Value left, Value right, int op, B
 }
 
 void ASTInterpreter::doStore(AST_Name* node, STOLEN(Value) value) {
-    if (node->lookup_type == ScopeInfo::VarScopeType::UNKNOWN)
-        node->lookup_type = scope_info->getScopeTypeOfName(node->id);
+    assert(node->lookup_type != ScopeInfo::VarScopeType::UNKNOWN);
 
     InternedString name = node->id;
     ScopeInfo::VarScopeType vst = node->lookup_type;
@@ -1702,9 +1701,7 @@ Value ASTInterpreter::visit_str(AST_Str* node) {
 }
 
 Value ASTInterpreter::visit_name(AST_Name* node) {
-    if (node->lookup_type == ScopeInfo::VarScopeType::UNKNOWN) {
-        node->lookup_type = scope_info->getScopeTypeOfName(node->id);
-    }
+    assert(node->lookup_type != ScopeInfo::VarScopeType::UNKNOWN);
 
     switch (node->lookup_type) {
         case ScopeInfo::VarScopeType::GLOBAL: {

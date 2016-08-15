@@ -1348,7 +1348,8 @@ private:
         bool is_kill = irstate->getLiveness()->isKill(node, myblock);
         assert(!is_kill || node->id.s()[0] == '#');
 
-        ScopeInfo::VarScopeType vst = scope_info->getScopeTypeOfName(node->id);
+        ScopeInfo::VarScopeType vst = node->lookup_type;
+        assert(node->lookup_type != ScopeInfo::VarScopeType::UNKNOWN);
         if (vst == ScopeInfo::VarScopeType::GLOBAL) {
             assert(!is_kill);
             return _getGlobal(node, unw_info);
@@ -1992,8 +1993,7 @@ private:
     void _doSet(AST_Name* name, CompilerVariable* val, const UnwindInfo& unw_info) {
         auto scope_info = irstate->getScopeInfo();
         auto vst = name->lookup_type;
-        if (vst == ScopeInfo::VarScopeType::UNKNOWN)
-            vst = scope_info->getScopeTypeOfName(name->id);
+        assert(vst != ScopeInfo::VarScopeType::UNKNOWN);
         assert(vst != ScopeInfo::VarScopeType::DEREF);
         _doSet(name->vreg, name->id, vst, val, unw_info);
     }
@@ -2205,8 +2205,8 @@ private:
             return;
         }
 
-        auto scope_info = irstate->getScopeInfo();
-        ScopeInfo::VarScopeType vst = scope_info->getScopeTypeOfName(target->id);
+        ScopeInfo::VarScopeType vst = target->lookup_type;
+        assert(vst != ScopeInfo::VarScopeType::UNKNOWN);
         if (vst == ScopeInfo::VarScopeType::GLOBAL) {
             // Can't use delattr since the errors are different:
             emitter.createCall2(unw_info, g.funcs.delGlobal, irstate->getGlobals(),

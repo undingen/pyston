@@ -143,6 +143,8 @@ public:
 
     virtual InternedString mangleName(InternedString id) = 0;
     virtual InternedString internString(llvm::StringRef) = 0;
+
+    virtual void clear() {}
 };
 
 class ScopingAnalysis {

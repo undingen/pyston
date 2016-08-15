@@ -346,6 +346,7 @@ public:
         }
 
         takes_closure = got_from_closure || passthrough_accesses;
+        getAllDerefVarsAndInfo();
     }
 
     ~ScopeInfoBase() override { delete this->usage; }
@@ -455,6 +456,11 @@ public:
                 });
         }
         return allDerefVarsAndInfo;
+    }
+
+    virtual void clear() {
+        delete usage;
+        usage = NULL;
     }
 };
 

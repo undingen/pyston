@@ -3096,29 +3096,34 @@ CFG* computeCFG(SourceInfo* source, const ParamNames& param_names) {
     }
 
     rtn->getVRegInfo().assignVRegs(rtn, param_names, source->getScopeInfo());
-    /*
-        for (CFGBlock* b : rtn->blocks) {
-            for (int i=0, e = b->body.size(); i<e; ++i) {
-                AST* node = b->body[i];
-                if (node->type == AST_TYPE::Assign) {
-                    AST_Assign* assign = static_cast<AST_Assign*>(node);
-                    if (assign->targets.size() != 1 || assign->targets[0]->type != AST_TYPE::Name)
-                        continue;
-                    AST_Name* target = static_cast<AST_Name*>(assign->targets[0]);
+/*
+    for (CFGBlock* b : rtn->blocks) {
+        for (int i=0, e = b->body.size(); i<e; ++i) {
+            AST* node = b->body[i];
+            if (node->type == AST_TYPE::Assign) {
+                AST_Assign* assign = static_cast<AST_Assign*>(node);
+                if (assign->targets.size() != 1 || assign->targets[0]->type != AST_TYPE::Name)
+                    continue;
+                AST_Name* target = static_cast<AST_Name*>(assign->targets[0]);
 
-                    AST_AssignVReg* assign_vreg = new AST_AssignVReg(target->id, target->ctx_type, target->lineno);
-                    assign_vreg->lineno = assign->lineno;
-                    assign_vreg->target.vreg = target->vreg;
-                    assign_vreg->target.is_kill = target->is_kill;
-                    assign_vreg->target.lookup_type = target->lookup_type;
-                    assign_vreg->value = assign->value;
-                    b->body[i] = assign_vreg;
-                    delete target;
-                    delete assign;
-                }
+                AST_AssignVReg* assign_vreg = new AST_AssignVReg(target->id, target->ctx_type, target->lineno);
+                assign_vreg->lineno = assign->lineno;
+                assign_vreg->target.vreg = target->vreg;
+                assign_vreg->target.is_kill = target->is_kill;
+                assign_vreg->target.lookup_type = target->lookup_type;
+                assign_vreg->value = assign->value;
+                b->body[i] = assign_vreg;
+                delete target;
+                delete assign;
             }
         }
-    */
+    }
+*/
+
+#ifdef NDEBUG
+    source->getScopeInfo()->clear();
+#endif
+
     return rtn;
 }
 
