@@ -282,8 +282,10 @@ template <typename T> struct CompactVec {
     llvm::ArrayRef<T> getArrayRef() const {
         if (pu.isNull())
             return llvm::ArrayRef<T>();
-        if (pu.template is<T>())
-            return pu.template get<T>();
+        if (pu.template is<T>()) {
+            T e = pu.template get<T>();
+            return { e };
+        }
         return *pu.template get<VecType*>();
     }
 
