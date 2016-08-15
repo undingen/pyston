@@ -740,7 +740,7 @@ void AST_LangPrimitive::accept(ASTVisitor* v) {
     if (skip)
         return;
 
-    visitVector(args.getArrayRef(), v);
+    visitVector(args, v);
 }
 
 void* AST_LangPrimitive::accept_expr(ExprVisitor* v) {

@@ -1190,7 +1190,7 @@ private:
         AST_LangPrimitive* rtn = new AST_LangPrimitive(node->opcode);
         rtn->lineno = node->lineno;
 
-        for (AST_expr* arg : node->args.getArrayRef()) {
+        for (AST_expr* arg : node->args) {
             rtn->args.push_back(remapExpr(arg));
         }
         return rtn;

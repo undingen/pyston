@@ -160,6 +160,12 @@ private:
             writeASTMisc(e);
         }
     }
+    template <class T> void writeMiscVector(const CompactVec<T*>& vec) {
+        writeShort(vec.size());
+        for (auto&& e : vec) {
+            writeASTMisc(e);
+        }
+    }
 
 
 
@@ -183,7 +189,7 @@ private:
     }
     virtual bool visit_assign(AST_Assign* node) {
         writeLineno(node->lineno);
-        writeExprVector(node->targets.getArrayRef());
+        writeExprVector(node->targets);
         writeExpr(node->value);
         return true;
     }
@@ -211,7 +217,7 @@ private:
     virtual bool visit_boolop(AST_BoolOp* node) {
         writeLineno(node->lineno);
         writeByte(node->op_type);
-        writeExprVector(node->values.getArrayRef());
+        writeExprVector(node->values);
         return true;
     }
     virtual bool visit_break(AST_Break* node) {
@@ -219,16 +225,16 @@ private:
         return true;
     }
     virtual bool visit_call(AST_Call* node) {
-        writeExprVector(node->args.getArrayRef());
+        writeExprVector(node->args);
         writeExpr(node->func);
-        writeMiscVector(node->keywords.getArrayRef());
+        writeMiscVector(node->keywords);
         writeExpr(node->kwargs);
         writeLineno(node->lineno);
         writeExpr(node->starargs);
         return true;
     }
     virtual bool visit_compare(AST_Compare* node) {
-        writeExprVector(node->comparators.getArrayRef());
+        writeExprVector(node->comparators);
         writeExpr(node->left);
         writeLineno(node->lineno);
 
@@ -239,15 +245,15 @@ private:
         return true;
     }
     virtual bool visit_comprehension(AST_comprehension* node) {
-        writeExprVector(node->ifs.getArrayRef());
+        writeExprVector(node->ifs);
         writeExpr(node->iter);
         writeExpr(node->target);
         return true;
     }
     virtual bool visit_classdef(AST_ClassDef* node) {
-        writeExprVector(node->bases.getArrayRef());
+        writeExprVector(node->bases);
         writeStmtVector(node->body);
-        writeExprVector(node->decorator_list.getArrayRef());
+        writeExprVector(node->decorator_list);
         writeLineno(node->lineno);
         writeString(node->name);
         return true;
@@ -258,17 +264,17 @@ private:
     }
     virtual bool visit_delete(AST_Delete* node) {
         writeLineno(node->lineno);
-        writeExprVector(node->targets.getArrayRef());
+        writeExprVector(node->targets);
         return true;
     }
     virtual bool visit_dict(AST_Dict* node) {
-        writeExprVector(node->keys.getArrayRef());
+        writeExprVector(node->keys);
         writeLineno(node->lineno);
-        writeExprVector(node->values.getArrayRef());
+        writeExprVector(node->values);
         return true;
     }
     virtual bool visit_dictcomp(AST_DictComp* node) {
-        writeMiscVector(node->generators.getArrayRef());
+        writeMiscVector(node->generators);
         writeExpr(node->key);
         writeLineno(node->lineno);
         writeExpr(node->value);
@@ -309,14 +315,14 @@ private:
     virtual bool visit_functiondef(AST_FunctionDef* node) {
         writeASTMisc(node->args);
         writeStmtVector(node->body);
-        writeExprVector(node->decorator_list.getArrayRef());
+        writeExprVector(node->decorator_list);
         writeLineno(node->lineno);
         writeString(node->name);
         return true;
     }
     virtual bool visit_generatorexp(AST_GeneratorExp* node) {
         writeExpr(node->elt);
-        writeMiscVector(node->generators.getArrayRef());
+        writeMiscVector(node->generators);
         writeLineno(node->lineno);
         return true;
     }
@@ -341,14 +347,14 @@ private:
     }
     virtual bool visit_import(AST_Import* node) {
         writeLineno(node->lineno);
-        writeMiscVector(node->names.getArrayRef());
+        writeMiscVector(node->names);
         return true;
     }
     virtual bool visit_importfrom(AST_ImportFrom* node) {
         writeULL(node->level);
         writeLineno(node->lineno);
         writeString(node->module);
-        writeMiscVector(node->names.getArrayRef());
+        writeMiscVector(node->names);
         return true;
     }
     virtual bool visit_index(AST_Index* node) {
@@ -368,13 +374,13 @@ private:
     }
     virtual bool visit_list(AST_List* node) {
         writeByte(node->ctx_type);
-        writeExprVector(node->elts.getArrayRef());
+        writeExprVector(node->elts);
         writeLineno(node->lineno);
         return true;
     }
     virtual bool visit_listcomp(AST_ListComp* node) {
         writeExpr(node->elt);
-        writeMiscVector(node->generators.getArrayRef());
+        writeMiscVector(node->generators);
         writeLineno(node->lineno);
         return true;
     }
@@ -412,7 +418,7 @@ private:
         writeExpr(node->dest);
         writeLineno(node->lineno);
         writeByte(node->nl);
-        writeExprVector(node->values.getArrayRef());
+        writeExprVector(node->values);
         return true;
     }
     virtual bool visit_raise(AST_Raise* node) {
@@ -435,13 +441,13 @@ private:
         return true;
     }
     virtual bool visit_set(AST_Set* node) {
-        writeExprVector(node->elts.getArrayRef());
+        writeExprVector(node->elts);
         writeLineno(node->lineno);
         return true;
     }
     virtual bool visit_setcomp(AST_SetComp* node) {
         writeExpr(node->elt);
-        writeMiscVector(node->generators.getArrayRef());
+        writeMiscVector(node->generators);
         writeLineno(node->lineno);
         return true;
     }
@@ -472,7 +478,7 @@ private:
     }
     virtual bool visit_tryexcept(AST_TryExcept* node) {
         writeStmtVector(node->body);
-        writeMiscVector(node->handlers.getArrayRef());
+        writeMiscVector(node->handlers);
         writeLineno(node->lineno);
         writeStmtVector(node->orelse);
         return true;
@@ -485,7 +491,7 @@ private:
     }
     virtual bool visit_tuple(AST_Tuple* node) {
         writeByte(node->ctx_type);
-        writeExprVector(node->elts.getArrayRef());
+        writeExprVector(node->elts);
         writeLineno(node->lineno);
         return true;
     }

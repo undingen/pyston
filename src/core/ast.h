@@ -25,6 +25,7 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/PointerUnion.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/TinyPtrVector.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include "analysis/scoping_analysis.h"
@@ -274,6 +275,7 @@ public:
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Assert;
 } PACKED;
 
+/*
 template <typename T> struct CompactVec {
     typedef std::vector<T> VecType;
     typedef llvm::PointerUnion<T, VecType*> PU;
@@ -350,6 +352,8 @@ template <typename T> struct CompactVec {
 
     T back() const { return getArrayRef().back(); }
 };
+*/
+template <typename T> using CompactVec = llvm::TinyPtrVector<T>;
 
 class AST_Assign : public AST_stmt {
 public:

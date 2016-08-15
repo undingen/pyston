@@ -148,7 +148,7 @@ public:
         }
     }
     void checkDuplicateArgs(AST* parent, CompactVec<AST_expr*> args, std::set<InternedString>* seen) {
-        for (auto arg : args.getArrayRef()) {
+        for (auto arg : args) {
             if (arg->type == AST_TYPE::Name) {
                 auto name_node = static_cast<AST_Name*>(arg);
                 if (seen->find(name_node->id) != seen->end()) {
@@ -249,7 +249,7 @@ public:
         auto r = new AST_comprehension();
         r->target = convert(comprehension->target);
         r->iter = convert(comprehension->iter);
-        r->ifs = convert<expr_ty, AST_expr*>(comprehension->ifs);
+        r->ifs = CompactVec<AST_expr*>(convert<expr_ty, AST_expr*>(comprehension->ifs));
         return r;
     }
 
@@ -287,7 +287,7 @@ public:
                 auto r = new AST_BoolOp();
                 auto v = expr->v.BoolOp;
                 r->op_type = convert(v.op);
-                r->values = convert<expr_ty, AST_expr*>(v.values);
+                r->values = CompactVec<AST_expr*>(convert<expr_ty, AST_expr*>(v.values));
                 return r;
             }
             case BinOp_kind: {
@@ -324,28 +324,30 @@ public:
             case Dict_kind: {
                 auto r = new AST_Dict();
                 auto v = expr->v.Dict;
-                r->keys = convert<expr_ty, AST_expr*>(v.keys);
-                r->values = convert<expr_ty, AST_expr*>(v.values);
+                r->keys = CompactVec<AST_expr*>(convert<expr_ty, AST_expr*>(v.keys));
+                r->values = CompactVec<AST_expr*>(convert<expr_ty, AST_expr*>(v.values));
                 return r;
             }
             case Set_kind: {
                 auto r = new AST_Set();
                 auto v = expr->v.Set;
-                r->elts = convert<expr_ty, AST_expr*>(v.elts);
+                r->elts = CompactVec<AST_expr*>(convert<expr_ty, AST_expr*>(v.elts));
                 return r;
             }
             case ListComp_kind: {
                 auto r = new AST_ListComp();
                 auto v = expr->v.ListComp;
                 r->elt = convert(v.elt);
-                r->generators = convert<comprehension_ty, AST_comprehension*>(v.generators);
+                r->generators
+                    = CompactVec<AST_comprehension*>(convert<comprehension_ty, AST_comprehension*>(v.generators));
                 return r;
             }
             case SetComp_kind: {
                 auto r = new AST_SetComp();
                 auto v = expr->v.SetComp;
                 r->elt = convert(v.elt);
-                r->generators = convert<comprehension_ty, AST_comprehension*>(v.generators);
+                r->generators
+                    = CompactVec<AST_comprehension*>(convert<comprehension_ty, AST_comprehension*>(v.generators));
                 return r;
             }
             case DictComp_kind: {
@@ -353,14 +355,16 @@ public:
                 auto v = expr->v.DictComp;
                 r->key = convert(v.key);
                 r->value = convert(v.value);
-                r->generators = convert<comprehension_ty, AST_comprehension*>(v.generators);
+                r->generators
+                    = CompactVec<AST_comprehension*>(convert<comprehension_ty, AST_comprehension*>(v.generators));
                 return r;
             }
             case GeneratorExp_kind: {
                 auto r = new AST_GeneratorExp();
                 auto v = expr->v.GeneratorExp;
                 r->elt = convert(v.elt);
-                r->generators = convert<comprehension_ty, AST_comprehension*>(v.generators);
+                r->generators
+                    = CompactVec<AST_comprehension*>(convert<comprehension_ty, AST_comprehension*>(v.generators));
                 return r;
             }
             case Yield_kind: {
@@ -374,15 +378,15 @@ public:
                 auto v = expr->v.Compare;
                 r->left = convert(v.left);
                 r->ops = convert<cmpop_ty, AST_TYPE::AST_TYPE>(v.ops);
-                r->comparators = convert<expr_ty, AST_expr*>(v.comparators);
+                r->comparators = CompactVec<AST_expr*>(convert<expr_ty, AST_expr*>(v.comparators));
                 return r;
             }
             case Call_kind: {
                 auto r = new AST_Call();
                 auto v = expr->v.Call;
                 r->func = convert(v.func);
-                r->args = convert<expr_ty, AST_expr*>(v.args);
-                r->keywords = convert<keyword_ty, AST_keyword*>(v.keywords);
+                r->args = CompactVec<AST_expr*>(convert<expr_ty, AST_expr*>(v.args));
+                r->keywords = CompactVec<AST_keyword*>(convert<keyword_ty, AST_keyword*>(v.keywords));
                 r->starargs = convert(v.starargs);
                 r->kwargs = convert(v.kwargs);
                 return r;
@@ -417,14 +421,14 @@ public:
             case List_kind: {
                 auto r = new AST_List();
                 auto v = expr->v.List;
-                r->elts = convert<expr_ty, AST_expr*>(v.elts);
+                r->elts = CompactVec<AST_expr*>(convert<expr_ty, AST_expr*>(v.elts));
                 r->ctx_type = convert(v.ctx);
                 return r;
             }
             case Tuple_kind: {
                 auto r = new AST_Tuple();
                 auto v = expr->v.Tuple;
-                r->elts = convert<expr_ty, AST_expr*>(v.elts);
+                r->elts = CompactVec<AST_expr*>(convert<expr_ty, AST_expr*>(v.elts));
                 r->ctx_type = convert(v.ctx);
                 return r;
             }
@@ -538,18 +542,18 @@ public:
                 nestlevel++;
                 r->body = convert<stmt_ty, AST_stmt*>(v.body);
                 nestlevel--;
-                r->decorator_list = convert<expr_ty, AST_expr*>(v.decorator_list);
+                r->decorator_list = CompactVec<AST_expr*>(convert<expr_ty, AST_expr*>(v.decorator_list));
                 return r;
             }
             case ClassDef_kind: {
                 auto r = new AST_ClassDef();
                 auto v = stmt->v.ClassDef;
                 r->name = convert(v.name);
-                r->bases = convert<expr_ty, AST_expr*>(v.bases);
+                r->bases = CompactVec<AST_expr*>(convert<expr_ty, AST_expr*>(v.bases));
                 nestlevel++;
                 r->body = convert<stmt_ty, AST_stmt*>(v.body);
                 nestlevel--;
-                r->decorator_list = convert<expr_ty, AST_expr*>(v.decorator_list);
+                r->decorator_list = CompactVec<AST_expr*>(convert<expr_ty, AST_expr*>(v.decorator_list));
                 return r;
             }
             case Return_kind: {
@@ -561,17 +565,13 @@ public:
             case Delete_kind: {
                 auto r = new AST_Delete();
                 auto v = stmt->v.Delete;
-                r->targets = convert<expr_ty, AST_expr*>(v.targets);
+                r->targets = CompactVec<AST_expr*>(convert<expr_ty, AST_expr*>(v.targets));
                 return r;
             }
             case Assign_kind: {
                 auto r = new AST_Assign();
                 auto v = stmt->v.Assign;
-                std::vector<AST_expr*> vec;
-                vec = convert<expr_ty, AST_expr*>(v.targets);
-                ;
-                for (auto&& e : vec)
-                    r->targets.push_back(e);
+                r->targets = CompactVec<AST_expr*>(convert<expr_ty, AST_expr*>(v.targets));
                 r->value = convert(v.value);
                 return r;
             }
@@ -587,7 +587,7 @@ public:
                 auto r = new AST_Print();
                 auto v = stmt->v.Print;
                 r->dest = convert(v.dest);
-                r->values = convert<expr_ty, AST_expr*>(v.values);
+                r->values = CompactVec<AST_expr*>(convert<expr_ty, AST_expr*>(v.values));
                 r->nl = v.nl;
                 return r;
             }
@@ -646,7 +646,7 @@ public:
                 auto r = new AST_TryExcept();
                 auto v = stmt->v.TryExcept;
                 r->body = convert<stmt_ty, AST_stmt*>(v.body);
-                r->handlers = convert<excepthandler_ty, AST_ExceptHandler*>(v.handlers);
+                r->handlers = CompactVec<AST_ExceptHandler*>(convert<excepthandler_ty, AST_ExceptHandler*>(v.handlers));
                 r->orelse = convert<stmt_ty, AST_stmt*>(v.orelse);
                 return r;
             }
@@ -669,14 +669,14 @@ public:
             case Import_kind: {
                 auto r = new AST_Import();
                 auto v = stmt->v.Import;
-                r->names = convert<alias_ty, AST_alias*>(v.names);
+                r->names = CompactVec<AST_alias*>(convert<alias_ty, AST_alias*>(v.names));
                 return r;
             }
             case ImportFrom_kind: {
                 auto r = new AST_ImportFrom();
                 auto v = stmt->v.ImportFrom;
                 r->module = convert(v.module);
-                r->names = convert<alias_ty, AST_alias*>(v.names);
+                r->names = CompactVec<AST_alias*>(convert<alias_ty, AST_alias*>(v.names));
                 r->level = v.level;
                 return r;
             }
