@@ -39,27 +39,35 @@ namespace pyston {
 
 DS_DEFINE_RWLOCK(codegen_rwlock);
 
-FunctionMetadata::FunctionMetadata(int num_args, bool takes_varargs, bool takes_kwargs,
-                                   std::unique_ptr<SourceInfo> source)
+FunctionMetadata::FunctionMetadata(int num_args, bool takes_varargs, bool takes_kwargs, SourceInfo* source)
     : code_obj(NULL),
       num_args(num_args),
       takes_varargs(takes_varargs),
       takes_kwargs(takes_kwargs),
       source(std::move(source)),
       param_names(this->source->ast, this->source->getInternedStrings()),
-      times_interpreted(0),
       internal_callable(NULL, NULL) {
 }
 
-FunctionMetadata::FunctionMetadata(int num_args, bool takes_varargs, bool takes_kwargs, const ParamNames& param_names)
+FunctionMetadata::FunctionMetadata(int num_args, bool takes_varargs, bool takes_kwargs, const ParamNames& param_names,
+                                   SourceInfo* source)
     : code_obj(NULL),
       num_args(num_args),
       takes_varargs(takes_varargs),
       takes_kwargs(takes_kwargs),
-      source(nullptr),
+      source(source),
       param_names(param_names),
-      times_interpreted(0),
       internal_callable(NULL, NULL) {
+}
+
+FunctionMetadata::~FunctionMetadata() {
+}
+
+FunctionMetadataSource::FunctionMetadataSource(int num_args, bool takes_varargs, bool takes_kwargs, SourceInfo&& source)
+    : FunctionMetadata(num_args, takes_varargs, takes_kwargs, ParamNames(source.ast, source.getInternedStrings()),
+                       &source_info),
+      times_interpreted(0),
+      source_info(std::forward<SourceInfo&&>(source)) {
 }
 
 BORROWED(BoxedCode*) FunctionMetadata::getCode() {
@@ -78,7 +86,7 @@ void FunctionMetadata::addVersion(CompiledFunction* compiled) {
     assert(compiled->code);
 
     if (compiled->entry_descriptor == NULL) {
-        bool could_have_speculations = (source.get() != NULL);
+        bool could_have_speculations = (source != NULL);
         if (!could_have_speculations && compiled->effort == EffortLevel::MAXIMAL && compiled->spec->accepts_all_inputs
             && compiled->spec->boxed_return_value
             && (versions.size() == 0 || (versions.size() == 1 && !always_use_version.empty()))) {
@@ -89,7 +97,8 @@ void FunctionMetadata::addVersion(CompiledFunction* compiled) {
         assert(compiled->spec->arg_types.size() == numReceivedArgs());
         versions.push_back(compiled);
     } else {
-        osr_versions[compiled->entry_descriptor] = compiled;
+        assert(source);
+        ((FunctionMetadataSource*)this)->osr_versions[compiled->entry_descriptor] = compiled;
     }
 }
 
@@ -118,10 +127,6 @@ SourceInfo::SourceInfo(BoxedModule* m, ScopingAnalysis* scoping, FutureFlags fut
             RELEASE_ASSERT(0, "Unknown type: %d", ast->type);
             break;
     }
-}
-
-SourceInfo::~SourceInfo() {
-    // TODO: release memory..
 }
 
 void FunctionAddressRegistry::registerFunction(const std::string& name, void* addr, int length,

@@ -151,7 +151,7 @@ extern "C" Box* decodeUTF8StringPtr(llvm::StringRef s);
 extern "C" inline void listAppendInternal(Box* self, Box* v) __attribute__((visibility("default")));
 extern "C" inline void listAppendInternalStolen(Box* self, Box* v) __attribute__((visibility("default")));
 extern "C" void listAppendArrayInternal(Box* self, Box** v, int nelts);
-extern "C" Box* createFunctionFromMetadata(FunctionMetadata* f, BoxedClosure* closure, Box* globals,
+extern "C" Box* createFunctionFromMetadata(FunctionMetadataSource* f, BoxedClosure* closure, Box* globals,
                                            std::initializer_list<Box*> defaults) noexcept;
 extern "C" FunctionMetadata* getFunctionMetadata(Box* b);
 extern "C" Box* createUserClass(BoxedString* name, Box* base, Box* attr_dict);

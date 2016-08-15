@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "Python.h"
@@ -432,7 +433,6 @@ public:
     Box* getDocString();
 
     SourceInfo(BoxedModule* m, ScopingAnalysis* scoping, FutureFlags future_flags, AST* ast, BoxedString* fn);
-    ~SourceInfo();
 
 private:
     std::unique_ptr<LivenessAnalysis> liveness_info;
@@ -463,22 +463,16 @@ public:
     int num_args;
     bool takes_varargs, takes_kwargs;
 
-    std::unique_ptr<SourceInfo> source; // source can be NULL for functions defined in the C/C++ runtime
+    SourceInfo* const source; // source can be NULL for functions defined in the C/C++ runtime
     ParamNames param_names;
 
     FunctionList
         versions; // any compiled versions along with their type parameters; in order from most preferred to least
     ExceptionSwitchable<CompiledFunction*>
         always_use_version; // if this version is set, always use it (for unboxed cases)
-    std::unordered_map<const OSREntryDescriptor*, CompiledFunction*> osr_versions;
 
     // Profiling counter:
     int propagated_cxx_exceptions = 0;
-
-    // For use by the interpreter/baseline jit:
-    int times_interpreted;
-    std::vector<std::unique_ptr<JitCodeBlock>> code_blocks;
-    ICInvalidator dependent_interp_callsites;
 
     // Functions can provide an "internal" version, which will get called instead
     // of the normal dispatch through the functionlist.
@@ -488,9 +482,9 @@ public:
                                         Box**, const std::vector<BoxedString*>*> InternalCallable;
     InternalCallable internal_callable;
 
-    FunctionMetadata(int num_args, bool takes_varargs, bool takes_kwargs, std::unique_ptr<SourceInfo> source);
+    FunctionMetadata(int num_args, bool takes_varargs, bool takes_kwargs, SourceInfo* source);
     FunctionMetadata(int num_args, bool takes_varargs, bool takes_kwargs,
-                     const ParamNames& param_names = ParamNames::empty());
+                     const ParamNames& param_names = ParamNames::empty(), SourceInfo* source = NULL);
     ~FunctionMetadata();
 
     int numReceivedArgs() { return num_args + takes_varargs + takes_kwargs; }
@@ -530,6 +524,19 @@ public:
                                     ExceptionStyle exception_style = CXX) {
         return create(f, rtn_type, nargs, false, false, param_names, exception_style);
     }
+};
+
+class FunctionMetadataSource : public FunctionMetadata {
+public:
+    FunctionMetadataSource(int num_args, bool takes_varargs, bool takes_kwargs, SourceInfo&& source);
+    llvm::DenseMap<const OSREntryDescriptor*, CompiledFunction*> osr_versions;
+
+    // For use by the interpreter/baseline jit:
+    int times_interpreted;
+    std::vector<std::unique_ptr<JitCodeBlock>> code_blocks;
+    ICInvalidator dependent_interp_callsites;
+
+    SourceInfo source_info;
 };
 
 
@@ -1075,7 +1082,7 @@ struct FrameInfo {
     BORROWED(Box*) globals;
 
     FrameInfo* back;
-    FunctionMetadata* md;
+    FunctionMetadataSource* md;
 
     BORROWED(Box*) updateBoxedLocals();
 

@@ -872,8 +872,8 @@ CompilerVariable* makeFunction(IREmitter& emitter, FunctionMetadata* f, llvm::Va
     // emitter.createCall().
     llvm::Instruction* boxed = emitter.getBuilder()->CreateCall(
         g.funcs.createFunctionFromMetadata,
-        std::vector<llvm::Value*>{ embedRelocatablePtr(f, g.llvm_functionmetadata_type_ptr), closure, globals, scratch,
-                                   getConstantInt(defaults.size(), g.i64) });
+        std::vector<llvm::Value*>{ embedRelocatablePtr(f, g.llvm_functionmetadatasource_type_ptr), closure, globals,
+                                   scratch, getConstantInt(defaults.size(), g.i64) });
     emitter.setType(boxed, RefType::OWNED);
 
     // The refcounter needs to know that this call "uses" the arguments that got passed via scratch.

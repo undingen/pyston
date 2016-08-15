@@ -228,7 +228,7 @@ CompiledFunction* compileFunction(FunctionMetadata* f, FunctionSpecialization* s
 
     assert((entry_descriptor != NULL) + (spec != NULL) == 1);
 
-    SourceInfo* source = f->source.get();
+    SourceInfo* source = f->source;
     assert(source);
 
     BoxedString* name = source->getName();
@@ -335,7 +335,7 @@ CompiledFunction* compileFunction(FunctionMetadata* f, FunctionSpecialization* s
 }
 
 void compileAndRunModule(AST_Module* m, BoxedModule* bm) {
-    FunctionMetadata* md;
+    FunctionMetadataSource* md;
 
     { // scope for limiting the locked region:
         LOCK_REGION(codegen_rwlock.asWrite());
@@ -350,16 +350,16 @@ void compileAndRunModule(AST_Module* m, BoxedModule* bm) {
 
         auto fn_str = boxString(fn);
         AUTO_DECREF(fn_str);
-        std::unique_ptr<SourceInfo> si(new SourceInfo(bm, scoping, future_flags, m, fn_str));
+        SourceInfo si(bm, scoping, future_flags, m, fn_str);
 
         static BoxedString* doc_str = getStaticString("__doc__");
-        bm->setattr(doc_str, autoDecref(si->getDocString()), NULL);
+        bm->setattr(doc_str, autoDecref(si.getDocString()), NULL);
 
         static BoxedString* builtins_str = getStaticString("__builtins__");
         if (!bm->hasattr(builtins_str))
             bm->setattr(builtins_str, PyModule_GetDict(builtins_module), NULL);
 
-        md = new FunctionMetadata(0, false, false, std::move(si));
+        md = new FunctionMetadataSource(0, false, false, std::move(si));
     }
 
     UNAVOIDABLE_STAT_TIMER(t0, "us_timer_interpreted_module_toplevel");
@@ -373,7 +373,7 @@ void compileAndRunModule(AST_Module* m, BoxedModule* bm) {
     // Py_DECREF(r);
 }
 
-Box* evalOrExec(FunctionMetadata* md, Box* globals, Box* boxedLocals) {
+Box* evalOrExec(FunctionMetadataSource* md, Box* globals, Box* boxedLocals) {
     RELEASE_ASSERT(!md->source->scoping->areGlobalsFromModule(), "");
 
     assert(globals && (globals->cls == module_cls || globals->cls == dict_cls));
@@ -389,8 +389,8 @@ Box* evalOrExec(FunctionMetadata* md, Box* globals, Box* boxedLocals) {
     return astInterpretFunctionEval(md, globals, boxedLocals);
 }
 
-static FunctionMetadata* compileForEvalOrExec(AST* source, llvm::ArrayRef<AST_stmt*> body, BoxedString* fn,
-                                              PyCompilerFlags* flags) {
+static FunctionMetadataSource* compileForEvalOrExec(AST* source, llvm::ArrayRef<AST_stmt*> body, BoxedString* fn,
+                                                    PyCompilerFlags* flags) {
     LOCK_REGION(codegen_rwlock.asWrite());
 
     Timer _t("for evalOrExec()");
@@ -408,17 +408,16 @@ static FunctionMetadata* compileForEvalOrExec(AST* source, llvm::ArrayRef<AST_st
         flags->cf_flags = future_flags;
     }
 
-    std::unique_ptr<SourceInfo> si(new SourceInfo(getCurrentModule(), scoping, future_flags, source, fn));
+    SourceInfo si(getCurrentModule(), scoping, future_flags, source, fn);
 
-    FunctionMetadata* md = new FunctionMetadata(0, false, false, std::move(si));
-    return md;
+    return new FunctionMetadataSource(0, false, false, std::move(si));
 }
 
-static FunctionMetadata* compileExec(AST_Module* parsedModule, BoxedString* fn, PyCompilerFlags* flags) {
+static FunctionMetadataSource* compileExec(AST_Module* parsedModule, BoxedString* fn, PyCompilerFlags* flags) {
     return compileForEvalOrExec(parsedModule, parsedModule->body, fn, flags);
 }
 
-static FunctionMetadata* compileEval(AST_Expression* parsedExpr, BoxedString* fn, PyCompilerFlags* flags) {
+static FunctionMetadataSource* compileEval(AST_Expression* parsedExpr, BoxedString* fn, PyCompilerFlags* flags) {
     return compileForEvalOrExec(parsedExpr, parsedExpr->body, fn, flags);
 }
 
@@ -538,7 +537,7 @@ static void pickGlobalsAndLocals(Box*& globals, Box*& locals) {
 extern "C" PyObject* PyEval_EvalCode(PyCodeObject* co, PyObject* globals, PyObject* locals) noexcept {
     try {
         pickGlobalsAndLocals(globals, locals);
-        return evalOrExec(metadataFromCode((Box*)co), globals, locals);
+        return evalOrExec((FunctionMetadataSource*)metadataFromCode((Box*)co), globals, locals);
     } catch (ExcInfo e) {
         setCAPIException(e);
         return NULL;
@@ -658,8 +657,9 @@ void CompiledFunction::speculationFailed() {
     if (this->times_speculation_failed == 4) {
         // printf("Killing %p because it failed too many speculations\n", this);
 
-        FunctionMetadata* md = this->md;
+        FunctionMetadataSource* md = (FunctionMetadataSource*)this->md;
         assert(md);
+        assert(md->source);
         assert(this != md->always_use_version.get(exception_style));
 
         bool found = false;
@@ -776,8 +776,9 @@ CompiledFunction* compilePartialFuncInternal(OSRExit* exit) {
 
     // if (VERBOSITY("irgen") >= 1) printf("In compilePartialFunc, handling %p\n", exit);
 
-    FunctionMetadata* md = exit->entry->md;
+    FunctionMetadataSource* md = (FunctionMetadataSource*)exit->entry->md;
     assert(md);
+    assert(md->source);
     CompiledFunction*& new_cf = md->osr_versions[exit->entry];
     if (new_cf == NULL) {
         EffortLevel new_effort = EffortLevel::MAXIMAL;

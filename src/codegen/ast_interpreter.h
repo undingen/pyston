@@ -29,7 +29,7 @@ class AST_Jump;
 class Box;
 class BoxedClosure;
 class BoxedDict;
-struct FunctionMetadata;
+struct FunctionMetadataSource;
 struct LineInfo;
 
 extern const void* interpreter_instr_addr;
@@ -76,12 +76,12 @@ struct Value {
     Value(Box* o, RewriterVar* var) : o(o), var(var) {}
 };
 
-Box* astInterpretFunction(FunctionMetadata* f, Box* closure, Box* generator, Box* globals, Box* arg1, Box* arg2,
+Box* astInterpretFunction(FunctionMetadataSource* f, Box* closure, Box* generator, Box* globals, Box* arg1, Box* arg2,
                           Box* arg3, Box** args);
-Box* astInterpretFunctionEval(FunctionMetadata* cf, Box* globals, Box* boxedLocals);
+Box* astInterpretFunctionEval(FunctionMetadataSource* cf, Box* globals, Box* boxedLocals);
 // this function is implemented in the src/codegen/ast_interpreter_exec.S assembler file
-extern "C" Box* astInterpretDeopt(FunctionMetadata* cf, AST_expr* after_expr, AST_stmt* enclosing_stmt, Box* expr_val,
-                                  STOLEN(FrameStackState) frame_state);
+extern "C" Box* astInterpretDeopt(FunctionMetadataSource* cf, AST_expr* after_expr, AST_stmt* enclosing_stmt,
+                                  Box* expr_val, STOLEN(FrameStackState) frame_state);
 
 struct FrameInfo;
 FrameInfo* getFrameInfoForInterpretedFrame(void* frame_ptr);

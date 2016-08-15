@@ -63,7 +63,7 @@ IRGenState::IRGenState(FunctionMetadata* md, CompiledFunction* cf, llvm::Functio
       stmt(NULL),
       scratch_size(0) {
     assert(func);
-    assert(cf->md->source.get() == source_info); // I guess this is duplicate now
+    assert(cf->md->source == source_info); // I guess this is duplicate now
 }
 
 IRGenState::~IRGenState() {
@@ -329,7 +329,8 @@ void IRGenState::setupFrameInfoVar(llvm::Value* passed_closure, llvm::Value* pas
         // set frame_info.vregs
         builder.CreateStore(vregs, getVRegsGep(builder, al));
         builder.CreateStore(getConstantInt(num_user_visible_vregs, g.i32), getNumVRegsGep(builder, al));
-        builder.CreateStore(embedRelocatablePtr(getMD(), g.llvm_functionmetadata_type_ptr), getMDGep(builder, al));
+        builder.CreateStore(embedRelocatablePtr(getMD(), g.llvm_functionmetadatasource_type_ptr),
+                            getMDGep(builder, al));
 
         this->frame_info = al;
         this->globals = passed_globals;
@@ -3248,19 +3249,19 @@ IRGenerator* createIRGenerator(IRGenState* irstate, std::unordered_map<CFGBlock*
     return new IRGeneratorImpl(irstate, entry_blocks, myblock, types);
 }
 
-FunctionMetadata* wrapFunction(AST* node, AST_arguments* args, const std::vector<AST_stmt*>& body, SourceInfo* source) {
+FunctionMetadataSource* wrapFunction(AST* node, AST_arguments* args, const std::vector<AST_stmt*>& body,
+                                     SourceInfo* source) {
     // Different compilations of the parent scope of a functiondef should lead
     // to the same FunctionMetadata* being used:
-    static std::unordered_map<AST*, FunctionMetadata*> made;
+    static std::unordered_map<AST*, FunctionMetadataSource*> made;
 
-    FunctionMetadata*& md = made[node];
+    FunctionMetadataSource*& md = made[node];
     if (md == NULL) {
-        std::unique_ptr<SourceInfo> si(
-            new SourceInfo(source->parent_module, source->scoping, source->future_flags, node, source->getFn()));
+        SourceInfo si(source->parent_module, source->scoping, source->future_flags, node, source->getFn());
         if (args)
-            md = new FunctionMetadata(args->args.size(), args->vararg, args->kwarg, std::move(si));
+            md = new FunctionMetadataSource(args->args.size(), args->vararg, args->kwarg, std::move(si));
         else
-            md = new FunctionMetadata(0, false, false, std::move(si));
+            md = new FunctionMetadataSource(0, false, false, std::move(si));
     }
     return md;
 }

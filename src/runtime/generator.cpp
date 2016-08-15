@@ -103,9 +103,9 @@ void generatorEntry(BoxedGenerator* g) noexcept {
             // KEEP_ALIVE(func);
 
             Box** args = g->args ? &g->args->elts[0] : nullptr;
-            auto r = callCLFunc<ExceptionStyle::CAPI, NOT_REWRITABLE>(func->md, nullptr, func->md->numReceivedArgs(),
-                                                                      func->closure, g, func->globals, g->arg1, g->arg2,
-                                                                      g->arg3, args);
+            auto r = callCLFunc<ExceptionStyle::CAPI, NOT_REWRITABLE>((FunctionMetadataSource*)func->md, nullptr,
+                                                                      func->md->numReceivedArgs(), func->closure, g,
+                                                                      func->globals, g->arg1, g->arg2, g->arg3, args);
             if (r)
                 Py_DECREF(r);
             else {

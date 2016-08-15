@@ -561,7 +561,7 @@ BORROWED(Box*) BoxedModule::getLongConstant(llvm::StringRef ast_str) {
 
 // This mustn't throw; our IR generator generates calls to it without "invoke" even when there are exception handlers /
 // finally-blocks in scope.
-extern "C" Box* createFunctionFromMetadata(FunctionMetadata* md, BoxedClosure* closure, Box* globals,
+extern "C" Box* createFunctionFromMetadata(FunctionMetadataSource* md, BoxedClosure* closure, Box* globals,
                                            std::initializer_list<Box*> defaults) noexcept {
     STAT_TIMER(t0, "us_timer_createfunctionfrommetadata", 10);
 

@@ -66,7 +66,7 @@ extern "C" Box* executeInnerAndSetupFrame(ASTInterpreter& interpreter, CFGBlock*
  */
 class ASTInterpreter {
 public:
-    ASTInterpreter(FunctionMetadata* md, Box** vregs, FrameInfo* deopt_frame_info = NULL);
+    ASTInterpreter(FunctionMetadataSource* md, Box** vregs, FrameInfo* deopt_frame_info = NULL);
 
     void initArguments(BoxedClosure* closure, BoxedGenerator* generator, Box* arg1, Box* arg2, Box* arg3, Box** args);
 
@@ -169,7 +169,7 @@ public:
 
     void setCurrentStatement(AST_stmt* stmt) { frame_info.stmt = stmt; }
 
-    FunctionMetadata* getMD() { return frame_info.md; }
+    FunctionMetadataSource* getMD() { return frame_info.md; }
     FrameInfo* getFrameInfo() { return &frame_info; }
     BoxedClosure* getPassedClosure() { return frame_info.passed_closure; }
     Box** getVRegs() { return vregs; }
@@ -224,11 +224,11 @@ void ASTInterpreter::setGlobals(Box* globals) {
     this->frame_info.globals = incref(globals);
 }
 
-ASTInterpreter::ASTInterpreter(FunctionMetadata* md, Box** vregs, FrameInfo* deopt_frame_info)
+ASTInterpreter::ASTInterpreter(FunctionMetadataSource* md, Box** vregs, FrameInfo* deopt_frame_info)
     : current_block(0),
       frame_info(ExcInfo(NULL, NULL, NULL)),
       edgecount(0),
-      source_info(md->source.get()),
+      source_info(md->source),
       scope_info(0),
       phis(NULL),
       vregs(vregs),
@@ -1128,7 +1128,7 @@ Value ASTInterpreter::visit_return(AST_Return* node) {
 }
 
 Value ASTInterpreter::createFunction(AST* node, AST_arguments* args, const std::vector<AST_stmt*>& body) {
-    FunctionMetadata* md = wrapFunction(node, args, body, source_info);
+    FunctionMetadataSource* md = wrapFunction(node, args, body, source_info);
 
     std::vector<Box*> defaults;
     llvm::SmallVector<RewriterVar*, 4> defaults_vars;
@@ -1267,7 +1267,7 @@ Value ASTInterpreter::visit_makeClass(AST_MakeClass* mkclass) {
             closure = created_closure;
         assert(closure);
     }
-    FunctionMetadata* md = wrapFunction(node, nullptr, node->body, source_info);
+    FunctionMetadataSource* md = wrapFunction(node, nullptr, node->body, source_info);
 
     Box* passed_globals = NULL;
     if (!getMD()->source->scoping->areGlobalsFromModule())
@@ -1972,11 +1972,11 @@ extern "C" Box* executeInnerFromASM(ASTInterpreter& interpreter, CFGBlock* start
     return rtn;
 }
 
-Box* astInterpretFunction(FunctionMetadata* md, Box* closure, Box* generator, Box* globals, Box* arg1, Box* arg2,
+Box* astInterpretFunction(FunctionMetadataSource* md, Box* closure, Box* generator, Box* globals, Box* arg1, Box* arg2,
                           Box* arg3, Box** args) {
     UNAVOIDABLE_STAT_TIMER(t0, "us_timer_in_interpreter");
 
-    SourceInfo* source_info = md->source.get();
+    SourceInfo* source_info = md->source;
 
     assert((!globals) == source_info->scoping->areGlobalsFromModule());
     bool can_reopt = ENABLE_REOPT && !FORCE_INTERPRETER;
@@ -2075,7 +2075,7 @@ Box* astInterpretFunction(FunctionMetadata* md, Box* closure, Box* generator, Bo
     return v ? v : incref(Py_None);
 }
 
-Box* astInterpretFunctionEval(FunctionMetadata* md, Box* globals, Box* boxedLocals) {
+Box* astInterpretFunctionEval(FunctionMetadataSource* md, Box* globals, Box* boxedLocals) {
     ++md->times_interpreted;
 
     // Note: due to some (avoidable) restrictions, this check is pretty constrained in where
@@ -2085,7 +2085,7 @@ Box* astInterpretFunctionEval(FunctionMetadata* md, Box* globals, Box* boxedLoca
     // executeInner since we want the SyntaxErrors to happen *before* the stack frame is entered.
     // (For instance, throwing the exception will try to fetch the current statement, but we determine
     // that by looking at the cfg.)
-    SourceInfo* source_info = md->source.get();
+    SourceInfo* source_info = md->source;
     if (!source_info->cfg)
         source_info->cfg = computeCFG(source_info, md->param_names);
 
@@ -2109,7 +2109,7 @@ Box* astInterpretFunctionEval(FunctionMetadata* md, Box* globals, Box* boxedLoca
 }
 
 // caution when changing the function arguments: this function gets called from an assembler wrapper!
-extern "C" Box* astInterpretDeoptFromASM(FunctionMetadata* md, AST_expr* after_expr, AST_stmt* enclosing_stmt,
+extern "C" Box* astInterpretDeoptFromASM(FunctionMetadataSource* md, AST_expr* after_expr, AST_stmt* enclosing_stmt,
                                          Box* expr_val, STOLEN(FrameStackState) frame_state) {
     static_assert(sizeof(FrameStackState) <= 2 * 8, "astInterpretDeopt assumes that all args get passed in regs!");
 
@@ -2119,7 +2119,7 @@ extern "C" Box* astInterpretDeoptFromASM(FunctionMetadata* md, AST_expr* after_e
     assert(after_expr);
     assert(expr_val);
 
-    SourceInfo* source_info = md->source.get();
+    SourceInfo* source_info = md->source;
 
     // We can't reuse the existing vregs from the LLVM tier because they only contain the user visible ones this means
     // there wouldn't be enough space for the compiler generated ones which the interpreter (+bjit) stores inside the
