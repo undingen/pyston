@@ -357,10 +357,13 @@ void ASTInterpreter::finishJITing(CFGBlock* continue_block) {
 Box* ASTInterpreter::execJITedBlock(CFGBlock* b) {
     try {
         UNAVOIDABLE_STAT_TIMER(t0, "us_timer_in_baseline_jitted_code");
+        ++b->cfg->num_inside;
         std::pair<CFGBlock*, Box*> rtn = b->entry_code(this, b, vregs);
+        --b->cfg->num_inside;
         next_block = rtn.first;
         return rtn.second;
     } catch (ExcInfo e) {
+        --b->cfg->num_inside;
         AST_stmt* stmt = getCurrentStatement();
         if (stmt->type != AST_TYPE::Invoke)
             throw e;

@@ -73,10 +73,10 @@ JitCodeBlock::MemoryManager::MemoryManager() {
 }
 
 JitCodeBlock::MemoryManager::~MemoryManager() {
+    g.func_addr_registry.deregisterFunction((char*)addr + sizeof(eh_info));
+
     munmap(addr, JitCodeBlock::memory_size);
     addr = NULL;
-
-    RELEASE_ASSERT(0, "we have to unregister this block from g.func_addr_registry");
 }
 
 JitCodeBlock::JitCodeBlock(llvm::StringRef name)
@@ -154,7 +154,7 @@ void JitCodeBlock::fragmentAbort(bool not_enough_space) {
 }
 
 void JitCodeBlock::fragmentFinished(int bytes_written, int num_bytes_overlapping, void* next_fragment_start,
-                                    ICInfo& ic_info) {
+                                    std::vector<std::unique_ptr<ICInfo>>&& _pp_ic_infos, ICInfo& ic_info) {
     assert(next_fragment_start == bytes_written + a.curInstPointer() - num_bytes_overlapping);
     a.setCurInstPointer((uint8_t*)next_fragment_start);
 
@@ -162,6 +162,8 @@ void JitCodeBlock::fragmentFinished(int bytes_written, int num_bytes_overlapping
     is_currently_writing = false;
 
     ic_info.appendDecrefInfosTo(decref_infos);
+    std::move(std::begin(_pp_ic_infos), std::end(_pp_ic_infos), std::back_inserter(pp_ic_infos));
+    _pp_ic_infos.clear();
 }
 
 JitFragmentWriter::JitFragmentWriter(CFGBlock* block, std::unique_ptr<ICInfo> ic_info,
@@ -830,6 +832,7 @@ std::pair<int, llvm::DenseSet<int>> JitFragmentWriter::finishCompilation() {
         block_patch_locations[side_exit_patch_location.first].push_back(patch_location);
     }
 
+    std::vector<std::unique_ptr<ICInfo>> ic_infos;
     for (auto&& pp_info : pp_infos) {
         SpillMap _spill_map;
         uint8_t* start_addr = pp_info.start_addr;
@@ -844,7 +847,7 @@ std::pair<int, llvm::DenseSet<int>> JitFragmentWriter::finishCompilation() {
             start_addr, slowpath_start, initialization_info.continue_addr, slowpath_rtn_addr, pp_info.ic.get(),
             pp_info.stack_info, LiveOutSet(), std::move(pp_info.decref_infos));
         pp->associateNodeWithICInfo(pp_info.node);
-        pp.release();
+        ic_infos.push_back(std::move(pp));
     }
 
 #ifndef NDEBUG
@@ -859,7 +862,8 @@ std::pair<int, llvm::DenseSet<int>> JitFragmentWriter::finishCompilation() {
         ASSERT(assembler->curInstPointer() == (uint8_t*)exit_info.exit_start + exit_info.num_bytes,
                "Error! wrote more bytes out after the 'retq' that we thought was going to be the end of the assembly.  "
                "We will end up overwriting those instructions.");
-    code_block.fragmentFinished(assembler->bytesWritten(), num_bytes_overlapping, next_fragment_start, *ic_info);
+    code_block.fragmentFinished(assembler->bytesWritten(), num_bytes_overlapping, next_fragment_start,
+                                std::move(ic_infos), *ic_info);
 
 #if MOVING_GC
     // If JitFragmentWriter is destroyed, we don't necessarily want the ICInfo to be destroyed also,

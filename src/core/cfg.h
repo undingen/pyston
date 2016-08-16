@@ -212,6 +212,8 @@ public:
     }
 
     void print(llvm::raw_ostream& stream = llvm::outs());
+
+    int num_inside = 0;
 };
 
 class VRegSet {

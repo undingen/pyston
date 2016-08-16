@@ -331,6 +331,16 @@ CompiledFunction* compileFunction(FunctionMetadata* f, FunctionSpecialization* s
             RELEASE_ASSERT(0, "%d", effort);
     }
 
+    static StatCounter num_jit_total_bytes_dead("num_baselinejit_total_bytes_dead");
+    if (f->source->cfg->num_inside == 0) {
+        num_jit_total_bytes_dead.log(f->code_blocks.size());
+        f->code_blocks.clear();
+        for (CFGBlock* block : f->source->cfg->blocks) {
+            block->code = NULL;
+            block->entry_code = NULL;
+        }
+    }
+
     return cf;
 }
 

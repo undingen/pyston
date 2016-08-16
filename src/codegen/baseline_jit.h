@@ -177,6 +177,7 @@ private:
     // this contains all the decref infos the bjit generated inside the memory block,
     // this allows us to deregister them when we release the code
     std::vector<DecrefInfo> decref_infos;
+    std::vector<std::unique_ptr<ICInfo>> pp_ic_infos;
 
 public:
     JitCodeBlock(llvm::StringRef name);
@@ -185,7 +186,8 @@ public:
                                                    llvm::DenseSet<int> known_non_null_vregs);
     bool shouldCreateNewBlock() const { return asm_failed || a.bytesLeft() < 128; }
     void fragmentAbort(bool not_enough_space);
-    void fragmentFinished(int bytes_witten, int num_bytes_overlapping, void* next_fragment_start, ICInfo& ic_info);
+    void fragmentFinished(int bytes_witten, int num_bytes_overlapping, void* next_fragment_start,
+                          std::vector<std::unique_ptr<ICInfo>>&& pp_ic_infos, ICInfo& ic_info);
 };
 
 // Hold the ICInfo of the JitFragmentWriter in a separate class from which JitFragmentWriter derives.
