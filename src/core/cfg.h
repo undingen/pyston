@@ -174,6 +174,9 @@ public:
 
 // Control Flow Graph
 class CFG {
+public:
+    long num_inside = 0;
+
 private:
     int next_idx;
     VRegInfo vreg_info;
@@ -212,8 +215,6 @@ public:
     }
 
     void print(llvm::raw_ostream& stream = llvm::outs());
-
-    int num_inside = 0;
 };
 
 class VRegSet {
