@@ -482,11 +482,7 @@ class BoxedCode;
 //
 // FunctionMetadata objects also keep track of any machine code that we have available for this function.
 class FunctionMetadata {
-private:
-    // The Python-level "code" object corresponding to this FunctionMetadata.  We store it in the FunctionMetadata
-    // so that multiple attempts to translate from FunctionMetadata->BoxedCode will always return the same
-    // BoxedCode object.
-    // Callers should use getCode()
+public:
     BoxedCode* code_obj;
 
 public:
@@ -526,7 +522,7 @@ public:
 
     int numReceivedArgs() { return num_args + takes_varargs + takes_kwargs; }
 
-    BORROWED(BoxedCode*) getCode();
+    BORROWED(BoxedCode*) getCode(bool add_to_constants = true);
 
     bool isGenerator() const {
         if (source)
