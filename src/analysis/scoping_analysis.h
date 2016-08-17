@@ -174,6 +174,7 @@ public:
 
     ScopingAnalysis(AST* ast, bool globals_from_module);
     std::unique_ptr<ScopeInfo> getScopeInfoForNode(AST* node);
+    ~ScopingAnalysis() { assert(!scopes.size()); }
 
     InternedStringPool& getInternedStrings();
     bool areGlobalsFromModule() { return globals_from_module; }
