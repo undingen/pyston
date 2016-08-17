@@ -1587,7 +1587,15 @@ private:
             decorators.push_back(evalExpr(d, unw_info));
         }
 
-        FunctionMetadata* md = wrapFunction(node, nullptr, irstate->getSourceInfo());
+        FunctionMetadata* md = NULL;
+        if (!mkclass->code) {
+            auto source_info = irstate->getSourceInfo();
+            std::unique_ptr<SourceInfo> si(new SourceInfo(source_info->parent_module, source_info->scoping,
+                                                          source_info->future_flags, node, source_info->getFn()));
+            std::tie(md, mkclass->code) = FunctionMetadata::createFromSource(0, 0, 0, std::move(si));
+        } else
+            md = metadataFromCode((Box*)mkclass->code);
+
         ScopeInfo* scope_info = md->source->getScopeInfo();
         assert(scope_info);
 
@@ -1630,8 +1638,17 @@ private:
         return cls;
     }
 
-    CompilerVariable* _createFunction(AST* node, const UnwindInfo& unw_info, AST_arguments* args) {
-        FunctionMetadata* md = wrapFunction(node, args, irstate->getSourceInfo());
+    CompilerVariable* _createFunction(AST_MakeFunction* mkfn, AST* node, const UnwindInfo& unw_info,
+                                      AST_arguments* args) {
+        FunctionMetadata* md = NULL;
+        if (!mkfn->code) {
+            auto source_info = irstate->getSourceInfo();
+            std::unique_ptr<SourceInfo> si(new SourceInfo(source_info->parent_module, source_info->scoping,
+                                                          source_info->future_flags, node, source_info->getFn()));
+            std::tie(md, mkfn->code)
+                = FunctionMetadata::createFromSource(args->args.size(), args->vararg, args->kwarg, std::move(si));
+        } else
+            md = metadataFromCode((Box*)mkfn->code);
 
         std::vector<ConcreteCompilerVariable*> defaults;
         for (auto d : args->defaults) {
@@ -1665,7 +1682,7 @@ private:
             decorators.push_back(evalExpr(d, unw_info));
         }
 
-        CompilerVariable* func = _createFunction(node, unw_info, node->args);
+        CompilerVariable* func = _createFunction(mkfn, node, unw_info, node->args);
 
         for (int i = decorators.size() - 1; i >= 0; i--) {
             func = decorators[i]->call(emitter, getOpInfoForNode(node, unw_info), ArgPassSpec(1), { func }, NULL);

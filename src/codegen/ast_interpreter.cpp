@@ -74,7 +74,7 @@ public:
     static Box* executeInner(ASTInterpreter& interpreter, CFGBlock* start_block, AST_stmt* start_at);
 
 private:
-    Value createFunction(AST* node, AST_arguments* args);
+    Value createFunction(AST_MakeFunction* mkfn, AST* node, AST_arguments* args);
     Value doBinOp(AST_expr* node, Value left, Value right, int op, BinExpType exp_type);
     void doStore(AST_expr* node, STOLEN(Value) value);
     void doStore(AST_Name* name, STOLEN(Value) value);
@@ -1011,9 +1011,11 @@ Value ASTInterpreter::visit_stmt(AST_stmt* node) {
 #endif
 
     if (0) {
-        printf("%20s % 2d ", source_info->getName()->c_str(), current_block->idx);
+        printf("- %20s % 2d ", source_info->getName()->c_str(), current_block->idx);
+        fflush(stdout);
         print_ast(node);
         printf("\n");
+        fflush(stdout);
     }
 
     Value rtn;
@@ -1122,8 +1124,15 @@ Value ASTInterpreter::visit_return(AST_Return* node) {
     return s;
 }
 
-Value ASTInterpreter::createFunction(AST* node, AST_arguments* args) {
-    FunctionMetadata* md = wrapFunction(node, args, source_info);
+Value ASTInterpreter::createFunction(AST_MakeFunction* mkfn, AST* node, AST_arguments* args) {
+    FunctionMetadata* md = NULL;
+    if (!mkfn->code) {
+        std::unique_ptr<SourceInfo> si(new SourceInfo(source_info->parent_module, source_info->scoping,
+                                                      source_info->future_flags, node, source_info->getFn()));
+        std::tie(md, mkfn->code)
+            = FunctionMetadata::createFromSource(args->args.size(), args->vararg, args->kwarg, std::move(si));
+    } else
+        md = metadataFromCode((Box*)mkfn->code);
 
     std::vector<Box*> defaults;
     llvm::SmallVector<RewriterVar*, 4> defaults_vars;
@@ -1210,7 +1219,7 @@ Value ASTInterpreter::visit_makeFunction(AST_MakeFunction* mkfn) {
     for (AST_expr* d : node->decorator_list)
         decorators.push_back(visit_expr(d));
 
-    Value func = createFunction(node, args);
+    Value func = createFunction(mkfn, node, args);
 
     for (int i = decorators.size() - 1; i >= 0; i--) {
         func.o = runtimeCall(autoDecref(decorators[i].o), ArgPassSpec(1), autoDecref(func.o), 0, 0, 0, 0);
@@ -1240,7 +1249,13 @@ Value ASTInterpreter::visit_makeClass(AST_MakeClass* mkclass) {
     for (AST_expr* d : node->decorator_list)
         decorators.push_back(visit_expr(d).o);
 
-    FunctionMetadata* md = wrapFunction(node, nullptr, source_info);
+    FunctionMetadata* md = NULL;
+    if (!mkclass->code) {
+        std::unique_ptr<SourceInfo> si(new SourceInfo(source_info->parent_module, source_info->scoping,
+                                                      source_info->future_flags, node, source_info->getFn()));
+        std::tie(md, mkclass->code) = FunctionMetadata::createFromSource(0, 0, 0, std::move(si));
+    } else
+        md = metadataFromCode((Box*)mkclass->code);
 
     ScopeInfo* scope_info = md->source->getScopeInfo();
     assert(scope_info);

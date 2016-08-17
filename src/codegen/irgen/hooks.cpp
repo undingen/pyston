@@ -361,8 +361,6 @@ CompiledFunction* compileFunction(FunctionMetadata* f, FunctionSpecialization* s
 }
 
 void compileAndRunModule(AST_Module* m, BoxedModule* bm) {
-    FunctionMetadata* md;
-
     Timer _t("for compileModule()");
 
     const char* fn = PyModule_GetFilename(bm);
@@ -382,8 +380,10 @@ void compileAndRunModule(AST_Module* m, BoxedModule* bm) {
     if (!bm->hasattr(builtins_str))
         bm->setattr(builtins_str, PyModule_GetDict(builtins_module), NULL);
 
-    md = new FunctionMetadata(0, false, false, std::move(si));
-
+    FunctionMetadata* md = NULL;
+    BoxedCode* code = NULL;
+    std::tie(md, code) = FunctionMetadata::createFromSource(0, false, false, std::move(si));
+    AUTO_DECREF((Box*)code);
     UNAVOIDABLE_STAT_TIMER(t0, "us_timer_interpreted_module_toplevel");
     Box* r = astInterpretFunction(md, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
     assert(r == Py_None);
@@ -411,8 +411,8 @@ Box* evalOrExec(FunctionMetadata* md, Box* globals, Box* boxedLocals) {
     return astInterpretFunctionEval(md, globals, boxedLocals);
 }
 
-static FunctionMetadata* compileForEvalOrExec(AST* source, llvm::ArrayRef<AST_stmt*> body, BoxedString* fn,
-                                              PyCompilerFlags* flags) {
+static std::pair<FunctionMetadata*, BoxedCode*> compileForEvalOrExec(AST* source, llvm::ArrayRef<AST_stmt*> body,
+                                                                     BoxedString* fn, PyCompilerFlags* flags) {
     Timer _t("for evalOrExec()");
 
     auto scoping = std::make_shared<ScopingAnalysis>(source, false);
@@ -430,14 +430,16 @@ static FunctionMetadata* compileForEvalOrExec(AST* source, llvm::ArrayRef<AST_st
 
     std::unique_ptr<SourceInfo> si(new SourceInfo(getCurrentModule(), std::move(scoping), future_flags, source, fn));
 
-    return new FunctionMetadata(0, false, false, std::move(si));
+    return FunctionMetadata::createFromSource(0, false, false, std::move(si));
 }
 
-static FunctionMetadata* compileExec(AST_Module* parsedModule, BoxedString* fn, PyCompilerFlags* flags) {
+static std::pair<FunctionMetadata*, BoxedCode*> compileExec(AST_Module* parsedModule, BoxedString* fn,
+                                                            PyCompilerFlags* flags) {
     return compileForEvalOrExec(parsedModule, parsedModule->body, fn, flags);
 }
 
-static FunctionMetadata* compileEval(AST_Expression* parsedExpr, BoxedString* fn, PyCompilerFlags* flags) {
+static std::pair<FunctionMetadata*, BoxedCode*> compileEval(AST_Expression* parsedExpr, BoxedString* fn,
+                                                            PyCompilerFlags* flags) {
     return compileForEvalOrExec(parsedExpr, parsedExpr->body, fn, flags);
 }
 
@@ -447,19 +449,22 @@ extern "C" PyCodeObject* PyAST_Compile(struct _mod* _mod, const char* filename, 
         mod_ty mod = _mod;
         AST* parsed = cpythonToPystonAST(mod, filename);
         FunctionMetadata* md = NULL;
+        BoxedCode* code = NULL;
         switch (mod->kind) {
             case Module_kind:
             case Interactive_kind:
                 if (parsed->type != AST_TYPE::Module) {
                     raiseExcHelper(TypeError, "expected Module node, got %s", AST_TYPE::stringify(parsed->type));
                 }
-                md = compileExec(static_cast<AST_Module*>(parsed), autoDecref(boxString(filename)), flags);
+                std::tie(md, code)
+                    = compileExec(static_cast<AST_Module*>(parsed), autoDecref(boxString(filename)), flags);
                 break;
             case Expression_kind:
                 if (parsed->type != AST_TYPE::Expression) {
                     raiseExcHelper(TypeError, "expected Expression node, got %s", AST_TYPE::stringify(parsed->type));
                 }
-                md = compileEval(static_cast<AST_Expression*>(parsed), autoDecref(boxString(filename)), flags);
+                std::tie(md, code)
+                    = compileEval(static_cast<AST_Expression*>(parsed), autoDecref(boxString(filename)), flags);
                 break;
             case Suite_kind:
                 PyErr_SetString(PyExc_SystemError, "suite should not be possible");
@@ -469,7 +474,7 @@ extern "C" PyCodeObject* PyAST_Compile(struct _mod* _mod, const char* filename, 
                 return NULL;
         }
 
-        return (PyCodeObject*)incref(md->getCode());
+        return (PyCodeObject*)code;
     } catch (ExcInfo e) {
         setCAPIException(e);
         return NULL;
@@ -844,6 +849,9 @@ void FunctionMetadata::addVersion(void* f, ConcreteCompilerType* rtn_type,
 }
 
 bool FunctionMetadata::tryDeallocatingTheBJitCode() {
+    if (code_blocks.empty())
+        return true;
+
     // we can only delete the code object if we are not executing it currently
     assert(bjit_num_inside >= 0);
     if (bjit_num_inside != 0) {

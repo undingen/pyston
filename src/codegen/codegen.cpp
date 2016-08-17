@@ -49,6 +49,15 @@ FunctionMetadata::FunctionMetadata(int num_args, bool takes_varargs, bool takes_
       internal_callable(NULL, NULL) {
 }
 
+std::pair<FunctionMetadata*, BoxedCode*> FunctionMetadata::createFromSource(int num_args, bool takes_varargs,
+                                                                            bool takes_kwargs,
+                                                                            std::unique_ptr<SourceInfo> source) {
+    FunctionMetadata* md = new FunctionMetadata(num_args, takes_varargs, takes_kwargs, std::move(source));
+    BoxedCode* code = new BoxedCode(md);
+    md->setCode(code);
+    return std::make_pair(md, code);
+}
+
 FunctionMetadata::FunctionMetadata(int num_args, bool takes_varargs, bool takes_kwargs, const ParamNames& param_names)
     : code_obj(NULL),
       source(nullptr),
@@ -60,7 +69,18 @@ FunctionMetadata::FunctionMetadata(int num_args, bool takes_varargs, bool takes_
       internal_callable(NULL, NULL) {
 }
 
-BORROWED(BoxedCode*) FunctionMetadata::getCode() {
+FunctionMetadata::~FunctionMetadata() {
+    bool ok = tryDeallocatingTheBJitCode();
+    assert(ok);
+    assert(!code_obj);
+}
+
+void FunctionMetadata::setCode(BoxedCode* code) {
+    assert(!code_obj);
+    code_obj = code;
+}
+
+BoxedCode* FunctionMetadata::getCode() {
     if (!code_obj) {
         code_obj = new BoxedCode(this);
         // FunctionMetadatas don't currently participate in GC.  They actually never get freed currently.
@@ -126,6 +146,33 @@ SourceInfo::SourceInfo(BoxedModule* m, std::shared_ptr<ScopingAnalysis> scoping,
 
 SourceInfo::~SourceInfo() {
     // TODO: release memory..
+    std::vector<AST*> flattened;
+    if (cfg) {
+        for (auto b : cfg->blocks)
+            flatten(b->body, flattened, false);
+    }
+    if (ast) {
+        flatten(ast, flattened, false);
+        flattened.push_back(ast);
+    }
+
+    llvm::DenseSet<AST*> nodes;
+    nodes.insert(flattened.begin(), flattened.end());
+
+    for (auto&& e : nodes) {
+        if (e->type != AST_TYPE::FunctionDef && e->type != AST_TYPE::ClassDef)
+            delete e;
+    }
+
+    if (cfg) {
+        for (auto b : cfg->blocks) {
+            delete b;
+        }
+        delete cfg;
+    }
+
+    late_constants.erase(std::find(late_constants.begin(), late_constants.end(), fn));
+    Py_DECREF(fn);
 }
 
 void FunctionAddressRegistry::registerFunction(const std::string& name, void* addr, int length,

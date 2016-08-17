@@ -106,7 +106,16 @@ void BoxedCode::dealloc(Box* b) noexcept {
     Py_XDECREF(o->_filename);
     Py_XDECREF(o->_name);
 
+    FunctionMetadata* md = o->f;
+
     o->cls->tp_free(o);
+
+    if (md) {
+        assert(md->code_obj == b);
+        md->code_obj = NULL;
+        delete md;
+        // o->f = NULL;
+    }
 }
 
 FunctionMetadata* metadataFromCode(Box* code) {

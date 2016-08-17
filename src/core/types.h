@@ -483,14 +483,9 @@ class BoxedCode;
 //
 // FunctionMetadata objects also keep track of any machine code that we have available for this function.
 class FunctionMetadata {
-private:
-    // The Python-level "code" object corresponding to this FunctionMetadata.  We store it in the FunctionMetadata
-    // so that multiple attempts to translate from FunctionMetadata->BoxedCode will always return the same
-    // BoxedCode object.
-    // Callers should use getCode()
+public:
     BoxedCode* code_obj;
 
-public:
     std::unique_ptr<SourceInfo> source; // source can be NULL for functions defined in the C/C++ runtime
 
     const ParamNames param_names;
@@ -525,8 +520,12 @@ public:
                      const ParamNames& param_names = ParamNames::empty());
     ~FunctionMetadata();
 
+    static std::pair<FunctionMetadata*, BoxedCode*>
+    createFromSource(int num_args, bool takes_varargs, bool takes_kwargs, std::unique_ptr<SourceInfo> source);
+
     int numReceivedArgs() { return num_args + takes_varargs + takes_kwargs; }
 
+    void setCode(BoxedCode* code);
     BORROWED(BoxedCode*) getCode();
 
     bool isGenerator() const {
