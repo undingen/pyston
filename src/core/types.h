@@ -452,7 +452,7 @@ class BoxedCode;
 //
 // FunctionMetadata objects also keep track of any machine code that we have available for this function.
 class FunctionMetadata {
-private:
+public:
     // The Python-level "code" object corresponding to this FunctionMetadata.  We store it in the FunctionMetadata
     // so that multiple attempts to translate from FunctionMetadata->BoxedCode will always return the same
     // BoxedCode object.

@@ -368,6 +368,8 @@ void compileAndRunModule(AST_Module* m, BoxedModule* bm) {
 
     UNAVOIDABLE_STAT_TIMER(t0, "us_timer_interpreted_module_toplevel");
     Box* r = astInterpretFunction(md, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+    if (!md->code_obj)
+        delete md;
     assert(r == Py_None);
     Py_DECREF(r);
 
