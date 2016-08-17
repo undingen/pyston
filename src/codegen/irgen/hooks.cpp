@@ -366,8 +366,11 @@ void compileAndRunModule(AST_Module* m, BoxedModule* bm) {
         md = new FunctionMetadata(0, false, false, std::move(si));
     }
 
+    BoxedCode* code = md->getCode(false);
+    AUTO_DECREF((Box*)code);
     UNAVOIDABLE_STAT_TIMER(t0, "us_timer_interpreted_module_toplevel");
     Box* r = astInterpretFunction(md, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+
     assert(r == Py_None);
     Py_DECREF(r);
 
@@ -454,7 +457,7 @@ extern "C" PyCodeObject* PyAST_Compile(struct _mod* _mod, const char* filename, 
                 return NULL;
         }
 
-        return (PyCodeObject*)incref(md->getCode());
+        return (PyCodeObject*)md->getCode(false);
     } catch (ExcInfo e) {
         setCAPIException(e);
         return NULL;
@@ -847,6 +850,9 @@ void FunctionMetadata::addVersion(void* f, ConcreteCompilerType* rtn_type,
 }
 
 bool FunctionMetadata::tryDeallocatingTheBJitCode() {
+    if (code_blocks.empty())
+        return true;
+
     // we can only delete the code object if we are not executing it currently
     assert(bjit_num_inside >= 0);
     if (bjit_num_inside != 0) {

@@ -1973,7 +1973,7 @@ private:
 
 public:
     FlattenVisitor(std::vector<AST*>* output, bool expand_scopes) : output(output), expand_scopes(expand_scopes) {
-        assert(expand_scopes && "not sure if this works properly");
+        // assert(expand_scopes && "not sure if this works properly");
     }
 
     virtual bool visit_alias(AST_alias* node) {
@@ -2064,13 +2064,17 @@ public:
         output->push_back(node);
         return false;
     }
+    virtual bool visit_expression(AST_Expression* node) {
+        output->push_back(node);
+        return false;
+    }
     virtual bool visit_extslice(AST_ExtSlice* node) {
         output->push_back(node);
         return false;
     }
     virtual bool visit_for(AST_For* node) {
         output->push_back(node);
-        return !expand_scopes;
+        return false;
     }
     virtual bool visit_functiondef(AST_FunctionDef* node) {
         output->push_back(node);
@@ -2130,7 +2134,7 @@ public:
     }
     virtual bool visit_module(AST_Module* node) {
         output->push_back(node);
-        return !expand_scopes;
+        return false;
     }
     virtual bool visit_name(AST_Name* node) {
         output->push_back(node);
@@ -2224,11 +2228,11 @@ public:
 
     virtual bool visit_makeclass(AST_MakeClass* node) {
         output->push_back(node);
-        return false;
+        return !expand_scopes;
     }
     virtual bool visit_makefunction(AST_MakeFunction* node) {
         output->push_back(node);
-        return false;
+        return !expand_scopes;
     }
 };
 
@@ -2240,7 +2244,7 @@ void flatten(const llvm::SmallVector<AST_stmt*, 4>& roots, std::vector<AST*>& ou
     }
 }
 
-void flatten(AST_expr* root, std::vector<AST*>& output, bool expand_scopes) {
+void flatten(AST* root, std::vector<AST*>& output, bool expand_scopes) {
     FlattenVisitor visitor(&output, expand_scopes);
 
     root->accept(&visitor);

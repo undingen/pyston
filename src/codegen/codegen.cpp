@@ -62,12 +62,22 @@ FunctionMetadata::FunctionMetadata(int num_args, bool takes_varargs, bool takes_
       internal_callable(NULL, NULL) {
 }
 
-BORROWED(BoxedCode*) FunctionMetadata::getCode() {
+FunctionMetadata::~FunctionMetadata() {
+    // printf("freeing: %s %s\n", source->getFn()->c_str(), source->getName()->c_str());
+
+    bool ok = tryDeallocatingTheBJitCode();
+    assert(ok);
+    assert(!code_obj);
+}
+
+BoxedCode* FunctionMetadata::getCode(bool add_to_constants) {
     if (!code_obj) {
         code_obj = new BoxedCode(this);
         // FunctionMetadatas don't currently participate in GC.  They actually never get freed currently.
-        constants.push_back(code_obj);
-    }
+        if (add_to_constants)
+            constants.push_back(code_obj);
+    } else
+        assert(add_to_constants);
     return code_obj;
 }
 
@@ -122,6 +132,46 @@ SourceInfo::SourceInfo(BoxedModule* m, ScopingAnalysis* scoping, FutureFlags fut
 
 SourceInfo::~SourceInfo() {
     // TODO: release memory..
+    std::vector<AST*> flattened;
+    if (cfg) {
+        for (auto b : cfg->blocks)
+            flatten(b->body, flattened, false);
+    }
+    if (ast)
+        flatten(ast, flattened, false);
+
+    llvm::DenseSet<AST*> nodes;
+    nodes.insert(flattened.begin(), flattened.end());
+
+    for (auto&& e : nodes) {
+        /*
+e->type != AST_TYPE::FunctionDef && e->type != AST_TYPE::ClassDef && e->type != AST_TYPE::Lambda
+            && e->type != AST_TYPE::Module && e->type != AST_TYPE::Expression && e->type != AST_TYPE::arguments
+            && e->type != AST_TYPE::MakeFunction && e->type != AST_TYPE::MakeClass && e->type != AST_TYPE::Suite &&
+e->type != AST_TYPE::Call
+         */
+        if (e->type != AST_TYPE::Module && e->type != AST_TYPE::Call && e->type != AST_TYPE::Expression
+            && e->type != AST_TYPE::Suite && e->type != AST_TYPE::FunctionDef && e->type != AST_TYPE::ClassDef)
+            delete e;
+    }
+
+    scoping->scope_replacements.erase(ast);
+    scoping->scopes.erase(ast);
+
+    delete scope_info;
+    delete ast;
+    if (cfg) {
+        for (auto b : cfg->blocks) {
+            delete b;
+        }
+    }
+    delete cfg;
+
+    if (scoping->scopes.empty())
+        delete scoping;
+
+    late_constants.erase(std::find(late_constants.begin(), late_constants.end(), fn));
+    Py_DECREF(fn);
 }
 
 void FunctionAddressRegistry::registerFunction(const std::string& name, void* addr, int length,
