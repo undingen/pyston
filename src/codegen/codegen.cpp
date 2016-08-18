@@ -150,9 +150,19 @@ SourceInfo::~SourceInfo() {
             delete e;
     }
 
+    scoping->scopes.erase(ast);
+
     delete scope_info;
     delete ast;
+    if (cfg) {
+        for (auto b : cfg->blocks) {
+            delete b;
+        }
+    }
     delete cfg;
+
+    if (scoping->scopes.empty())
+        delete scoping;
 
     late_constants.erase(std::find(late_constants.begin(), late_constants.end(), fn));
     Py_DECREF(fn);

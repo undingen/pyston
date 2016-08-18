@@ -150,7 +150,7 @@ public:
     struct ScopeNameUsage;
     typedef llvm::DenseMap<AST*, ScopeNameUsage*> NameUsageMap;
 
-private:
+public:
     llvm::DenseMap<AST*, ScopeInfo*> scopes;
     AST_Module* parent_module;
     InternedStringPool* interned_strings;
