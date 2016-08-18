@@ -2064,6 +2064,10 @@ public:
         output->push_back(node);
         return false;
     }
+    virtual bool visit_expression(AST_Expression* node) {
+        output->push_back(node);
+        return false;
+    }
     virtual bool visit_extslice(AST_ExtSlice* node) {
         output->push_back(node);
         return false;

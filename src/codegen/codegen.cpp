@@ -63,17 +63,21 @@ FunctionMetadata::FunctionMetadata(int num_args, bool takes_varargs, bool takes_
 }
 
 FunctionMetadata::~FunctionMetadata() {
+    // printf("freeing: %s %s\n", source->getFn()->c_str(), source->getName()->c_str());
+
     bool ok = tryDeallocatingTheBJitCode();
     assert(ok);
     assert(!code_obj);
 }
 
-BORROWED(BoxedCode*) FunctionMetadata::getCode() {
+BoxedCode* FunctionMetadata::getCode(bool add_to_constants) {
     if (!code_obj) {
         code_obj = new BoxedCode(this);
         // FunctionMetadatas don't currently participate in GC.  They actually never get freed currently.
-        constants.push_back(code_obj);
-    }
+        if (add_to_constants)
+            constants.push_back(code_obj);
+    } else
+        assert(add_to_constants);
     return code_obj;
 }
 
@@ -129,10 +133,12 @@ SourceInfo::SourceInfo(BoxedModule* m, ScopingAnalysis* scoping, FutureFlags fut
 SourceInfo::~SourceInfo() {
     // TODO: release memory..
     std::vector<AST*> flattened;
-    for (auto b : cfg->blocks)
-        flatten(b->body, flattened, false);
-
-    flatten(ast, flattened, false);
+    if (cfg) {
+        for (auto b : cfg->blocks)
+            flatten(b->body, flattened, false);
+    }
+    if (ast)
+        flatten(ast, flattened, false);
 
     llvm::DenseSet<AST*> nodes;
     nodes.insert(flattened.begin(), flattened.end());
@@ -147,6 +153,9 @@ SourceInfo::~SourceInfo() {
     delete scope_info;
     delete ast;
     delete cfg;
+
+    late_constants.erase(std::find(late_constants.begin(), late_constants.end(), fn));
+    Py_DECREF(fn);
 }
 
 void FunctionAddressRegistry::registerFunction(const std::string& name, void* addr, int length,
