@@ -150,7 +150,7 @@ public:
     struct ScopeNameUsage;
     typedef llvm::DenseMap<AST*, ScopeNameUsage*> NameUsageMap;
 
-public:
+private:
     llvm::DenseMap<AST*, ScopeInfo*> scopes;
     AST_Module* parent_module;
     InternedStringPool* interned_strings;
@@ -173,10 +173,17 @@ public:
     void registerScopeReplacement(AST* original_node, AST* new_node);
 
     ScopingAnalysis(AST* ast, bool globals_from_module);
+    ~ScopingAnalysis() { assert(!scopes.size()); }
+
     ScopeInfo* getScopeInfoForNode(AST* node);
 
     InternedStringPool& getInternedStrings();
     bool areGlobalsFromModule() { return globals_from_module; }
+
+    void removeScope(AST* ast) {
+        scopes.erase(ast);
+        scope_replacements.erase(ast);
+    }
 };
 
 bool containsYield(AST* ast);

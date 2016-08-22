@@ -101,7 +101,8 @@ void FunctionMetadata::addVersion(CompiledFunction* compiled) {
     }
 }
 
-SourceInfo::SourceInfo(BoxedModule* m, ScopingAnalysis* scoping, FutureFlags future_flags, AST* ast, BoxedString* fn)
+SourceInfo::SourceInfo(BoxedModule* m, std::shared_ptr<ScopingAnalysis> scoping, FutureFlags future_flags, AST* ast,
+                       BoxedString* fn)
     : parent_module(m), scoping(scoping), scope_info(NULL), ast(ast), cfg(NULL), future_flags(future_flags) {
     assert(fn);
 
@@ -142,21 +143,14 @@ SourceInfo::~SourceInfo() {
     nodes.insert(flattened.begin(), flattened.end());
 
     for (auto&& e : nodes) {
-        /*
-e->type != AST_TYPE::FunctionDef && e->type != AST_TYPE::ClassDef && e->type != AST_TYPE::Lambda
-            && e->type != AST_TYPE::Module && e->type != AST_TYPE::Expression && e->type != AST_TYPE::arguments
-            && e->type != AST_TYPE::MakeFunction && e->type != AST_TYPE::MakeClass && e->type != AST_TYPE::Suite &&
-e->type != AST_TYPE::Call
-         */
-        if (e->type != AST_TYPE::Module && e->type != AST_TYPE::Call && e->type != AST_TYPE::Expression
-            && e->type != AST_TYPE::Suite && e->type != AST_TYPE::FunctionDef && e->type != AST_TYPE::ClassDef)
+        if (e->type != AST_TYPE::Module && e->type != AST_TYPE::Expression && e->type != AST_TYPE::Suite
+            && e->type != AST_TYPE::FunctionDef && e->type != AST_TYPE::ClassDef)
             delete e;
     }
 
-    scoping->scope_replacements.erase(ast);
-    scoping->scopes.erase(ast);
-
+    scoping->removeScope(ast);
     delete scope_info;
+
     delete ast;
     if (cfg) {
         for (auto b : cfg->blocks) {
@@ -164,9 +158,6 @@ e->type != AST_TYPE::Call
         }
     }
     delete cfg;
-
-    if (scoping->scopes.empty())
-        delete scoping;
 
     late_constants.erase(std::find(late_constants.begin(), late_constants.end(), fn));
     Py_DECREF(fn);

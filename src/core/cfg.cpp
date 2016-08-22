@@ -2869,9 +2869,9 @@ CFG* computeCFG(SourceInfo* source, const ParamNames& param_names) {
 
     CFG* rtn = new CFG();
 
-    ScopingAnalysis* scoping_analysis = source->scoping;
+    auto scoping_analysis = source->scoping;
 
-    CFGVisitor visitor(source, source->ast->type, source->future_flags, scoping_analysis, rtn);
+    CFGVisitor visitor(source, source->ast->type, source->future_flags, scoping_analysis.get(), rtn);
 
     bool skip_first = false;
 
