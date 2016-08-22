@@ -49,6 +49,7 @@ FunctionMetadata::FunctionMetadata(int num_args, bool takes_varargs, bool takes_
       param_names(this->source->ast, this->source->getInternedStrings()),
       times_interpreted(0),
       internal_callable(NULL, NULL) {
+    getCode();
 }
 
 FunctionMetadata::FunctionMetadata(int num_args, bool takes_varargs, bool takes_kwargs, const ParamNames& param_names)

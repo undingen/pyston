@@ -763,6 +763,12 @@ Box* setContains(BoxedSet* self, Box* key) {
     return boxBool(self->s.find(key) != self->s.end());
 }
 
+extern "C" int PySet_Contains(PyObject *anyset, PyObject *key) noexcept {
+    auto ret = callCXXFromStyle<CAPI>(setContains, (BoxedSet*)anyset, key);
+    AUTO_DECREF(ret);
+    return ret == Py_True ? 1 : 0;
+}
+
 Box* setRemove(BoxedSet* self, Box* key) {
     RELEASE_ASSERT(isSubclass(self->cls, set_cls), "");
 

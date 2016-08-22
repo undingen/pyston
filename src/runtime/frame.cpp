@@ -368,6 +368,10 @@ extern "C" BORROWED(PyObject*) PyFrame_GetCode(PyFrameObject* f) noexcept {
     return BoxedFrame::code((Box*)f, NULL);
 }
 
+extern "C" BORROWED(PyObject*) PyFrame_GetBack(PyFrameObject* f) noexcept {
+    return BoxedFrame::back((Box*)f, NULL);
+}
+
 extern "C" PyFrameObject* PyFrame_ForStackLevel(int stack_level) noexcept {
     return (PyFrameObject*)getFrame(stack_level);
 }
