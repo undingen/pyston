@@ -141,25 +141,25 @@ SourceInfo::~SourceInfo() {
         for (auto b : cfg->blocks)
             flatten(b->body, flattened, false);
     }
-    if (ast)
+    if (ast) {
         flatten(ast, flattened, false);
+        flattened.push_back(ast);
+    }
 
     llvm::DenseSet<AST*> nodes;
     nodes.insert(flattened.begin(), flattened.end());
 
     for (auto&& e : nodes) {
-        if (e->type != AST_TYPE::Module && e->type != AST_TYPE::Expression && e->type != AST_TYPE::Suite
-            && e->type != AST_TYPE::FunctionDef && e->type != AST_TYPE::ClassDef)
+        if (e->type != AST_TYPE::FunctionDef && e->type != AST_TYPE::ClassDef)
             delete e;
     }
 
-    delete ast;
     if (cfg) {
         for (auto b : cfg->blocks) {
             delete b;
         }
+        delete cfg;
     }
-    delete cfg;
 
     late_constants.erase(std::find(late_constants.begin(), late_constants.end(), fn));
     Py_DECREF(fn);
