@@ -431,8 +431,8 @@ const VRegSet& DefinednessAnalysis::getDefinedVregsAtEnd(CFGBlock* block) {
 }
 
 PhiAnalysis::PhiAnalysis(VRegMap<DefinednessAnalysis::DefinitionLevel> initial_map, CFGBlock* initial_block,
-                         bool initials_need_phis, LivenessAnalysis* liveness, ScopeInfo* scope_info)
-    : definedness(), empty_set(initial_map.numVregs()), liveness(liveness) {
+                         bool initials_need_phis, LivenessAnalysis& liveness, ScopeInfo* scope_info)
+    : definedness(), empty_set(initial_map.numVregs()) {
     auto cfg = initial_block->cfg;
     auto&& vreg_info = cfg->getVRegInfo();
 
@@ -465,7 +465,7 @@ PhiAnalysis::PhiAnalysis(VRegMap<DefinednessAnalysis::DefinitionLevel> initial_m
 
                 const VRegSet& defined = definedness.getDefinedVregsAtEnd(pred);
                 for (int vreg : defined) {
-                    if (!required[vreg] && liveness->isLiveAtEnd(vreg, pred)) {
+                    if (!required[vreg] && liveness.isLiveAtEnd(vreg, pred)) {
                         // printf("%d-%d %s\n", pred->idx, block->idx, vreg_info.getName(vreg).c_str());
 
                         required.set(vreg);
@@ -534,7 +534,7 @@ std::unique_ptr<LivenessAnalysis> computeLivenessInfo(CFG* cfg) {
     return std::unique_ptr<LivenessAnalysis>(new LivenessAnalysis(cfg));
 }
 
-std::unique_ptr<PhiAnalysis> computeRequiredPhis(const ParamNames& args, CFG* cfg, LivenessAnalysis* liveness,
+std::unique_ptr<PhiAnalysis> computeRequiredPhis(const ParamNames& args, CFG* cfg, LivenessAnalysis& liveness,
                                                  ScopeInfo* scope_info) {
     static StatCounter counter("num_phi_analysis");
     counter.log();
@@ -565,7 +565,7 @@ std::unique_ptr<PhiAnalysis> computeRequiredPhis(const ParamNames& args, CFG* cf
         new PhiAnalysis(std::move(initial_map), cfg->getStartingBlock(), false, liveness, scope_info));
 }
 
-std::unique_ptr<PhiAnalysis> computeRequiredPhis(const OSREntryDescriptor* entry_descriptor, LivenessAnalysis* liveness,
+std::unique_ptr<PhiAnalysis> computeRequiredPhis(const OSREntryDescriptor* entry_descriptor, LivenessAnalysis& liveness,
                                                  ScopeInfo* scope_info) {
     static StatCounter counter("num_phi_analysis");
     counter.log();

@@ -1127,17 +1127,19 @@ std::pair<CompiledFunction*, llvm::Function*> doCompile(FunctionMetadata* md, So
         computeBlockSetClosure(blocks);
     }
 
-    LivenessAnalysis* liveness = source->getLiveness();
+
     std::unique_ptr<PhiAnalysis> phis;
+    std::unique_ptr<LivenessAnalysis> liveness = source->getLiveness();
 
     if (entry_descriptor)
-        phis = computeRequiredPhis(entry_descriptor, liveness, source->getScopeInfo());
+        phis = computeRequiredPhis(entry_descriptor, *liveness, source->getScopeInfo());
     else
-        phis = computeRequiredPhis(*param_names, source->cfg, liveness, source->getScopeInfo());
+        phis = computeRequiredPhis(*param_names, source->cfg, *liveness, source->getScopeInfo());
 
     RefcountTracker refcounter;
 
-    IRGenState irstate(md, cf, f, source, std::move(phis), param_names, getGCBuilder(), dbg_funcinfo, &refcounter);
+    IRGenState irstate(md, cf, f, source, std::move(phis), std::move(liveness), param_names, getGCBuilder(),
+                       dbg_funcinfo, &refcounter);
 
     emitBBs(&irstate, types, entry_descriptor, blocks);
     assert(!llvm::verifyFunction(*f, &llvm::errs()));

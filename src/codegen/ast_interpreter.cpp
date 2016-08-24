@@ -748,9 +748,9 @@ Box* ASTInterpreter::doOSR(AST_Jump* node) {
     static StatCounter ast_osrs("num_ast_osrs");
     ast_osrs.log();
 
-    LivenessAnalysis* liveness = source_info->getLiveness();
+    std::unique_ptr<LivenessAnalysis> liveness = source_info->getLiveness();
     std::unique_ptr<PhiAnalysis> phis
-        = computeRequiredPhis(getMD()->param_names, source_info->cfg, liveness, scope_info);
+        = computeRequiredPhis(getMD()->param_names, source_info->cfg, *liveness, scope_info);
 
     llvm::SmallVector<int, 16> dead_vregs;
 

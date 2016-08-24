@@ -187,10 +187,8 @@ ScopeInfo* SourceInfo::getScopeInfo() {
     return scope_info.get();
 }
 
-LivenessAnalysis* SourceInfo::getLiveness() {
-    if (!liveness_info)
-        liveness_info = computeLivenessInfo(cfg);
-    return liveness_info.get();
+std::unique_ptr<LivenessAnalysis> SourceInfo::getLiveness() {
+    return computeLivenessInfo(cfg);
 }
 
 static void compileIR(CompiledFunction* cf, llvm::Function* func, EffortLevel effort) {

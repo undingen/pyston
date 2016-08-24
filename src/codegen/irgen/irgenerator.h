@@ -66,6 +66,7 @@ private:
     llvm::Function* func;
     SourceInfo* source_info;
     std::unique_ptr<PhiAnalysis> phis;
+    std::unique_ptr<LivenessAnalysis> liveness;
     const ParamNames* param_names;
     GCBuilder* gc;
     llvm::MDNode* func_dbg_info;
@@ -84,8 +85,9 @@ private:
 
 public:
     IRGenState(FunctionMetadata* md, CompiledFunction* cf, llvm::Function* func, SourceInfo* source_info,
-               std::unique_ptr<PhiAnalysis> phis, const ParamNames* param_names, GCBuilder* gc,
-               llvm::MDNode* func_dbg_info, RefcountTracker* refcount_tracker);
+               std::unique_ptr<PhiAnalysis> phis, std::unique_ptr<LivenessAnalysis> liveness,
+               const ParamNames* param_names, GCBuilder* gc, llvm::MDNode* func_dbg_info,
+               RefcountTracker* refcount_tracker);
     ~IRGenState();
 
     CFG* getCFG() { return getSourceInfo()->cfg; }
@@ -115,7 +117,7 @@ public:
 
     SourceInfo* getSourceInfo() { return source_info; }
 
-    LivenessAnalysis* getLiveness() { return source_info->getLiveness(); }
+    LivenessAnalysis* getLiveness() { return liveness.get(); }
     PhiAnalysis* getPhis() { return phis.get(); }
 
     ScopeInfo* getScopeInfo();

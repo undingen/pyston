@@ -438,7 +438,6 @@ class LivenessAnalysis;
 class SourceInfo {
 private:
     BoxedString* fn; // equivalent of code.co_filename
-    std::unique_ptr<LivenessAnalysis> liveness_info;
 
 public:
     BoxedModule* parent_module;
@@ -452,7 +451,7 @@ public:
     InternedStringPool& getInternedStrings();
 
     ScopeInfo* getScopeInfo();
-    LivenessAnalysis* getLiveness();
+    std::unique_ptr<LivenessAnalysis> getLiveness();
 
     // does not throw CXX or CAPI exceptions:
     BORROWED(BoxedString*) getName() noexcept;

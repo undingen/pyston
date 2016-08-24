@@ -45,13 +45,15 @@ extern "C" void dumpLLVM(void* _v) {
 }
 
 IRGenState::IRGenState(FunctionMetadata* md, CompiledFunction* cf, llvm::Function* func, SourceInfo* source_info,
-                       std::unique_ptr<PhiAnalysis> phis, const ParamNames* param_names, GCBuilder* gc,
-                       llvm::MDNode* func_dbg_info, RefcountTracker* refcount_tracker)
+                       std::unique_ptr<PhiAnalysis> phis, std::unique_ptr<LivenessAnalysis> liveness,
+                       const ParamNames* param_names, GCBuilder* gc, llvm::MDNode* func_dbg_info,
+                       RefcountTracker* refcount_tracker)
     : md(md),
       cf(cf),
       func(func),
       source_info(source_info),
       phis(std::move(phis)),
+      liveness(std::move(liveness)),
       param_names(param_names),
       gc(gc),
       func_dbg_info(func_dbg_info),

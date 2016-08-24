@@ -87,14 +87,13 @@ public:
     VRegSet empty_set;
 
 private:
-    LivenessAnalysis* liveness;
     llvm::DenseMap<CFGBlock*, VRegSet> required_phis;
 
 public:
     // Initials_need_phis specifies that initial_map should count as an additional entry point
     // that may require phis.
     PhiAnalysis(VRegMap<DefinednessAnalysis::DefinitionLevel> initial_map, CFGBlock* initial_block,
-                bool initials_need_phis, LivenessAnalysis* liveness, ScopeInfo* scope_info);
+                bool initials_need_phis, LivenessAnalysis& liveness, ScopeInfo* scope_info);
 
     bool isRequired(int vreg, CFGBlock* block);
     bool isRequiredAfter(int vreg, CFGBlock* block);
@@ -107,8 +106,10 @@ public:
 };
 
 std::unique_ptr<LivenessAnalysis> computeLivenessInfo(CFG*);
-std::unique_ptr<PhiAnalysis> computeRequiredPhis(const ParamNames&, CFG*, LivenessAnalysis*, ScopeInfo* scope_info);
-std::unique_ptr<PhiAnalysis> computeRequiredPhis(const OSREntryDescriptor*, LivenessAnalysis*, ScopeInfo* scope_info);
+std::unique_ptr<PhiAnalysis> computeRequiredPhis(const ParamNames&, CFG*, LivenessAnalysis& liveness,
+                                                 ScopeInfo* scope_info);
+std::unique_ptr<PhiAnalysis> computeRequiredPhis(const OSREntryDescriptor*, LivenessAnalysis& liveness,
+                                                 ScopeInfo* scope_info);
 }
 
 #endif
