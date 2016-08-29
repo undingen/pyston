@@ -173,6 +173,8 @@ SourceInfo::~SourceInfo() {
 
     late_constants.erase(std::find(late_constants.begin(), late_constants.end(), fn));
     Py_DECREF(fn);
+
+    scope_info.release();
 }
 
 void FunctionAddressRegistry::registerFunction(const std::string& name, void* addr, int length,
