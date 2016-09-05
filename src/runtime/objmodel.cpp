@@ -2763,12 +2763,13 @@ Box* getattrInternalGeneric(Box* obj, BoxedString* attr, GetattrRewriteArgs* rew
         return descr;
     }
     /*
-        // TODO this shouldn't go here; it should be in &PyMethod_Type->tp_getattr[o]
-        if (obj->cls == &PyMethod_Type) {
-            assert(!rewrite_args || !rewrite_args->isSuccessful());
-            return getattrInternalEx<CXX, NOT_REWRITABLE>(static_cast<BoxedInstanceMethod*>(obj)->func, attr, NULL,
-                                                          cls_only, for_call, bind_obj_out, NULL);
-        }
+            // TODO this shouldn't go here; it should be in &PyMethod_Type->tp_getattr[o]
+            if (obj->cls == &PyMethod_Type) {
+                assert(!rewrite_args || !rewrite_args->isSuccessful());
+                return getattrInternalEx<CXX, NOT_REWRITABLE>(reinterpret_cast<PyMethodObject*>(obj)->im_func, attr,
+       NULL,
+                                                              cls_only, for_call, bind_obj_out, NULL);
+            }
     */
     if (rewrite_args)
         rewrite_args->setReturn(NULL, ReturnConvention::NO_RETURN);
@@ -5260,7 +5261,7 @@ Box* runtimeCallInternal(Box* obj, CallRewriteArgs* rewrite_args, ArgPassSpec ar
             rewrite_args->obj->addAttrGuard(offsetof(PyMethodObject, im_self), 0, im->im_self != NULL);
         }
 
-        if (im->im_func == NULL) {
+        if (im->im_self == NULL) {
             Box* f = im->im_func;
             if (rewrite_args) {
                 rewrite_args->obj = r_im_func;
