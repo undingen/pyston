@@ -1912,7 +1912,7 @@ Box* nondataDescriptorInstanceSpecialCases(GetattrRewriteArgs* rewrite_args, Box
                 if (rewrite_args) {
                     r_descr->addAttrGuard(offsetof(PyMethodObject, im_self), 0, /* negate */ false);
                     r_im_self = rewrite_args->obj;
-                    r_im_func = r_descr->getAttr(offsetof(PyMethodObject, im_self))->setType(RefType::BORROWED);
+                    r_im_func = r_descr->getAttr(offsetof(PyMethodObject, im_func))->setType(RefType::BORROWED);
                 }
             }
         } else {
