@@ -127,6 +127,7 @@ PyAPI_FUNC(PyObject*) PyObject_GetHcAttrString(PyObject*, const char*) PYSTON_NO
 PyAPI_FUNC(int) PyObject_SetHcAttrString(PyObject*, const char*, PyObject*) PYSTON_NOEXCEPT;
 PyAPI_FUNC(int) PyObject_DelHcAttrString(PyObject*, const char*) PYSTON_NOEXCEPT;
 PyAPI_FUNC(int) PyObject_ClearHcAttrs(PyHcAttrs*) PYSTON_NOEXCEPT;
+PyAPI_FUNC(int) PyObject_ClearHcAttrs(PyHcAttrs*) PYSTON_NOEXCEPT;
 PyAPI_FUNC(int) PyObject_TraverseHcAttrs(PyHcAttrs*, visitproc visit, void* arg) PYSTON_NOEXCEPT;
 
 // Workaround: call this instead of setting tp_dict.

@@ -27,6 +27,9 @@
 namespace pyston {
 
 void setupClassobj() {
+    PyType_RequestHcAttrs(&PyClass_Type, offsetof(PyClassObject, hcattrs));
+    PyType_RequestHcAttrs(&PyInstance_Type, offsetof(PyInstanceObject, hcattrs));
+
     PyType_Ready(&PyClass_Type);
     PyType_Ready(&PyInstance_Type);
     PyType_Ready(&PyMethod_Type);

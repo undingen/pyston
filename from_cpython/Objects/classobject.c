@@ -120,7 +120,11 @@ alloc_error:
     }
     op->cl_bases = bases;
     Py_INCREF(dict);
-    op->cl_dict = dict;
+
+    // Pyston change:
+    //op->cl_dict = dict;
+    PyObject_InitHcAttrs((PyHcAttrs*)&op->hcattrs);
+    PyDict_Update(PyObject_GetAttrWrapper((PyObject*)op), dict);
     Py_XINCREF(name);
     op->cl_name = name;
     op->cl_weakreflist = NULL;
@@ -192,7 +196,8 @@ class_dealloc(PyClassObject *op)
     if (op->cl_weakreflist != NULL)
         PyObject_ClearWeakRefs((PyObject *) op);
     Py_DECREF(op->cl_bases);
-    Py_DECREF(op->cl_dict);
+    PyObject_ClearHcAttrs((PyHcAttrs*)&op->hcattrs);
+    //Py_DECREF(op->cl_dict);
     Py_XDECREF(op->cl_name);
     Py_XDECREF(op->cl_getattr);
     Py_XDECREF(op->cl_setattr);
@@ -204,7 +209,8 @@ static PyObject *
 class_lookup(PyClassObject *cp, PyObject *name, PyClassObject **pclass)
 {
     Py_ssize_t i, n;
-    PyObject *value = PyDict_GetItem(cp->cl_dict, name);
+    //PyObject *value = PyDict_GetItem(cp->cl_dict, name);
+    PyObject *value = PyObject_GetHcAttrString((PyObject*)cp, PyString_AS_STRING(name));
     if (value != NULL) {
         *pclass = cp;
         return value;
@@ -242,8 +248,12 @@ class_getattr(register PyClassObject *op, PyObject *name)
                "class.__dict__ not accessible in restricted mode");
                 return NULL;
             }
-            Py_INCREF(op->cl_dict);
-            return op->cl_dict;
+
+            //Py_INCREF(op->cl_dict);
+            //return op->cl_dict;
+            PyObject* dict = PyObject_GetAttrWrapper((PyObject*)op);
+            Py_INCREF(dict);
+            return dict;
         }
         if (strcmp(sname, "__bases__") == 0) {
             Py_INCREF(op->cl_bases);
@@ -297,7 +307,8 @@ set_dict(PyClassObject *c, PyObject *v)
 {
     if (v == NULL || !PyDict_Check(v))
         return "__dict__ must be a dictionary object";
-    set_slot(&c->cl_dict, v);
+    //set_slot(&c->cl_dict, v);
+    assert(0);
     set_attr_slots(c);
     return "";
 }
@@ -374,7 +385,8 @@ class_setattr(PyClassObject *op, PyObject *name, PyObject *v)
         }
     }
     if (v == NULL) {
-        int rv = PyDict_DelItem(op->cl_dict, name);
+        // int rv = PyDict_DelItem(op->cl_dict, name);
+        int rv = PyObject_DelHcAttrString((PyObject*)op, PyString_AS_STRING(name));
         if (rv < 0)
             PyErr_Format(PyExc_AttributeError,
                          "class %.50s has no attribute '%.400s'",
@@ -382,13 +394,15 @@ class_setattr(PyClassObject *op, PyObject *name, PyObject *v)
         return rv;
     }
     else
-        return PyDict_SetItem(op->cl_dict, name, v);
+        //return PyDict_SetItem(op->cl_dict, name, v);
+        return PyObject_SetHcAttrString((PyObject*)op, PyString_AS_STRING(name), v);
 }
 
 static PyObject *
 class_repr(PyClassObject *op)
 {
-    PyObject *mod = PyDict_GetItemString(op->cl_dict, "__module__");
+    //PyObject *mod = PyDict_GetItemString(op->cl_dict, "__module__");
+    PyObject *mod = PyObject_GetHcAttrString((PyObject*)op, "__module__");
     char *name;
     if (op->cl_name == NULL || !PyString_Check(op->cl_name))
         name = "?";
@@ -405,7 +419,8 @@ class_repr(PyClassObject *op)
 static PyObject *
 class_str(PyClassObject *op)
 {
-    PyObject *mod = PyDict_GetItemString(op->cl_dict, "__module__");
+    //PyObject *mod = PyDict_GetItemString(op->cl_dict, "__module__");
+    PyObject *mod = PyObject_GetHcAttrString((PyObject*)op, "__module__");
     PyObject *name = op->cl_name;
     PyObject *res;
     Py_ssize_t m, n;
@@ -433,7 +448,8 @@ static int
 class_traverse(PyClassObject *o, visitproc visit, void *arg)
 {
     Py_VISIT(o->cl_bases);
-    Py_VISIT(o->cl_dict);
+    //Py_VISIT(o->cl_dict);
+    PyObject_TraverseHcAttrs((PyHcAttrs*)&o->hcattrs, visit, arg);
     Py_VISIT(o->cl_name);
     Py_VISIT(o->cl_getattr);
     Py_VISIT(o->cl_setattr);
@@ -543,7 +559,10 @@ PyInstance_NewRaw(PyObject *klass, PyObject *dict)
     inst->in_weakreflist = NULL;
     Py_INCREF(klass);
     inst->in_class = (PyClassObject *)klass;
-    inst->in_dict = dict;
+    // Pyston change:
+    // inst->in_dict = dict;
+    PyObject_InitHcAttrs((PyHcAttrs*)&inst->hcattrs);
+    PyDict_Update(PyObject_GetAttrWrapper((PyObject*)inst), dict);
     _PyObject_GC_TRACK(inst);
     return (PyObject *)inst;
 }
@@ -680,7 +699,8 @@ instance_dealloc(register PyInstanceObject *inst)
         }
 
         Py_DECREF(inst->in_class);
-        Py_XDECREF(inst->in_dict);
+        //Py_XDECREF(inst->in_dict);
+        PyObject_ClearHcAttrs((PyHcAttrs*)&inst->hcattrs);
         PyObject_GC_Del(inst);
     }
     else {
@@ -726,8 +746,11 @@ instance_getattr1(register PyInstanceObject *inst, PyObject *name)
             "instance.__dict__ not accessible in restricted mode");
                 return NULL;
             }
-            Py_INCREF(inst->in_dict);
-            return inst->in_dict;
+            //Py_INCREF(inst->in_dict);
+            //return inst->in_dict;
+            PyObject* dict = PyObject_GetAttrWrapper((PyObject*)inst);
+            Py_INCREF(dict);
+            return dict;
         }
         if (strcmp(sname, "__class__") == 0) {
             Py_INCREF(inst->in_class);
@@ -750,7 +773,8 @@ instance_getattr2(register PyInstanceObject *inst, PyObject *name)
     PyClassObject *klass;
     descrgetfunc f;
 
-    v = PyDict_GetItem(inst->in_dict, name);
+    //v = PyDict_GetItem(inst->in_dict, name);
+    v = PyObject_GetHcAttrString((PyObject*)inst, PyString_AS_STRING(name));
     if (v != NULL) {
         Py_INCREF(v);
         return v;
@@ -803,7 +827,8 @@ _PyInstance_Lookup(PyObject *pinst, PyObject *name)
 
     assert(PyString_Check(name));
 
-    v = PyDict_GetItem(inst->in_dict, name);
+    //v = PyDict_GetItem(inst->in_dict, name);
+    v = PyObject_GetHcAttrString((PyObject*)inst, PyString_AS_STRING(name));
     if (v == NULL)
         v = class_lookup(inst->in_class, name, &klass);
     return v;
@@ -813,7 +838,8 @@ static int
 instance_setattr1(PyInstanceObject *inst, PyObject *name, PyObject *v)
 {
     if (v == NULL) {
-        int rv = PyDict_DelItem(inst->in_dict, name);
+        //int rv = PyDict_DelItem(inst->in_dict, name);
+        int rv = PyObject_DelHcAttrString((PyObject*)&inst, PyString_AS_STRING(name));
         if (rv < 0)
             PyErr_Format(PyExc_AttributeError,
                          "%.50s instance has no attribute '%.400s'",
@@ -822,7 +848,8 @@ instance_setattr1(PyInstanceObject *inst, PyObject *name, PyObject *v)
         return rv;
     }
     else
-        return PyDict_SetItem(inst->in_dict, name, v);
+        //return PyDict_SetItem(inst->in_dict, name, v);
+        return PyObject_SetHcAttrString((PyObject*)inst, PyString_AS_STRING(name), v);
 }
 
 static int
@@ -851,10 +878,12 @@ instance_setattr(PyInstanceObject *inst, PyObject *name, PyObject *v)
                        "__dict__ must be set to a dictionary");
                     return -1;
                 }
+                             /*
                 tmp = inst->in_dict;
                 Py_INCREF(v);
                 inst->in_dict = v;
-                Py_DECREF(tmp);
+                Py_DECREF(tmp);*/
+                             assert(0);
                 return 0;
             }
             if (strcmp(sname, "__class__") == 0) {
@@ -916,8 +945,9 @@ instance_repr(PyInstanceObject *inst)
             return NULL;
         PyErr_Clear();
         classname = inst->in_class->cl_name;
-        mod = PyDict_GetItemString(inst->in_class->cl_dict,
-                                   "__module__");
+        //mod = PyDict_GetItemString(inst->in_class->cl_dict,
+        //                           "__module__");
+        mod = PyObject_GetHcAttrString((PyObject*)inst, "__module__");
         if (classname != NULL && PyString_Check(classname))
             cname = PyString_AsString(classname);
         else
@@ -1028,7 +1058,8 @@ static int
 instance_traverse(PyInstanceObject *o, visitproc visit, void *arg)
 {
     Py_VISIT(o->in_class);
-    Py_VISIT(o->in_dict);
+    //Py_VISIT(o->in_dict);
+    PyObject_TraverseHcAttrs((PyHcAttrs*)&o->hcattrs, visit, arg);
     return 0;
 }
 

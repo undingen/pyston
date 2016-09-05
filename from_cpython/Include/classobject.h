@@ -10,10 +10,20 @@
 extern "C" {
 #endif
 
+//#include "Python.h"
+
+// Pyston change:
+struct _hcattrs2 {
+    char _data[16];
+};
+
 typedef struct {
     PyObject_HEAD
+    // Pyston change:
+    struct _hcattrs2 hcattrs;
     PyObject	*cl_bases;	/* A tuple of class objects */
-    PyObject	*cl_dict;	/* A dictionary */
+    // Pyston change:
+    // PyObject	*cl_dict;	/* A dictionary */
     PyObject	*cl_name;	/* A string */
     /* The following three are functions or NULL */
     PyObject	*cl_getattr;
@@ -24,8 +34,11 @@ typedef struct {
 
 typedef struct {
     PyObject_HEAD
+    // Pyston change:
+    struct _hcattrs2 hcattrs;
     PyClassObject *in_class;	/* The class object */
-    PyObject	  *in_dict;	/* A dictionary */
+    // Pyston change:
+    // PyObject	  *in_dict;	/* A dictionary */
     PyObject	  *in_weakreflist; /* List of weak references */
 } PyInstanceObject;
 
