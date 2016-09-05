@@ -10,8 +10,6 @@
 extern "C" {
 #endif
 
-// Pyston change: this is not the format we're using
-#if 0
 typedef struct {
     PyObject_HEAD
     PyObject	*cl_bases;	/* A tuple of class objects */
@@ -38,38 +36,23 @@ typedef struct {
     PyObject *im_class;  /* The class that asked for the method */
     PyObject *im_weakreflist; /* List of weak references */
 } PyMethodObject;
-#endif
-typedef struct _PyClassObject PyClassObject;
-typedef struct _PyInstanceObject PyInstanceObject;
-typedef struct _PyMethodObject PyMethodObject;
 
-// Pyston change: these are not static objects any more
-PyAPI_DATA(PyTypeObject*) classobj_cls;
-PyAPI_DATA(PyTypeObject*) instance_cls;
-PyAPI_DATA(PyTypeObject*) instancemethod_cls;
-#define PyClass_Type (*classobj_cls)
-#define PyInstance_Type (*instance_cls)
-#define PyMethod_Type (*instancemethod_cls)
+PyAPI_DATA(PyTypeObject) PyClass_Type, PyInstance_Type, PyMethod_Type;
 
-// Pyston change: change these to use the Py_TYPE macro instead
-// of looking at ob_type directly
+// Pyston change:
+// #define PyClass_Check(op) ((op)->ob_type == &PyClass_Type)
+// #define PyInstance_Check(op) ((op)->ob_type == &PyInstance_Type)
+// #define PyMethod_Check(op) ((op)->ob_type == &PyMethod_Type)
+
 #define PyClass_Check(op) (Py_TYPE(op) == &PyClass_Type)
 #define PyInstance_Check(op) (Py_TYPE(op) == &PyInstance_Type)
 #define PyMethod_Check(op) (Py_TYPE(op) == &PyMethod_Type)
 
 PyAPI_FUNC(PyObject *) PyClass_New(PyObject *, PyObject *, PyObject *) PYSTON_NOEXCEPT;
-
-// Pyston change: pyston addition returns PyClassObject->cl_name
-PyAPI_FUNC(BORROWED(PyObject *)) PyClass_Name(PyObject *) PYSTON_NOEXCEPT;
-
 PyAPI_FUNC(PyObject *) PyInstance_New(PyObject *, PyObject *,
                                             PyObject *) PYSTON_NOEXCEPT;
-
 PyAPI_FUNC(PyObject *) PyInstance_NewRaw(PyObject *, PyObject *) PYSTON_NOEXCEPT;
 PyAPI_FUNC(PyObject *) PyMethod_New(PyObject *, PyObject *, PyObject *) PYSTON_NOEXCEPT;
-
-// Pyston change: pyston addition returns PyInstanceObject->in_class
-PyAPI_FUNC(BORROWED(PyObject*)) PyInstance_Class(PyObject* _inst) PYSTON_NOEXCEPT;
 
 PyAPI_FUNC(PyObject *) PyMethod_Function(PyObject *) PYSTON_NOEXCEPT;
 PyAPI_FUNC(PyObject *) PyMethod_Self(PyObject *) PYSTON_NOEXCEPT;
@@ -85,23 +68,16 @@ PyAPI_FUNC(PyObject *) PyMethod_Class(PyObject *) PYSTON_NOEXCEPT;
  * can't fail, never sets an exception, and NULL is not an error (it just
  * means "not found").
  */
-PyAPI_FUNC(BORROWED(PyObject *)) _PyInstance_Lookup(PyObject *pinst, PyObject *name) PYSTON_NOEXCEPT;
+PyAPI_FUNC(PyObject *) _PyInstance_Lookup(PyObject *pinst, PyObject *name) PYSTON_NOEXCEPT;
 
-// Pyston change: no longer macros
-#if 0
 /* Macros for direct access to these values. Type checks are *not*
    done, so use with care. */
 #define PyMethod_GET_FUNCTION(meth) \
         (((PyMethodObject *)meth) -> im_func)
 #define PyMethod_GET_SELF(meth) \
-	(((PyMethodObject *)meth) -> im_self)
+    (((PyMethodObject *)meth) -> im_self)
 #define PyMethod_GET_CLASS(meth) \
-	(((PyMethodObject *)meth) -> im_class)
-#else
-#define PyMethod_GET_FUNCTION(meth) PyMethod_Function((PyObject *)(meth))
-#define PyMethod_GET_SELF(meth) PyMethod_Self((PyObject *)(meth))
-#define PyMethod_GET_CLASS(meth) PyMethod_Class((PyObject *)(meth))
-#endif
+    (((PyMethodObject *)meth) -> im_class)
 
 PyAPI_FUNC(int) PyClass_IsSubclass(PyObject *, PyObject *) PYSTON_NOEXCEPT;
 

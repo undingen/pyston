@@ -223,7 +223,7 @@ static Box* classmethodGet(Box* self, Box* obj, Box* type) {
         type = obj->cls;
     }
 
-    return new BoxedInstanceMethod(type, cm->cm_callable, type);
+    return PyInstance_New(type, cm->cm_callable, type);
 }
 
 template <ExceptionStyle S>

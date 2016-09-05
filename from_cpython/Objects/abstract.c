@@ -1613,11 +1613,8 @@ _PyNumber_ConvertIntegralToInt(PyObject *integral, const char* error_format)
 
 non_integral_error:
     if (PyInstance_Check(integral)) {
-        // Pyston change:
-        // type_name = PyString_AS_STRING(((PyInstanceObject *)integral)
-        //                                ->in_class->cl_name);
-        // type_name = static_cast<BoxedInstance*>(integral)->inst_cls->name->data();
-        type_name = PyString_AS_STRING(PyClass_Name(PyInstance_Class(integral)));
+        type_name = PyString_AS_STRING(((PyInstanceObject *)integral)
+                                        ->in_class->cl_name);
     }
     else {
         type_name = integral->ob_type->tp_name;
@@ -2923,10 +2920,8 @@ recursive_isinstance(PyObject *inst, PyObject *cls)
     }
 
     if (PyClass_Check(cls) && PyInstance_Check(inst)) {
-        // Pyston change:
-        // PyObject *inclass =
-        //     (PyObject*)((PyInstanceObject*)inst)->in_class;
-        PyObject *inclass = PyInstance_Class(inst);
+        PyObject *inclass =
+             (PyObject*)((PyInstanceObject*)inst)->in_class;
         retval = PyClass_IsSubclass(inclass, cls);
     }
     else if (PyType_Check(cls)) {

@@ -82,7 +82,7 @@ static int recursive_isinstance(PyObject* inst, PyObject* cls) noexcept {
     }
 
     if (PyClass_Check(cls) && PyInstance_Check(inst)) {
-        PyObject* inclass = static_cast<BoxedInstance*>(inst)->inst_cls;
+        PyObject* inclass = (PyObject*)((PyInstanceObject*)inst)->in_class;
         retval = PyClass_IsSubclass(inclass, cls);
     } else if (PyType_Check(cls)) {
         retval = PyObject_TypeCheck(inst, (PyTypeObject*)cls);

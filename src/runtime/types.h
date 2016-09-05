@@ -76,10 +76,9 @@ extern "C" BoxedString* EmptyString;
 
 extern "C" {
 extern BoxedClass* object_cls, *type_cls, *bool_cls, *int_cls, *long_cls, *float_cls, *str_cls, *function_cls,
-    *none_cls, *instancemethod_cls, *list_cls, *slice_cls, *module_cls, *dict_cls, *tuple_cls, *enumerate_cls,
-    *xrange_cls, *closure_cls, *generator_cls, *complex_cls, *basestring_cls, *property_cls, *staticmethod_cls,
-    *classmethod_cls, *attrwrapper_cls, *builtin_function_or_method_cls, *set_cls, *frozenset_cls, *code_cls,
-    *frame_cls, *capifunc_cls;
+    *none_cls, *list_cls, *slice_cls, *module_cls, *dict_cls, *tuple_cls, *enumerate_cls, *xrange_cls, *closure_cls,
+    *generator_cls, *complex_cls, *basestring_cls, *property_cls, *staticmethod_cls, *attrwrapper_cls,
+    *builtin_function_or_method_cls, *set_cls, *frozenset_cls, *code_cls, *frame_cls, *capifunc_cls;
 }
 #define unicode_cls (&PyUnicode_Type)
 #define memoryview_cls (&PyMemoryView_Type)
@@ -247,7 +246,7 @@ public:
 
         // instancemethod_cls should have a custom tp_getattr but is currently implemented
         // as a hack within getattrInternalGeneric
-        if (this == instancemethod_cls)
+        if (this == &PyInstance_Type)
             return false;
 
         return true;
@@ -676,6 +675,7 @@ size_t strHashUnboxedStrRef(llvm::StringRef str);
 extern "C" size_t strHashUnboxed(BoxedString* self);
 extern "C" int64_t hashUnboxed(Box* obj);
 
+/*
 class BoxedInstanceMethod : public Box {
 public:
     Box** im_weakreflist;
@@ -690,11 +690,12 @@ public:
         Py_XINCREF(im_class);
     }
 
-    DEFAULT_CLASS_SIMPLE(instancemethod_cls, true);
+    DEFAULT_CLASS_SIMPLE(&PyMethod_Type, true);
 
     static void dealloc(Box* self) noexcept;
     static int traverse(Box* self, visitproc visit, void* arg) noexcept;
 };
+*/
 
 class GCdArray {
 public:

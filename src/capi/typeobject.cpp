@@ -2346,7 +2346,7 @@ static int fill_classic_mro(PyObject* mro, PyObject* cls) {
             return -1;
     }
 
-    bases = ((BoxedClassobj*)cls)->bases;
+    bases = ((PyClassObject*)cls)->cl_bases;
     assert(bases && PyTuple_Check(bases));
     n = PyTuple_GET_SIZE(bases);
     for (i = 0; i < n; i++) {

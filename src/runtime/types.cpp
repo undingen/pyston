@@ -1429,8 +1429,8 @@ Box* dict_descr = NULL;
 
 extern "C" {
 BoxedClass* object_cls, *type_cls, *none_cls, *bool_cls, *int_cls, *float_cls,
-    * str_cls = NULL, *function_cls, *instancemethod_cls, *list_cls, *slice_cls, *module_cls, *dict_cls, *tuple_cls,
-      *closure_cls, *generator_cls, *complex_cls, *basestring_cls, *property_cls, *staticmethod_cls, *classmethod_cls,
+    * str_cls = NULL, *function_cls, *list_cls, *slice_cls, *module_cls, *dict_cls, *tuple_cls, *closure_cls,
+      *generator_cls, *complex_cls, *basestring_cls, *property_cls, *staticmethod_cls, *classmethod_cls,
       *attrwrapper_cls, *builtin_function_or_method_cls, *attrwrapperiter_cls, *set_cls, *frozenset_cls;
 
 BoxedTuple* EmptyTuple;
@@ -1458,7 +1458,7 @@ extern "C" Box* createUserClass(BoxedString* name, Box* _bases, Box* _attr_dict)
         metaclass = PyDict_GetItemString(gl, "__metaclass__");
 
         if (!metaclass) {
-            metaclass = classobj_cls;
+            metaclass = &PyClass_Type;
         }
     }
     assert(metaclass);
@@ -1506,11 +1506,11 @@ extern "C" Box* boxInstanceMethod(Box* obj, Box* func, Box* type) {
     static StatCounter num_ims("num_instancemethods");
     num_ims.log();
 
-    return new BoxedInstanceMethod(obj, func, type);
+    return PyMethod_New(func, obj, type);
 }
 
 extern "C" Box* boxUnboundInstanceMethod(Box* func, Box* type) {
-    return new BoxedInstanceMethod(NULL, func, type);
+    return PyMethod_New(func, NULL, type);
 }
 
 extern "C" Box* none_repr(Box* v) noexcept {
@@ -1546,7 +1546,7 @@ static Box* functionGet(BoxedFunction* self, Box* inst, Box* owner) {
 
     if (inst == Py_None)
         inst = NULL;
-    return new BoxedInstanceMethod(inst, self, owner);
+    return boxInstanceMethod(inst, self, owner);
 }
 
 static Box* function_descr_get(Box* self, Box* inst, Box* owner) noexcept {
@@ -1554,7 +1554,7 @@ static Box* function_descr_get(Box* self, Box* inst, Box* owner) noexcept {
 
     if (inst == Py_None)
         inst = NULL;
-    return new BoxedInstanceMethod(inst, self, owner);
+    return boxInstanceMethod(inst, self, owner);
 }
 
 static Box* functionCall(BoxedFunction* self, Box* args, Box* kwargs) {
@@ -1821,6 +1821,7 @@ extern "C" Box* sliceNew(Box* cls, Box* start, Box* stop, Box** args) {
     return createSlice(start, stop, step);
 }
 
+#if 0
 static Box* instancemethodCall(BoxedInstanceMethod* self, Box* args, Box* kwargs) {
     // Not the most effficient, but it works:
     return runtimeCallInternal<CXX, NOT_REWRITABLE>(self, NULL, ArgPassSpec(0, 0, true, true), args, kwargs, NULL, NULL,
@@ -1829,7 +1830,7 @@ static Box* instancemethodCall(BoxedInstanceMethod* self, Box* args, Box* kwargs
 }
 
 Box* instancemethodGet(BoxedInstanceMethod* self, Box* obj, Box* type) {
-    RELEASE_ASSERT(self->cls == instancemethod_cls, "");
+    RELEASE_ASSERT(self->cls == &PyMethod_Type, "");
 
     if (self->obj != NULL) {
         return incref(self);
@@ -1842,7 +1843,7 @@ Box* instancemethodGet(BoxedInstanceMethod* self, Box* obj, Box* type) {
     if (obj == Py_None)
         obj = NULL;
 
-    return new BoxedInstanceMethod(obj, self->func, self->im_class);
+    return boxInstanceMethod(obj, self->func, self->im_class);
 }
 
 Box* instancemethodNew(BoxedClass* cls, Box* func, Box* self, Box** args) {
@@ -1859,12 +1860,12 @@ Box* instancemethodNew(BoxedClass* cls, Box* func, Box* self, Box** args) {
         return NULL;
     }
 
-    return new BoxedInstanceMethod(self, func, classObj);
+    return boxInstanceMethod(self, func, classObj);
 }
 
 // Modified from cpython, Objects/object.c, instancemethod_repr
 static Box* instancemethodRepr(Box* b) {
-    assert(isSubclass(b->cls, instancemethod_cls));
+    assert(isSubclass(b->cls, &PyMethod_Type));
     BoxedInstanceMethod* a = static_cast<BoxedInstanceMethod*>(b);
     Box* self = a->obj;
     Box* func = a->func;
@@ -1910,7 +1911,7 @@ static Box* instancemethodRepr(Box* b) {
 }
 
 Box* instancemethodEq(BoxedInstanceMethod* self, Box* rhs) {
-    if (rhs->cls != instancemethod_cls) {
+    if (rhs->cls != &PyMethod_Type) {
         return boxBool(false);
     }
 
@@ -1929,7 +1930,7 @@ Box* instancemethodEq(BoxedInstanceMethod* self, Box* rhs) {
         return boxBool(false);
     }
 }
-
+#endif
 Box* sliceRepr(BoxedSlice* self) {
     BoxedString* start = static_cast<BoxedString*>(repr(self->start));
     AUTO_DECREF(start);
@@ -3839,6 +3840,7 @@ void BoxedSlice::dealloc(Box* b) noexcept {
     PyObject_Del(b);
 }
 
+#if 0
 void BoxedInstanceMethod::dealloc(Box* b) noexcept {
     BoxedInstanceMethod* im = static_cast<BoxedInstanceMethod*>(b);
 
@@ -3872,6 +3874,8 @@ int BoxedInstanceMethod::traverse(Box* _im, visitproc visit, void* arg) noexcept
     Py_VISIT(im->im_class);
     return 0;
 }
+#endif
+
 
 bool IN_SHUTDOWN = false;
 void BoxedClass::dealloc(Box* b) noexcept {
@@ -4344,11 +4348,6 @@ void setupRuntime() {
     constants.push_back(dict_descr);
     type_cls->giveAttrDescriptor("__dict__", type_dict, NULL);
 
-
-    instancemethod_cls = BoxedClass::create(
-        type_cls, object_cls, 0, offsetof(BoxedInstanceMethod, im_weakreflist), sizeof(BoxedInstanceMethod), false,
-        "instancemethod", false, BoxedInstanceMethod::dealloc, NULL, true, BoxedInstanceMethod::traverse, NOCLEAR);
-
     slice_cls = BoxedClass::create(type_cls, object_cls, 0, 0, sizeof(BoxedSlice), false, "slice", false,
                                    BoxedSlice::dealloc, NULL, false);
     set_cls = BoxedClass::create(type_cls, object_cls, 0, offsetof(BoxedSet, weakreflist), sizeof(BoxedSet), false,
@@ -4368,6 +4367,8 @@ void setupRuntime() {
                                          BoxedClassmethod::clear);
     attrwrapperiter_cls = BoxedClass::create(type_cls, object_cls, 0, 0, sizeof(AttrWrapperIter), false,
                                              "attrwrapperiter", true, AttrWrapperIter::dealloc, NULL, false);
+
+    setupClassobj();
 
     SLICE = typeFromClass(slice_cls);
     SET = typeFromClass(set_cls);
@@ -4460,7 +4461,6 @@ void setupRuntime() {
     setupTuple();
     setupGenerator();
     setupIter();
-    setupClassobj();
     setupSuper();
     _PyUnicode_Init();
     unicode_cls->is_constant = true;
@@ -4512,25 +4512,6 @@ void setupRuntime() {
     builtin_function_or_method_cls->giveAttrMember("__doc__", T_OBJECT, offsetof(BoxedBuiltinFunctionOrMethod, doc),
                                                    false);
     builtin_function_or_method_cls->freeze();
-
-    instancemethod_cls->giveAttr(
-        "__new__",
-        new BoxedFunction(FunctionMetadata::create((void*)instancemethodNew, UNKNOWN, 4, false, false), { NULL }));
-    instancemethod_cls->giveAttr("__repr__",
-                                 new BoxedFunction(FunctionMetadata::create((void*)instancemethodRepr, STR, 1)));
-    instancemethod_cls->giveAttr("__eq__",
-                                 new BoxedFunction(FunctionMetadata::create((void*)instancemethodEq, UNKNOWN, 2)));
-    instancemethod_cls->giveAttr(
-        "__get__", new BoxedFunction(FunctionMetadata::create((void*)instancemethodGet, UNKNOWN, 3, false, false)));
-    instancemethod_cls->giveAttr(
-        "__call__", new BoxedFunction(FunctionMetadata::create((void*)instancemethodCall, UNKNOWN, 1, true, true)));
-    instancemethod_cls->giveAttrMember("im_func", T_OBJECT, offsetof(BoxedInstanceMethod, func));
-    instancemethod_cls->giveAttrBorrowed("__func__", instancemethod_cls->getattr(getStaticString("im_func")));
-    instancemethod_cls->giveAttrMember("im_self", T_OBJECT, offsetof(BoxedInstanceMethod, obj));
-    instancemethod_cls->giveAttrBorrowed("__self__", instancemethod_cls->getattr(getStaticString("im_self")));
-    instancemethod_cls->freeze();
-
-    instancemethod_cls->giveAttrMember("im_class", T_OBJECT, offsetof(BoxedInstanceMethod, im_class), true);
 
     slice_cls->giveAttr(
         "__new__",

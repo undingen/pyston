@@ -147,11 +147,11 @@ public:
     }
 
     bool canConvertTo(CompilerType* other_type) override { return other_type == UNKNOWN; }
-    ConcreteCompilerType* getConcreteType() override { return typeFromClass(instancemethod_cls); }
+    ConcreteCompilerType* getConcreteType() override { return typeFromClass(&PyMethod_Type); }
     ConcreteCompilerType* getBoxType() override { return getConcreteType(); }
     ConcreteCompilerVariable* makeConverted(IREmitter& emitter, VAR* var, ConcreteCompilerType* other_type) override {
         checkVar(var);
-        assert(other_type == UNKNOWN || other_type == typeFromClass(instancemethod_cls));
+        assert(other_type == UNKNOWN || other_type == typeFromClass(&PyMethod_Type));
 
         RawInstanceMethod* im = var->getValue();
         assert(im->obj);
@@ -1759,7 +1759,7 @@ public:
 
             if (rtattr->cls == function_cls) {
                 return AbstractFunctionType::fromRT(static_cast<BoxedFunction*>(rtattr), true);
-                // return typeFromClass(instancemethod_cls);
+                // return typeFromClass(&PyMethod_Type);
             } else {
                 // Have to follow the descriptor protocol here
                 return UNKNOWN;

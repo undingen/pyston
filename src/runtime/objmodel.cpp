@@ -640,8 +640,8 @@ void BoxedClass::freeze() {
 
     if (instancesHaveDictAttrs() || instancesHaveHCAttrs()) {
         auto dict_str = getStaticString("__dict__");
-        ASSERT(this == closure_cls || this == classobj_cls || this == instance_cls || typeLookup(this, dict_str), "%s",
-               tp_name);
+        ASSERT(this == closure_cls || this == &PyClass_Type || this == &PyInstance_Type || typeLookup(this, dict_str),
+               "%s", tp_name);
     }
 
     is_constant = true;
@@ -1048,7 +1048,7 @@ template <Rewritable rewritable> BORROWED(Box*) Box::getattr(BoxedString* attr, 
 #if 0
     if (attr.data()[0] == '_' && attr.data()[1] == '_') {
         // Only do this logging for potentially-avoidable cases:
-        if (!rewrite_args && cls != classobj_cls) {
+        if (!rewrite_args && cls != &PyClass_Type) {
             if (attr == "__setattr__")
                 printf("");
 
@@ -1808,7 +1808,7 @@ template Box* typeLookup<REWRITABLE>(BoxedClass*, BoxedString*, GetattrRewriteAr
 template Box* typeLookup<NOT_REWRITABLE>(BoxedClass*, BoxedString*, GetattrRewriteArgs*);
 
 bool isNondataDescriptorInstanceSpecialCase(Box* descr) {
-    return descr->cls == function_cls || descr->cls == instancemethod_cls || descr->cls == staticmethod_cls
+    return descr->cls == function_cls || descr->cls == &PyMethod_Type || descr->cls == staticmethod_cls
            || descr->cls == classmethod_cls || descr->cls == &PyWrapperDescr_Type;
 }
 
@@ -1822,7 +1822,7 @@ Box* nondataDescriptorInstanceSpecialCases(GetattrRewriteArgs* rewrite_args, Box
 
     // Special case: non-data descriptor: function, instancemethod or classmethod
     // Returns a bound instancemethod
-    if (descr->cls == function_cls || descr->cls == instancemethod_cls || descr->cls == classmethod_cls
+    if (descr->cls == function_cls || descr->cls == &PyMethod_Type || descr->cls == classmethod_cls
         || descr->cls == &PyMethodDescr_Type) {
 
         if (descr->cls == &PyMethodDescr_Type)
@@ -1865,24 +1865,24 @@ Box* nondataDescriptorInstanceSpecialCases(GetattrRewriteArgs* rewrite_args, Box
                 r_im_func = r_descr->getAttr(offsetof(BoxedClassmethod, cm_callable))->setType(RefType::BORROWED);
                 r_im_func->addGuardNotEq(0);
             }
-        } else if (descr->cls == instancemethod_cls) {
+        } else if (descr->cls == &PyMethod_Type) {
             static StatCounter slowpath("slowpath_instancemethod_get");
             slowpath.log();
 
-            BoxedInstanceMethod* im = static_cast<BoxedInstanceMethod*>(descr);
-            if (im->obj != NULL) {
+            auto* im = reinterpret_cast<PyMethodObject*>(descr);
+            if (im->im_self != NULL) {
                 if (rewrite_args) {
-                    r_descr->addAttrGuard(offsetof(BoxedInstanceMethod, obj), 0, /* negate */ true);
+                    r_descr->addAttrGuard(offsetof(PyMethodObject, im_self), 0, /* negate */ true);
                 }
                 return incref(descr);
             } else {
                 // TODO subclass check
                 im_self = obj;
-                im_func = im->func;
+                im_func = im->im_func;
                 if (rewrite_args) {
-                    r_descr->addAttrGuard(offsetof(BoxedInstanceMethod, obj), 0, /* negate */ false);
+                    r_descr->addAttrGuard(offsetof(PyMethodObject, im_self), 0, /* negate */ false);
                     r_im_self = rewrite_args->obj;
-                    r_im_func = r_descr->getAttr(offsetof(BoxedInstanceMethod, func))->setType(RefType::BORROWED);
+                    r_im_func = r_descr->getAttr(offsetof(PyMethodObject, im_self))->setType(RefType::BORROWED);
                 }
             }
         } else {
@@ -1960,7 +1960,7 @@ Box* descriptorClsSpecialCases(GetattrRewriteArgs* rewrite_args, BoxedClass* cls
     }
 
     // Special case: functions
-    if (descr->cls == function_cls || descr->cls == instancemethod_cls) {
+    if (descr->cls == function_cls || descr->cls == &PyMethod_Type) {
         if (rewrite_args)
             r_descr->addAttrGuard(offsetof(Box, cls), (uint64_t)descr->cls);
 
@@ -2250,8 +2250,8 @@ Box* getattrInternalEx(Box* obj, BoxedString* attr, GetattrRewriteArgs* rewrite_
             if (obj->cls->tp_getattro == slot_tp_getattr_hook) {
                 return slotTpGetattrHookInternal<S, rewritable>(obj, attr, rewrite_args, for_call, bind_obj_out,
                                                                 r_bind_obj_out);
-            } else if (obj->cls->tp_getattro == instance_getattro) {
-                return instanceGetattroInternal<S>(obj, attr, rewrite_args);
+                //} else if (obj->cls->tp_getattro == instance_getattro) {
+                //    return instanceGetattroInternal<S>(obj, attr, rewrite_args);
             } else if (obj->cls->tp_getattro == type_getattro) {
                 try {
                     Box* r = getattrInternalGeneric<true, rewritable>(obj, attr, rewrite_args, cls_only, for_call,
@@ -2605,7 +2605,7 @@ Box* getattrInternalGeneric(Box* obj, BoxedString* attr, GetattrRewriteArgs* rew
         if (!IsType) {
             // Look up the val in the object's dictionary and if you find it, return it.
 
-            if (unlikely(rewrite_args && !descr && obj->cls != instancemethod_cls
+            if (unlikely(rewrite_args && !descr && obj->cls != &PyMethod_Type
                          && rewrite_args->rewriter->aggressiveness() < 40
                          && attr->interned_state == SSTATE_INTERNED_IMMORTAL)) {
                 class Helper {
@@ -2762,14 +2762,14 @@ Box* getattrInternalGeneric(Box* obj, BoxedString* attr, GetattrRewriteArgs* rew
         Py_INCREF(descr);
         return descr;
     }
-
-    // TODO this shouldn't go here; it should be in instancemethod_cls->tp_getattr[o]
-    if (obj->cls == instancemethod_cls) {
-        assert(!rewrite_args || !rewrite_args->isSuccessful());
-        return getattrInternalEx<CXX, NOT_REWRITABLE>(static_cast<BoxedInstanceMethod*>(obj)->func, attr, NULL,
-                                                      cls_only, for_call, bind_obj_out, NULL);
-    }
-
+    /*
+        // TODO this shouldn't go here; it should be in &PyMethod_Type->tp_getattr[o]
+        if (obj->cls == &PyMethod_Type) {
+            assert(!rewrite_args || !rewrite_args->isSuccessful());
+            return getattrInternalEx<CXX, NOT_REWRITABLE>(static_cast<BoxedInstanceMethod*>(obj)->func, attr, NULL,
+                                                          cls_only, for_call, bind_obj_out, NULL);
+        }
+    */
     if (rewrite_args)
         rewrite_args->setReturn(NULL, ReturnConvention::NO_RETURN);
     return NULL;
@@ -3134,10 +3134,10 @@ void setattrInternal(Box* obj, BoxedString* attr, STOLEN(Box*) attr_val, Setattr
     Box* setattr = NULL;
     RewriterVar* r_setattr;
 
-    if (tp_setattro == instance_setattro) {
+    /*if (tp_setattro == instance_setattro) {
         instanceSetattroInternal(obj, attr, attr_val, rewrite_args);
         return;
-    } else if (tp_setattro != PyObject_GenericSetAttr) {
+    } else*/ if (tp_setattro != PyObject_GenericSetAttr) {
 // TODO: rewrite these cases?
 #if 0
         static BoxedString* setattr_str = getStaticString("__setattr__");
@@ -3361,9 +3361,9 @@ extern "C" bool nonzero(Box* obj) {
             if (rewriter.get()) {
                 crewrite_args.assertReturnConvention(ReturnConvention::NO_RETURN);
             }
-            ASSERT(obj->cls->is_user_defined || obj->cls->instances_are_nonzero || obj->cls == classobj_cls
+            ASSERT(obj->cls->is_user_defined || obj->cls->instances_are_nonzero || obj->cls == &PyClass_Type
                        || obj->cls == type_cls || isSubclass(obj->cls, Exception) || obj->cls == &PyFile_Type
-                       || obj->cls == &PyTraceBack_Type || obj->cls == instancemethod_cls || obj->cls == module_cls
+                       || obj->cls == &PyTraceBack_Type || obj->cls == &PyMethod_Type || obj->cls == module_cls
                        || obj->cls == capifunc_cls || obj->cls == builtin_function_or_method_cls
                        || obj->cls == &PyMethod_Type || obj->cls == frame_cls || obj->cls == generator_cls
                        || obj->cls == code_cls,
@@ -5056,7 +5056,7 @@ static void getinstclassname(PyObject* inst, char* buf, int bufsize) noexcept {
     Py_XDECREF(klass);
 }
 
-const char* PyEval_GetFuncName(PyObject* func) noexcept {
+extern "C" const char* PyEval_GetFuncName(PyObject* func) noexcept {
     if (PyMethod_Check(func))
         return PyEval_GetFuncName(PyMethod_GET_FUNCTION(func));
     else if (PyFunction_Check(func)) {
@@ -5067,15 +5067,15 @@ const char* PyEval_GetFuncName(PyObject* func) noexcept {
     } else if (PyCFunction_Check(func))
         return ((PyCFunctionObject*)func)->m_ml->ml_name;
     else if (PyClass_Check(func))
-        return PyString_AsString(((BoxedClassobj*)func)->name);
+        return PyString_AsString(((PyClassObject*)func)->cl_name);
     else if (PyInstance_Check(func)) {
-        return PyString_AsString(((BoxedInstance*)func)->inst_cls->name);
+        return PyString_AsString(((PyInstanceObject*)func)->in_class->cl_name);
     } else {
         return func->cls->tp_name;
     }
 }
 
-const char* PyEval_GetFuncDesc(PyObject* func) noexcept {
+extern "C" const char* PyEval_GetFuncDesc(PyObject* func) noexcept {
     if (PyMethod_Check(func))
         return "()";
     else if (PyFunction_Check(func))
@@ -5102,7 +5102,7 @@ Box* runtimeCallInternal(Box* obj, CallRewriteArgs* rewrite_args, ArgPassSpec ar
 
     int npassed_args = argspec.totalPassed();
 
-    if (obj->cls != function_cls && obj->cls != builtin_function_or_method_cls && obj->cls != instancemethod_cls) {
+    if (obj->cls != function_cls && obj->cls != builtin_function_or_method_cls && obj->cls != &PyMethod_Type) {
         // TODO: maybe eventually runtimeCallInternal should just be the default tpp_call?
         if (obj->cls->tpp_call.get(S)) {
             KEEP_ALIVE(obj); // CPython doesn't have this, but I think they should
@@ -5239,17 +5239,17 @@ Box* runtimeCallInternal(Box* obj, CallRewriteArgs* rewrite_args, ArgPassSpec ar
         KEEP_ALIVE(f);
         Box* res = callable(f, rewrite_args, argspec, arg1, arg2, arg3, args, keyword_names);
         return res;
-    } else if (obj->cls == instancemethod_cls) {
-        BoxedInstanceMethod* im = static_cast<BoxedInstanceMethod*>(obj);
+    } else if (obj->cls == &PyMethod_Type) {
+        auto* im = reinterpret_cast<PyMethodObject*>(obj);
 
         RewriterVar* r_im_func = NULL;
         if (rewrite_args) {
-            r_im_func = rewrite_args->obj->getAttr(offsetof(BoxedInstanceMethod, func), Location::any());
+            r_im_func = rewrite_args->obj->getAttr(offsetof(PyMethodObject, im_func), Location::any());
         }
 
         if (rewrite_args && !rewrite_args->func_guarded) {
-            r_im_func->addGuard((intptr_t)im->func);
-            rewrite_args->rewriter->addGCReference(im->func);
+            r_im_func->addGuard((intptr_t)im->im_func);
+            rewrite_args->rewriter->addGCReference(im->im_func);
             rewrite_args->func_guarded = true;
         }
 
@@ -5257,11 +5257,11 @@ Box* runtimeCallInternal(Box* obj, CallRewriteArgs* rewrite_args, ArgPassSpec ar
         // That is, if im->obj is NULL, guard on it being NULL
         // otherwise, guard on it being non-NULL
         if (rewrite_args) {
-            rewrite_args->obj->addAttrGuard(offsetof(BoxedInstanceMethod, obj), 0, im->obj != NULL);
+            rewrite_args->obj->addAttrGuard(offsetof(PyMethodObject, im_self), 0, im->im_self != NULL);
         }
 
-        if (im->obj == NULL) {
-            Box* f = im->func;
+        if (im->im_func == NULL) {
+            Box* f = im->im_func;
             if (rewrite_args) {
                 rewrite_args->obj = r_im_func;
             }
@@ -5317,13 +5317,13 @@ Box* runtimeCallInternal(Box* obj, CallRewriteArgs* rewrite_args, ArgPassSpec ar
 
         RewriterVar* r_bind_obj = NULL;
         if (rewrite_args) {
-            r_bind_obj = rewrite_args->obj->getAttr(offsetof(BoxedInstanceMethod, obj));
+            r_bind_obj = rewrite_args->obj->getAttr(offsetof(PyMethodObject, im_self));
             rewrite_args->obj = r_im_func;
         }
 
         ArgPassSpec new_argspec
-            = bindObjIntoArgs(im->obj, r_bind_obj, rewrite_args, argspec, arg1, arg2, arg3, args, new_args);
-        return runtimeCallInternal<S, rewritable>(im->func, rewrite_args, new_argspec, arg1, arg2, arg3, new_args,
+            = bindObjIntoArgs(im->im_self, r_bind_obj, rewrite_args, argspec, arg1, arg2, arg3, args, new_args);
+        return runtimeCallInternal<S, rewritable>(im->im_func, rewrite_args, new_argspec, arg1, arg2, arg3, new_args,
                                                   keyword_names);
     }
     assert(0);
@@ -6915,7 +6915,7 @@ Box* _typeNew(BoxedClass* metatype, BoxedString* name, BoxedTuple* bases, BoxedD
 
     for (auto tmp : *bases) {
         auto tmptype = tmp->cls;
-        if (tmptype == classobj_cls)
+        if (tmptype == &PyClass_Type)
             continue;
         if (isSubclass(winner, tmptype))
             continue;

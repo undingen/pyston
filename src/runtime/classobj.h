@@ -32,48 +32,6 @@ namespace pyston {
 
 void setupClassobj();
 
-class BoxedClass;
-class BoxedClassobj;
-class BoxedInstance;
-extern "C" {
-extern BoxedClass* classobj_cls, *instance_cls;
-}
-
-class BoxedClassobj : public Box {
-public:
-    HCAttrs attrs;
-
-    BoxedTuple* bases;
-    BoxedString* name;
-
-    Box** weakreflist;
-
-    BoxedClassobj(BoxedString* name, BoxedTuple* bases) : bases(bases), name(name) {
-        Py_INCREF(name);
-        Py_INCREF(bases);
-    }
-
-    static void dealloc(Box* b) noexcept;
-    static int traverse(Box* self, visitproc visit, void* arg) noexcept;
-    static int clear(Box* self) noexcept;
-};
-
-class BoxedInstance : public Box {
-public:
-    HCAttrs attrs;
-
-    BoxedClassobj* inst_cls;
-
-    Box** weakreflist;
-
-    BoxedInstance(BoxedClassobj* inst_cls) : inst_cls(inst_cls) { Py_INCREF(inst_cls); }
-
-    DEFAULT_CLASS(instance_cls);
-
-    static void dealloc(Box* b) noexcept;
-    static int traverse(Box* self, visitproc visit, void* arg) noexcept;
-    static int clear(Box* self) noexcept;
-};
 
 Box* instance_getattro(Box* cls, Box* attr) noexcept;
 int instance_setattro(Box* cls, Box* attr, Box* value) noexcept;
