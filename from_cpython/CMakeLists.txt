@@ -108,6 +108,7 @@ file(GLOB_RECURSE STDOBJECT_SRCS Objects
     bytearrayobject.c
     bytes_methods.c
     capsule.c
+    classobject.c
     cobject.c
     complexobject.c
     descrobject.c
