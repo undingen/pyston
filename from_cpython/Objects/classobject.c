@@ -119,9 +119,8 @@ alloc_error:
         return NULL;
     }
     op->cl_bases = bases;
-    Py_INCREF(dict);
-
     // Pyston change:
+    // Py_INCREF(dict);
     //op->cl_dict = dict;
     PyObject_InitHcAttrs((PyHcAttrs*)&op->hcattrs);
     PyDict_Update(PyObject_GetAttrWrapper((PyObject*)op), dict);
@@ -563,6 +562,7 @@ PyInstance_NewRaw(PyObject *klass, PyObject *dict)
     // inst->in_dict = dict;
     PyObject_InitHcAttrs((PyHcAttrs*)&inst->hcattrs);
     PyDict_Update(PyObject_GetAttrWrapper((PyObject*)inst), dict);
+    Py_DECREF(dict);
     _PyObject_GC_TRACK(inst);
     return (PyObject *)inst;
 }
