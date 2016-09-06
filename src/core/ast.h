@@ -228,8 +228,6 @@ class AST_stmt : public AST {
 public:
     virtual void accept_stmt(ASTStmtVisitor* v) = 0;
 
-    int cxx_exception_count = 0;
-
     AST_stmt(AST_TYPE::AST_TYPE type) : AST(type) {}
 };
 
@@ -242,7 +240,6 @@ public:
 class AST_alias : public AST {
 public:
     InternedString name, asname;
-    int name_vreg = -1, asname_vreg = -1;
 
     virtual void accept(ASTVisitor* v);
 
@@ -745,25 +742,14 @@ public:
     // different bytecodes.
     ScopeInfo::VarScopeType lookup_type;
 
-    // These are only valid for lookup_type == FAST or CLOSURE
-    // The interpreter and baseline JIT store variables with FAST and CLOSURE scopes in an array (vregs) this specifies
-    // the zero based index of this variable inside the vregs array. If uninitialized it's value is -1.
-    int vreg;
-    bool is_kill = false;
-
-    // Only valid for lookup_type == DEREF:
-    DerefInfo deref_info = DerefInfo({ INT_MAX, INT_MAX });
-    // Only valid for lookup_type == CLOSURE:
-    int closure_offset = -1;
-
     virtual void accept(ASTVisitor* v);
 
     AST_Name(InternedString id, AST_TYPE::AST_TYPE ctx_type, int lineno, int col_offset = 0)
         : AST_expr(AST_TYPE::Name, lineno, col_offset),
           ctx_type(ctx_type),
           id(id),
-          lookup_type(ScopeInfo::VarScopeType::UNKNOWN),
-          vreg(-1) {}
+          lookup_type(ScopeInfo::VarScopeType::UNKNOWN) /*,
+          vreg(-1)*/ {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Name;
 };
