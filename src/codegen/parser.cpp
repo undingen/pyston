@@ -65,6 +65,8 @@ private:
     }
 
 public:
+    std::unique_ptr<ASTAllocator> ast_allocator;
+
     void fill() {
         if (unlikely(fp)) {
             memmove(buf, buf + start, end - start);
@@ -76,9 +78,15 @@ public:
         }
     }
 
-    BufferedReader(FILE* fp) : start(0), end(0), fp(fp), data(), intern_pool(NULL) {}
+    BufferedReader(FILE* fp)
+        : start(0), end(0), fp(fp), data(), intern_pool(NULL), ast_allocator(llvm::make_unique<ASTAllocator>()) {}
     BufferedReader(std::vector<char> data, int start_offset = 0)
-        : start(start_offset), end(data.size()), fp(NULL), data(std::move(data)), intern_pool(NULL) {}
+        : start(start_offset),
+          end(data.size()),
+          fp(NULL),
+          data(std::move(data)),
+          intern_pool(NULL),
+          ast_allocator(llvm::make_unique<ASTAllocator>()) {}
 
     int bytesBuffered() { return (end - start); }
 
@@ -1001,7 +1009,7 @@ AST* readASTMisc(BufferedReader* reader) {
     }
 }
 
-AST_Module* parse_string(const char* code, FutureFlags inherited_flags) {
+std::pair<AST_Module*, std::unique_ptr<ASTAllocator>> parse_string(const char* code, FutureFlags inherited_flags) {
     inherited_flags &= ~(CO_NESTED | CO_FUTURE_DIVISION);
 
     PyCompilerFlags cf;
@@ -1013,11 +1021,11 @@ AST_Module* parse_string(const char* code, FutureFlags inherited_flags) {
     if (!mod)
         throwCAPIException();
     assert(mod->kind != Interactive_kind);
-    auto rtn = static_cast<AST_Module*>(cpythonToPystonAST(mod, fn));
-    return rtn;
+    auto t = cpythonToPystonAST(mod, fn);
+    return std::make_pair((AST_Module*)t.first, std::move(t.second));
 }
 
-AST_Module* parse_file(const char* fn, FutureFlags inherited_flags) {
+std::pair<AST_Module*, std::unique_ptr<ASTAllocator>> parse_file(const char* fn, FutureFlags inherited_flags) {
     Timer _t("parsing");
 
     FileHandle fp(fn, "r");
@@ -1029,13 +1037,13 @@ AST_Module* parse_file(const char* fn, FutureFlags inherited_flags) {
     if (!mod)
         throwCAPIException();
     assert(mod->kind != Interactive_kind);
-    auto rtn = static_cast<AST_Module*>(cpythonToPystonAST(mod, fn));
-    return rtn;
+    auto t = cpythonToPystonAST(mod, fn);
+    return std::make_pair((AST_Module*)t.first, std::move(t.second));
 }
 
 // Does at least one of: returns a valid file_data vector, or fills in 'module'
 static std::vector<char> _reparse(const char* fn, const std::string& cache_fn, AST_Module*& module,
-                                  FutureFlags inherited_flags) {
+                                  std::unique_ptr<ASTAllocator>& ast_allocator, FutureFlags inherited_flags) {
     inherited_flags &= ~(CO_NESTED | CO_FUTURE_DIVISION);
     FileHandle cache_fp(cache_fn.c_str(), "w");
 
@@ -1069,7 +1077,9 @@ static std::vector<char> _reparse(const char* fn, const std::string& cache_fn, A
     if (!mod)
         throwCAPIException();
     assert(mod->kind != Interactive_kind);
-    module = static_cast<AST_Module*>(cpythonToPystonAST(mod, fn));
+    auto t = cpythonToPystonAST(mod, fn);
+    module = static_cast<AST_Module*>(t.first);
+    ast_allocator = std::move(t.second);
 
     if (!cache_fp)
         return std::vector<char>();
@@ -1092,7 +1102,7 @@ static std::vector<char> _reparse(const char* fn, const std::string& cache_fn, A
 // Parsing the file is somewhat expensive since we have to shell out to cpython;
 // it's not a huge deal right now, but this caching version can significantly cut down
 // on the startup time (40ms -> 10ms).
-AST_Module* caching_parse_file(const char* fn, FutureFlags inherited_flags) {
+std::pair<AST_Module*, std::unique_ptr<ASTAllocator>> caching_parse_file(const char* fn, FutureFlags inherited_flags) {
     std::ostringstream oss;
 
     UNAVOIDABLE_STAT_TIMER(t0, "us_timer_caching_parse_file");
@@ -1124,9 +1134,10 @@ AST_Module* caching_parse_file(const char* fn, FutureFlags inherited_flags) {
                     if (ferror(cache_fp)) {
                         oss << "encountered io error reading from the file\n";
                         AST_Module* mod = 0;
-                        file_data = _reparse(fn, cache_fn, mod, inherited_flags);
+                        std::unique_ptr<ASTAllocator> ast_allocator;
+                        file_data = _reparse(fn, cache_fn, mod, ast_allocator, inherited_flags);
                         if (mod)
-                            return mod;
+                            return std::make_pair(mod, std::move(ast_allocator));
                         assert(file_data.size());
                     }
                     break;
@@ -1204,7 +1215,7 @@ AST_Module* caching_parse_file(const char* fn, FutureFlags inherited_flags) {
 
             if (rtn && reader->bytesBuffered() == 0) {
                 assert(rtn->type == AST_TYPE::Module);
-                return ast_cast<AST_Module>(rtn);
+                return std::make_pair(ast_cast<AST_Module>(rtn), std::move(reader->ast_allocator));
             }
 
             oss << "returned NULL module\n";
@@ -1226,9 +1237,10 @@ AST_Module* caching_parse_file(const char* fn, FutureFlags inherited_flags) {
             file_data.clear();
 
             AST_Module* mod = 0;
-            file_data = _reparse(fn, cache_fn, mod, inherited_flags);
+            std::unique_ptr<ASTAllocator> ast_allocator;
+            file_data = _reparse(fn, cache_fn, mod, ast_allocator, inherited_flags);
             if (mod)
-                return mod;
+                return std::make_pair(mod, std::move(ast_allocator));
             assert(file_data.size());
         }
     }

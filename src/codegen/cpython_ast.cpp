@@ -64,6 +64,7 @@ private:
     int interactive = 0;
     int nestlevel = 0;
     llvm::StringRef fn;
+    std::unique_ptr<ASTAllocator> ast_allocator;
 
 public:
     Converter(llvm::StringRef fn) : fn(fn) {}
@@ -720,7 +721,8 @@ public:
         return r;
     }
 
-    AST* convert(mod_ty mod) {
+    std::pair<AST*, std::unique_ptr<ASTAllocator>> convert(mod_ty mod) {
+        ast_allocator.reset(new ASTAllocator);
         switch (mod->kind) {
             case Module_kind: {
                 AST_Module* rtn = new AST_Module(llvm::make_unique<InternedStringPool>());
@@ -728,7 +730,7 @@ public:
                 assert(!this->pool);
                 this->pool = rtn->interned_strings.get();
                 convertAll<stmt_ty>(mod->v.Module.body, rtn->body);
-                return rtn;
+                return std::make_pair(rtn, std::move(ast_allocator));
             }
             case Interactive_kind: {
                 this->interactive = 1;
@@ -737,7 +739,7 @@ public:
                 assert(!this->pool);
                 this->pool = rtn->interned_strings.get();
                 convertAll<stmt_ty>(mod->v.Interactive.body, rtn->body);
-                return rtn;
+                return std::make_pair(rtn, std::move(ast_allocator));
             }
             case Expression_kind: {
                 AST_Expression* rtn = new AST_Expression(llvm::make_unique<InternedStringPool>());
@@ -752,7 +754,7 @@ public:
                 rtn_stmt->value = expr;
 
                 rtn->body = rtn_stmt;
-                return rtn;
+                return std::make_pair(rtn, std::move(ast_allocator));
             }
             default:
                 RELEASE_ASSERT(0, "unhandled kind: %d\n", mod->kind);
@@ -760,7 +762,7 @@ public:
     }
 };
 
-AST* cpythonToPystonAST(mod_ty mod, llvm::StringRef fn) {
+std::pair<AST*, std::unique_ptr<ASTAllocator>> cpythonToPystonAST(mod_ty mod, llvm::StringRef fn) {
     Converter c(fn);
     return c.convert(mod);
 }

@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Allocator.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include "analysis/scoping_analysis.h"
@@ -163,6 +164,10 @@ class ASTVisitor;
 class ASTStmtVisitor;
 class AST_keyword;
 class AST_stmt;
+
+struct ASTAllocator {
+    llvm::BumpPtrAllocator allocator;
+};
 
 class AST {
 public:
