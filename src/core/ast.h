@@ -994,59 +994,11 @@ public:
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Yield;
 };
 
-class AST_MakeFunction : public AST_expr {
-public:
-    AST_FunctionDef* function_def;
-
-    virtual void accept(ASTVisitor* v);
-
-    AST_MakeFunction(AST_FunctionDef* fd)
-        : AST_expr(AST_TYPE::MakeFunction, fd->lineno, fd->col_offset), function_def(fd) {}
-
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::MakeFunction;
-};
-
-class AST_MakeClass : public AST_expr {
-public:
-    AST_ClassDef* class_def;
-
-    virtual void accept(ASTVisitor* v);
-
-    AST_MakeClass(AST_ClassDef* cd) : AST_expr(AST_TYPE::MakeClass, cd->lineno, cd->col_offset), class_def(cd) {}
-
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::MakeClass;
-};
-
 
 // AST pseudo-nodes that will get added during CFG-construction.  These don't exist in the input AST, but adding them in
 // lets us avoid creating a completely new IR for this phase
 
 class CFGBlock;
-
-class AST_Branch : public AST_stmt {
-public:
-    AST_expr* test;
-    CFGBlock* iftrue, *iffalse;
-
-    virtual void accept(ASTVisitor* v);
-    virtual void accept_stmt(ASTStmtVisitor* v);
-
-    AST_Branch() : AST_stmt(AST_TYPE::Branch) {}
-
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Branch;
-};
-
-class AST_Jump : public AST_stmt {
-public:
-    CFGBlock* target;
-
-    virtual void accept(ASTVisitor* v);
-    virtual void accept_stmt(ASTStmtVisitor* v);
-
-    AST_Jump() : AST_stmt(AST_TYPE::Jump) {}
-
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Jump;
-};
 
 class AST_ClsAttribute : public AST_expr {
 public:
@@ -1175,11 +1127,6 @@ public:
     virtual bool visit_while(AST_While* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_with(AST_With* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_yield(AST_Yield* node) { RELEASE_ASSERT(0, ""); }
-
-    virtual bool visit_makeclass(AST_MakeClass* node) { RELEASE_ASSERT(0, ""); }
-    virtual bool visit_makefunction(AST_MakeFunction* node) { RELEASE_ASSERT(0, ""); }
-    virtual bool visit_branch(AST_Branch* node) { RELEASE_ASSERT(0, ""); }
-    virtual bool visit_jump(AST_Jump* node) { RELEASE_ASSERT(0, ""); }
 };
 
 class NoopASTVisitor : public ASTVisitor {
@@ -1248,11 +1195,6 @@ public:
     virtual bool visit_while(AST_While* node) { return false; }
     virtual bool visit_with(AST_With* node) { return false; }
     virtual bool visit_yield(AST_Yield* node) { return false; }
-
-    virtual bool visit_branch(AST_Branch* node) { return false; }
-    virtual bool visit_jump(AST_Jump* node) { return false; }
-    virtual bool visit_makeclass(AST_MakeClass* node) { return false; }
-    virtual bool visit_makefunction(AST_MakeFunction* node) { return false; }
 };
 
 class ASTStmtVisitor {
@@ -1284,9 +1226,6 @@ public:
     virtual void visit_tryfinally(AST_TryFinally* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_while(AST_While* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_with(AST_With* node) { RELEASE_ASSERT(0, ""); }
-
-    virtual void visit_branch(AST_Branch* node) { RELEASE_ASSERT(0, ""); }
-    virtual void visit_jump(AST_Jump* node) { RELEASE_ASSERT(0, ""); }
 };
 
 void print_ast(AST* ast);
@@ -1363,11 +1302,6 @@ public:
     virtual bool visit_while(AST_While* node);
     virtual bool visit_with(AST_With* node);
     virtual bool visit_yield(AST_Yield* node);
-
-    virtual bool visit_branch(AST_Branch* node);
-    virtual bool visit_jump(AST_Jump* node);
-    virtual bool visit_makefunction(AST_MakeFunction* node);
-    virtual bool visit_makeclass(AST_MakeClass* node);
 };
 
 // Given an AST node, return a vector of the node plus all its descendents.

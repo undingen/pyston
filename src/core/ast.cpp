@@ -887,50 +887,12 @@ void AST_Yield::accept(ASTVisitor* v) {
         value->accept(v);
 }
 
-void AST_Branch::accept(ASTVisitor* v) {
-    bool skip = v->visit_branch(this);
-    if (skip)
-        return;
-
-    test->accept(v);
-}
-
-void AST_Branch::accept_stmt(ASTStmtVisitor* v) {
-    v->visit_branch(this);
-}
-
-void AST_Jump::accept(ASTVisitor* v) {
-    bool skip = v->visit_jump(this);
-    if (skip)
-        return;
-}
-
-void AST_Jump::accept_stmt(ASTStmtVisitor* v) {
-    v->visit_jump(this);
-}
-
 void AST_ClsAttribute::accept(ASTVisitor* v) {
     bool skip = v->visit_clsattribute(this);
     if (skip)
         return;
 
     value->accept(v);
-}
-
-void AST_MakeFunction::accept(ASTVisitor* v) {
-    bool skip = v->visit_makefunction(this);
-    if (skip)
-        return;
-
-    function_def->accept(v);
-}
-
-void AST_MakeClass::accept(ASTVisitor* v) {
-    bool skip = v->visit_makeclass(this);
-    if (skip)
-        return;
-
-    class_def->accept(v);
 }
 
 void print_ast(AST* ast) {
@@ -1827,18 +1789,6 @@ bool ASTPrintVisitor::visit_yield(AST_Yield* node) {
     return true;
 }
 
-bool ASTPrintVisitor::visit_branch(AST_Branch* node) {
-    stream << "if ";
-    node->test->accept(this);
-    stream << " goto " << node->iftrue->idx << " else goto " << node->iffalse->idx;
-    return true;
-}
-
-bool ASTPrintVisitor::visit_jump(AST_Jump* node) {
-    stream << "goto " << node->target->idx;
-    return true;
-}
-
 bool ASTPrintVisitor::visit_clsattribute(AST_ClsAttribute* node) {
     // printf("getclsattr(");
     // node->value->accept(this);
@@ -1846,16 +1796,6 @@ bool ASTPrintVisitor::visit_clsattribute(AST_ClsAttribute* node) {
     node->value->accept(this);
     stream << ":" << node->attr.s();
     return true;
-}
-
-bool ASTPrintVisitor::visit_makefunction(AST_MakeFunction* node) {
-    stream << "make_";
-    return false;
-}
-
-bool ASTPrintVisitor::visit_makeclass(AST_MakeClass* node) {
-    stream << "make_";
-    return false;
 }
 
 namespace {
@@ -2102,24 +2042,7 @@ public:
         return false;
     }
 
-    virtual bool visit_branch(AST_Branch* node) {
-        output->push_back(node);
-        return false;
-    }
-    virtual bool visit_jump(AST_Jump* node) {
-        output->push_back(node);
-        return false;
-    }
     virtual bool visit_clsattribute(AST_ClsAttribute* node) {
-        output->push_back(node);
-        return false;
-    }
-
-    virtual bool visit_makeclass(AST_MakeClass* node) {
-        output->push_back(node);
-        return false;
-    }
-    virtual bool visit_makefunction(AST_MakeFunction* node) {
         output->push_back(node);
         return false;
     }
