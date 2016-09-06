@@ -607,7 +607,6 @@ private:
     void visit_invoke(BST_Invoke* node) override { node->stmt->accept_stmt(this); }
 
     void visit_jump(BST_Jump* node) override {}
-    void visit_pass(BST_Pass* node) override {}
 
     void visit_print(BST_Print* node) override {
         if (node->dest)

@@ -281,7 +281,6 @@ public:
     virtual bool visit_global(BST_Global* node) { return true; }
     virtual bool visit_invoke(BST_Invoke* node) { return false; }
     virtual bool visit_jump(BST_Jump* node) { return true; }
-    virtual bool visit_pass(BST_Pass* node) { return true; }
     virtual bool visit_print(BST_Print* node) { return true; }
     virtual bool visit_raise(BST_Raise* node) { return true; }
     virtual bool visit_return(BST_Return* node) { return true; }

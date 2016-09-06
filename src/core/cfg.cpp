@@ -2974,12 +2974,6 @@ public:
         return true;
     }
 
-    bool visit_lambda(BST_Lambda* node) override {
-        node->args->accept(this);
-        return true;
-    }
-
-
     bool isNameUsedInSingleBlock(InternedString id) {
         assert(step != TrackBlockUsage);
         assert(sym_blocks_map.count(id));

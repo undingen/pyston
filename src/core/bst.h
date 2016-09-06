@@ -330,16 +330,6 @@ public:
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::BinOp;
 };
 
-class BST_Break : public BST_stmt {
-public:
-    virtual void accept(BSTVisitor* v);
-    virtual void accept_stmt(StmtVisitor* v);
-
-    BST_Break() : BST_stmt(BST_TYPE::Break) {}
-
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Break;
-};
-
 class BST_Call : public BST_expr {
 public:
     BST_expr* starargs, *kwargs, *func;
@@ -384,16 +374,6 @@ public:
     BST_ClassDef() : BST_stmt(BST_TYPE::ClassDef) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::ClassDef;
-};
-
-class BST_Continue : public BST_stmt {
-public:
-    virtual void accept(BSTVisitor* v);
-    virtual void accept_stmt(StmtVisitor* v);
-
-    BST_Continue() : BST_stmt(BST_TYPE::Continue) {}
-
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Continue;
 };
 
 class BST_Dict : public BST_expr {
@@ -442,19 +422,6 @@ public:
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Expr;
 };
 
-class BST_ExceptHandler : public BST {
-public:
-    std::vector<BST_stmt*> body;
-    BST_expr* type; // can be NULL for a bare "except:" clause
-    BST_expr* name; // can be NULL if the exception doesn't get a name
-
-    virtual void accept(BSTVisitor* v);
-
-    BST_ExceptHandler() : BST(BST_TYPE::ExceptHandler) {}
-
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::ExceptHandler;
-};
-
 class BST_Exec : public BST_stmt {
 public:
     BST_expr* body;
@@ -497,19 +464,6 @@ public:
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::ExtSlice;
 };
 
-class BST_For : public BST_stmt {
-public:
-    std::vector<BST_stmt*> body, orelse;
-    BST_expr* target, *iter;
-
-    virtual void accept(BSTVisitor* v);
-    virtual void accept_stmt(StmtVisitor* v);
-
-    BST_For() : BST_stmt(BST_TYPE::For) {}
-
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::For;
-};
-
 class BST_FunctionDef : public BST_stmt {
 public:
     std::vector<BST_expr*> decorator_list;
@@ -538,31 +492,6 @@ public:
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Global;
 };
 
-class BST_If : public BST_stmt {
-public:
-    std::vector<BST_stmt*> body, orelse;
-    BST_expr* test;
-
-    virtual void accept(BSTVisitor* v);
-    virtual void accept_stmt(StmtVisitor* v);
-
-    BST_If() : BST_stmt(BST_TYPE::If) {}
-
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::If;
-};
-
-class BST_IfExp : public BST_expr {
-public:
-    BST_expr* body, *test, *orelse;
-
-    virtual void accept(BSTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
-
-    BST_IfExp() : BST_expr(BST_TYPE::IfExp) {}
-
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::IfExp;
-};
-
 class BST_Index : public BST_slice {
 public:
     BST_expr* value;
@@ -586,19 +515,6 @@ public:
     BST_keyword() : BST(BST_TYPE::keyword) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::keyword;
-};
-
-class BST_Lambda : public BST_expr {
-public:
-    BST_arguments* args;
-    BST_expr* body;
-
-    virtual void accept(BSTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
-
-    BST_Lambda() : BST_expr(BST_TYPE::Lambda) {}
-
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Lambda;
 };
 
 class BST_List : public BST_expr {
@@ -627,20 +543,6 @@ public:
         : BST(BST_TYPE::Module), interned_strings(std::move(interned_strings)) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Module;
-};
-
-class BST_Suite : public BST {
-public:
-    std::unique_ptr<InternedStringPool> interned_strings;
-
-    std::vector<BST_stmt*> body;
-
-    virtual void accept(BSTVisitor* v);
-
-    BST_Suite(std::unique_ptr<InternedStringPool> interned_strings)
-        : BST(BST_TYPE::Suite), interned_strings(std::move(interned_strings)) {}
-
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Suite;
 };
 
 class BST_Name : public BST_expr {
@@ -706,16 +608,6 @@ public:
     BST_Repr() : BST_expr(BST_TYPE::Repr) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Repr;
-};
-
-class BST_Pass : public BST_stmt {
-public:
-    virtual void accept(BSTVisitor* v);
-    virtual void accept_stmt(StmtVisitor* v);
-
-    BST_Pass() : BST_stmt(BST_TYPE::Pass) {}
-
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Pass;
 };
 
 class BST_Print : public BST_stmt {
@@ -815,31 +707,6 @@ public:
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Subscript;
 };
 
-class BST_TryExcept : public BST_stmt {
-public:
-    std::vector<BST_stmt*> body, orelse;
-    std::vector<BST_ExceptHandler*> handlers;
-
-    virtual void accept(BSTVisitor* v);
-    virtual void accept_stmt(StmtVisitor* v);
-
-    BST_TryExcept() : BST_stmt(BST_TYPE::TryExcept) {}
-
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::TryExcept;
-};
-
-class BST_TryFinally : public BST_stmt {
-public:
-    std::vector<BST_stmt*> body, finalbody;
-
-    virtual void accept(BSTVisitor* v);
-    virtual void accept_stmt(StmtVisitor* v);
-
-    BST_TryFinally() : BST_stmt(BST_TYPE::TryFinally) {}
-
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::TryFinally;
-};
-
 class BST_Tuple : public BST_expr {
 public:
     std::vector<BST_expr*> elts;
@@ -864,32 +731,6 @@ public:
     BST_UnaryOp() : BST_expr(BST_TYPE::UnaryOp) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::UnaryOp;
-};
-
-class BST_While : public BST_stmt {
-public:
-    BST_expr* test;
-    std::vector<BST_stmt*> body, orelse;
-
-    virtual void accept(BSTVisitor* v);
-    virtual void accept_stmt(StmtVisitor* v);
-
-    BST_While() : BST_stmt(BST_TYPE::While) {}
-
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::While;
-};
-
-class BST_With : public BST_stmt {
-public:
-    BST_expr* optional_vars, *context_expr;
-    std::vector<BST_stmt*> body;
-
-    virtual void accept(BSTVisitor* v);
-    virtual void accept_stmt(StmtVisitor* v);
-
-    BST_With() : BST_stmt(BST_TYPE::With) {}
-
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::With;
 };
 
 class BST_Yield : public BST_expr {
@@ -1037,36 +878,27 @@ public:
     virtual bool visit_augbinop(BST_AugBinOp* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_attribute(BST_Attribute* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_binop(BST_BinOp* node) { RELEASE_ASSERT(0, ""); }
-    virtual bool visit_break(BST_Break* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_call(BST_Call* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_clsattribute(BST_ClsAttribute* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_compare(BST_Compare* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_classdef(BST_ClassDef* node) { RELEASE_ASSERT(0, ""); }
-    virtual bool visit_continue(BST_Continue* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_delete(BST_Delete* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_dict(BST_Dict* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_ellipsis(BST_Ellipsis* node) { RELEASE_ASSERT(0, ""); }
-    virtual bool visit_excepthandler(BST_ExceptHandler* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_exec(BST_Exec* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_expr(BST_Expr* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_expression(BST_Expression* node) { RELEASE_ASSERT(0, ""); }
-    virtual bool visit_suite(BST_Suite* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_extslice(BST_ExtSlice* node) { RELEASE_ASSERT(0, ""); }
-    virtual bool visit_for(BST_For* node) { RELEASE_ASSERT(0, ""); }
-    virtual bool visit_functiondef(BST_FunctionDef* node) { RELEASE_ASSERT(0, "f"); }
+    virtual bool visit_functiondef(BST_FunctionDef* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_global(BST_Global* node) { RELEASE_ASSERT(0, ""); }
-    virtual bool visit_if(BST_If* node) { RELEASE_ASSERT(0, ""); }
-    virtual bool visit_ifexp(BST_IfExp* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_index(BST_Index* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_invoke(BST_Invoke* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_keyword(BST_keyword* node) { RELEASE_ASSERT(0, ""); }
-    virtual bool visit_lambda(BST_Lambda* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_langprimitive(BST_LangPrimitive* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_list(BST_List* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_module(BST_Module* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_name(BST_Name* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_num(BST_Num* node) { RELEASE_ASSERT(0, ""); }
-    virtual bool visit_pass(BST_Pass* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_print(BST_Print* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_raise(BST_Raise* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_repr(BST_Repr* node) { RELEASE_ASSERT(0, ""); }
@@ -1075,12 +907,8 @@ public:
     virtual bool visit_slice(BST_Slice* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_str(BST_Str* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_subscript(BST_Subscript* node) { RELEASE_ASSERT(0, ""); }
-    virtual bool visit_tryexcept(BST_TryExcept* node) { RELEASE_ASSERT(0, ""); }
-    virtual bool visit_tryfinally(BST_TryFinally* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_tuple(BST_Tuple* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_unaryop(BST_UnaryOp* node) { RELEASE_ASSERT(0, ""); }
-    virtual bool visit_while(BST_While* node) { RELEASE_ASSERT(0, ""); }
-    virtual bool visit_with(BST_With* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_yield(BST_Yield* node) { RELEASE_ASSERT(0, ""); }
 
     virtual bool visit_makeclass(BST_MakeClass* node) { RELEASE_ASSERT(0, ""); }
@@ -1101,36 +929,27 @@ public:
     virtual bool visit_augbinop(BST_AugBinOp* node) { return false; }
     virtual bool visit_attribute(BST_Attribute* node) { return false; }
     virtual bool visit_binop(BST_BinOp* node) { return false; }
-    virtual bool visit_break(BST_Break* node) { return false; }
     virtual bool visit_call(BST_Call* node) { return false; }
     virtual bool visit_clsattribute(BST_ClsAttribute* node) { return false; }
     virtual bool visit_compare(BST_Compare* node) { return false; }
     virtual bool visit_classdef(BST_ClassDef* node) { return false; }
-    virtual bool visit_continue(BST_Continue* node) { return false; }
     virtual bool visit_delete(BST_Delete* node) { return false; }
     virtual bool visit_dict(BST_Dict* node) { return false; }
     virtual bool visit_ellipsis(BST_Ellipsis* node) { return false; }
-    virtual bool visit_excepthandler(BST_ExceptHandler* node) { return false; }
     virtual bool visit_exec(BST_Exec* node) { return false; }
     virtual bool visit_expr(BST_Expr* node) { return false; }
     virtual bool visit_expression(BST_Expression* node) { return false; }
-    virtual bool visit_suite(BST_Suite* node) { return false; }
     virtual bool visit_extslice(BST_ExtSlice* node) { return false; }
-    virtual bool visit_for(BST_For* node) { return false; }
     virtual bool visit_functiondef(BST_FunctionDef* node) { return false; }
     virtual bool visit_global(BST_Global* node) { return false; }
-    virtual bool visit_if(BST_If* node) { return false; }
-    virtual bool visit_ifexp(BST_IfExp* node) { return false; }
     virtual bool visit_index(BST_Index* node) { return false; }
     virtual bool visit_invoke(BST_Invoke* node) { return false; }
     virtual bool visit_keyword(BST_keyword* node) { return false; }
-    virtual bool visit_lambda(BST_Lambda* node) { return false; }
     virtual bool visit_langprimitive(BST_LangPrimitive* node) { return false; }
     virtual bool visit_list(BST_List* node) { return false; }
     virtual bool visit_module(BST_Module* node) { return false; }
     virtual bool visit_name(BST_Name* node) { return false; }
     virtual bool visit_num(BST_Num* node) { return false; }
-    virtual bool visit_pass(BST_Pass* node) { return false; }
     virtual bool visit_print(BST_Print* node) { return false; }
     virtual bool visit_raise(BST_Raise* node) { return false; }
     virtual bool visit_repr(BST_Repr* node) { return false; }
@@ -1139,12 +958,8 @@ public:
     virtual bool visit_slice(BST_Slice* node) { return false; }
     virtual bool visit_str(BST_Str* node) { return false; }
     virtual bool visit_subscript(BST_Subscript* node) { return false; }
-    virtual bool visit_tryexcept(BST_TryExcept* node) { return false; }
-    virtual bool visit_tryfinally(BST_TryFinally* node) { return false; }
     virtual bool visit_tuple(BST_Tuple* node) { return false; }
     virtual bool visit_unaryop(BST_UnaryOp* node) { return false; }
-    virtual bool visit_while(BST_While* node) { return false; }
-    virtual bool visit_with(BST_With* node) { return false; }
     virtual bool visit_yield(BST_Yield* node) { return false; }
 
     virtual bool visit_branch(BST_Branch* node) { return false; }
@@ -1165,8 +980,6 @@ public:
     virtual void* visit_clsattribute(BST_ClsAttribute* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_compare(BST_Compare* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_dict(BST_Dict* node) { RELEASE_ASSERT(0, ""); }
-    virtual void* visit_ifexp(BST_IfExp* node) { RELEASE_ASSERT(0, ""); }
-    virtual void* visit_lambda(BST_Lambda* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_langprimitive(BST_LangPrimitive* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_list(BST_List* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_name(BST_Name* node) { RELEASE_ASSERT(0, ""); }
@@ -1190,25 +1003,16 @@ public:
     virtual void visit_assert(BST_Assert* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_assign(BST_Assign* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_augassign(BST_AugAssign* node) { RELEASE_ASSERT(0, ""); }
-    virtual void visit_break(BST_Break* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_classdef(BST_ClassDef* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_delete(BST_Delete* node) { RELEASE_ASSERT(0, ""); }
-    virtual void visit_continue(BST_Continue* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_exec(BST_Exec* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_expr(BST_Expr* node) { RELEASE_ASSERT(0, ""); }
-    virtual void visit_for(BST_For* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_functiondef(BST_FunctionDef* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_global(BST_Global* node) { RELEASE_ASSERT(0, ""); }
-    virtual void visit_if(BST_If* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_invoke(BST_Invoke* node) { RELEASE_ASSERT(0, ""); }
-    virtual void visit_pass(BST_Pass* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_print(BST_Print* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_raise(BST_Raise* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_return(BST_Return* node) { RELEASE_ASSERT(0, ""); }
-    virtual void visit_tryexcept(BST_TryExcept* node) { RELEASE_ASSERT(0, ""); }
-    virtual void visit_tryfinally(BST_TryFinally* node) { RELEASE_ASSERT(0, ""); }
-    virtual void visit_while(BST_While* node) { RELEASE_ASSERT(0, ""); }
-    virtual void visit_with(BST_With* node) { RELEASE_ASSERT(0, ""); }
 
     virtual void visit_branch(BST_Branch* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_jump(BST_Jump* node) { RELEASE_ASSERT(0, ""); }
@@ -1243,36 +1047,27 @@ public:
     virtual bool visit_augbinop(BST_AugBinOp* node);
     virtual bool visit_attribute(BST_Attribute* node);
     virtual bool visit_binop(BST_BinOp* node);
-    virtual bool visit_break(BST_Break* node);
     virtual bool visit_call(BST_Call* node);
     virtual bool visit_compare(BST_Compare* node);
     virtual bool visit_classdef(BST_ClassDef* node);
     virtual bool visit_clsattribute(BST_ClsAttribute* node);
-    virtual bool visit_continue(BST_Continue* node);
     virtual bool visit_delete(BST_Delete* node);
     virtual bool visit_dict(BST_Dict* node);
     virtual bool visit_ellipsis(BST_Ellipsis* node);
-    virtual bool visit_excepthandler(BST_ExceptHandler* node);
     virtual bool visit_exec(BST_Exec* node);
     virtual bool visit_expr(BST_Expr* node);
     virtual bool visit_expression(BST_Expression* node);
-    virtual bool visit_suite(BST_Suite* node);
     virtual bool visit_extslice(BST_ExtSlice* node);
-    virtual bool visit_for(BST_For* node);
     virtual bool visit_functiondef(BST_FunctionDef* node);
     virtual bool visit_global(BST_Global* node);
-    virtual bool visit_if(BST_If* node);
-    virtual bool visit_ifexp(BST_IfExp* node);
     virtual bool visit_index(BST_Index* node);
     virtual bool visit_invoke(BST_Invoke* node);
     virtual bool visit_keyword(BST_keyword* node);
-    virtual bool visit_lambda(BST_Lambda* node);
     virtual bool visit_langprimitive(BST_LangPrimitive* node);
     virtual bool visit_list(BST_List* node);
     virtual bool visit_module(BST_Module* node);
     virtual bool visit_name(BST_Name* node);
     virtual bool visit_num(BST_Num* node);
-    virtual bool visit_pass(BST_Pass* node);
     virtual bool visit_print(BST_Print* node);
     virtual bool visit_raise(BST_Raise* node);
     virtual bool visit_repr(BST_Repr* node);
@@ -1282,11 +1077,7 @@ public:
     virtual bool visit_str(BST_Str* node);
     virtual bool visit_subscript(BST_Subscript* node);
     virtual bool visit_tuple(BST_Tuple* node);
-    virtual bool visit_tryexcept(BST_TryExcept* node);
-    virtual bool visit_tryfinally(BST_TryFinally* node);
     virtual bool visit_unaryop(BST_UnaryOp* node);
-    virtual bool visit_while(BST_While* node);
-    virtual bool visit_with(BST_With* node);
     virtual bool visit_yield(BST_Yield* node);
 
     virtual bool visit_branch(BST_Branch* node);

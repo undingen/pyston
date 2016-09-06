@@ -135,16 +135,6 @@ void* BST_BinOp::accept_expr(ExprVisitor* v) {
     return v->visit_binop(this);
 }
 
-void BST_Break::accept(BSTVisitor* v) {
-    bool skip = v->visit_break(this);
-    if (skip)
-        return;
-}
-
-void BST_Break::accept_stmt(StmtVisitor* v) {
-    v->visit_break(this);
-}
-
 void BST_Call::accept(BSTVisitor* v) {
     bool skip = v->visit_call(this);
     if (skip)
@@ -190,16 +180,6 @@ void BST_ClassDef::accept_stmt(StmtVisitor* v) {
     v->visit_classdef(this);
 }
 
-void BST_Continue::accept(BSTVisitor* v) {
-    bool skip = v->visit_continue(this);
-    if (skip)
-        return;
-}
-
-void BST_Continue::accept_stmt(StmtVisitor* v) {
-    v->visit_continue(this);
-}
-
 void BST_Delete::accept(BSTVisitor* v) {
     bool skip = v->visit_delete(this);
     if (skip)
@@ -235,18 +215,6 @@ void BST_Ellipsis::accept(BSTVisitor* v) {
 
 void* BST_Ellipsis::accept_slice(SliceVisitor* v) {
     return v->visit_ellipsis(this);
-}
-
-void BST_ExceptHandler::accept(BSTVisitor* v) {
-    bool skip = v->visit_excepthandler(this);
-    if (skip)
-        return;
-
-    if (type)
-        type->accept(v);
-    if (name)
-        name->accept(v);
-    visitVector(body, v);
 }
 
 void BST_Exec::accept(BSTVisitor* v) {
@@ -290,21 +258,6 @@ void* BST_ExtSlice::accept_slice(SliceVisitor* v) {
     return v->visit_extslice(this);
 }
 
-void BST_For::accept(BSTVisitor* v) {
-    bool skip = v->visit_for(this);
-    if (skip)
-        return;
-
-    iter->accept(v);
-    target->accept(v);
-    visitVector(body, v);
-    visitVector(orelse, v);
-}
-
-void BST_For::accept_stmt(StmtVisitor* v) {
-    v->visit_for(this);
-}
-
 void BST_FunctionDef::accept(BSTVisitor* v) {
     bool skip = v->visit_functiondef(this);
     if (skip)
@@ -327,34 +280,6 @@ void BST_Global::accept(BSTVisitor* v) {
 
 void BST_Global::accept_stmt(StmtVisitor* v) {
     v->visit_global(this);
-}
-
-void BST_If::accept(BSTVisitor* v) {
-    bool skip = v->visit_if(this);
-    if (skip)
-        return;
-
-    test->accept(v);
-    visitVector(body, v);
-    visitVector(orelse, v);
-}
-
-void BST_If::accept_stmt(StmtVisitor* v) {
-    v->visit_if(this);
-}
-
-void BST_IfExp::accept(BSTVisitor* v) {
-    bool skip = v->visit_ifexp(this);
-    if (skip)
-        return;
-
-    this->test->accept(v);
-    this->body->accept(v);
-    this->orelse->accept(v);
-}
-
-void* BST_IfExp::accept_expr(ExprVisitor* v) {
-    return v->visit_ifexp(this);
 }
 
 void BST_Index::accept(BSTVisitor* v) {
@@ -387,19 +312,6 @@ void BST_keyword::accept(BSTVisitor* v) {
         return;
 
     value->accept(v);
-}
-
-void BST_Lambda::accept(BSTVisitor* v) {
-    bool skip = v->visit_lambda(this);
-    if (skip)
-        return;
-
-    args->accept(v);
-    body->accept(v);
-}
-
-void* BST_Lambda::accept_expr(ExprVisitor* v) {
-    return v->visit_lambda(this);
 }
 
 void BST_LangPrimitive::accept(BSTVisitor* v) {
@@ -442,14 +354,6 @@ void BST_Expression::accept(BSTVisitor* v) {
     body->accept(v);
 }
 
-void BST_Suite::accept(BSTVisitor* v) {
-    bool skip = v->visit_suite(this);
-    if (skip)
-        return;
-
-    visitVector(body, v);
-}
-
 void BST_Name::accept(BSTVisitor* v) {
     bool skip = v->visit_name(this);
 }
@@ -464,14 +368,6 @@ void BST_Num::accept(BSTVisitor* v) {
 
 void* BST_Num::accept_expr(ExprVisitor* v) {
     return v->visit_num(this);
-}
-
-void BST_Pass::accept(BSTVisitor* v) {
-    bool skip = v->visit_pass(this);
-}
-
-void BST_Pass::accept_stmt(StmtVisitor* v) {
-    v->visit_pass(this);
 }
 
 void BST_Print::accept(BSTVisitor* v) {
@@ -582,33 +478,6 @@ void* BST_Subscript::accept_expr(ExprVisitor* v) {
     return v->visit_subscript(this);
 }
 
-void BST_TryExcept::accept(BSTVisitor* v) {
-    bool skip = v->visit_tryexcept(this);
-    if (skip)
-        return;
-
-    visitVector(body, v);
-    visitVector(orelse, v);
-    visitVector(handlers, v);
-}
-
-void BST_TryExcept::accept_stmt(StmtVisitor* v) {
-    v->visit_tryexcept(this);
-}
-
-void BST_TryFinally::accept(BSTVisitor* v) {
-    bool skip = v->visit_tryfinally(this);
-    if (skip)
-        return;
-
-    visitVector(body, v);
-    visitVector(finalbody, v);
-}
-
-void BST_TryFinally::accept_stmt(StmtVisitor* v) {
-    v->visit_tryfinally(this);
-}
-
 void BST_Tuple::accept(BSTVisitor* v) {
     bool skip = v->visit_tuple(this);
     if (skip)
@@ -631,35 +500,6 @@ void BST_UnaryOp::accept(BSTVisitor* v) {
 
 void* BST_UnaryOp::accept_expr(ExprVisitor* v) {
     return v->visit_unaryop(this);
-}
-
-void BST_While::accept(BSTVisitor* v) {
-    bool skip = v->visit_while(this);
-    if (skip)
-        return;
-
-    test->accept(v);
-    visitVector(body, v);
-    visitVector(orelse, v);
-}
-
-void BST_While::accept_stmt(StmtVisitor* v) {
-    v->visit_while(this);
-}
-
-void BST_With::accept(BSTVisitor* v) {
-    bool skip = v->visit_with(this);
-    if (skip)
-        return;
-
-    context_expr->accept(v);
-    if (optional_vars)
-        optional_vars->accept(v);
-    visitVector(body, v);
-}
-
-void BST_With::accept_stmt(StmtVisitor* v) {
-    v->visit_with(this);
 }
 
 void BST_Yield::accept(BSTVisitor* v) {
@@ -845,11 +685,6 @@ bool PrintVisitor::visit_binop(BST_BinOp* node) {
     return true;
 }
 
-bool PrintVisitor::visit_break(BST_Break* node) {
-    stream << "break";
-    return true;
-}
-
 bool PrintVisitor::visit_call(BST_Call* node) {
     node->func->accept(this);
     stream << "(";
@@ -922,11 +757,6 @@ bool PrintVisitor::visit_classdef(BST_ClassDef* node) {
     return true;
 }
 
-bool PrintVisitor::visit_continue(BST_Continue* node) {
-    stream << "continue";
-    return true;
-}
-
 bool PrintVisitor::visit_delete(BST_Delete* node) {
     stream << "del ";
     node->target->accept(this);
@@ -948,28 +778,6 @@ bool PrintVisitor::visit_dict(BST_Dict* node) {
 
 bool PrintVisitor::visit_ellipsis(BST_Ellipsis*) {
     stream << "...";
-    return true;
-}
-
-bool PrintVisitor::visit_excepthandler(BST_ExceptHandler* node) {
-    stream << "except";
-    if (node->type) {
-        stream << " ";
-        node->type->accept(this);
-    }
-    if (node->name) {
-        stream << " as ";
-        node->name->accept(this);
-    }
-    stream << ":\n";
-
-    indent += 4;
-    for (BST* subnode : node->body) {
-        printIndent();
-        subnode->accept(this);
-        stream << "\n";
-    }
-    indent -= 4;
     return true;
 }
 
@@ -1000,11 +808,6 @@ bool PrintVisitor::visit_extslice(BST_ExtSlice* node) {
             stream << ", ";
         node->dims[i]->accept(this);
     }
-    return true;
-}
-
-bool PrintVisitor::visit_for(BST_For* node) {
-    stream << "<for loop>\n";
     return true;
 }
 
@@ -1050,53 +853,6 @@ bool PrintVisitor::visit_global(BST_Global* node) {
     return true;
 }
 
-bool PrintVisitor::visit_if(BST_If* node) {
-    stream << "if ";
-    node->test->accept(this);
-    stream << ":\n";
-
-    indent += 4;
-    for (int i = 0; i < node->body.size(); i++) {
-        printIndent();
-        node->body[i]->accept(this);
-        stream << "\n";
-    }
-    indent -= 4;
-
-    if (node->orelse.size()) {
-        printIndent();
-        bool elif = false;
-
-        if (node->orelse.size() == 1 && node->orelse[0]->type == BST_TYPE::If)
-            elif = true;
-
-        if (elif) {
-            stream << "el";
-        } else {
-            stream << "else:\n";
-            indent += 4;
-        }
-        for (int i = 0; i < node->orelse.size(); i++) {
-            if (i)
-                stream << "\n";
-            printIndent();
-            node->orelse[i]->accept(this);
-        }
-        if (!elif)
-            indent -= 4;
-    }
-    return true;
-}
-
-bool PrintVisitor::visit_ifexp(BST_IfExp* node) {
-    node->body->accept(this);
-    stream << " if ";
-    node->test->accept(this);
-    stream << " else ";
-    node->orelse->accept(this);
-    return true;
-}
-
 bool PrintVisitor::visit_index(BST_Index* node) {
     return false;
 }
@@ -1104,14 +860,6 @@ bool PrintVisitor::visit_index(BST_Index* node) {
 bool PrintVisitor::visit_invoke(BST_Invoke* node) {
     stream << "invoke " << node->normal_dest->idx << " " << node->exc_dest->idx << ": ";
     node->stmt->accept(this);
-    return true;
-}
-
-bool PrintVisitor::visit_lambda(BST_Lambda* node) {
-    stream << "lambda ";
-    node->args->accept(this);
-    stream << ": ";
-    node->body->accept(this);
     return true;
 }
 
@@ -1202,15 +950,6 @@ bool PrintVisitor::visit_expression(BST_Expression* node) {
     return true;
 }
 
-bool PrintVisitor::visit_suite(BST_Suite* node) {
-    for (int i = 0; i < node->body.size(); i++) {
-        printIndent();
-        node->body[i]->accept(this);
-        stream << "\n";
-    }
-    return true;
-}
-
 bool PrintVisitor::visit_name(BST_Name* node) {
     stream << node->id.s();
 #if 0
@@ -1247,11 +986,6 @@ bool PrintVisitor::visit_num(BST_Num* node) {
         RELEASE_ASSERT(0, "");
     }
     return false;
-}
-
-bool PrintVisitor::visit_pass(BST_Pass* node) {
-    stream << "pass";
-    return true;
 }
 
 bool PrintVisitor::visit_print(BST_Print* node) {
@@ -1357,70 +1091,6 @@ bool PrintVisitor::visit_subscript(BST_Subscript* node) {
     return true;
 }
 
-bool PrintVisitor::visit_tryexcept(BST_TryExcept* node) {
-    stream << "try:\n";
-    indent += 4;
-    for (BST* subnode : node->body) {
-        printIndent();
-        subnode->accept(this);
-        stream << "\n";
-    }
-    indent -= 4;
-    for (BST_ExceptHandler* handler : node->handlers) {
-        printIndent();
-        handler->accept(this);
-    }
-
-    if (node->orelse.size()) {
-        printIndent();
-        stream << "else:\n";
-        indent += 4;
-        for (BST* subnode : node->orelse) {
-            printIndent();
-            subnode->accept(this);
-            stream << "\n";
-        }
-        indent -= 4;
-    }
-    return true;
-}
-
-bool PrintVisitor::visit_tryfinally(BST_TryFinally* node) {
-    if (node->body.size() == 1 && node->body[0]->type == BST_TYPE::TryExcept) {
-        node->body[0]->accept(this);
-        printIndent();
-        stream << "finally:\n";
-
-        indent += 4;
-        for (BST* subnode : node->finalbody) {
-            printIndent();
-            subnode->accept(this);
-            stream << "\n";
-        }
-        indent -= 4;
-    } else {
-        stream << "try:\n";
-        indent += 4;
-        for (BST* subnode : node->body) {
-            printIndent();
-            subnode->accept(this);
-            stream << "\n";
-        }
-        indent -= 4;
-
-        printIndent();
-        stream << "finally:\n";
-        indent += 4;
-        for (BST* subnode : node->finalbody) {
-            printIndent();
-            subnode->accept(this);
-            stream << "\n";
-        }
-        indent -= 4;
-    }
-    return true;
-}
-
 bool PrintVisitor::visit_tuple(BST_Tuple* node) {
     stream << "(";
     int n = node->elts.size();
@@ -1456,54 +1126,6 @@ bool PrintVisitor::visit_unaryop(BST_UnaryOp* node) {
     stream << "(";
     node->operand->accept(this);
     stream << ")";
-    return true;
-}
-
-bool PrintVisitor::visit_while(BST_While* node) {
-    stream << "while ";
-    node->test->accept(this);
-    stream << "\n";
-
-    indent += 4;
-    for (int i = 0; i < node->body.size(); i++) {
-        printIndent();
-        node->body[i]->accept(this);
-        stream << "\n";
-    }
-    indent -= 4;
-
-    if (node->orelse.size()) {
-        printIndent();
-        stream << "else\n";
-        indent += 4;
-        for (int i = 0; i < node->orelse.size(); i++) {
-            printIndent();
-            node->orelse[i]->accept(this);
-            stream << "\n";
-        }
-        indent -= 4;
-    }
-    return true;
-}
-
-bool PrintVisitor::visit_with(BST_With* node) {
-    stream << "with ";
-    node->context_expr->accept(this);
-    if (node->optional_vars) {
-        stream << " as ";
-        node->optional_vars->accept(this);
-        stream << ":\n";
-    }
-
-    indent += 4;
-    for (int i = 0; i < node->body.size(); i++) {
-        if (i > 0)
-            stream << "\n";
-        printIndent();
-        node->body[i]->accept(this);
-    }
-    indent -= 4;
-
     return true;
 }
 
@@ -1584,10 +1206,6 @@ public:
         output->push_back(node);
         return false;
     }
-    virtual bool visit_break(BST_Break* node) {
-        output->push_back(node);
-        return false;
-    }
     virtual bool visit_call(BST_Call* node) {
         output->push_back(node);
         return false;
@@ -1597,10 +1215,6 @@ public:
         return !expand_scopes;
     }
     virtual bool visit_compare(BST_Compare* node) {
-        output->push_back(node);
-        return false;
-    }
-    virtual bool visit_continue(BST_Continue* node) {
         output->push_back(node);
         return false;
     }
@@ -1616,10 +1230,6 @@ public:
         output->push_back(node);
         return false;
     }
-    virtual bool visit_excepthandler(BST_ExceptHandler* node) {
-        output->push_back(node);
-        return false;
-    }
     virtual bool visit_exec(BST_Exec* node) {
         output->push_back(node);
         return false;
@@ -1632,23 +1242,11 @@ public:
         output->push_back(node);
         return false;
     }
-    virtual bool visit_for(BST_For* node) {
-        output->push_back(node);
-        return !expand_scopes;
-    }
     virtual bool visit_functiondef(BST_FunctionDef* node) {
         output->push_back(node);
         return !expand_scopes;
     }
     virtual bool visit_global(BST_Global* node) {
-        output->push_back(node);
-        return false;
-    }
-    virtual bool visit_if(BST_If* node) {
-        output->push_back(node);
-        return false;
-    }
-    virtual bool visit_ifexp(BST_IfExp* node) {
         output->push_back(node);
         return false;
     }
@@ -1663,10 +1261,6 @@ public:
     virtual bool visit_keyword(BST_keyword* node) {
         output->push_back(node);
         return false;
-    }
-    virtual bool visit_lambda(BST_Lambda* node) {
-        output->push_back(node);
-        return !expand_scopes;
     }
     virtual bool visit_langprimitive(BST_LangPrimitive* node) {
         output->push_back(node);
@@ -1685,10 +1279,6 @@ public:
         return false;
     }
     virtual bool visit_num(BST_Num* node) {
-        output->push_back(node);
-        return false;
-    }
-    virtual bool visit_pass(BST_Pass* node) {
         output->push_back(node);
         return false;
     }
@@ -1724,27 +1314,11 @@ public:
         output->push_back(node);
         return false;
     }
-    virtual bool visit_tryexcept(BST_TryExcept* node) {
-        output->push_back(node);
-        return false;
-    }
-    virtual bool visit_tryfinally(BST_TryFinally* node) {
-        output->push_back(node);
-        return false;
-    }
     virtual bool visit_tuple(BST_Tuple* node) {
         output->push_back(node);
         return false;
     }
     virtual bool visit_unaryop(BST_UnaryOp* node) {
-        output->push_back(node);
-        return false;
-    }
-    virtual bool visit_while(BST_While* node) {
-        output->push_back(node);
-        return false;
-    }
-    virtual bool visit_with(BST_With* node) {
         output->push_back(node);
         return false;
     }
