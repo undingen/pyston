@@ -187,7 +187,7 @@ void BST_Compare::accept(BSTVisitor* v) {
         return;
 
     left->accept(v);
-    visitVector(comparators, v);
+    comparator->accept(v);
 }
 
 void* BST_Compare::accept_expr(ExprVisitor* v) {
@@ -1032,13 +1032,8 @@ bool PrintVisitor::visit_call(BST_Call* node) {
 
 bool PrintVisitor::visit_compare(BST_Compare* node) {
     node->left->accept(this);
-
-    for (int i = 0; i < node->ops.size(); i++) {
-        std::string symbol = getOpSymbol(node->ops[i]);
-        stream << " " << symbol << " ";
-
-        node->comparators[i]->accept(this);
-    }
+    stream << " " << getOpSymbol(node->op) << " ";
+    node->comparator->accept(this);
 
     return true;
 }

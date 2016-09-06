@@ -790,9 +790,9 @@ private:
 
     BST_Compare* makeCompare(AST_TYPE::AST_TYPE oper, BST_expr* left, BST_expr* right) {
         auto compare = new (getAlloc()) BST_Compare();
-        compare->ops.push_back(oper);
+        compare->op = oper;
         compare->left = left;
-        compare->comparators.push_back(right);
+        compare->comparator = right;
         return compare;
     }
 
@@ -1126,12 +1126,11 @@ private:
             rtn->lineno = node->lineno;
             rtn->col_offset = node->col_offset;
 
-            rtn->ops = node->ops;
+            rtn->op = node->ops[0];
 
             rtn->left = remapExpr(node->left);
-            for (auto elt : node->comparators) {
-                rtn->comparators.push_back(remapExpr(elt));
-            }
+            assert(node->comparators.size() == 1);
+            rtn->comparator = remapExpr(node->comparators[0]);
             return rtn;
         } else {
             InternedString name = nodeName();
@@ -1150,10 +1149,10 @@ private:
                 val->lineno = node->lineno;
                 val->left = left;
                 if (i < node->ops.size() - 1)
-                    val->comparators.push_back(_dup(right));
+                    val->comparator = _dup(right);
                 else
-                    val->comparators.push_back(right);
-                val->ops.push_back(node->ops[i]);
+                    val->comparator = right;
+                val->op = node->ops[i];
 
                 pushAssign(name, val);
 

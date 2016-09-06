@@ -384,8 +384,8 @@ public:
 
 class BST_Compare : public BST_expr {
 public:
-    std::vector<AST_TYPE::AST_TYPE> ops;
-    std::vector<BST_expr*> comparators;
+    AST_TYPE::AST_TYPE op;
+    BST_expr* comparator;
     BST_expr* left;
 
     virtual void accept(BSTVisitor* v);

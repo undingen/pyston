@@ -349,29 +349,24 @@ private:
     }
 
     void* visit_compare(BST_Compare* node) override {
-        if (node->ops.size() == 1) {
-            CompilerType* left = getType(node->left);
-            CompilerType* right = getType(node->comparators[0]);
+        CompilerType* left = getType(node->left);
+        CompilerType* right = getType(node->comparator);
 
-            AST_TYPE::AST_TYPE op_type = node->ops[0];
-            if (op_type == AST_TYPE::Is || op_type == AST_TYPE::IsNot || op_type == AST_TYPE::In
-                || op_type == AST_TYPE::NotIn) {
-                assert(node->ops.size() == 1 && "I don't think this should happen");
-                return BOOL;
-            }
-
-            BoxedString* name = getOpName(node->ops[0]);
-            CompilerType* attr_type = left->getattrType(name, true);
-
-            if (attr_type == UNDEF)
-                attr_type = UNKNOWN;
-
-            std::vector<CompilerType*> arg_types;
-            arg_types.push_back(right);
-            return attr_type->callType(ArgPassSpec(2), arg_types, NULL);
-        } else {
-            return UNKNOWN;
+        AST_TYPE::AST_TYPE op_type = node->op;
+        if (op_type == AST_TYPE::Is || op_type == AST_TYPE::IsNot || op_type == AST_TYPE::In
+            || op_type == AST_TYPE::NotIn) {
+            return BOOL;
         }
+
+        BoxedString* name = getOpName(node->op);
+        CompilerType* attr_type = left->getattrType(name, true);
+
+        if (attr_type == UNDEF)
+            attr_type = UNKNOWN;
+
+        std::vector<CompilerType*> arg_types;
+        arg_types.push_back(right);
+        return attr_type->callType(ArgPassSpec(2), arg_types, NULL);
     }
 
     void* visit_dict(BST_Dict* node) override {

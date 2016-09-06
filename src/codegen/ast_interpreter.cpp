@@ -1439,12 +1439,11 @@ Value ASTInterpreter::visit_exec(BST_Exec* node) {
 }
 
 Value ASTInterpreter::visit_compare(BST_Compare* node) {
-    RELEASE_ASSERT(node->comparators.size() == 1, "not implemented");
     Value left = visit_expr(node->left);
     AUTO_DECREF(left.o);
-    Value right = visit_expr(node->comparators[0]);
+    Value right = visit_expr(node->comparator);
     AUTO_DECREF(right.o);
-    return doBinOp(node, left, right, node->ops[0], BinExpType::Compare);
+    return doBinOp(node, left, right, node->op, BinExpType::Compare);
 }
 
 Value ASTInterpreter::visit_expr(BST_expr* node) {

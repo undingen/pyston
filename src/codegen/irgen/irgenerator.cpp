@@ -1137,19 +1137,16 @@ private:
     }
 
     CompilerVariable* evalCompare(BST_Compare* node, const UnwindInfo& unw_info) {
-        RELEASE_ASSERT(node->ops.size() == 1, "");
-
         CompilerVariable* left = evalExpr(node->left, unw_info);
-        CompilerVariable* right = evalExpr(node->comparators[0], unw_info);
+        CompilerVariable* right = evalExpr(node->comparator, unw_info);
 
         assert(left);
         assert(right);
 
-        if (node->ops[0] == AST_TYPE::Is || node->ops[0] == AST_TYPE::IsNot) {
-            return doIs(emitter, left, right, node->ops[0] == AST_TYPE::IsNot);
-        }
+        if (node->op == AST_TYPE::Is || node->op == AST_TYPE::IsNot)
+            return doIs(emitter, left, right, node->op == AST_TYPE::IsNot);
 
-        CompilerVariable* rtn = _evalBinExp(node, left, right, node->ops[0], Compare, unw_info);
+        CompilerVariable* rtn = _evalBinExp(node, left, right, node->op, Compare, unw_info);
         return rtn;
     }
 
