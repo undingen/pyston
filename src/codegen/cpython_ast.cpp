@@ -41,7 +41,7 @@ while lines:
     elif l.startswith("}"):
         name = l[2:-1]
         print "case %s_kind: {" % name
-        print "auto r = new AST_%s();" % name
+        print "auto r = new (*ast_allocator) AST_%s();" % name
         print "auto v = %s->v.%s;" % (type, name)
         for n in names:
             print "r->%s = convert(v.%s);" % (n, n)
@@ -101,11 +101,11 @@ public:
     AST_Name* convertToName(identifier ident) {
         if (!ident)
             return NULL;
-        return new AST_Name(convert(ident), AST_TYPE::Store, -1, -1);
+        return new (*ast_allocator) AST_Name(convert(ident), AST_TYPE::Store, -1, -1);
     }
 
     AST_arguments* convert(arguments_ty ident, AST* parent) {
-        auto r = new AST_arguments();
+        auto r = new (*ast_allocator) AST_arguments();
 
         convertAll<expr_ty>(ident->args, r->args);
         convertAll<expr_ty>(ident->defaults, r->defaults);
@@ -222,14 +222,14 @@ public:
 #undef CASE
 
     AST_keyword* convert(keyword_ty keyword) {
-        auto r = new AST_keyword();
+        auto r = new (*ast_allocator) AST_keyword();
         r->arg = convert(keyword->arg);
         r->value = convert(keyword->value);
         return r;
     }
 
     AST_comprehension* convert(comprehension_ty comprehension) {
-        auto r = new AST_comprehension();
+        auto r = new (*ast_allocator) AST_comprehension();
         r->target = convert(comprehension->target);
         r->iter = convert(comprehension->iter);
         r->ifs = convert<expr_ty, AST_expr*>(comprehension->ifs);
@@ -239,7 +239,7 @@ public:
     AST_slice* convert(slice_ty slice) {
         switch (slice->kind) {
             case Slice_kind: {
-                auto r = new AST_Slice();
+                auto r = new (*ast_allocator) AST_Slice();
                 auto v = slice->v.Slice;
                 r->lower = convert(v.lower);
                 r->upper = convert(v.upper);
@@ -247,19 +247,19 @@ public:
                 return r;
             }
             case ExtSlice_kind: {
-                auto r = new AST_ExtSlice();
+                auto r = new (*ast_allocator) AST_ExtSlice();
                 auto v = slice->v.ExtSlice;
                 r->dims = convert<slice_ty, AST_slice*>(v.dims);
                 return r;
             }
             case Index_kind: {
-                auto r = new AST_Index();
+                auto r = new (*ast_allocator) AST_Index();
                 auto v = slice->v.Index;
                 r->value = convert(v.value);
                 return r;
             }
             case Ellipsis_kind:
-                return new AST_Ellipsis();
+                return new (*ast_allocator) AST_Ellipsis();
         }
         RELEASE_ASSERT(0, "invalid slice type: %d", slice->kind);
     }
@@ -267,14 +267,14 @@ public:
     AST_expr* _convert(expr_ty expr) {
         switch (expr->kind) {
             case BoolOp_kind: {
-                auto r = new AST_BoolOp();
+                auto r = new (*ast_allocator) AST_BoolOp();
                 auto v = expr->v.BoolOp;
                 r->op_type = convert(v.op);
                 r->values = convert<expr_ty, AST_expr*>(v.values);
                 return r;
             }
             case BinOp_kind: {
-                auto r = new AST_BinOp();
+                auto r = new (*ast_allocator) AST_BinOp();
                 auto v = expr->v.BinOp;
                 r->left = convert(v.left);
                 r->op_type = convert(v.op);
@@ -282,14 +282,14 @@ public:
                 return r;
             }
             case UnaryOp_kind: {
-                auto r = new AST_UnaryOp();
+                auto r = new (*ast_allocator) AST_UnaryOp();
                 auto v = expr->v.UnaryOp;
                 r->op_type = convert(v.op);
                 r->operand = convert(v.operand);
                 return r;
             }
             case Lambda_kind: {
-                auto r = new AST_Lambda();
+                auto r = new (*ast_allocator) AST_Lambda();
                 r->lineno = expr->lineno;
                 r->col_offset = expr->col_offset;
                 auto v = expr->v.Lambda;
@@ -298,7 +298,7 @@ public:
                 return r;
             }
             case IfExp_kind: {
-                auto r = new AST_IfExp();
+                auto r = new (*ast_allocator) AST_IfExp();
                 auto v = expr->v.IfExp;
                 r->test = convert(v.test);
                 r->body = convert(v.body);
@@ -306,34 +306,34 @@ public:
                 return r;
             }
             case Dict_kind: {
-                auto r = new AST_Dict();
+                auto r = new (*ast_allocator) AST_Dict();
                 auto v = expr->v.Dict;
                 r->keys = convert<expr_ty, AST_expr*>(v.keys);
                 r->values = convert<expr_ty, AST_expr*>(v.values);
                 return r;
             }
             case Set_kind: {
-                auto r = new AST_Set();
+                auto r = new (*ast_allocator) AST_Set();
                 auto v = expr->v.Set;
                 r->elts = convert<expr_ty, AST_expr*>(v.elts);
                 return r;
             }
             case ListComp_kind: {
-                auto r = new AST_ListComp();
+                auto r = new (*ast_allocator) AST_ListComp();
                 auto v = expr->v.ListComp;
                 r->elt = convert(v.elt);
                 r->generators = convert<comprehension_ty, AST_comprehension*>(v.generators);
                 return r;
             }
             case SetComp_kind: {
-                auto r = new AST_SetComp();
+                auto r = new (*ast_allocator) AST_SetComp();
                 auto v = expr->v.SetComp;
                 r->elt = convert(v.elt);
                 r->generators = convert<comprehension_ty, AST_comprehension*>(v.generators);
                 return r;
             }
             case DictComp_kind: {
-                auto r = new AST_DictComp();
+                auto r = new (*ast_allocator) AST_DictComp();
                 auto v = expr->v.DictComp;
                 r->key = convert(v.key);
                 r->value = convert(v.value);
@@ -341,20 +341,20 @@ public:
                 return r;
             }
             case GeneratorExp_kind: {
-                auto r = new AST_GeneratorExp();
+                auto r = new (*ast_allocator) AST_GeneratorExp();
                 auto v = expr->v.GeneratorExp;
                 r->elt = convert(v.elt);
                 r->generators = convert<comprehension_ty, AST_comprehension*>(v.generators);
                 return r;
             }
             case Yield_kind: {
-                auto r = new AST_Yield();
+                auto r = new (*ast_allocator) AST_Yield();
                 auto v = expr->v.Yield;
                 r->value = convert(v.value);
                 return r;
             }
             case Compare_kind: {
-                auto r = new AST_Compare();
+                auto r = new (*ast_allocator) AST_Compare();
                 auto v = expr->v.Compare;
                 r->left = convert(v.left);
                 r->ops = convert<cmpop_ty, AST_TYPE::AST_TYPE>(v.ops);
@@ -362,7 +362,7 @@ public:
                 return r;
             }
             case Call_kind: {
-                auto r = new AST_Call();
+                auto r = new (*ast_allocator) AST_Call();
                 auto v = expr->v.Call;
                 r->func = convert(v.func);
                 r->args = convert<expr_ty, AST_expr*>(v.args);
@@ -372,13 +372,13 @@ public:
                 return r;
             }
             case Repr_kind: {
-                auto r = new AST_Repr();
+                auto r = new (*ast_allocator) AST_Repr();
                 auto v = expr->v.Repr;
                 r->value = convert(v.value);
                 return r;
             }
             case Attribute_kind: {
-                auto r = new AST_Attribute();
+                auto r = new (*ast_allocator) AST_Attribute();
                 auto v = expr->v.Attribute;
                 r->value = convert(v.value);
                 r->attr = convert(v.attr);
@@ -386,7 +386,7 @@ public:
                 return r;
             }
             case Subscript_kind: {
-                auto r = new AST_Subscript();
+                auto r = new (*ast_allocator) AST_Subscript();
                 auto v = expr->v.Subscript;
                 r->value = convert(v.value);
                 r->slice = convert(v.slice);
@@ -395,18 +395,18 @@ public:
             }
             case Name_kind: {
                 auto v = expr->v.Name;
-                auto r = new AST_Name(convert(v.id), convert(v.ctx), 0);
+                auto r = new (*ast_allocator) AST_Name(convert(v.id), convert(v.ctx), 0);
                 return r;
             }
             case List_kind: {
-                auto r = new AST_List();
+                auto r = new (*ast_allocator) AST_List();
                 auto v = expr->v.List;
                 r->elts = convert<expr_ty, AST_expr*>(v.elts);
                 r->ctx_type = convert(v.ctx);
                 return r;
             }
             case Tuple_kind: {
-                auto r = new AST_Tuple();
+                auto r = new (*ast_allocator) AST_Tuple();
                 auto v = expr->v.Tuple;
                 r->elts = convert<expr_ty, AST_expr*>(v.elts);
                 r->ctx_type = convert(v.ctx);
@@ -415,19 +415,19 @@ public:
             case Num_kind: {
                 PyObject* o = expr->v.Num.n;
                 if (o->cls == int_cls) {
-                    auto r = new AST_Num();
+                    auto r = new (*ast_allocator) AST_Num();
                     r->num_type = AST_Num::INT;
                     r->n_int = unboxInt(o);
                     return r;
                 }
                 if (o->cls == float_cls) {
-                    auto r = new AST_Num();
+                    auto r = new (*ast_allocator) AST_Num();
                     r->num_type = AST_Num::FLOAT;
                     r->n_float = unboxFloat(o);
                     return r;
                 }
                 if (o->cls == long_cls) {
-                    auto r = new AST_Num();
+                    auto r = new (*ast_allocator) AST_Num();
                     r->num_type = AST_Num::LONG;
                     // XXX This is pretty silly:
                     auto s = _PyLong_Format(o, 10, 0, 0);
@@ -437,7 +437,7 @@ public:
                     return r;
                 }
                 if (o->cls == complex_cls) {
-                    auto r = new AST_Num();
+                    auto r = new (*ast_allocator) AST_Num();
                     r->num_type = AST_Num::COMPLEX;
 
                     double real = PyComplex_RealAsDouble(o);
@@ -451,11 +451,11 @@ public:
                         return r;
 
                     // TODO very silly:
-                    auto freal = new AST_Num();
+                    auto freal = new (*ast_allocator) AST_Num();
                     freal->n_float = real;
                     freal->num_type = AST_Num::FLOAT;
 
-                    auto binop = new AST_BinOp();
+                    auto binop = new (*ast_allocator) AST_BinOp();
                     binop->op_type = AST_TYPE::Add;
                     binop->left = freal;
                     binop->right = r;
@@ -471,14 +471,14 @@ public:
                     RELEASE_ASSERT(o, "");
                     AUTO_DECREF(o);
 
-                    auto r = new AST_Str();
+                    auto r = new (*ast_allocator) AST_Str();
                     r->str_data = static_cast<BoxedString*>(o)->s();
                     r->str_type = AST_Str::UNICODE;
                     return r;
                 }
 
                 if (o->cls == str_cls) {
-                    return new AST_Str(static_cast<BoxedString*>(o)->s());
+                    return new (*ast_allocator) AST_Str(static_cast<BoxedString*>(o)->s());
                 }
                 RELEASE_ASSERT(0, "unhandled str type: %s\n", o->cls->tp_name);
             }
@@ -501,7 +501,7 @@ public:
     AST_ExceptHandler* convert(excepthandler_ty eh) {
         assert(eh->kind == ExceptHandler_kind);
 
-        auto r = new AST_ExceptHandler();
+        auto r = new (*ast_allocator) AST_ExceptHandler();
         auto v = eh->v.ExceptHandler;
         r->type = convert(v.type);
         r->name = convert(v.name);
@@ -511,12 +511,14 @@ public:
         return r;
     }
 
-    AST_alias* convert(alias_ty alias) { return new AST_alias(convert(alias->name), convert(alias->asname)); }
+    AST_alias* convert(alias_ty alias) {
+        return new (*ast_allocator) AST_alias(convert(alias->name), convert(alias->asname));
+    }
 
     AST_stmt* _convert(stmt_ty stmt) {
         switch (stmt->kind) {
             case FunctionDef_kind: {
-                auto r = new AST_FunctionDef();
+                auto r = new (*ast_allocator) AST_FunctionDef();
                 r->lineno = stmt->lineno;
                 r->col_offset = stmt->col_offset;
                 auto v = stmt->v.FunctionDef;
@@ -529,7 +531,7 @@ public:
                 return r;
             }
             case ClassDef_kind: {
-                auto r = new AST_ClassDef();
+                auto r = new (*ast_allocator) AST_ClassDef();
                 auto v = stmt->v.ClassDef;
                 r->name = convert(v.name);
                 r->bases = convert<expr_ty, AST_expr*>(v.bases);
@@ -540,26 +542,26 @@ public:
                 return r;
             }
             case Return_kind: {
-                auto r = new AST_Return();
+                auto r = new (*ast_allocator) AST_Return();
                 auto v = stmt->v.Return;
                 r->value = convert(v.value);
                 return r;
             }
             case Delete_kind: {
-                auto r = new AST_Delete();
+                auto r = new (*ast_allocator) AST_Delete();
                 auto v = stmt->v.Delete;
                 r->targets = convert<expr_ty, AST_expr*>(v.targets);
                 return r;
             }
             case Assign_kind: {
-                auto r = new AST_Assign();
+                auto r = new (*ast_allocator) AST_Assign();
                 auto v = stmt->v.Assign;
                 r->targets = convert<expr_ty, AST_expr*>(v.targets);
                 r->value = convert(v.value);
                 return r;
             }
             case AugAssign_kind: {
-                auto r = new AST_AugAssign();
+                auto r = new (*ast_allocator) AST_AugAssign();
                 auto v = stmt->v.AugAssign;
                 r->target = convert(v.target);
                 r->op_type = convert(v.op);
@@ -567,7 +569,7 @@ public:
                 return r;
             }
             case Print_kind: {
-                auto r = new AST_Print();
+                auto r = new (*ast_allocator) AST_Print();
                 auto v = stmt->v.Print;
                 r->dest = convert(v.dest);
                 r->values = convert<expr_ty, AST_expr*>(v.values);
@@ -575,7 +577,7 @@ public:
                 return r;
             }
             case For_kind: {
-                auto r = new AST_For();
+                auto r = new (*ast_allocator) AST_For();
                 auto v = stmt->v.For;
                 r->target = convert(v.target);
                 r->iter = convert(v.iter);
@@ -589,7 +591,7 @@ public:
                 return r;
             }
             case While_kind: {
-                auto r = new AST_While();
+                auto r = new (*ast_allocator) AST_While();
                 auto v = stmt->v.While;
                 r->test = convert(v.test);
                 auto fin = in_finally;
@@ -602,7 +604,7 @@ public:
                 return r;
             }
             case If_kind: {
-                auto r = new AST_If();
+                auto r = new (*ast_allocator) AST_If();
                 auto v = stmt->v.If;
                 r->test = convert(v.test);
                 r->body = convert<stmt_ty, AST_stmt*>(v.body);
@@ -610,7 +612,7 @@ public:
                 return r;
             }
             case With_kind: {
-                auto r = new AST_With();
+                auto r = new (*ast_allocator) AST_With();
                 auto v = stmt->v.With;
                 r->context_expr = convert(v.context_expr);
                 r->optional_vars = convert(v.optional_vars);
@@ -618,7 +620,7 @@ public:
                 return r;
             }
             case Raise_kind: {
-                auto r = new AST_Raise();
+                auto r = new (*ast_allocator) AST_Raise();
                 auto v = stmt->v.Raise;
                 r->arg0 = convert(v.type);
                 r->arg1 = convert(v.inst);
@@ -626,7 +628,7 @@ public:
                 return r;
             }
             case TryExcept_kind: {
-                auto r = new AST_TryExcept();
+                auto r = new (*ast_allocator) AST_TryExcept();
                 auto v = stmt->v.TryExcept;
                 r->body = convert<stmt_ty, AST_stmt*>(v.body);
                 r->handlers = convert<excepthandler_ty, AST_ExceptHandler*>(v.handlers);
@@ -634,7 +636,7 @@ public:
                 return r;
             }
             case TryFinally_kind: {
-                auto r = new AST_TryFinally();
+                auto r = new (*ast_allocator) AST_TryFinally();
                 auto v = stmt->v.TryFinally;
                 r->body = convert<stmt_ty, AST_stmt*>(v.body);
                 in_finally++;
@@ -643,20 +645,20 @@ public:
                 return r;
             }
             case Assert_kind: {
-                auto r = new AST_Assert();
+                auto r = new (*ast_allocator) AST_Assert();
                 auto v = stmt->v.Assert;
                 r->test = convert(v.test);
                 r->msg = convert(v.msg);
                 return r;
             }
             case Import_kind: {
-                auto r = new AST_Import();
+                auto r = new (*ast_allocator) AST_Import();
                 auto v = stmt->v.Import;
                 r->names = convert<alias_ty, AST_alias*>(v.names);
                 return r;
             }
             case ImportFrom_kind: {
-                auto r = new AST_ImportFrom();
+                auto r = new (*ast_allocator) AST_ImportFrom();
                 auto v = stmt->v.ImportFrom;
                 r->module = convert(v.module);
                 r->names = convert<alias_ty, AST_alias*>(v.names);
@@ -664,7 +666,7 @@ public:
                 return r;
             }
             case Exec_kind: {
-                auto r = new AST_Exec();
+                auto r = new (*ast_allocator) AST_Exec();
                 auto v = stmt->v.Exec;
                 r->body = convert(v.body);
                 r->globals = convert(v.globals);
@@ -672,36 +674,36 @@ public:
                 return r;
             }
             case Global_kind: {
-                auto r = new AST_Global();
+                auto r = new (*ast_allocator) AST_Global();
                 auto v = stmt->v.Global;
                 r->names = convert<identifier, InternedString>(v.names);
                 return r;
             }
             case Expr_kind: {
-                auto r = new AST_Expr();
+                auto r = new (*ast_allocator) AST_Expr();
                 auto v = stmt->v.Expr;
                 r->value = convert(v.value);
                 if (interactive && nestlevel <= 0) {
-                    auto print_expr = new AST_LangPrimitive(AST_LangPrimitive::PRINT_EXPR);
+                    auto print_expr = new (*ast_allocator) AST_LangPrimitive(AST_LangPrimitive::PRINT_EXPR);
                     print_expr->args.push_back(r->value);
                     r->value = print_expr;
                 }
                 return r;
             }
             case Pass_kind:
-                return new AST_Pass();
+                return new (*ast_allocator) AST_Pass();
             case Break_kind:
                 // This is not really the right place to be handling this, but this whole thing is temporary anyway.
                 if (loop_depth == 0)
                     raiseSyntaxError("'break' outside loop", stmt->lineno, stmt->col_offset, fn, "", true);
-                return new AST_Break();
+                return new (*ast_allocator) AST_Break();
             case Continue_kind:
                 if (loop_depth == 0)
                     raiseSyntaxError("'continue' not properly in loop", stmt->lineno, stmt->col_offset, fn, "", true);
                 if (in_finally)
                     raiseSyntaxError("'continue' not supported inside 'finally' clause", stmt->lineno, stmt->col_offset,
                                      fn, "", true);
-                return new AST_Continue();
+                return new (*ast_allocator) AST_Continue();
         };
         // GCC wants this:
         RELEASE_ASSERT(0, "invalid statement type: %d", stmt->kind);
@@ -725,7 +727,7 @@ public:
         ast_allocator.reset(new ASTAllocator);
         switch (mod->kind) {
             case Module_kind: {
-                AST_Module* rtn = new AST_Module(llvm::make_unique<InternedStringPool>());
+                AST_Module* rtn = new (*ast_allocator) AST_Module(llvm::make_unique<InternedStringPool>());
                 rtn->lineno = 1;
                 assert(!this->pool);
                 this->pool = rtn->interned_strings.get();
@@ -734,7 +736,7 @@ public:
             }
             case Interactive_kind: {
                 this->interactive = 1;
-                AST_Module* rtn = new AST_Module(llvm::make_unique<InternedStringPool>());
+                AST_Module* rtn = new (*ast_allocator) AST_Module(llvm::make_unique<InternedStringPool>());
                 rtn->lineno = 1;
                 assert(!this->pool);
                 this->pool = rtn->interned_strings.get();
@@ -742,13 +744,13 @@ public:
                 return std::make_pair(rtn, std::move(ast_allocator));
             }
             case Expression_kind: {
-                AST_Expression* rtn = new AST_Expression(llvm::make_unique<InternedStringPool>());
+                AST_Expression* rtn = new (*ast_allocator) AST_Expression(llvm::make_unique<InternedStringPool>());
                 rtn->lineno = 1;
                 this->pool = rtn->interned_strings.get();
 
                 // instead of storing the expression inside the AST node we convert it directly to a return statement
                 AST_expr* expr = this->convert(mod->v.Expression.body);
-                auto rtn_stmt = new AST_Return;
+                auto rtn_stmt = new (*ast_allocator) AST_Return;
                 rtn_stmt->lineno = expr->lineno;
                 rtn_stmt->col_offset = expr->col_offset;
                 rtn_stmt->value = expr;

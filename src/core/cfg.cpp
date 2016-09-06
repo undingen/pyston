@@ -369,8 +369,9 @@ private:
         return stringpool.get(std::move(name));
     }
 
-    AST_Name* makeASTName(InternedString id, AST_TYPE::AST_TYPE ctx_type, int lineno, int col_offset = 0) {
-        AST_Name* name = new AST_Name(id, ctx_type, lineno, col_offset);
+    AST_Name* makeASTName(ASTAllocator& ast_allocator, InternedString id, AST_TYPE::AST_TYPE ctx_type, int lineno,
+                          int col_offset = 0) {
+        AST_Name* name = new (ast_allocator) AST_Name(id, ctx_type, lineno, col_offset);
         return name;
     }
 
@@ -692,15 +693,15 @@ private:
         curblock = nullptr;
     }
 
-    AST_expr* makeASTLoadAttribute(AST_expr* base, InternedString name, bool clsonly) {
+    AST_expr* makeASTLoadAttribute(ASTAllocator& ast_allocator, AST_expr* base, InternedString name, bool clsonly) {
         AST_expr* rtn;
         if (clsonly) {
-            AST_ClsAttribute* attr = new AST_ClsAttribute();
+            AST_ClsAttribute* attr = new (ast_allocator) AST_ClsAttribute();
             attr->value = base;
             attr->attr = name;
             rtn = attr;
         } else {
-            AST_Attribute* attr = new AST_Attribute();
+            AST_Attribute* attr = new (ast_allocator) AST_Attribute();
             attr->ctx_type = AST_TYPE::Load;
             attr->value = base;
             attr->attr = name;
@@ -730,8 +731,8 @@ private:
         return rtn;
     }
 
-    AST_Call* makeASTCall(AST_expr* func) {
-        AST_Call* call = new AST_Call();
+    AST_Call* makeASTCall(ASTAllocator& ast_allocator, AST_expr* func) {
+        AST_Call* call = new (ast_allocator) AST_Call();
         call->starargs = NULL;
         call->kwargs = NULL;
         call->func = func;
@@ -740,14 +741,14 @@ private:
         return call;
     }
 
-    AST_Call* makeASTCall(AST_expr* func, AST_expr* arg0) {
-        auto call = makeASTCall(func);
+    AST_Call* makeASTCall(ASTAllocator& ast_allocator, AST_expr* func, AST_expr* arg0) {
+        auto call = makeASTCall(ast_allocator, func);
         call->args.push_back(arg0);
         return call;
     }
 
-    AST_Call* makeASTCall(AST_expr* func, AST_expr* arg0, AST_expr* arg1) {
-        auto call = makeASTCall(func);
+    AST_Call* makeASTCall(ASTAllocator& ast_allocator, AST_expr* func, AST_expr* arg0, AST_expr* arg1) {
+        auto call = makeASTCall(ast_allocator, func);
         call->args.push_back(arg0);
         call->args.push_back(arg1);
         return call;
@@ -899,8 +900,8 @@ private:
         push_back(assign);
     }
 
-    AST_stmt* makeASTExpr(AST_expr* expr) {
-        AST_Expr* stmt = new AST_Expr();
+    AST_stmt* makeASTExpr(ASTAllocator& ast_allocator, AST_expr* expr) {
+        AST_Expr* stmt = new (ast_allocator) AST_Expr();
         stmt->value = expr;
         stmt->lineno = expr->lineno;
         stmt->col_offset = expr->col_offset;
@@ -1224,13 +1225,13 @@ private:
 
     // This is a helper function used for generator expressions and comprehensions.
     // TODO(rntz): use this to handle unscoped (i.e. list) comprehensions as well?
-    void emitComprehensionLoops(int lineno, std::vector<AST_stmt*>* insert_point,
+    void emitComprehensionLoops(int lineno, std::vector<AST_stmt*>* insert_point, ASTAllocator& ast_allocator,
                                 const std::vector<AST_comprehension*>& comprehensions, AST_expr* first_generator,
                                 std::function<void(std::vector<AST_stmt*>*)> do_yield) {
         for (int i = 0; i < comprehensions.size(); i++) {
             AST_comprehension* c = comprehensions[i];
 
-            AST_For* loop = new AST_For();
+            AST_For* loop = new (ast_allocator) AST_For();
             loop->target = c->target;
             loop->iter = (i == 0) ? first_generator : c->iter;
             loop->lineno = lineno;
@@ -1239,7 +1240,7 @@ private:
             insert_point = &loop->body;
 
             for (AST_expr* if_condition : c->ifs) {
-                AST_If* if_block = new AST_If();
+                AST_If* if_block = new (ast_allocator) AST_If();
                 if_block->lineno = if_condition->lineno;
                 // Note: don't call callNonzero here, since we are generating
                 // AST inside a new functiondef which will go through the CFG
@@ -1264,16 +1265,18 @@ private:
         BST_expr* first = remapExpr(node->generators[0]->iter);
         InternedString arg_name = internString("#arg");
 
-        AST_arguments* genexp_args = new AST_arguments();
-        genexp_args->args.push_back(makeASTName(arg_name, AST_TYPE::Param, node->lineno));
+        ASTAllocator ast_allocator;
+
+        AST_arguments* genexp_args = new (ast_allocator) AST_arguments();
+        genexp_args->args.push_back(makeASTName(ast_allocator, arg_name, AST_TYPE::Param, node->lineno));
         std::vector<AST_stmt*> new_body;
-        emitComprehensionLoops(node->lineno, &new_body, node->generators,
-                               makeASTName(arg_name, AST_TYPE::Load, node->lineno, /* col_offset */ 0),
-                               [this, node](std::vector<AST_stmt*>* insert_point) {
-                                   auto y = new AST_Yield();
+        emitComprehensionLoops(node->lineno, &new_body, ast_allocator, node->generators,
+                               makeASTName(ast_allocator, arg_name, AST_TYPE::Load, node->lineno, /* col_offset */ 0),
+                               [this, node, &ast_allocator](std::vector<AST_stmt*>* insert_point) {
+                                   auto y = new (ast_allocator) AST_Yield();
                                    y->value = node->elt;
                                    y->lineno = node->lineno;
-                                   insert_point->push_back(makeASTExpr(y));
+                                   insert_point->push_back(makeASTExpr(ast_allocator, y));
                                });
 
         // I'm not sure this actually gets used
@@ -1294,18 +1297,23 @@ private:
         return makeCall(makeLoad(func_var_name, node, true), first);
     }
 
-    void emitComprehensionYield(AST_DictComp* node, InternedString dict_name, std::vector<AST_stmt*>* insert_point) {
+    void emitComprehensionYield(ASTAllocator& ast_allocator, AST_DictComp* node, InternedString dict_name,
+                                std::vector<AST_stmt*>* insert_point) {
         // add entry to the dictionary
-        AST_expr* setitem = makeASTLoadAttribute(makeASTName(dict_name, AST_TYPE::Load, node->lineno),
-                                                 internString("__setitem__"), true);
-        insert_point->push_back(makeASTExpr(makeASTCall(setitem, node->key, node->value)));
+        AST_expr* setitem
+            = makeASTLoadAttribute(ast_allocator, makeASTName(ast_allocator, dict_name, AST_TYPE::Load, node->lineno),
+                                   internString("__setitem__"), true);
+        insert_point->push_back(
+            makeASTExpr(ast_allocator, makeASTCall(ast_allocator, setitem, node->key, node->value)));
     }
 
-    void emitComprehensionYield(AST_SetComp* node, InternedString set_name, std::vector<AST_stmt*>* insert_point) {
+    void emitComprehensionYield(ASTAllocator& ast_allocator, AST_SetComp* node, InternedString set_name,
+                                std::vector<AST_stmt*>* insert_point) {
         // add entry to the dictionary
         AST_expr* add
-            = makeASTLoadAttribute(makeASTName(set_name, AST_TYPE::Load, node->lineno), internString("add"), true);
-        insert_point->push_back(makeASTExpr(makeASTCall(add, node->elt)));
+            = makeASTLoadAttribute(ast_allocator, makeASTName(ast_allocator, set_name, AST_TYPE::Load, node->lineno),
+                                   internString("add"), true);
+        insert_point->push_back(makeASTExpr(ast_allocator, makeASTCall(ast_allocator, add, node->elt)));
     }
 
     template <typename ResultType, typename CompType> BST_expr* remapScopedComprehension(CompType* node) {
@@ -1313,25 +1321,29 @@ private:
         BST_expr* first = remapExpr(node->generators[0]->iter);
         InternedString arg_name = internString("#arg");
 
-        AST_arguments* args = new AST_arguments();
-        args->args.push_back(makeASTName(arg_name, AST_TYPE::Param, node->lineno));
+        ASTAllocator ast_allocator;
+
+        AST_arguments* args = new (ast_allocator) AST_arguments();
+        args->args.push_back(makeASTName(ast_allocator, arg_name, AST_TYPE::Param, node->lineno));
 
         std::vector<AST_stmt*> new_body;
 
         InternedString rtn_name = internString("#comp_rtn");
-        auto asgn = new AST_Assign();
-        asgn->targets.push_back(makeASTName(rtn_name, AST_TYPE::Store, node->lineno));
-        asgn->value = new ResultType();
+        auto asgn = new (ast_allocator) AST_Assign();
+        asgn->targets.push_back(makeASTName(ast_allocator, rtn_name, AST_TYPE::Store, node->lineno));
+        asgn->value = new (ast_allocator) ResultType();
         asgn->lineno = node->lineno;
         new_body.push_back(asgn);
 
-        auto lambda =
-            [&](std::vector<AST_stmt*>* insert_point) { emitComprehensionYield(node, rtn_name, insert_point); };
-        AST_Name* first_name = makeASTName(internString("#arg"), AST_TYPE::Load, node->lineno, /* col_offset */ 0);
-        emitComprehensionLoops(node->lineno, &new_body, node->generators, first_name, lambda);
+        auto lambda = [&](std::vector<AST_stmt*>* insert_point) {
+            emitComprehensionYield(ast_allocator, node, rtn_name, insert_point);
+        };
+        AST_Name* first_name
+            = makeASTName(ast_allocator, internString("#arg"), AST_TYPE::Load, node->lineno, /* col_offset */ 0);
+        emitComprehensionLoops(node->lineno, &new_body, ast_allocator, node->generators, first_name, lambda);
 
-        auto rtn = new AST_Return();
-        rtn->value = makeASTName(rtn_name, AST_TYPE::Load, node->lineno, /* col_offset */ 0);
+        auto rtn = new (ast_allocator) AST_Return();
+        rtn->value = makeASTName(ast_allocator, rtn_name, AST_TYPE::Load, node->lineno, /* col_offset */ 0);
         rtn->lineno = node->lineno;
         new_body.push_back(rtn);
 
@@ -1400,7 +1412,9 @@ private:
     }
 
     BST_expr* remapLambda(AST_Lambda* node) {
-        auto stmt = new AST_Return;
+        std::unique_ptr<ASTAllocator> ast_allocator(std::unique_ptr<ASTAllocator>(new ASTAllocator));
+
+        auto stmt = new (*ast_allocator) AST_Return;
         stmt->lineno = node->lineno;
         stmt->col_offset = node->col_offset;
 
@@ -2204,7 +2218,8 @@ public:
                 }
                 case AST_TYPE::List: {
                     AST_List* list = static_cast<AST_List*>(t);
-                    AST_Delete* temp_ast_del = new AST_Delete();
+                    ASTAllocator ast_allocator;
+                    AST_Delete* temp_ast_del = new (ast_allocator) AST_Delete();
                     temp_ast_del->lineno = node->lineno;
                     temp_ast_del->col_offset = node->col_offset;
 
@@ -2216,7 +2231,8 @@ public:
                 }
                 case AST_TYPE::Tuple: {
                     AST_Tuple* tuple = static_cast<AST_Tuple*>(t);
-                    AST_Delete* temp_ast_del = new AST_Delete();
+                    ASTAllocator ast_allocator;
+                    AST_Delete* temp_ast_del = new (ast_allocator) AST_Delete();
                     temp_ast_del->lineno = node->lineno;
                     temp_ast_del->col_offset = node->col_offset;
 

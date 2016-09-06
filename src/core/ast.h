@@ -193,6 +193,8 @@ public:
     AST(AST_TYPE::AST_TYPE type, uint32_t lineno, uint32_t col_offset = 0)
         : type(type), lineno(lineno), col_offset(col_offset) {}
 
+    static void* operator new(size_t count, ASTAllocator& allocator) { return allocator.allocator.Allocate(count, 8); }
+
     // These could be virtual methods, but since we already keep track of the type use a switch statement
     // like everywhere else.
     InternedStringPool& getStringpool();
