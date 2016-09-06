@@ -1318,85 +1318,84 @@ Value ASTInterpreter::visit_global(BST_Global* node) {
 }
 
 Value ASTInterpreter::visit_delete(BST_Delete* node) {
-    for (BST_expr* target_ : node->targets) {
-        switch (target_->type) {
-            case BST_TYPE::Subscript: {
-                BST_Subscript* sub = (BST_Subscript*)target_;
-                Value value = visit_expr(sub->value);
-                AUTO_DECREF(value.o);
+    BST_expr* target_ = node->target;
+    switch (target_->type) {
+        case BST_TYPE::Subscript: {
+            BST_Subscript* sub = (BST_Subscript*)target_;
+            Value value = visit_expr(sub->value);
+            AUTO_DECREF(value.o);
 
-                bool is_slice = (sub->slice->type == BST_TYPE::Slice) && (((BST_Slice*)sub->slice)->step == NULL);
-                if (is_slice) {
-                    BST_Slice* slice = (BST_Slice*)sub->slice;
-                    Value lower = slice->lower ? visit_expr(slice->lower) : Value();
-                    AUTO_XDECREF(lower.o);
-                    Value upper = slice->upper ? visit_expr(slice->upper) : Value();
-                    AUTO_XDECREF(upper.o);
-                    assert(slice->step == NULL);
+            bool is_slice = (sub->slice->type == BST_TYPE::Slice) && (((BST_Slice*)sub->slice)->step == NULL);
+            if (is_slice) {
+                BST_Slice* slice = (BST_Slice*)sub->slice;
+                Value lower = slice->lower ? visit_expr(slice->lower) : Value();
+                AUTO_XDECREF(lower.o);
+                Value upper = slice->upper ? visit_expr(slice->upper) : Value();
+                AUTO_XDECREF(upper.o);
+                assert(slice->step == NULL);
 
-                    if (jit)
-                        jit->emitAssignSlice(value, lower, upper, jit->imm(0ul));
-                    assignSlice(value.o, lower.o, upper.o, NULL);
-                } else {
-                    Value slice = visit_slice(sub->slice);
-                    AUTO_DECREF(slice.o);
-                    if (jit)
-                        jit->emitDelItem(value, slice);
-                    delitem(value.o, slice.o);
-                }
-                break;
-            }
-            case BST_TYPE::Attribute: {
-                BST_Attribute* attr = (BST_Attribute*)target_;
-                Value target = visit_expr(attr->value);
-                AUTO_DECREF(target.o);
-                BoxedString* str = attr->attr.getBox();
                 if (jit)
-                    jit->emitDelAttr(target, str);
-                delattr(target.o, str);
-                break;
+                    jit->emitAssignSlice(value, lower, upper, jit->imm(0ul));
+                assignSlice(value.o, lower.o, upper.o, NULL);
+            } else {
+                Value slice = visit_slice(sub->slice);
+                AUTO_DECREF(slice.o);
+                if (jit)
+                    jit->emitDelItem(value, slice);
+                delitem(value.o, slice.o);
             }
-            case BST_TYPE::Name: {
-                BST_Name* target = (BST_Name*)target_;
-                assert(target->lookup_type != ScopeInfo::VarScopeType::UNKNOWN);
-
-                ScopeInfo::VarScopeType vst = target->lookup_type;
-                if (vst == ScopeInfo::VarScopeType::GLOBAL) {
-                    if (jit)
-                        jit->emitDelGlobal(target->id.getBox());
-                    delGlobal(frame_info.globals, target->id.getBox());
-                    continue;
-                } else if (vst == ScopeInfo::VarScopeType::NAME) {
-                    if (jit)
-                        jit->emitDelName(target->id);
-                    ASTInterpreterJitInterface::delNameHelper(this, target->id);
-                } else {
-                    assert(vst == ScopeInfo::VarScopeType::FAST);
-
-                    assert(getVRegInfo().getVReg(target->id) == target->vreg);
-
-                    if (target->id.s()[0] == '#') {
-                        assert(vregs[target->vreg] != NULL);
-                        if (jit)
-                            jit->emitKillTemporary(target);
-                    } else {
-                        abortJITing();
-                        if (vregs[target->vreg] == 0) {
-                            assertNameDefined(0, target->id.c_str(), NameError, true /* local_var_msg */);
-                            return Value();
-                        }
-                    }
-
-                    frame_info.num_vregs = std::max(frame_info.num_vregs, target->vreg + 1);
-                    Py_DECREF(vregs[target->vreg]);
-                    vregs[target->vreg] = NULL;
-                }
-                break;
-            }
-            default:
-                ASSERT(0, "Unsupported del target: %d", target_->type);
-                abort();
+            break;
         }
+        case BST_TYPE::Attribute: {
+            BST_Attribute* attr = (BST_Attribute*)target_;
+            Value target = visit_expr(attr->value);
+            AUTO_DECREF(target.o);
+            BoxedString* str = attr->attr.getBox();
+            if (jit)
+                jit->emitDelAttr(target, str);
+            delattr(target.o, str);
+            break;
+        }
+        case BST_TYPE::Name: {
+            BST_Name* target = (BST_Name*)target_;
+            assert(target->lookup_type != ScopeInfo::VarScopeType::UNKNOWN);
+
+            ScopeInfo::VarScopeType vst = target->lookup_type;
+            if (vst == ScopeInfo::VarScopeType::GLOBAL) {
+                if (jit)
+                    jit->emitDelGlobal(target->id.getBox());
+                delGlobal(frame_info.globals, target->id.getBox());
+                break;
+            } else if (vst == ScopeInfo::VarScopeType::NAME) {
+                if (jit)
+                    jit->emitDelName(target->id);
+                ASTInterpreterJitInterface::delNameHelper(this, target->id);
+            } else {
+                assert(vst == ScopeInfo::VarScopeType::FAST);
+
+                assert(getVRegInfo().getVReg(target->id) == target->vreg);
+
+                if (target->id.s()[0] == '#') {
+                    assert(vregs[target->vreg] != NULL);
+                    if (jit)
+                        jit->emitKillTemporary(target);
+                } else {
+                    abortJITing();
+                    if (vregs[target->vreg] == 0) {
+                        assertNameDefined(0, target->id.c_str(), NameError, true /* local_var_msg */);
+                        return Value();
+                    }
+                }
+
+                frame_info.num_vregs = std::max(frame_info.num_vregs, target->vreg + 1);
+                Py_DECREF(vregs[target->vreg]);
+                vregs[target->vreg] = NULL;
+            }
+            break;
+        }
+        default:
+            ASSERT(0, "Unsupported del target: %d", target_->type);
+            abort();
     }
     return Value();
 }

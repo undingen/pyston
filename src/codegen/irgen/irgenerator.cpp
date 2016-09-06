@@ -2088,21 +2088,20 @@ private:
     }
 
     void doDelete(BST_Delete* node, const UnwindInfo& unw_info) {
-        for (BST_expr* target : node->targets) {
-            switch (target->type) {
-                case BST_TYPE::Subscript:
-                    _doDelitem(static_cast<BST_Subscript*>(target), unw_info);
-                    break;
-                case BST_TYPE::Attribute:
-                    _doDelAttr(static_cast<BST_Attribute*>(target), unw_info);
-                    break;
-                case BST_TYPE::Name:
-                    _doDelName(static_cast<BST_Name*>(target), unw_info);
-                    break;
-                default:
-                    ASSERT(0, "Unsupported del target: %d", target->type);
-                    abort();
-            }
+        BST_expr* target = node->target;
+        switch (target->type) {
+            case BST_TYPE::Subscript:
+                _doDelitem(static_cast<BST_Subscript*>(target), unw_info);
+                break;
+            case BST_TYPE::Attribute:
+                _doDelAttr(static_cast<BST_Attribute*>(target), unw_info);
+                break;
+            case BST_TYPE::Name:
+                _doDelName(static_cast<BST_Name*>(target), unw_info);
+                break;
+            default:
+                ASSERT(0, "Unsupported del target: %d", target->type);
+                abort();
         }
     }
 

@@ -567,27 +567,26 @@ private:
     }
 
     void visit_delete(BST_Delete* node) override {
-        for (BST_expr* target : node->targets) {
-            switch (target->type) {
-                case BST_TYPE::Subscript:
-                    getType(bst_cast<BST_Subscript>(target)->value);
-                    break;
-                case BST_TYPE::Attribute:
-                    getType(bst_cast<BST_Attribute>(target)->value);
-                    break;
-                case BST_TYPE::Name: {
-                    auto name = bst_cast<BST_Name>(target);
-                    assert(name->lookup_type != ScopeInfo::VarScopeType::UNKNOWN);
-                    if (name->lookup_type == ScopeInfo::VarScopeType::FAST
-                        || name->lookup_type == ScopeInfo::VarScopeType::CLOSURE) {
-                        sym_table[name->vreg] = NULL;
-                    } else
-                        assert(name->vreg == -1);
-                    break;
-                }
-                default:
-                    RELEASE_ASSERT(0, "%d", target->type);
+        BST_expr* target = node->target;
+        switch (target->type) {
+            case BST_TYPE::Subscript:
+                getType(bst_cast<BST_Subscript>(target)->value);
+                break;
+            case BST_TYPE::Attribute:
+                getType(bst_cast<BST_Attribute>(target)->value);
+                break;
+            case BST_TYPE::Name: {
+                auto name = bst_cast<BST_Name>(target);
+                assert(name->lookup_type != ScopeInfo::VarScopeType::UNKNOWN);
+                if (name->lookup_type == ScopeInfo::VarScopeType::FAST
+                    || name->lookup_type == ScopeInfo::VarScopeType::CLOSURE) {
+                    sym_table[name->vreg] = NULL;
+                } else
+                    assert(name->vreg == -1);
+                break;
             }
+            default:
+                RELEASE_ASSERT(0, "%d", target->type);
         }
     }
 

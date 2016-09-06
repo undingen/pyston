@@ -1788,9 +1788,8 @@ public:
         // Deleting temporary names is safe, since we only use it to represent kills.
         if (node->type == BST_TYPE::Delete) {
             BST_Delete* del = bst_cast<BST_Delete>(node);
-            assert(del->targets.size() == 1);
-            if (del->targets[0]->type == BST_TYPE::Name) {
-                BST_Name* target = bst_cast<BST_Name>(del->targets[0]);
+            if (del->target->type == BST_TYPE::Name) {
+                BST_Name* target = bst_cast<BST_Name>(del->target);
                 if (target->id.s()[0] == '#') {
                     curblock->push_back(node);
                     return;
@@ -2182,9 +2181,6 @@ public:
 
     bool visit_delete(AST_Delete* node) override {
         for (auto t : node->targets) {
-            BST_Delete* astdel = new BST_Delete();
-            astdel->lineno = node->lineno;
-            astdel->col_offset = node->col_offset;
             BST_expr* target = NULL;
             switch (t->type) {
                 case AST_TYPE::Subscript: {
@@ -2234,11 +2230,13 @@ public:
                     RELEASE_ASSERT(0, "Unsupported del target: %d", t->type);
             }
 
-            if (target != NULL)
-                astdel->targets.push_back(target);
-
-            if (astdel->targets.size() > 0)
+            if (target != NULL) {
+                BST_Delete* astdel = new BST_Delete();
+                astdel->lineno = node->lineno;
+                astdel->col_offset = node->col_offset;
+                astdel->target = target;
                 push_back(astdel);
+            }
         }
 
         return true;
@@ -2446,7 +2444,7 @@ public:
     BST_stmt* makeKill(InternedString name) {
         // There might be a better way to represent this, maybe with a dedicated AST_Kill bytecode?
         auto del = new BST_Delete();
-        del->targets.push_back(makeName(name, AST_TYPE::Del, 0, 0, false));
+        del->target = makeName(name, AST_TYPE::Del, 0, 0, false);
         return del;
     }
 

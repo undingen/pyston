@@ -235,7 +235,7 @@ void BST_Delete::accept(BSTVisitor* v) {
     if (skip)
         return;
 
-    visitVector(this->targets, v);
+    target->accept(v);
 }
 
 void BST_Delete::accept_stmt(StmtVisitor* v) {
@@ -1095,11 +1095,7 @@ bool PrintVisitor::visit_continue(BST_Continue* node) {
 
 bool PrintVisitor::visit_delete(BST_Delete* node) {
     stream << "del ";
-    for (int i = 0; i < node->targets.size(); i++) {
-        if (i > 0)
-            stream << ", ";
-        node->targets[i]->accept(this);
-    }
+    node->target->accept(this);
     return true;
 }
 

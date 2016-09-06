@@ -442,7 +442,7 @@ public:
 
 class BST_Delete : public BST_stmt {
 public:
-    std::vector<BST_expr*> targets;
+    BST_expr* target;
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
 
