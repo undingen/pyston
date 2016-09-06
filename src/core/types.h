@@ -155,6 +155,7 @@ struct ICSlotInfo;
 class CFG;
 class AST;
 class BST;
+class BSTAllocator;
 class BST_FunctionDef;
 class AST_arguments;
 class BST_expr;
@@ -234,7 +235,7 @@ struct ParamNames {
     unsigned char has_vararg_name : 1;
     unsigned char has_kwarg_name : 1;
 
-    explicit ParamNames(AST_arguments* ast, InternedStringPool& pool);
+    explicit ParamNames(BSTAllocator& bst_allocator, AST_arguments* ast, InternedStringPool& pool);
     ParamNames(const std::vector<const char*>& args, const char* vararg, const char* kwarg);
     static ParamNames empty() { return ParamNames(); }
 
@@ -495,6 +496,8 @@ public:
     CFG* cfg;
     FutureFlags future_flags;
     bool is_generator;
+
+    std::unique_ptr<struct BSTAllocator> bst_allocator;
 
     // This should really be an AST_TYPE::AST_TYPE, using that would require resolving a circular dependency
     // between ast.h and core/types.h

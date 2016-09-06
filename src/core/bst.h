@@ -166,9 +166,13 @@ class StmtVisitor;
 class SliceVisitor;
 class BST_keyword;
 
+struct BSTAllocator {
+    llvm::BumpPtrAllocator allocator;
+};
+
 class BST {
 public:
-    virtual ~BST() {}
+    virtual ~BST() = default;
 
     const BST_TYPE::BST_TYPE type;
     uint32_t lineno, col_offset;
@@ -189,6 +193,8 @@ public:
 #endif
     BST(BST_TYPE::BST_TYPE type, uint32_t lineno, uint32_t col_offset = 0)
         : type(type), lineno(lineno), col_offset(col_offset) {}
+
+    static void* operator new(size_t count, BSTAllocator& allocator) { return allocator.allocator.Allocate(count, 8); }
 };
 
 class BST_expr : public BST {

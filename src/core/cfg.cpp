@@ -45,8 +45,9 @@ void fillScopingInfo(BST_Name* node, ScopeInfo* scope_info) {
     assert(node->lookup_type != ScopeInfo::VarScopeType::UNKNOWN);
 }
 
-ParamNames::ParamNames(AST_arguments* arguments, InternedStringPool& pool)
+ParamNames::ParamNames(BSTAllocator& bst_allocator, AST_arguments* arguments, InternedStringPool& pool)
     : all_args_contains_names(1), takes_param_names(1), has_vararg_name(0), has_kwarg_name(0) {
+
     if (!arguments)
         return;
 
@@ -54,11 +55,11 @@ ParamNames::ParamNames(AST_arguments* arguments, InternedStringPool& pool)
         AST_expr* arg = arguments->args[i];
         if (arg->type == AST_TYPE::Name) {
             AST_Name* name = ast_cast<AST_Name>(arg);
-            BST_Name* new_name = new BST_Name(name->id, name->ctx_type, name->lineno, name->col_offset);
+            BST_Name* new_name = new (bst_allocator) BST_Name(name->id, name->ctx_type, name->lineno, name->col_offset);
             all_args.emplace_back(new_name);
         } else {
             InternedString dot_arg_name = pool.get("." + std::to_string(i));
-            auto new_name = new BST_Name(dot_arg_name, AST_TYPE::Param, arg->lineno, arg->col_offset);
+            auto new_name = new (bst_allocator) BST_Name(dot_arg_name, AST_TYPE::Param, arg->lineno, arg->col_offset);
             new_name->lookup_type = ScopeInfo::VarScopeType::FAST;
             all_args.emplace_back(new_name);
         }
@@ -67,16 +68,16 @@ ParamNames::ParamNames(AST_arguments* arguments, InternedStringPool& pool)
     auto vararg_name = arguments->vararg;
     if (vararg_name) {
         has_vararg_name = 1;
-        BST_Name* new_name
-            = new BST_Name(vararg_name->id, vararg_name->ctx_type, vararg_name->lineno, vararg_name->col_offset);
+        BST_Name* new_name = new (bst_allocator)
+            BST_Name(vararg_name->id, vararg_name->ctx_type, vararg_name->lineno, vararg_name->col_offset);
         all_args.emplace_back(new_name);
     }
 
     auto kwarg_name = arguments->kwarg;
     if (kwarg_name) {
         has_kwarg_name = 1;
-        BST_Name* new_name
-            = new BST_Name(kwarg_name->id, kwarg_name->ctx_type, kwarg_name->lineno, kwarg_name->col_offset);
+        BST_Name* new_name = new (bst_allocator)
+            BST_Name(kwarg_name->id, kwarg_name->ctx_type, kwarg_name->lineno, kwarg_name->col_offset);
         all_args.emplace_back(new_name);
     }
 }
@@ -338,6 +339,8 @@ private:
                            BoxedString* filename, SourceInfo* source, const ParamNames& param_names, ScopeInfo* scoping,
                            ModuleCFGProcessor* cfgizer);
 
+    BSTAllocator& getAlloc() { return *source->bst_allocator; }
+
 public:
     CFGVisitor(BoxedString* filename, SourceInfo* source, InternedStringPool& stringpool, ScopeInfo* scoping,
                AST_TYPE::AST_TYPE root_type, FutureFlags future_flags, CFG* cfg, ModuleCFGProcessor* cfgizer)
@@ -377,7 +380,7 @@ private:
 
     BST_Name* makeName(InternedString id, AST_TYPE::AST_TYPE ctx_type, int lineno, int col_offset = 0,
                        bool is_kill = false) {
-        BST_Name* name = new BST_Name(id, ctx_type, lineno, col_offset);
+        BST_Name* name = new (getAlloc()) BST_Name(id, ctx_type, lineno, col_offset);
         fillScopingInfo(name, scoping);
         name->is_kill = is_kill;
         return name;
@@ -424,7 +427,7 @@ private:
             }
         }
 
-        BST_Return* node = new BST_Return();
+        BST_Return* node = new (getAlloc()) BST_Return();
         node->value = value;
         node->col_offset = value->col_offset;
         node->lineno = value->lineno;
@@ -467,7 +470,7 @@ private:
     }
 
     BST_expr* callNonzero(BST_expr* e) {
-        BST_LangPrimitive* call = new BST_LangPrimitive(BST_LangPrimitive::NONZERO);
+        BST_LangPrimitive* call = new (getAlloc()) BST_LangPrimitive(BST_LangPrimitive::NONZERO);
         call->args.push_back(e);
         call->lineno = e->lineno;
         call->col_offset = e->col_offset;
@@ -485,13 +488,13 @@ private:
     BST_Name* remapName(AST_Name* name) {
         if (!name)
             return NULL;
-        BST_Name* rtn = new BST_Name(name->id, name->ctx_type, name->lineno, name->col_offset);
+        BST_Name* rtn = new (getAlloc()) BST_Name(name->id, name->ctx_type, name->lineno, name->col_offset);
         fillScopingInfo(rtn, scoping);
         return rtn;
     }
 
     BST_Num* remapNum(AST_Num* num) {
-        auto r = new BST_Num();
+        auto r = new (getAlloc()) BST_Num();
         r->lineno = num->lineno;
         r->col_offset = num->col_offset;
         r->num_type = num->num_type;
@@ -511,7 +514,7 @@ private:
     }
 
     BST_Str* remapStr(AST_Str* str) {
-        auto r = new BST_Str();
+        auto r = new (getAlloc()) BST_Str();
         r->str_data = str->str_data;
         r->str_type = str->str_type;
         r->lineno = str->lineno;
@@ -528,7 +531,7 @@ private:
         assert(curblock);
 
         InternedString rtn_name = nodeName();
-        pushAssign(rtn_name, new ResultASTType());
+        pushAssign(rtn_name, new (getAlloc()) ResultASTType());
         std::vector<CFGBlock*> exit_blocks;
 
         // Where the current level should jump to after finishing its iteration.
@@ -542,7 +545,7 @@ private:
             bool is_innermost = (i == n - 1);
 
             BST_expr* remapped_iter = remapExpr(c->iter);
-            BST_LangPrimitive* iter_call = new BST_LangPrimitive(BST_LangPrimitive::GET_ITER);
+            BST_LangPrimitive* iter_call = new (getAlloc()) BST_LangPrimitive(BST_LangPrimitive::GET_ITER);
             iter_call->args.push_back(remapped_iter);
             iter_call->lineno = c->target->lineno; // Not sure if this should be c->target or c->iter
             InternedString iter_name = nodeName("lc_iter", i);
@@ -556,7 +559,7 @@ private:
             pushJump(test_block);
 
             curblock = test_block;
-            BST_LangPrimitive* test_call = new BST_LangPrimitive(BST_LangPrimitive::HASNEXT);
+            BST_LangPrimitive* test_call = new (getAlloc()) BST_LangPrimitive(BST_LangPrimitive::HASNEXT);
             test_call->args.push_back(makeName(iter_name, AST_TYPE::Load, node->lineno));
             test_call->lineno = c->target->lineno;
             BST_expr* test = wrap(test_call);
@@ -568,7 +571,7 @@ private:
             exit_blocks.push_back(exit_block);
             // printf("Body block for comp %d is %d\n", i, body_block->idx);
 
-            BST_Branch* br = new BST_Branch();
+            BST_Branch* br = new (getAlloc()) BST_Branch();
             br->col_offset = node->col_offset;
             br->lineno = node->lineno;
             br->test = test;
@@ -585,7 +588,7 @@ private:
 
             for (AST_expr* if_condition : c->ifs) {
                 BST_expr* remapped = callNonzero(remapExpr(if_condition));
-                BST_Branch* br = new BST_Branch();
+                BST_Branch* br = new (getAlloc()) BST_Branch();
                 br->test = remapped;
                 push_back(br);
 
@@ -643,14 +646,14 @@ private:
     }
 
     BST_expr* makeNum(int n) {
-        BST_Num* node = new BST_Num();
+        BST_Num* node = new (getAlloc()) BST_Num();
         node->num_type = AST_Num::INT;
         node->n_int = n;
         return node;
     }
 
     void pushJump(CFGBlock* target, bool allow_backedge = false, int lineno = 0) {
-        BST_Jump* rtn = new BST_Jump();
+        BST_Jump* rtn = new (getAlloc()) BST_Jump();
         rtn->target = target;
         rtn->lineno = lineno;
 
@@ -661,7 +664,7 @@ private:
 
     // NB. can generate blocks, because callNonzero can
     BST_Branch* makeBranch(BST_expr* test) {
-        BST_Branch* rtn = new BST_Branch();
+        BST_Branch* rtn = new (getAlloc()) BST_Branch();
         rtn->test = callNonzero(test);
         rtn->col_offset = test->col_offset;
         rtn->lineno = test->lineno;
@@ -684,7 +687,7 @@ private:
 
     void pushReraise(int lineno, InternedString exc_type_name, InternedString exc_value_name,
                      InternedString exc_traceback_name) {
-        auto raise = new BST_Raise();
+        auto raise = new (getAlloc()) BST_Raise();
         raise->lineno = lineno;
         raise->arg0 = makeLoad(exc_type_name, lineno, true);
         raise->arg1 = makeLoad(exc_value_name, lineno, true);
@@ -715,12 +718,12 @@ private:
     BST_expr* makeLoadAttribute(BST_expr* base, InternedString name, bool clsonly) {
         BST_expr* rtn;
         if (clsonly) {
-            BST_ClsAttribute* attr = new BST_ClsAttribute();
+            BST_ClsAttribute* attr = new (getAlloc()) BST_ClsAttribute();
             attr->value = base;
             attr->attr = name;
             rtn = attr;
         } else {
-            BST_Attribute* attr = new BST_Attribute();
+            BST_Attribute* attr = new (getAlloc()) BST_Attribute();
             attr->ctx_type = AST_TYPE::Load;
             attr->value = base;
             attr->attr = name;
@@ -755,7 +758,7 @@ private:
     }
 
     BST_Call* makeCall(BST_expr* func) {
-        BST_Call* call = new BST_Call();
+        BST_Call* call = new (getAlloc()) BST_Call();
         call->starargs = NULL;
         call->kwargs = NULL;
         call->func = func;
@@ -786,7 +789,7 @@ private:
     }
 
     BST_Compare* makeCompare(AST_TYPE::AST_TYPE oper, BST_expr* left, BST_expr* right) {
-        auto compare = new BST_Compare();
+        auto compare = new (getAlloc()) BST_Compare();
         compare->ops.push_back(oper);
         compare->left = left;
         compare->comparators.push_back(right);
@@ -794,7 +797,7 @@ private:
     }
 
     BST_Index* makeIndex(BST_expr* value) {
-        auto index = new BST_Index();
+        auto index = new (getAlloc()) BST_Index();
         index->value = value;
         index->lineno = value->lineno;
         index->col_offset = value->col_offset;
@@ -802,7 +805,7 @@ private:
     }
 
     BST_Subscript* makeSubscript(AST_TYPE::AST_TYPE ctx_type, BST_expr* value, BST_slice* slice) {
-        auto subscript = new BST_Subscript();
+        auto subscript = new (getAlloc()) BST_Subscript();
         subscript->ctx_type = ctx_type;
         subscript->value = value;
         subscript->slice = slice;
@@ -815,7 +818,7 @@ private:
     // for bsts (desugaring an augassign)
     // TODO: we should get rid of this bst one, or at least not call it the same thing?
     void pushAssign(BST_expr* target, BST_expr* val) {
-        BST_Assign* assign = new BST_Assign();
+        BST_Assign* assign = new (getAlloc()) BST_Assign();
         assign->value = val;
         assign->col_offset = val->col_offset;
         assign->lineno = val->lineno;
@@ -824,7 +827,7 @@ private:
     }
 
     void pushAssign(AST_expr* target, BST_expr* val) {
-        BST_Assign* assign = new BST_Assign();
+        BST_Assign* assign = new (getAlloc()) BST_Assign();
         assign->value = val;
         assign->col_offset = val->col_offset;
         assign->lineno = val->lineno;
@@ -836,7 +839,7 @@ private:
             AST_Subscript* s = ast_cast<AST_Subscript>(target);
             assert(s->ctx_type == AST_TYPE::Store);
 
-            BST_Subscript* s_target = new BST_Subscript();
+            BST_Subscript* s_target = new (getAlloc()) BST_Subscript();
             s_target->value = remapExpr(s->value);
             s_target->slice = remapSlice(s->slice);
             s_target->ctx_type = AST_TYPE::Store;
@@ -849,7 +852,7 @@ private:
             AST_Attribute* a = ast_cast<AST_Attribute>(target);
             assert(a->ctx_type == AST_TYPE::Store);
 
-            BST_Attribute* a_target = new BST_Attribute();
+            BST_Attribute* a_target = new (getAlloc()) BST_Attribute();
             a_target->value = remapExpr(a->value);
             a_target->attr = scoping->mangleName(a->attr);
             a_target->ctx_type = AST_TYPE::Store;
@@ -870,7 +873,7 @@ private:
                 elts = &_t->elts;
             }
 
-            BST_Tuple* new_target = new BST_Tuple();
+            BST_Tuple* new_target = new (getAlloc()) BST_Tuple();
             new_target->ctx_type = AST_TYPE::Store;
             new_target->lineno = target->lineno;
             new_target->col_offset = target->col_offset;
@@ -892,7 +895,7 @@ private:
     }
 
     void pushAssign(InternedString id, BST_expr* val) {
-        BST_Assign* assign = new BST_Assign();
+        BST_Assign* assign = new (getAlloc()) BST_Assign();
         assign->value = val;
         assign->col_offset = val->col_offset;
         assign->lineno = val->lineno;
@@ -909,7 +912,7 @@ private:
     }
 
     BST_stmt* makeExpr(BST_expr* expr) {
-        BST_Expr* stmt = new BST_Expr();
+        BST_Expr* stmt = new (getAlloc()) BST_Expr();
         stmt->value = expr;
         stmt->lineno = expr->lineno;
         stmt->col_offset = expr->col_offset;
@@ -925,7 +928,7 @@ private:
     }
 
     BST_expr* remapAttribute(AST_Attribute* node) {
-        BST_Attribute* rtn = new BST_Attribute();
+        BST_Attribute* rtn = new (getAlloc()) BST_Attribute();
 
         rtn->col_offset = node->col_offset;
         rtn->lineno = node->lineno;
@@ -936,7 +939,7 @@ private:
     }
 
     BST_expr* remapBinOp(AST_BinOp* node) {
-        BST_BinOp* rtn = new BST_BinOp();
+        BST_BinOp* rtn = new (getAlloc()) BST_BinOp();
         rtn->lineno = node->lineno;
         rtn->col_offset = node->col_offset;
         rtn->op_type = remapBinOpType(node->op_type);
@@ -950,13 +953,13 @@ private:
             return nullptr;
         } else if (val->type == BST_TYPE::Ellipsis) {
             BST_Ellipsis* orig = bst_cast<BST_Ellipsis>(val);
-            BST_Ellipsis* made = new BST_Ellipsis();
+            BST_Ellipsis* made = new (getAlloc()) BST_Ellipsis();
             made->col_offset = orig->col_offset;
             made->lineno = orig->lineno;
             return made;
         } else if (val->type == BST_TYPE::ExtSlice) {
             BST_ExtSlice* orig = bst_cast<BST_ExtSlice>(val);
-            BST_ExtSlice* made = new BST_ExtSlice();
+            BST_ExtSlice* made = new (getAlloc()) BST_ExtSlice();
             made->col_offset = orig->col_offset;
             made->lineno = orig->lineno;
             made->dims.reserve(orig->dims.size());
@@ -966,14 +969,14 @@ private:
             return made;
         } else if (val->type == BST_TYPE::Index) {
             BST_Index* orig = bst_cast<BST_Index>(val);
-            BST_Index* made = new BST_Index();
+            BST_Index* made = new (getAlloc()) BST_Index();
             made->value = _dup(orig->value);
             made->col_offset = orig->col_offset;
             made->lineno = orig->lineno;
             return made;
         } else if (val->type == BST_TYPE::Slice) {
             BST_Slice* orig = bst_cast<BST_Slice>(val);
-            BST_Slice* made = new BST_Slice();
+            BST_Slice* made = new (getAlloc()) BST_Slice();
             made->col_offset = orig->col_offset;
             made->lineno = orig->lineno;
             made->lower = _dup(orig->lower);
@@ -1001,7 +1004,7 @@ private:
             return made;
         } else if (val->type == BST_TYPE::Num) {
             BST_Num* orig = bst_cast<BST_Num>(val);
-            BST_Num* made = new BST_Num();
+            BST_Num* made = new (getAlloc()) BST_Num();
             made->num_type = orig->num_type;
             made->n_int = orig->n_int;
             made->n_long = orig->n_long;
@@ -1010,7 +1013,7 @@ private:
             return made;
         } else if (val->type == BST_TYPE::Str) {
             BST_Str* orig = bst_cast<BST_Str>(val);
-            BST_Str* made = new BST_Str();
+            BST_Str* made = new (getAlloc()) BST_Str();
             made->str_type = orig->str_type;
             made->str_data = orig->str_data;
             made->col_offset = orig->col_offset;
@@ -1033,7 +1036,7 @@ private:
             BST_expr* val = remapExpr(node->values[i]);
             pushAssign(name, _dup(val));
 
-            BST_Branch* br = new BST_Branch();
+            BST_Branch* br = new (getAlloc()) BST_Branch();
             br->test = callNonzero(val);
             br->lineno = val->lineno;
             push_back(br);
@@ -1071,7 +1074,7 @@ private:
     }
 
     BST_expr* remapCall(AST_Call* node) {
-        BST_Call* rtn = new BST_Call();
+        BST_Call* rtn = new (getAlloc()) BST_Call();
         rtn->lineno = node->lineno;
         rtn->col_offset = node->col_offset;
 
@@ -1093,7 +1096,7 @@ private:
             rtn->args.push_back(remapExpr(e));
         }
         for (auto e : node->keywords) {
-            BST_keyword* kw = new BST_keyword();
+            BST_keyword* kw = new (getAlloc()) BST_keyword();
             kw->value = remapExpr(e->value);
             kw->arg = e->arg;
             rtn->keywords.push_back(kw);
@@ -1105,7 +1108,7 @@ private:
     }
 
     BST_expr* remapClsAttribute(AST_ClsAttribute* node) {
-        BST_ClsAttribute* rtn = new BST_ClsAttribute();
+        BST_ClsAttribute* rtn = new (getAlloc()) BST_ClsAttribute();
 
         rtn->col_offset = node->col_offset;
         rtn->lineno = node->lineno;
@@ -1119,7 +1122,7 @@ private:
 
         // special case unchained comparisons to avoid generating a unnecessary complex cfg.
         if (node->ops.size() == 1) {
-            BST_Compare* rtn = new BST_Compare();
+            BST_Compare* rtn = new (getAlloc()) BST_Compare();
             rtn->lineno = node->lineno;
             rtn->col_offset = node->col_offset;
 
@@ -1142,7 +1145,7 @@ private:
 
                 BST_expr* right = remapExpr(node->comparators[i]);
 
-                BST_Compare* val = new BST_Compare;
+                BST_Compare* val = new (getAlloc()) BST_Compare;
                 val->col_offset = node->col_offset;
                 val->lineno = node->lineno;
                 val->left = left;
@@ -1158,7 +1161,7 @@ private:
                     continue;
                 }
 
-                BST_Branch* br = new BST_Branch();
+                BST_Branch* br = new (getAlloc()) BST_Branch();
                 br->test = callNonzero(makeLoad(name, node));
                 push_back(br);
 
@@ -1188,7 +1191,7 @@ private:
     }
 
     BST_expr* remapDict(AST_Dict* node) {
-        BST_Dict* rtn = new BST_Dict();
+        BST_Dict* rtn = new (getAlloc()) BST_Dict();
         rtn->lineno = node->lineno;
         rtn->col_offset = node->col_offset;
 
@@ -1207,14 +1210,14 @@ private:
     }
 
     BST_slice* remapEllipsis(AST_Ellipsis* node) {
-        auto r = new BST_Ellipsis();
+        auto r = new (getAlloc()) BST_Ellipsis();
         r->lineno = node->lineno;
         r->col_offset = node->col_offset;
         return r;
     }
 
     BST_slice* remapExtSlice(AST_ExtSlice* node) {
-        BST_ExtSlice* rtn = new BST_ExtSlice();
+        BST_ExtSlice* rtn = new (getAlloc()) BST_ExtSlice();
         rtn->lineno = node->lineno;
         rtn->col_offset = node->col_offset;
 
@@ -1287,10 +1290,11 @@ private:
         // cur_code->co_consts.push_back(def->code)
         constants.push_back(code);
 
-        BST_FunctionDef* func = new BST_FunctionDef();
-        func->args = new BST_arguments(); // hacky, but we don't have to fill this in except for the defaults
+        BST_FunctionDef* func = new (getAlloc()) BST_FunctionDef();
+        func->args = new (getAlloc())
+            BST_arguments(); // hacky, but we don't have to fill this in except for the defaults
         func->code = code;
-        BST_MakeFunction* mkfunc = new BST_MakeFunction(func);
+        BST_MakeFunction* mkfunc = new (getAlloc()) BST_MakeFunction(func);
         InternedString func_var_name = nodeName();
         pushAssign(func_var_name, mkfunc);
 
@@ -1355,10 +1359,11 @@ private:
         // cur_code->co_consts.push_back(def->code)
         constants.push_back(code);
 
-        BST_FunctionDef* func = new BST_FunctionDef();
-        func->args = new BST_arguments(); // hacky, but we don't have to fill this in except for the defaults
+        BST_FunctionDef* func = new (getAlloc()) BST_FunctionDef();
+        func->args = new (getAlloc())
+            BST_arguments(); // hacky, but we don't have to fill this in except for the defaults
         func->code = code;
-        BST_MakeFunction* mkfunc = new BST_MakeFunction(func);
+        BST_MakeFunction* mkfunc = new (getAlloc()) BST_MakeFunction(func);
         InternedString func_var_name = nodeName();
         pushAssign(func_var_name, mkfunc);
 
@@ -1397,7 +1402,7 @@ private:
     }
 
     BST_slice* remapIndex(AST_Index* node) {
-        BST_Index* rtn = new BST_Index();
+        BST_Index* rtn = new (getAlloc()) BST_Index();
         rtn->lineno = node->lineno;
         rtn->col_offset = node->col_offset;
         rtn->value = remapExpr(node->value);
@@ -1405,7 +1410,7 @@ private:
     }
 
     BST_arguments* remapArguments(AST_arguments* args) {
-        auto rtn = new BST_arguments();
+        auto rtn = new (getAlloc()) BST_arguments();
         for (auto expr : args->defaults)
             rtn->defaults.push_back(remapExpr(expr));
         return rtn;
@@ -1420,7 +1425,7 @@ private:
 
         stmt->value = node->body; // don't remap now; will be CFG'ed later
 
-        auto bdef = new BST_FunctionDef();
+        auto bdef = new (getAlloc()) BST_FunctionDef();
         bdef->lineno = node->lineno;
         bdef->col_offset = node->col_offset;
 
@@ -1432,13 +1437,13 @@ private:
         // cur_code->co_consts.push_back(def->code)
         constants.push_back(bdef->code);
 
-        return new BST_MakeFunction(bdef);
+        return new (getAlloc()) BST_MakeFunction(bdef);
     }
 
     BST_expr* remapLangPrimitive(AST_LangPrimitive* node) {
         // AST_LangPrimitive can be PRINT_EXPR
         assert(node->opcode == AST_LangPrimitive::PRINT_EXPR);
-        BST_LangPrimitive* rtn = new BST_LangPrimitive(BST_LangPrimitive::PRINT_EXPR);
+        BST_LangPrimitive* rtn = new (getAlloc()) BST_LangPrimitive(BST_LangPrimitive::PRINT_EXPR);
         rtn->col_offset = node->col_offset;
         rtn->lineno = node->lineno;
 
@@ -1451,7 +1456,7 @@ private:
     BST_expr* remapList(AST_List* node) {
         assert(node->ctx_type == AST_TYPE::Load);
 
-        BST_List* rtn = new BST_List();
+        BST_List* rtn = new (getAlloc()) BST_List();
         rtn->lineno = node->lineno;
         rtn->col_offset = node->col_offset;
         rtn->ctx_type = node->ctx_type;
@@ -1463,7 +1468,7 @@ private:
     }
 
     BST_expr* remapRepr(AST_Repr* node) {
-        BST_Repr* rtn = new BST_Repr();
+        BST_Repr* rtn = new (getAlloc()) BST_Repr();
         rtn->lineno = node->lineno;
         rtn->col_offset = node->col_offset;
         rtn->value = remapExpr(node->value);
@@ -1471,7 +1476,7 @@ private:
     }
 
     BST_expr* remapSet(AST_Set* node) {
-        BST_Set* rtn = new BST_Set();
+        BST_Set* rtn = new (getAlloc()) BST_Set();
         rtn->lineno = node->lineno;
         rtn->col_offset = node->col_offset;
 
@@ -1483,7 +1488,7 @@ private:
     }
 
     BST_slice* remapSlice(AST_Slice* node) {
-        BST_Slice* rtn = new BST_Slice();
+        BST_Slice* rtn = new (getAlloc()) BST_Slice();
         rtn->lineno = node->lineno;
         rtn->col_offset = node->col_offset;
 
@@ -1497,7 +1502,7 @@ private:
     BST_expr* remapTuple(AST_Tuple* node) {
         assert(node->ctx_type == AST_TYPE::Load);
 
-        BST_Tuple* rtn = new BST_Tuple();
+        BST_Tuple* rtn = new (getAlloc()) BST_Tuple();
         rtn->lineno = node->lineno;
         rtn->col_offset = node->col_offset;
         rtn->ctx_type = node->ctx_type;
@@ -1509,7 +1514,7 @@ private:
     }
 
     BST_expr* remapSubscript(AST_Subscript* node) {
-        BST_Subscript* rtn = new BST_Subscript();
+        BST_Subscript* rtn = new (getAlloc()) BST_Subscript();
         rtn->lineno = node->lineno;
         rtn->col_offset = node->col_offset;
         rtn->ctx_type = node->ctx_type;
@@ -1519,7 +1524,7 @@ private:
     }
 
     BST_expr* remapUnaryOp(AST_UnaryOp* node) {
-        BST_UnaryOp* rtn = new BST_UnaryOp();
+        BST_UnaryOp* rtn = new (getAlloc()) BST_UnaryOp();
         rtn->lineno = node->lineno;
         rtn->col_offset = node->col_offset;
         rtn->op_type = node->op_type;
@@ -1528,7 +1533,7 @@ private:
     }
 
     BST_expr* remapYield(AST_Yield* node) {
-        BST_Yield* rtn = new BST_Yield();
+        BST_Yield* rtn = new (getAlloc()) BST_Yield();
         rtn->lineno = node->lineno;
         rtn->col_offset = node->col_offset;
         rtn->value = remapExpr(node->value);
@@ -1536,7 +1541,7 @@ private:
         InternedString node_name(nodeName());
         pushAssign(node_name, rtn);
 
-        push_back(makeExpr(new BST_LangPrimitive(BST_LangPrimitive::UNCACHE_EXC_INFO)));
+        push_back(makeExpr(new (getAlloc()) BST_LangPrimitive(BST_LangPrimitive::UNCACHE_EXC_INFO)));
 
         if (root_type != AST_TYPE::FunctionDef && root_type != AST_TYPE::Lambda)
             raiseExcHelper(SyntaxError, "'yield' outside function");
@@ -1827,7 +1832,7 @@ public:
         else
             exc_dest = cfg->addBlock();
 
-        BST_Invoke* invoke = new BST_Invoke(node);
+        BST_Invoke* invoke = new (getAlloc()) BST_Invoke(node);
         invoke->normal_dest = normal_dest;
         invoke->exc_dest = exc_dest;
         invoke->col_offset = node->col_offset;
@@ -1843,14 +1848,14 @@ public:
 
         curblock = exc_dest;
         // TODO: need to clear some temporaries here
-        BST_Assign* exc_asgn = new BST_Assign();
-        BST_Tuple* target = new BST_Tuple();
+        BST_Assign* exc_asgn = new (getAlloc()) BST_Assign();
+        BST_Tuple* target = new (getAlloc()) BST_Tuple();
         target->elts.push_back(makeName(exc_info.exc_type_name, AST_TYPE::Store, node->lineno));
         target->elts.push_back(makeName(exc_info.exc_value_name, AST_TYPE::Store, node->lineno));
         target->elts.push_back(makeName(exc_info.exc_traceback_name, AST_TYPE::Store, node->lineno));
         exc_asgn->target = target;
 
-        exc_asgn->value = new BST_LangPrimitive(BST_LangPrimitive::LANDINGPAD);
+        exc_asgn->value = new (getAlloc()) BST_LangPrimitive(BST_LangPrimitive::LANDINGPAD);
         curblock->push_back(exc_asgn);
 
         pushJump(exc_info.exc_dest);
@@ -1862,7 +1867,7 @@ public:
     }
 
     bool visit_classdef(AST_ClassDef* node) override {
-        auto def = new BST_ClassDef();
+        auto def = new (getAlloc()) BST_ClassDef();
         def->lineno = node->lineno;
         def->col_offset = node->col_offset;
         def->name = node->name;
@@ -1879,14 +1884,14 @@ public:
         constants.push_back(def->code);
 
         auto tmp = nodeName();
-        pushAssign(tmp, new BST_MakeClass(def));
+        pushAssign(tmp, new (getAlloc()) BST_MakeClass(def));
         pushAssign(scoping->mangleName(def->name), makeName(tmp, AST_TYPE::Load, node->lineno, 0, true));
 
         return true;
     }
 
     bool visit_functiondef(AST_FunctionDef* node) override {
-        auto def = new BST_FunctionDef();
+        auto def = new (getAlloc()) BST_FunctionDef();
         def->lineno = node->lineno;
         def->col_offset = node->col_offset;
         def->name = node->name;
@@ -1903,14 +1908,14 @@ public:
         constants.push_back(def->code);
 
         auto tmp = nodeName();
-        pushAssign(tmp, new BST_MakeFunction(def));
+        pushAssign(tmp, new (getAlloc()) BST_MakeFunction(def));
         pushAssign(scoping->mangleName(def->name), makeName(tmp, AST_TYPE::Load, node->lineno, node->col_offset, true));
 
         return true;
     }
 
     bool visit_global(AST_Global* node) override {
-        BST_Global* newnode = new BST_Global();
+        BST_Global* newnode = new (getAlloc()) BST_Global();
         newnode->names = std::move(node->names);
         push_back(newnode);
         return true;
@@ -1927,11 +1932,11 @@ public:
 
     bool visit_import(AST_Import* node) override {
         for (AST_alias* a : node->names) {
-            BST_LangPrimitive* import = new BST_LangPrimitive(BST_LangPrimitive::IMPORT_NAME);
+            BST_LangPrimitive* import = new (getAlloc()) BST_LangPrimitive(BST_LangPrimitive::IMPORT_NAME);
             import->lineno = node->lineno;
             import->col_offset = node->col_offset;
 
-            import->args.push_back(new BST_Num());
+            import->args.push_back(new (getAlloc()) BST_Num());
             static_cast<BST_Num*>(import->args[0])->num_type = AST_Num::INT;
 
             // level == 0 means only check sys path for imports, nothing package-relative,
@@ -1943,8 +1948,8 @@ public:
             else
                 level = 0;
             static_cast<BST_Num*>(import->args[0])->n_int = level;
-            import->args.push_back(new BST_LangPrimitive(BST_LangPrimitive::NONE));
-            import->args.push_back(new BST_Str(a->name.s()));
+            import->args.push_back(new (getAlloc()) BST_LangPrimitive(BST_LangPrimitive::NONE));
+            import->args.push_back(new (getAlloc()) BST_Str(a->name.s()));
 
             InternedString tmpname = nodeName();
             pushAssign(tmpname, import);
@@ -1966,8 +1971,8 @@ public:
                         l = r + 1;
                         continue;
                     }
-                    auto attr = new BST_Attribute(makeLoad(tmpname, node, true), AST_TYPE::Load,
-                                                  internString(a->name.s().substr(l, r - l)));
+                    auto attr = new (getAlloc()) BST_Attribute(makeLoad(tmpname, node, true), AST_TYPE::Load,
+                                                               internString(a->name.s().substr(l, r - l)));
                     attr->lineno = import->lineno;
                     pushAssign(tmpname, attr);
                     l = r + 1;
@@ -1980,11 +1985,11 @@ public:
     }
 
     bool visit_importfrom(AST_ImportFrom* node) override {
-        BST_LangPrimitive* import = new BST_LangPrimitive(BST_LangPrimitive::IMPORT_NAME);
+        BST_LangPrimitive* import = new (getAlloc()) BST_LangPrimitive(BST_LangPrimitive::IMPORT_NAME);
         import->lineno = node->lineno;
         import->col_offset = node->col_offset;
 
-        import->args.push_back(new BST_Num());
+        import->args.push_back(new (getAlloc()) BST_Num());
         static_cast<BST_Num*>(import->args[0])->num_type = AST_Num::INT;
 
         // level == 0 means only check sys path for imports, nothing package-relative,
@@ -1997,12 +2002,13 @@ public:
             level = node->level;
         static_cast<BST_Num*>(import->args[0])->n_int = level;
 
-        import->args.push_back(new BST_Tuple());
+        import->args.push_back(new (getAlloc()) BST_Tuple());
         static_cast<BST_Tuple*>(import->args[1])->ctx_type = AST_TYPE::Load;
         for (int i = 0; i < node->names.size(); i++) {
-            static_cast<BST_Tuple*>(import->args[1])->elts.push_back(new BST_Str(node->names[i]->name.s()));
+            static_cast<BST_Tuple*>(import->args[1])
+                ->elts.push_back(new (getAlloc()) BST_Str(node->names[i]->name.s()));
         }
-        import->args.push_back(new BST_Str(node->module.s()));
+        import->args.push_back(new (getAlloc()) BST_Str(node->module.s()));
 
         InternedString tmp_module_name = nodeName();
         pushAssign(tmp_module_name, import);
@@ -2013,23 +2019,23 @@ public:
             bool is_kill = (i == node->names.size());
             if (a->name.s() == "*") {
 
-                BST_LangPrimitive* import_star = new BST_LangPrimitive(BST_LangPrimitive::IMPORT_STAR);
+                BST_LangPrimitive* import_star = new (getAlloc()) BST_LangPrimitive(BST_LangPrimitive::IMPORT_STAR);
                 import_star->lineno = node->lineno;
                 import_star->col_offset = node->col_offset;
                 import_star->args.push_back(makeLoad(tmp_module_name, node, is_kill));
 
-                BST_Expr* import_star_expr = new BST_Expr();
+                BST_Expr* import_star_expr = new (getAlloc()) BST_Expr();
                 import_star_expr->value = import_star;
                 import_star_expr->lineno = node->lineno;
                 import_star_expr->col_offset = node->col_offset;
 
                 push_back(import_star_expr);
             } else {
-                BST_LangPrimitive* import_from = new BST_LangPrimitive(BST_LangPrimitive::IMPORT_FROM);
+                BST_LangPrimitive* import_from = new (getAlloc()) BST_LangPrimitive(BST_LangPrimitive::IMPORT_FROM);
                 import_from->lineno = node->lineno;
                 import_from->col_offset = node->col_offset;
                 import_from->args.push_back(makeLoad(tmp_module_name, node, is_kill));
-                import_from->args.push_back(new BST_Str(a->name.s()));
+                import_from->args.push_back(new (getAlloc()) BST_Str(a->name.s()));
 
                 InternedString tmp_import_name = nodeName();
                 pushAssign(tmp_import_name, import_from);
@@ -2045,7 +2051,7 @@ public:
     bool visit_assert(AST_Assert* node) override {
         assert(curblock);
 
-        BST_Branch* br = new BST_Branch();
+        BST_Branch* br = new (getAlloc()) BST_Branch();
         br->test = callNonzero(remapExpr(node->test));
         push_back(br);
 
@@ -2060,12 +2066,12 @@ public:
 
         curblock = iffalse;
 
-        BST_Assert* remapped = new BST_Assert();
+        BST_Assert* remapped = new (getAlloc()) BST_Assert();
         if (node->msg)
             remapped->msg = remapExpr(node->msg);
         else
             remapped->msg = NULL;
-        BST_Num* fake_test = new BST_Num();
+        BST_Num* fake_test = new (getAlloc()) BST_Num();
         fake_test->num_type = AST_Num::INT;
         fake_test->n_int = 0;
         remapped->test = fake_test;
@@ -2128,7 +2134,7 @@ public:
                 AST_Subscript* s = ast_cast<AST_Subscript>(node->target);
                 assert(s->ctx_type == AST_TYPE::Store);
 
-                BST_Subscript* s_target = new BST_Subscript();
+                BST_Subscript* s_target = new (getAlloc()) BST_Subscript();
                 s_target->value = remapExpr(s->value);
                 s_target->slice = remapSlice(s->slice);
                 s_target->ctx_type = AST_TYPE::Store;
@@ -2136,7 +2142,7 @@ public:
                 s_target->lineno = s->lineno;
                 remapped_target = s_target;
 
-                BST_Subscript* s_lhs = new BST_Subscript();
+                BST_Subscript* s_lhs = new (getAlloc()) BST_Subscript();
                 s_lhs->value = _dup(s_target->value);
                 s_lhs->slice = _dup(s_target->slice);
                 s_lhs->col_offset = s->col_offset;
@@ -2150,7 +2156,7 @@ public:
                 AST_Attribute* a = ast_cast<AST_Attribute>(node->target);
                 assert(a->ctx_type == AST_TYPE::Store);
 
-                BST_Attribute* a_target = new BST_Attribute();
+                BST_Attribute* a_target = new (getAlloc()) BST_Attribute();
                 a_target->value = remapExpr(a->value);
                 a_target->attr = scoping->mangleName(a->attr);
                 a_target->ctx_type = AST_TYPE::Store;
@@ -2158,7 +2164,7 @@ public:
                 a_target->lineno = a->lineno;
                 remapped_target = a_target;
 
-                BST_Attribute* a_lhs = new BST_Attribute();
+                BST_Attribute* a_lhs = new (getAlloc()) BST_Attribute();
                 a_lhs->value = _dup(a_target->value);
                 a_lhs->attr = a_target->attr;
                 a_lhs->ctx_type = AST_TYPE::Load;
@@ -2172,7 +2178,7 @@ public:
                 RELEASE_ASSERT(0, "%d", node->target->type);
         }
 
-        BST_AugBinOp* binop = new BST_AugBinOp();
+        BST_AugBinOp* binop = new (getAlloc()) BST_AugBinOp();
         binop->op_type = remapBinOpType(node->op_type);
         binop->left = remapped_lhs;
         binop->right = remapExpr(node->value);
@@ -2199,7 +2205,7 @@ public:
             switch (t->type) {
                 case AST_TYPE::Subscript: {
                     AST_Subscript* s = static_cast<AST_Subscript*>(t);
-                    BST_Subscript* astsubs = new BST_Subscript();
+                    BST_Subscript* astsubs = new (getAlloc()) BST_Subscript();
                     astsubs->value = remapExpr(s->value);
                     astsubs->slice = remapSlice(s->slice);
                     astsubs->ctx_type = AST_TYPE::Del;
@@ -2247,7 +2253,7 @@ public:
             }
 
             if (target != NULL) {
-                BST_Delete* astdel = new BST_Delete();
+                BST_Delete* astdel = new (getAlloc()) BST_Delete();
                 astdel->lineno = node->lineno;
                 astdel->col_offset = node->col_offset;
                 astdel->target = target;
@@ -2259,7 +2265,7 @@ public:
     }
 
     bool visit_expr(AST_Expr* node) override {
-        BST_Expr* remapped = new BST_Expr();
+        BST_Expr* remapped = new (getAlloc()) BST_Expr();
         remapped->lineno = node->lineno;
         remapped->col_offset = node->col_offset;
         remapped->value = remapExpr(node->value, false);
@@ -2272,7 +2278,7 @@ public:
 
         int i = 0;
         for (auto v : node->values) {
-            BST_Print* remapped = new BST_Print();
+            BST_Print* remapped = new (getAlloc()) BST_Print();
             remapped->col_offset = node->col_offset;
             remapped->lineno = node->lineno;
 
@@ -2293,7 +2299,7 @@ public:
         if (node->values.size() == 0) {
             assert(node->nl);
 
-            BST_Print* final = new BST_Print();
+            BST_Print* final = new (getAlloc()) BST_Print();
             final->col_offset = node->col_offset;
             final->lineno = node->lineno;
             // TODO not good to reuse 'dest' like this
@@ -2324,7 +2330,7 @@ public:
     bool visit_if(AST_If* node) override {
         assert(curblock);
 
-        BST_Branch* br = new BST_Branch();
+        BST_Branch* br = new (getAlloc()) BST_Branch();
         br->col_offset = node->col_offset;
         br->lineno = node->lineno;
         br->test = callNonzero(remapExpr(node->test));
@@ -2390,7 +2396,7 @@ public:
     }
 
     bool visit_exec(AST_Exec* node) override {
-        BST_Exec* astexec = new BST_Exec();
+        BST_Exec* astexec = new (getAlloc()) BST_Exec();
         astexec->lineno = node->lineno;
         astexec->col_offset = node->col_offset;
         astexec->body = remapExpr(node->body);
@@ -2459,7 +2465,7 @@ public:
 
     BST_stmt* makeKill(InternedString name) {
         // There might be a better way to represent this, maybe with a dedicated AST_Kill bytecode?
-        auto del = new BST_Delete();
+        auto del = new (getAlloc()) BST_Delete();
         del->target = makeName(name, AST_TYPE::Del, 0, 0, false);
         return del;
     }
@@ -2472,7 +2478,7 @@ public:
         // critical edges and needed to be broken, otherwise it's not too different.
 
         BST_expr* remapped_iter = remapExpr(node->iter);
-        BST_LangPrimitive* iter_call = new BST_LangPrimitive(BST_LangPrimitive::GET_ITER);
+        BST_LangPrimitive* iter_call = new (getAlloc()) BST_LangPrimitive(BST_LangPrimitive::GET_ITER);
         iter_call->args.push_back(remapped_iter);
         iter_call->lineno = node->lineno;
 
@@ -2485,7 +2491,7 @@ public:
         pushJump(test_block);
         curblock = test_block;
 
-        BST_LangPrimitive* test_call = new BST_LangPrimitive(BST_LangPrimitive::HASNEXT);
+        BST_LangPrimitive* test_call = new (getAlloc()) BST_LangPrimitive(BST_LangPrimitive::HASNEXT);
         test_call->lineno = node->lineno;
         test_call->args.push_back(makeName(itername, AST_TYPE::Load, node->lineno));
         BST_Branch* test_br = makeBranch(test_call);
@@ -2525,7 +2531,7 @@ public:
         popContinuation();
 
         if (curblock) {
-            BST_LangPrimitive* end_call = new BST_LangPrimitive(BST_LangPrimitive::HASNEXT);
+            BST_LangPrimitive* end_call = new (getAlloc()) BST_LangPrimitive(BST_LangPrimitive::HASNEXT);
             end_call->args.push_back(makeName(itername, AST_TYPE::Load, node->lineno));
             end_call->lineno = node->lineno;
             BST_Branch* end_br = makeBranch(end_call);
@@ -2571,7 +2577,7 @@ public:
     bool visit_raise(AST_Raise* node) override {
         assert(curblock);
 
-        BST_Raise* remapped = new BST_Raise();
+        BST_Raise* remapped = new (getAlloc()) BST_Raise();
         remapped->col_offset = node->col_offset;
         remapped->lineno = node->lineno;
 
@@ -2635,13 +2641,14 @@ public:
                 if (exc_handler->type) {
                     BST_expr* handled_type = remapExpr(exc_handler->type);
 
-                    BST_LangPrimitive* is_caught_here = new BST_LangPrimitive(BST_LangPrimitive::CHECK_EXC_MATCH);
+                    BST_LangPrimitive* is_caught_here = new (getAlloc())
+                        BST_LangPrimitive(BST_LangPrimitive::CHECK_EXC_MATCH);
                     // TODO This is supposed to be exc_type_name (value doesn't matter for checking matches)
                     is_caught_here->args.push_back(makeLoad(exc_value_name, exc_handler));
                     is_caught_here->args.push_back(handled_type);
                     is_caught_here->lineno = exc_handler->lineno;
 
-                    BST_Branch* br = new BST_Branch();
+                    BST_Branch* br = new (getAlloc()) BST_Branch();
                     br->test = callNonzero(is_caught_here);
                     br->lineno = exc_handler->lineno;
 
@@ -2662,7 +2669,7 @@ public:
                     pushAssign(exc_handler->name, makeLoad(exc_value_name, exc_handler));
                 }
 
-                BST_LangPrimitive* set_exc_info = new BST_LangPrimitive(BST_LangPrimitive::SET_EXC_INFO);
+                BST_LangPrimitive* set_exc_info = new (getAlloc()) BST_LangPrimitive(BST_LangPrimitive::SET_EXC_INFO);
                 set_exc_info->args.push_back(makeLoad(exc_type_name, node, true));
                 set_exc_info->args.push_back(makeLoad(exc_value_name, node, true));
                 set_exc_info->args.push_back(makeLoad(exc_traceback_name, node, true));
@@ -2687,7 +2694,7 @@ public:
             }
 
             if (!caught_all) {
-                BST_Raise* raise = new BST_Raise();
+                BST_Raise* raise = new (getAlloc()) BST_Raise();
                 raise->arg0 = makeLoad(exc_type_name, node, true);
                 raise->arg1 = makeLoad(exc_value_name, node, true);
                 raise->arg2 = makeLoad(exc_traceback_name, node, true);
@@ -3091,13 +3098,15 @@ static CFG* computeCFG(llvm::ArrayRef<AST_stmt*> body, AST_TYPE::AST_TYPE ast_ty
 
     bool skip_first = false;
 
+    BSTAllocator& bst_alloc = *source->bst_allocator;
+
     if (ast_type == AST_TYPE::ClassDef) {
         // A classdef always starts with "__module__ = __name__"
-        BST_Assign* module_assign = new BST_Assign();
-        auto module_name_target = new BST_Name(stringpool.get("__module__"), AST_TYPE::Store, lineno);
+        BST_Assign* module_assign = new (bst_alloc) BST_Assign();
+        auto module_name_target = new (bst_alloc) BST_Name(stringpool.get("__module__"), AST_TYPE::Store, lineno);
         fillScopingInfo(module_name_target, scoping);
 
-        auto module_name_value = new BST_Name(stringpool.get("__name__"), AST_TYPE::Load, lineno);
+        auto module_name_value = new (bst_alloc) BST_Name(stringpool.get("__name__"), AST_TYPE::Load, lineno);
         fillScopingInfo(module_name_value, scoping);
 
         module_assign->target = module_name_target;
@@ -3110,11 +3119,11 @@ static CFG* computeCFG(llvm::ArrayRef<AST_stmt*> body, AST_TYPE::AST_TYPE ast_ty
         if (body.size() && body[0]->type == AST_TYPE::Expr) {
             AST_Expr* first_expr = ast_cast<AST_Expr>(body[0]);
             if (first_expr->value->type == AST_TYPE::Str) {
-                BST_Assign* doc_assign = new BST_Assign();
-                auto doc_target_name = new BST_Name(stringpool.get("__doc__"), AST_TYPE::Store, lineno);
+                BST_Assign* doc_assign = new (bst_alloc) BST_Assign();
+                auto doc_target_name = new (bst_alloc) BST_Name(stringpool.get("__doc__"), AST_TYPE::Store, lineno);
                 fillScopingInfo(doc_target_name, scoping);
                 doc_assign->target = doc_target_name;
-                auto doc_val = new BST_Str();
+                auto doc_val = new (bst_alloc) BST_Str();
                 doc_val->str_data = ast_cast<AST_Str>(first_expr->value)->str_data;
                 doc_val->str_type = ast_cast<AST_Str>(first_expr->value)->str_type;
                 doc_assign->value = doc_val;
@@ -3137,8 +3146,8 @@ static CFG* computeCFG(llvm::ArrayRef<AST_stmt*> body, AST_TYPE::AST_TYPE ast_ty
         for (AST_expr* arg_expr : args->args) {
             if (arg_expr->type == AST_TYPE::Tuple) {
                 InternedString arg_name = stringpool.get("." + std::to_string(counter));
-                BST_Name* arg_name_expr
-                    = new BST_Name(arg_name, AST_TYPE::Load, arg_expr->lineno, arg_expr->col_offset);
+                BST_Name* arg_name_expr = new (bst_alloc)
+                    BST_Name(arg_name, AST_TYPE::Load, arg_expr->lineno, arg_expr->col_offset);
                 assert(scoping->getScopeTypeOfName(arg_name) == ScopeInfo::VarScopeType::FAST);
                 arg_name_expr->lookup_type = ScopeInfo::VarScopeType::FAST;
                 visitor.pushAssign(arg_expr, arg_name_expr);
@@ -3159,9 +3168,9 @@ static CFG* computeCFG(llvm::ArrayRef<AST_stmt*> body, AST_TYPE::AST_TYPE ast_ty
     // The functions we create for classdefs are supposed to return a dictionary of their locals.
     // This is the place that we add all of that:
     if (ast_type == AST_TYPE::ClassDef) {
-        BST_LangPrimitive* locals = new BST_LangPrimitive(BST_LangPrimitive::LOCALS);
+        BST_LangPrimitive* locals = new (bst_alloc) BST_LangPrimitive(BST_LangPrimitive::LOCALS);
 
-        BST_Return* rtn = new BST_Return();
+        BST_Return* rtn = new (bst_alloc) BST_Return();
         rtn->lineno = getLastLineno(body, lineno);
         rtn->value = locals;
         visitor.push_back(rtn);
@@ -3169,7 +3178,7 @@ static CFG* computeCFG(llvm::ArrayRef<AST_stmt*> body, AST_TYPE::AST_TYPE ast_ty
         // Put a fake "return" statement at the end of every function just to make sure they all have one;
         // we already have to support multiple return statements in a function, but this way we can avoid
         // having to support not having a return statement:
-        BST_Return* return_stmt = new BST_Return();
+        BST_Return* return_stmt = new (bst_alloc) BST_Return();
         return_stmt->lineno = getLastLineno(body, lineno);
         return_stmt->col_offset = 0;
         return_stmt->value = NULL;
@@ -3414,7 +3423,7 @@ BoxedCode* ModuleCFGProcessor::runRecursively(llvm::ArrayRef<AST_stmt*> body, Bo
 
     assert((bool)args == (ast_type == AST_TYPE::FunctionDef || ast_type == AST_TYPE::Lambda));
 
-    ParamNames param_names(args, stringpool);
+    ParamNames param_names(*si->bst_allocator, args, stringpool);
 
     for (auto e : param_names.allArgsAsName())
         fillScopingInfo(e, scope_info);

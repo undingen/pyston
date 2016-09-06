@@ -65,6 +65,7 @@ SourceInfo::SourceInfo(BoxedModule* m, ScopingResults scoping, FutureFlags futur
       cfg(NULL),
       future_flags(future_flags),
       is_generator(is_generator),
+      bst_allocator(std::unique_ptr<BSTAllocator>(new BSTAllocator)),
       ast_type(ast_type) {
 }
 
