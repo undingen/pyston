@@ -2084,9 +2084,7 @@ private:
     void doAssign(BST_Assign* node, const UnwindInfo& unw_info) {
         CompilerVariable* val = evalExpr(node->value, unw_info);
 
-        for (int i = 0; i < node->targets.size(); i++) {
-            _doSet(node->targets[i], val, unw_info);
-        }
+        _doSet(node->target, val, unw_info);
     }
 
     void doDelete(BST_Delete* node, const UnwindInfo& unw_info) {

@@ -818,7 +818,7 @@ private:
         assign->value = val;
         assign->col_offset = val->col_offset;
         assign->lineno = val->lineno;
-        assign->targets.push_back(target);
+        assign->target = target;
         push_back(assign);
     }
 
@@ -829,7 +829,7 @@ private:
         assign->lineno = val->lineno;
 
         if (target->type == AST_TYPE::Name) {
-            assign->targets.push_back(makeName(ast_cast<AST_Name>(target)->id, AST_TYPE::Store, val->lineno, 0));
+            assign->target = makeName(ast_cast<AST_Name>(target)->id, AST_TYPE::Store, val->lineno, 0);
             push_back(assign);
         } else if (target->type == AST_TYPE::Subscript) {
             AST_Subscript* s = ast_cast<AST_Subscript>(target);
@@ -842,7 +842,7 @@ private:
             s_target->col_offset = s->col_offset;
             s_target->lineno = s->lineno;
 
-            assign->targets.push_back(s_target);
+            assign->target = s_target;
             push_back(assign);
         } else if (target->type == AST_TYPE::Attribute) {
             AST_Attribute* a = ast_cast<AST_Attribute>(target);
@@ -855,7 +855,7 @@ private:
             a_target->col_offset = a->col_offset;
             a_target->lineno = a->lineno;
 
-            assign->targets.push_back(a_target);
+            assign->target = a_target;
             push_back(assign);
         } else if (target->type == AST_TYPE::Tuple || target->type == AST_TYPE::List) {
             std::vector<AST_expr*>* elts;
@@ -876,7 +876,7 @@ private:
 
             // A little hackery: push the assign, even though we're not done constructing it yet,
             // so that we can iteratively push more stuff after it
-            assign->targets.push_back(new_target);
+            assign->target = new_target;
             push_back(assign);
 
             for (int i = 0; i < elts->size(); i++) {
@@ -895,7 +895,7 @@ private:
         assign->value = val;
         assign->col_offset = val->col_offset;
         assign->lineno = val->lineno;
-        assign->targets.push_back(makeName(id, AST_TYPE::Store, val->lineno, 0));
+        assign->target = makeName(id, AST_TYPE::Store, val->lineno, 0);
         push_back(assign);
     }
 
@@ -1754,9 +1754,8 @@ public:
 
         if (node->type == BST_TYPE::Assign) {
             BST_Assign* asgn = bst_cast<BST_Assign>(node);
-            assert(asgn->targets.size() == 1);
-            if (asgn->targets[0]->type == BST_TYPE::Name) {
-                BST_Name* target = bst_cast<BST_Name>(asgn->targets[0]);
+            if (asgn->target->type == BST_TYPE::Name) {
+                BST_Name* target = bst_cast<BST_Name>(asgn->target);
                 if (target->id.s()[0] != '#') {
 // assigning to a non-temporary
 #ifndef NDEBUG
@@ -1836,7 +1835,7 @@ public:
         target->elts.push_back(makeName(exc_info.exc_type_name, AST_TYPE::Store, node->lineno));
         target->elts.push_back(makeName(exc_info.exc_value_name, AST_TYPE::Store, node->lineno));
         target->elts.push_back(makeName(exc_info.exc_traceback_name, AST_TYPE::Store, node->lineno));
-        exc_asgn->targets.push_back(target);
+        exc_asgn->target = target;
 
         exc_asgn->value = new BST_LangPrimitive(BST_LangPrimitive::LANDINGPAD);
         curblock->push_back(exc_asgn);
@@ -3087,7 +3086,7 @@ static CFG* computeCFG(llvm::ArrayRef<AST_stmt*> body, AST_TYPE::AST_TYPE ast_ty
         auto module_name_value = new BST_Name(stringpool.get("__name__"), AST_TYPE::Load, lineno);
         fillScopingInfo(module_name_value, scoping);
 
-        module_assign->targets.push_back(module_name_target);
+        module_assign->target = module_name_target;
         module_assign->value = module_name_value;
 
         module_assign->lineno = lineno;
@@ -3100,7 +3099,7 @@ static CFG* computeCFG(llvm::ArrayRef<AST_stmt*> body, AST_TYPE::AST_TYPE ast_ty
                 BST_Assign* doc_assign = new BST_Assign();
                 auto doc_target_name = new BST_Name(stringpool.get("__doc__"), AST_TYPE::Store, lineno);
                 fillScopingInfo(doc_target_name, scoping);
-                doc_assign->targets.push_back(doc_target_name);
+                doc_assign->target = doc_target_name;
                 auto doc_val = new BST_Str();
                 doc_val->str_data = ast_cast<AST_Str>(first_expr->value)->str_data;
                 doc_val->str_type = ast_cast<AST_Str>(first_expr->value)->str_type;

@@ -541,9 +541,7 @@ private:
 
     void visit_assign(BST_Assign* node) override {
         CompilerType* t = getType(node->value);
-        for (int i = 0; i < node->targets.size(); i++) {
-            _doSet(node->targets[i], t);
-        }
+        _doSet(node->target, t);
     }
 
     void visit_branch(BST_Branch* node) override {

@@ -1402,10 +1402,8 @@ Value ASTInterpreter::visit_delete(BST_Delete* node) {
 }
 
 Value ASTInterpreter::visit_assign(BST_Assign* node) {
-    assert(node->targets.size() == 1 && "cfg should have lowered it to a single target");
-
     Value v = visit_expr(node->value);
-    doStore(node->targets[0], v);
+    doStore(node->target, v);
     return Value();
 }
 
@@ -2127,9 +2125,8 @@ extern "C" Box* astInterpretDeoptFromASM(BoxedCode* code, BST_expr* after_expr, 
         if (enclosing_stmt->type == BST_TYPE::Assign) {
             auto asgn = bst_cast<BST_Assign>(enclosing_stmt);
             RELEASE_ASSERT(asgn->value == after_expr, "%p %p", asgn->value, after_expr);
-            assert(asgn->targets.size() == 1);
-            assert(asgn->targets[0]->type == BST_TYPE::Name);
-            auto name = bst_cast<BST_Name>(asgn->targets[0]);
+            assert(asgn->target->type == BST_TYPE::Name);
+            auto name = bst_cast<BST_Name>(asgn->target);
             assert(name->id.s()[0] == '#');
             interpreter.addSymbol(name->vreg, expr_val, true);
             break;

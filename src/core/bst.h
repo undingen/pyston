@@ -255,7 +255,7 @@ public:
 
 class BST_Assign : public BST_stmt {
 public:
-    std::vector<BST_expr*> targets;
+    BST_expr* target;
     BST_expr* value;
 
     virtual void accept(BSTVisitor* v);
