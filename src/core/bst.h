@@ -330,19 +330,6 @@ public:
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::BinOp;
 };
 
-class BST_BoolOp : public BST_expr {
-public:
-    AST_TYPE::AST_TYPE op_type;
-    std::vector<BST_expr*> values;
-
-    virtual void accept(BSTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
-
-    BST_BoolOp() : BST_expr(BST_TYPE::BoolOp) {}
-
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::BoolOp;
-};
-
 class BST_Break : public BST_stmt {
 public:
     virtual void accept(BSTVisitor* v);
@@ -384,19 +371,6 @@ public:
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Compare;
 };
 
-class BST_comprehension : public BST {
-public:
-    BST_expr* target;
-    BST_expr* iter;
-    std::vector<BST_expr*> ifs;
-
-    virtual void accept(BSTVisitor* v);
-
-    BST_comprehension() : BST(BST_TYPE::comprehension) {}
-
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::comprehension;
-};
-
 class BST_ClassDef : public BST_stmt {
 public:
     virtual void accept(BSTVisitor* v);
@@ -432,19 +406,6 @@ public:
     BST_Dict() : BST_expr(BST_TYPE::Dict) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Dict;
-};
-
-class BST_DictComp : public BST_expr {
-public:
-    std::vector<BST_comprehension*> generators;
-    BST_expr* key, *value;
-
-    virtual void accept(BSTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
-
-    BST_DictComp() : BST_expr(BST_TYPE::DictComp) {}
-
-    const static BST_TYPE::BST_TYPE TYPE = BST_TYPE::DictComp;
 };
 
 class BST_Delete : public BST_stmt {
@@ -565,19 +526,6 @@ public:
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::FunctionDef;
 };
 
-class BST_GeneratorExp : public BST_expr {
-public:
-    std::vector<BST_comprehension*> generators;
-    BST_expr* elt;
-
-    virtual void accept(BSTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
-
-    BST_GeneratorExp() : BST_expr(BST_TYPE::GeneratorExp) {}
-
-    const static BST_TYPE::BST_TYPE TYPE = BST_TYPE::GeneratorExp;
-};
-
 class BST_Global : public BST_stmt {
 public:
     std::vector<InternedString> names;
@@ -664,19 +612,6 @@ public:
     BST_List() : BST_expr(BST_TYPE::List) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::List;
-};
-
-class BST_ListComp : public BST_expr {
-public:
-    std::vector<BST_comprehension*> generators;
-    BST_expr* elt;
-
-    virtual void accept(BSTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
-
-    BST_ListComp() : BST_expr(BST_TYPE::ListComp) {}
-
-    const static BST_TYPE::BST_TYPE TYPE = BST_TYPE::ListComp;
 };
 
 class BST_Module : public BST {
@@ -835,19 +770,6 @@ public:
     BST_Set() : BST_expr(BST_TYPE::Set) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Set;
-};
-
-class BST_SetComp : public BST_expr {
-public:
-    std::vector<BST_comprehension*> generators;
-    BST_expr* elt;
-
-    virtual void accept(BSTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
-
-    BST_SetComp() : BST_expr(BST_TYPE::SetComp) {}
-
-    const static BST_TYPE::BST_TYPE TYPE = BST_TYPE::SetComp;
 };
 
 class BST_Slice : public BST_slice {
@@ -1115,17 +1037,14 @@ public:
     virtual bool visit_augbinop(BST_AugBinOp* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_attribute(BST_Attribute* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_binop(BST_BinOp* node) { RELEASE_ASSERT(0, ""); }
-    virtual bool visit_boolop(BST_BoolOp* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_break(BST_Break* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_call(BST_Call* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_clsattribute(BST_ClsAttribute* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_compare(BST_Compare* node) { RELEASE_ASSERT(0, ""); }
-    virtual bool visit_comprehension(BST_comprehension* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_classdef(BST_ClassDef* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_continue(BST_Continue* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_delete(BST_Delete* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_dict(BST_Dict* node) { RELEASE_ASSERT(0, ""); }
-    virtual bool visit_dictcomp(BST_DictComp* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_ellipsis(BST_Ellipsis* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_excepthandler(BST_ExceptHandler* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_exec(BST_Exec* node) { RELEASE_ASSERT(0, ""); }
@@ -1134,8 +1053,7 @@ public:
     virtual bool visit_suite(BST_Suite* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_extslice(BST_ExtSlice* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_for(BST_For* node) { RELEASE_ASSERT(0, ""); }
-    virtual bool visit_functiondef(BST_FunctionDef* node) { RELEASE_ASSERT(0, ""); }
-    virtual bool visit_generatorexp(BST_GeneratorExp* node) { RELEASE_ASSERT(0, ""); }
+    virtual bool visit_functiondef(BST_FunctionDef* node) { RELEASE_ASSERT(0, "f"); }
     virtual bool visit_global(BST_Global* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_if(BST_If* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_ifexp(BST_IfExp* node) { RELEASE_ASSERT(0, ""); }
@@ -1145,7 +1063,6 @@ public:
     virtual bool visit_lambda(BST_Lambda* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_langprimitive(BST_LangPrimitive* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_list(BST_List* node) { RELEASE_ASSERT(0, ""); }
-    virtual bool visit_listcomp(BST_ListComp* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_module(BST_Module* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_name(BST_Name* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_num(BST_Num* node) { RELEASE_ASSERT(0, ""); }
@@ -1155,7 +1072,6 @@ public:
     virtual bool visit_repr(BST_Repr* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_return(BST_Return* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_set(BST_Set* node) { RELEASE_ASSERT(0, ""); }
-    virtual bool visit_setcomp(BST_SetComp* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_slice(BST_Slice* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_str(BST_Str* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_subscript(BST_Subscript* node) { RELEASE_ASSERT(0, ""); }
@@ -1185,17 +1101,14 @@ public:
     virtual bool visit_augbinop(BST_AugBinOp* node) { return false; }
     virtual bool visit_attribute(BST_Attribute* node) { return false; }
     virtual bool visit_binop(BST_BinOp* node) { return false; }
-    virtual bool visit_boolop(BST_BoolOp* node) { return false; }
     virtual bool visit_break(BST_Break* node) { return false; }
     virtual bool visit_call(BST_Call* node) { return false; }
     virtual bool visit_clsattribute(BST_ClsAttribute* node) { return false; }
     virtual bool visit_compare(BST_Compare* node) { return false; }
-    virtual bool visit_comprehension(BST_comprehension* node) { return false; }
     virtual bool visit_classdef(BST_ClassDef* node) { return false; }
     virtual bool visit_continue(BST_Continue* node) { return false; }
     virtual bool visit_delete(BST_Delete* node) { return false; }
     virtual bool visit_dict(BST_Dict* node) { return false; }
-    virtual bool visit_dictcomp(BST_DictComp* node) { return false; }
     virtual bool visit_ellipsis(BST_Ellipsis* node) { return false; }
     virtual bool visit_excepthandler(BST_ExceptHandler* node) { return false; }
     virtual bool visit_exec(BST_Exec* node) { return false; }
@@ -1205,7 +1118,6 @@ public:
     virtual bool visit_extslice(BST_ExtSlice* node) { return false; }
     virtual bool visit_for(BST_For* node) { return false; }
     virtual bool visit_functiondef(BST_FunctionDef* node) { return false; }
-    virtual bool visit_generatorexp(BST_GeneratorExp* node) { return false; }
     virtual bool visit_global(BST_Global* node) { return false; }
     virtual bool visit_if(BST_If* node) { return false; }
     virtual bool visit_ifexp(BST_IfExp* node) { return false; }
@@ -1215,7 +1127,6 @@ public:
     virtual bool visit_lambda(BST_Lambda* node) { return false; }
     virtual bool visit_langprimitive(BST_LangPrimitive* node) { return false; }
     virtual bool visit_list(BST_List* node) { return false; }
-    virtual bool visit_listcomp(BST_ListComp* node) { return false; }
     virtual bool visit_module(BST_Module* node) { return false; }
     virtual bool visit_name(BST_Name* node) { return false; }
     virtual bool visit_num(BST_Num* node) { return false; }
@@ -1225,7 +1136,6 @@ public:
     virtual bool visit_repr(BST_Repr* node) { return false; }
     virtual bool visit_return(BST_Return* node) { return false; }
     virtual bool visit_set(BST_Set* node) { return false; }
-    virtual bool visit_setcomp(BST_SetComp* node) { return false; }
     virtual bool visit_slice(BST_Slice* node) { return false; }
     virtual bool visit_str(BST_Str* node) { return false; }
     virtual bool visit_subscript(BST_Subscript* node) { return false; }
@@ -1251,23 +1161,18 @@ public:
     virtual void* visit_augbinop(BST_AugBinOp* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_attribute(BST_Attribute* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_binop(BST_BinOp* node) { RELEASE_ASSERT(0, ""); }
-    virtual void* visit_boolop(BST_BoolOp* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_call(BST_Call* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_clsattribute(BST_ClsAttribute* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_compare(BST_Compare* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_dict(BST_Dict* node) { RELEASE_ASSERT(0, ""); }
-    virtual void* visit_dictcomp(BST_DictComp* node) { RELEASE_ASSERT(0, ""); }
-    virtual void* visit_generatorexp(BST_GeneratorExp* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_ifexp(BST_IfExp* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_lambda(BST_Lambda* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_langprimitive(BST_LangPrimitive* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_list(BST_List* node) { RELEASE_ASSERT(0, ""); }
-    virtual void* visit_listcomp(BST_ListComp* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_name(BST_Name* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_num(BST_Num* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_repr(BST_Repr* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_set(BST_Set* node) { RELEASE_ASSERT(0, ""); }
-    virtual void* visit_setcomp(BST_SetComp* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_str(BST_Str* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_subscript(BST_Subscript* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_tuple(BST_Tuple* node) { RELEASE_ASSERT(0, ""); }
@@ -1338,17 +1243,14 @@ public:
     virtual bool visit_augbinop(BST_AugBinOp* node);
     virtual bool visit_attribute(BST_Attribute* node);
     virtual bool visit_binop(BST_BinOp* node);
-    virtual bool visit_boolop(BST_BoolOp* node);
     virtual bool visit_break(BST_Break* node);
     virtual bool visit_call(BST_Call* node);
     virtual bool visit_compare(BST_Compare* node);
-    virtual bool visit_comprehension(BST_comprehension* node);
     virtual bool visit_classdef(BST_ClassDef* node);
     virtual bool visit_clsattribute(BST_ClsAttribute* node);
     virtual bool visit_continue(BST_Continue* node);
     virtual bool visit_delete(BST_Delete* node);
     virtual bool visit_dict(BST_Dict* node);
-    virtual bool visit_dictcomp(BST_DictComp* node);
     virtual bool visit_ellipsis(BST_Ellipsis* node);
     virtual bool visit_excepthandler(BST_ExceptHandler* node);
     virtual bool visit_exec(BST_Exec* node);
@@ -1358,7 +1260,6 @@ public:
     virtual bool visit_extslice(BST_ExtSlice* node);
     virtual bool visit_for(BST_For* node);
     virtual bool visit_functiondef(BST_FunctionDef* node);
-    virtual bool visit_generatorexp(BST_GeneratorExp* node);
     virtual bool visit_global(BST_Global* node);
     virtual bool visit_if(BST_If* node);
     virtual bool visit_ifexp(BST_IfExp* node);
@@ -1368,7 +1269,6 @@ public:
     virtual bool visit_lambda(BST_Lambda* node);
     virtual bool visit_langprimitive(BST_LangPrimitive* node);
     virtual bool visit_list(BST_List* node);
-    virtual bool visit_listcomp(BST_ListComp* node);
     virtual bool visit_module(BST_Module* node);
     virtual bool visit_name(BST_Name* node);
     virtual bool visit_num(BST_Num* node);
@@ -1378,7 +1278,6 @@ public:
     virtual bool visit_repr(BST_Repr* node);
     virtual bool visit_return(BST_Return* node);
     virtual bool visit_set(BST_Set* node);
-    virtual bool visit_setcomp(BST_SetComp* node);
     virtual bool visit_slice(BST_Slice* node);
     virtual bool visit_str(BST_Str* node);
     virtual bool visit_subscript(BST_Subscript* node);
@@ -1399,7 +1298,7 @@ public:
 // Given an BST node, return a vector of the node plus all its descendents.
 // This is useful for analyses that care more about the constituent nodes than the
 // exact tree structure; ex, finding all "global" directives.
-void flatten(const llvm::SmallVector<BST_stmt*, 4>& roots, std::vector<BST*>& output, bool expand_scopes);
+void flatten(llvm::ArrayRef<BST_stmt*> roots, std::vector<BST*>& output, bool expand_scopes);
 void flatten(BST_expr* root, std::vector<BST*>& output, bool expand_scopes);
 };
 

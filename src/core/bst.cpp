@@ -135,18 +135,6 @@ void* BST_BinOp::accept_expr(ExprVisitor* v) {
     return v->visit_binop(this);
 }
 
-void BST_BoolOp::accept(BSTVisitor* v) {
-    bool skip = v->visit_boolop(this);
-    if (skip)
-        return;
-
-    visitVector(values, v);
-}
-
-void* BST_BoolOp::accept_expr(ExprVisitor* v) {
-    return v->visit_boolop(this);
-}
-
 void BST_Break::accept(BSTVisitor* v) {
     bool skip = v->visit_break(this);
     if (skip)
@@ -186,18 +174,6 @@ void BST_Compare::accept(BSTVisitor* v) {
 
 void* BST_Compare::accept_expr(ExprVisitor* v) {
     return v->visit_compare(this);
-}
-
-void BST_comprehension::accept(BSTVisitor* v) {
-    bool skip = v->visit_comprehension(this);
-    if (skip)
-        return;
-
-    target->accept(v);
-    iter->accept(v);
-    for (auto if_ : ifs) {
-        if_->accept(v);
-    }
 }
 
 void BST_ClassDef::accept(BSTVisitor* v) {
@@ -249,23 +225,6 @@ void BST_Dict::accept(BSTVisitor* v) {
 
 void* BST_Dict::accept_expr(ExprVisitor* v) {
     return v->visit_dict(this);
-}
-
-void BST_DictComp::accept(BSTVisitor* v) {
-    bool skip = v->visit_dictcomp(this);
-    if (skip)
-        return;
-
-    for (auto c : generators) {
-        c->accept(v);
-    }
-
-    value->accept(v);
-    key->accept(v);
-}
-
-void* BST_DictComp::accept_expr(ExprVisitor* v) {
-    return v->visit_dictcomp(this);
 }
 
 void BST_Ellipsis::accept(BSTVisitor* v) {
@@ -358,22 +317,6 @@ void BST_FunctionDef::accept(BSTVisitor* v) {
 
 void BST_FunctionDef::accept_stmt(StmtVisitor* v) {
     v->visit_functiondef(this);
-}
-
-void BST_GeneratorExp::accept(BSTVisitor* v) {
-    bool skip = v->visit_generatorexp(this);
-    if (skip)
-        return;
-
-    for (auto c : generators) {
-        c->accept(v);
-    }
-
-    elt->accept(v);
-}
-
-void* BST_GeneratorExp::accept_expr(ExprVisitor* v) {
-    return v->visit_generatorexp(this);
 }
 
 void BST_Global::accept(BSTVisitor* v) {
@@ -481,22 +424,6 @@ void BST_List::accept(BSTVisitor* v) {
 
 void* BST_List::accept_expr(ExprVisitor* v) {
     return v->visit_list(this);
-}
-
-void BST_ListComp::accept(BSTVisitor* v) {
-    bool skip = v->visit_listcomp(this);
-    if (skip)
-        return;
-
-    for (auto c : generators) {
-        c->accept(v);
-    }
-
-    elt->accept(v);
-}
-
-void* BST_ListComp::accept_expr(ExprVisitor* v) {
-    return v->visit_listcomp(this);
 }
 
 void BST_Module::accept(BSTVisitor* v) {
@@ -613,22 +540,6 @@ void BST_Set::accept(BSTVisitor* v) {
 
 void* BST_Set::accept_expr(ExprVisitor* v) {
     return v->visit_set(this);
-}
-
-void BST_SetComp::accept(BSTVisitor* v) {
-    bool skip = v->visit_setcomp(this);
-    if (skip)
-        return;
-
-    for (auto c : generators) {
-        c->accept(v);
-    }
-
-    elt->accept(v);
-}
-
-void* BST_SetComp::accept_expr(ExprVisitor* v) {
-    return v->visit_setcomp(this);
 }
 
 void BST_Slice::accept(BSTVisitor* v) {
@@ -934,27 +845,6 @@ bool PrintVisitor::visit_binop(BST_BinOp* node) {
     return true;
 }
 
-bool PrintVisitor::visit_boolop(BST_BoolOp* node) {
-    for (int i = 0; i < node->values.size(); i++) {
-        node->values[i]->accept(this);
-
-        if (i == node->values.size() - 1)
-            continue;
-        switch (node->op_type) {
-            case BST_TYPE::And:
-                stream << " and ";
-                break;
-            case BST_TYPE::Or:
-                stream << " or ";
-                break;
-            default:
-                ASSERT(0, "%d", node->op_type);
-                break;
-        }
-    }
-    return true;
-}
-
 bool PrintVisitor::visit_break(BST_Break* node) {
     stream << "break";
     return true;
@@ -997,20 +887,6 @@ bool PrintVisitor::visit_compare(BST_Compare* node) {
     node->left->accept(this);
     stream << " " << getOpSymbol(node->op) << " ";
     node->comparator->accept(this);
-
-    return true;
-}
-
-bool PrintVisitor::visit_comprehension(BST_comprehension* node) {
-    stream << "for ";
-    node->target->accept(this);
-    stream << " in ";
-    node->iter->accept(this);
-
-    for (BST_expr* i : node->ifs) {
-        stream << " if ";
-        i->accept(this);
-    }
 
     return true;
 }
@@ -1065,19 +941,6 @@ bool PrintVisitor::visit_dict(BST_Dict* node) {
         node->keys[i]->accept(this);
         stream << ":";
         node->values[i]->accept(this);
-    }
-    stream << "}";
-    return true;
-}
-
-bool PrintVisitor::visit_dictcomp(BST_DictComp* node) {
-    stream << "{";
-    node->key->accept(this);
-    stream << ":";
-    node->value->accept(this);
-    for (auto c : node->generators) {
-        stream << " ";
-        c->accept(this);
     }
     stream << "}";
     return true;
@@ -1174,17 +1037,6 @@ bool PrintVisitor::visit_functiondef(BST_FunctionDef* node) {
     }
 #endif
     indent -= 4;
-    return true;
-}
-
-bool PrintVisitor::visit_generatorexp(BST_GeneratorExp* node) {
-    stream << "[";
-    node->elt->accept(this);
-    for (auto c : node->generators) {
-        stream << " ";
-        c->accept(this);
-    }
-    stream << "]";
     return true;
 }
 
@@ -1329,17 +1181,6 @@ bool PrintVisitor::visit_list(BST_List* node) {
     return true;
 }
 
-bool PrintVisitor::visit_listcomp(BST_ListComp* node) {
-    stream << "[";
-    node->elt->accept(this);
-    for (auto c : node->generators) {
-        stream << " ";
-        c->accept(this);
-    }
-    stream << "]";
-    return true;
-}
-
 bool PrintVisitor::visit_keyword(BST_keyword* node) {
     stream << node->arg.s() << "=";
     node->value->accept(this);
@@ -1477,17 +1318,6 @@ bool PrintVisitor::visit_set(BST_Set* node) {
         e->accept(this);
     }
 
-    stream << "}";
-    return true;
-}
-
-bool PrintVisitor::visit_setcomp(BST_SetComp* node) {
-    stream << "{";
-    node->elt->accept(this);
-    for (auto c : node->generators) {
-        stream << " ";
-        c->accept(this);
-    }
     stream << "}";
     return true;
 }
@@ -1715,6 +1545,7 @@ bool PrintVisitor::visit_makeclass(BST_MakeClass* node) {
     return false;
 }
 
+namespace {
 class FlattenVisitor : public BSTVisitor {
 private:
     std::vector<BST*>* output;
@@ -1753,10 +1584,6 @@ public:
         output->push_back(node);
         return false;
     }
-    virtual bool visit_boolop(BST_BoolOp* node) {
-        output->push_back(node);
-        return false;
-    }
     virtual bool visit_break(BST_Break* node) {
         output->push_back(node);
         return false;
@@ -1773,10 +1600,6 @@ public:
         output->push_back(node);
         return false;
     }
-    virtual bool visit_comprehension(BST_comprehension* node) {
-        output->push_back(node);
-        return false;
-    }
     virtual bool visit_continue(BST_Continue* node) {
         output->push_back(node);
         return false;
@@ -1786,10 +1609,6 @@ public:
         return false;
     }
     virtual bool visit_dict(BST_Dict* node) {
-        output->push_back(node);
-        return false;
-    }
-    virtual bool visit_dictcomp(BST_DictComp* node) {
         output->push_back(node);
         return false;
     }
@@ -1818,10 +1637,6 @@ public:
         return !expand_scopes;
     }
     virtual bool visit_functiondef(BST_FunctionDef* node) {
-        output->push_back(node);
-        return !expand_scopes;
-    }
-    virtual bool visit_generatorexp(BST_GeneratorExp* node) {
         output->push_back(node);
         return !expand_scopes;
     }
@@ -1861,10 +1676,6 @@ public:
         output->push_back(node);
         return false;
     }
-    virtual bool visit_listcomp(BST_ListComp* node) {
-        output->push_back(node);
-        return false;
-    }
     virtual bool visit_module(BST_Module* node) {
         output->push_back(node);
         return !expand_scopes;
@@ -1898,10 +1709,6 @@ public:
         return false;
     }
     virtual bool visit_set(BST_Set* node) {
-        output->push_back(node);
-        return false;
-    }
-    virtual bool visit_setcomp(BST_SetComp* node) {
         output->push_back(node);
         return false;
     }
@@ -1968,8 +1775,9 @@ public:
         return false;
     }
 };
+}
 
-void flatten(const llvm::SmallVector<BST_stmt*, 4>& roots, std::vector<BST*>& output, bool expand_scopes) {
+void flatten(llvm::ArrayRef<BST_stmt*> roots, std::vector<BST*>& output, bool expand_scopes) {
     FlattenVisitor visitor(&output, expand_scopes);
 
     for (int i = 0; i < roots.size(); i++) {

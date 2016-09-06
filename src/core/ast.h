@@ -1109,8 +1109,6 @@ template <typename T> T* ast_cast(AST* node) {
     return static_cast<T*>(node);
 }
 
-
-
 class ASTVisitor {
 protected:
 public:
@@ -1375,7 +1373,7 @@ public:
 // Given an AST node, return a vector of the node plus all its descendents.
 // This is useful for analyses that care more about the constituent nodes than the
 // exact tree structure; ex, finding all "global" directives.
-void flatten(const llvm::SmallVector<AST_stmt*, 4>& roots, std::vector<AST*>& output, bool expand_scopes);
+void flatten(llvm::ArrayRef<AST_stmt*> roots, std::vector<AST*>& output, bool expand_scopes);
 void flatten(AST_expr* root, std::vector<AST*>& output, bool expand_scopes);
 // Similar to the flatten() function, but filters for a specific type of ast nodes:
 template <class T, class R> void findNodes(const R& roots, std::vector<T*>& output, bool expand_scopes) {

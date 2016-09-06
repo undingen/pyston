@@ -297,21 +297,6 @@ private:
         return rtn;
     }
 
-    void* visit_boolop(BST_BoolOp* node) override {
-        int n = node->values.size();
-
-        CompilerType* rtn = NULL;
-        for (int i = 0; i < n; i++) {
-            CompilerType* t = getType(node->values[i]);
-            if (rtn == NULL)
-                rtn = t;
-            else if (rtn != t)
-                rtn = UNKNOWN;
-        }
-
-        return rtn;
-    }
-
     void* visit_call(BST_Call* node) override {
         CompilerType* func = getType(node->func);
 
