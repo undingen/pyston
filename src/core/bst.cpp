@@ -49,12 +49,6 @@ static void visitCFG(CFG* cfg, BSTVisitor* v) {
             e->accept(v);
 }
 
-void BST_alias::accept(BSTVisitor* v) {
-    bool skip = v->visit_alias(this);
-    if (skip)
-        return;
-}
-
 void BST_arguments::accept(BSTVisitor* v) {
     bool skip = v->visit_arguments(this);
     if (skip)
@@ -418,30 +412,6 @@ void BST_IfExp::accept(BSTVisitor* v) {
 
 void* BST_IfExp::accept_expr(ExprVisitor* v) {
     return v->visit_ifexp(this);
-}
-
-void BST_Import::accept(BSTVisitor* v) {
-    bool skip = v->visit_import(this);
-    if (skip)
-        return;
-
-    visitVector(names, v);
-}
-
-void BST_Import::accept_stmt(StmtVisitor* v) {
-    v->visit_import(this);
-}
-
-void BST_ImportFrom::accept(BSTVisitor* v) {
-    bool skip = v->visit_importfrom(this);
-    if (skip)
-        return;
-
-    visitVector(names, v);
-}
-
-void BST_ImportFrom::accept_stmt(StmtVisitor* v) {
-    v->visit_importfrom(this);
 }
 
 void BST_Index::accept(BSTVisitor* v) {
@@ -864,13 +834,6 @@ void PrintVisitor::printIndent() {
     }
 }
 
-bool PrintVisitor::visit_alias(BST_alias* node) {
-    stream << node->name.s();
-    if (node->asname.s().size())
-        stream << " as " << node->asname.s();
-    return true;
-}
-
 bool PrintVisitor::visit_arguments(BST_arguments* node) {
     int ndefault = node->defaults.size();
     for (int i = 0; i < ndefault; i++) {
@@ -1279,26 +1242,6 @@ bool PrintVisitor::visit_ifexp(BST_IfExp* node) {
     node->test->accept(this);
     stream << " else ";
     node->orelse->accept(this);
-    return true;
-}
-
-bool PrintVisitor::visit_import(BST_Import* node) {
-    stream << "import ";
-    for (int i = 0; i < node->names.size(); i++) {
-        if (i > 0)
-            stream << ", ";
-        node->names[i]->accept(this);
-    }
-    return true;
-}
-
-bool PrintVisitor::visit_importfrom(BST_ImportFrom* node) {
-    stream << "from " << node->module.s() << " import ";
-    for (int i = 0; i < node->names.size(); i++) {
-        if (i > 0)
-            stream << ", ";
-        node->names[i]->accept(this);
-    }
     return true;
 }
 
@@ -1782,10 +1725,6 @@ public:
         assert(expand_scopes && "not sure if this works properly");
     }
 
-    virtual bool visit_alias(BST_alias* node) {
-        output->push_back(node);
-        return false;
-    }
     virtual bool visit_arguments(BST_arguments* node) {
         output->push_back(node);
         return false;
@@ -1895,14 +1834,6 @@ public:
         return false;
     }
     virtual bool visit_ifexp(BST_IfExp* node) {
-        output->push_back(node);
-        return false;
-    }
-    virtual bool visit_import(BST_Import* node) {
-        output->push_back(node);
-        return false;
-    }
-    virtual bool visit_importfrom(BST_ImportFrom* node) {
         output->push_back(node);
         return false;
     }

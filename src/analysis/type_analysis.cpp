@@ -611,10 +611,6 @@ private:
 
     void visit_global(BST_Global* node) override {}
 
-    void visit_import(BST_Import* node) override { assert(0 && "this should get removed by cfg"); }
-
-    void visit_importfrom(BST_ImportFrom* node) override { assert(0 && "this should get removed by cfg"); }
-
     void visit_exec(BST_Exec* node) override {
         getType(node->body);
         if (node->globals)

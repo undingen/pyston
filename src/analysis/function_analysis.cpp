@@ -78,8 +78,6 @@ public:
 
     bool isKilledAt(BST_Name* node, bool is_live_at_end) { return node->is_kill; }
 
-    bool visit_import(BST_Import* node) { RELEASE_ASSERT(0, "these should all get removed by the cfg"); }
-
     bool visit_classdef(BST_ClassDef* node) {
         for (auto e : node->bases)
             e->accept(this);
@@ -118,8 +116,6 @@ public:
         }
         return true;
     }
-
-    bool visit_alias(BST_alias* node) { RELEASE_ASSERT(0, "these should be removed by the cfg"); }
 };
 
 LivenessAnalysis::LivenessAnalysis(CFG* cfg) : cfg(cfg), result_cache(cfg->getVRegInfo().getTotalNumOfVRegs()) {
@@ -320,17 +316,6 @@ public:
         //_doSet(node->name);
         return true;
     }
-
-    virtual bool visit_alias(BST_alias* node) {
-        int vreg = node->name_vreg;
-        if (node->asname.s().size())
-            vreg = node->asname_vreg;
-
-        _doSet(vreg);
-        return true;
-    }
-    virtual bool visit_import(BST_Import* node) { return false; }
-    virtual bool visit_importfrom(BST_ImportFrom* node) { return false; }
 
     virtual bool visit_assign(BST_Assign* node) {
         _doSet(node->target);

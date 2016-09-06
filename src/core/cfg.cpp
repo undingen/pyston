@@ -2953,8 +2953,6 @@ public:
 
     AssignVRegsVisitor() : current_block(0), next_vreg(0) {}
 
-    bool visit_alias(BST_alias* node) override { RELEASE_ASSERT(0, "these should be removed by the cfg"); }
-
     bool visit_arguments(BST_arguments* node) override {
         for (BST_expr* d : node->defaults)
             d->accept(this);

@@ -2555,15 +2555,6 @@ private:
                 if ((((BST_Expr*)node)->value)->type != BST_TYPE::Str)
                     doExpr(bst_cast<BST_Expr>(node), unw_info);
                 break;
-            // case BST_TYPE::If:
-            // doIf(bst_cast<BST_If>(node));
-            // break;
-            // case BST_TYPE::Import:
-            //     doImport(bst_cast<BST_Import>(node), unw_info);
-            //     break;
-            // case BST_TYPE::ImportFrom:
-            //     doImportFrom(bst_cast<BST_ImportFrom>(node), unw_info);
-            //     break;
             case BST_TYPE::Global:
                 // Should have been handled already
                 break;

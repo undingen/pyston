@@ -234,18 +234,6 @@ public:
     BST_slice(BST_TYPE::BST_TYPE type, uint32_t lineno, uint32_t col_offset = 0) : BST(type, lineno, col_offset) {}
 };
 
-class BST_alias : public BST {
-public:
-    InternedString name, asname;
-    int name_vreg = -1, asname_vreg = -1;
-
-    virtual void accept(BSTVisitor* v);
-
-    BST_alias(InternedString name, InternedString asname) : BST(BST_TYPE::alias), name(name), asname(asname) {}
-
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::alias;
-};
-
 class BST_Name;
 
 class BST_arguments : public BST {
@@ -625,32 +613,6 @@ public:
     BST_IfExp() : BST_expr(BST_TYPE::IfExp) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::IfExp;
-};
-
-class BST_Import : public BST_stmt {
-public:
-    std::vector<BST_alias*> names;
-
-    virtual void accept(BSTVisitor* v);
-    virtual void accept_stmt(StmtVisitor* v);
-
-    BST_Import() : BST_stmt(BST_TYPE::Import) {}
-
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Import;
-};
-
-class BST_ImportFrom : public BST_stmt {
-public:
-    InternedString module;
-    std::vector<BST_alias*> names;
-    int level;
-
-    virtual void accept(BSTVisitor* v);
-    virtual void accept_stmt(StmtVisitor* v);
-
-    BST_ImportFrom() : BST_stmt(BST_TYPE::ImportFrom) {}
-
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::ImportFrom;
 };
 
 class BST_Index : public BST_slice {
@@ -1146,7 +1108,6 @@ protected:
 public:
     virtual ~BSTVisitor() {}
 
-    virtual bool visit_alias(BST_alias* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_arguments(BST_arguments* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_assert(BST_Assert* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_assign(BST_Assign* node) { RELEASE_ASSERT(0, ""); }
@@ -1178,8 +1139,6 @@ public:
     virtual bool visit_global(BST_Global* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_if(BST_If* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_ifexp(BST_IfExp* node) { RELEASE_ASSERT(0, ""); }
-    virtual bool visit_import(BST_Import* node) { RELEASE_ASSERT(0, ""); }
-    virtual bool visit_importfrom(BST_ImportFrom* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_index(BST_Index* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_invoke(BST_Invoke* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_keyword(BST_keyword* node) { RELEASE_ASSERT(0, ""); }
@@ -1219,7 +1178,6 @@ protected:
 public:
     virtual ~NoopBSTVisitor() {}
 
-    virtual bool visit_alias(BST_alias* node) { return false; }
     virtual bool visit_arguments(BST_arguments* node) { return false; }
     virtual bool visit_assert(BST_Assert* node) { return false; }
     virtual bool visit_assign(BST_Assign* node) { return false; }
@@ -1251,8 +1209,6 @@ public:
     virtual bool visit_global(BST_Global* node) { return false; }
     virtual bool visit_if(BST_If* node) { return false; }
     virtual bool visit_ifexp(BST_IfExp* node) { return false; }
-    virtual bool visit_import(BST_Import* node) { return false; }
-    virtual bool visit_importfrom(BST_ImportFrom* node) { return false; }
     virtual bool visit_index(BST_Index* node) { return false; }
     virtual bool visit_invoke(BST_Invoke* node) { return false; }
     virtual bool visit_keyword(BST_keyword* node) { return false; }
@@ -1339,8 +1295,6 @@ public:
     virtual void visit_functiondef(BST_FunctionDef* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_global(BST_Global* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_if(BST_If* node) { RELEASE_ASSERT(0, ""); }
-    virtual void visit_import(BST_Import* node) { RELEASE_ASSERT(0, ""); }
-    virtual void visit_importfrom(BST_ImportFrom* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_invoke(BST_Invoke* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_pass(BST_Pass* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_print(BST_Print* node) { RELEASE_ASSERT(0, ""); }
@@ -1377,7 +1331,6 @@ public:
     virtual ~PrintVisitor() {}
     void flush() { stream.flush(); }
 
-    virtual bool visit_alias(BST_alias* node);
     virtual bool visit_arguments(BST_arguments* node);
     virtual bool visit_assert(BST_Assert* node);
     virtual bool visit_assign(BST_Assign* node);
@@ -1409,8 +1362,6 @@ public:
     virtual bool visit_global(BST_Global* node);
     virtual bool visit_if(BST_If* node);
     virtual bool visit_ifexp(BST_IfExp* node);
-    virtual bool visit_import(BST_Import* node);
-    virtual bool visit_importfrom(BST_ImportFrom* node);
     virtual bool visit_index(BST_Index* node);
     virtual bool visit_invoke(BST_Invoke* node);
     virtual bool visit_keyword(BST_keyword* node);
