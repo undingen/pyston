@@ -166,7 +166,10 @@ class AST_keyword;
 class AST_stmt;
 
 struct ASTAllocator {
+    std::vector<AST*> nodes;
     llvm::BumpPtrAllocator allocator;
+
+    ~ASTAllocator();
 };
 
 class AST {
@@ -193,7 +196,11 @@ public:
     AST(AST_TYPE::AST_TYPE type, uint32_t lineno, uint32_t col_offset = 0)
         : type(type), lineno(lineno), col_offset(col_offset) {}
 
-    static void* operator new(size_t count, ASTAllocator& allocator) { return allocator.allocator.Allocate(count, 8); }
+    static void* operator new(size_t count, ASTAllocator& allocator) {
+        auto node = (AST*)allocator.allocator.Allocate(count, 8);
+        allocator.nodes.push_back(node);
+        return node;
+    }
 
     // These could be virtual methods, but since we already keep track of the type use a switch statement
     // like everywhere else.
@@ -201,6 +208,14 @@ public:
     llvm::ArrayRef<AST_stmt*> getBody();
     BORROWED(BoxedString*) getName() noexcept;
 };
+
+inline ASTAllocator::~ASTAllocator() {
+    for (AST* node : nodes) {
+        node->~AST();
+    }
+}
+
+
 Box* getDocString(llvm::ArrayRef<AST_stmt*> body);
 
 class AST_expr : public AST {

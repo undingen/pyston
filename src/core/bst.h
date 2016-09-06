@@ -167,7 +167,10 @@ class SliceVisitor;
 class BST_keyword;
 
 struct BSTAllocator {
+    std::vector<BST*> nodes;
     llvm::BumpPtrAllocator allocator;
+
+    ~BSTAllocator();
 };
 
 class BST {
@@ -194,8 +197,18 @@ public:
     BST(BST_TYPE::BST_TYPE type, uint32_t lineno, uint32_t col_offset = 0)
         : type(type), lineno(lineno), col_offset(col_offset) {}
 
-    static void* operator new(size_t count, BSTAllocator& allocator) { return allocator.allocator.Allocate(count, 8); }
+    static void* operator new(size_t count, BSTAllocator& allocator) {
+        auto node = (BST*)allocator.allocator.Allocate(count, 8);
+        allocator.nodes.push_back(node);
+        return node;
+    }
 };
+
+inline BSTAllocator::~BSTAllocator() {
+    for (BST* node : nodes) {
+        node->~BST();
+    }
+}
 
 class BST_expr : public BST {
 public:
