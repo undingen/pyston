@@ -748,8 +748,7 @@ public:
         : AST_expr(AST_TYPE::Name, lineno, col_offset),
           ctx_type(ctx_type),
           id(id),
-          lookup_type(ScopeInfo::VarScopeType::UNKNOWN) /*,
-          vreg(-1)*/ {}
+          lookup_type(ScopeInfo::VarScopeType::UNKNOWN) {}
 
     static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Name;
 };
