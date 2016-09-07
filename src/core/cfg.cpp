@@ -3405,7 +3405,7 @@ BoxedCode* ModuleCFGProcessor::runRecursively(llvm::ArrayRef<AST_stmt*> body, Bo
     for (auto e : param_names.allArgsAsName())
         fillScopingInfo(e, scope_info);
 
-    si->cfg = computeCFG(body, ast_type, lineno, args, fn, si.get(), param_names, scope_info, this);
+    si->cfg.reset(computeCFG(body, ast_type, lineno, args, fn, si.get(), param_names, scope_info, this));
 
     BoxedCode* code;
     if (args)

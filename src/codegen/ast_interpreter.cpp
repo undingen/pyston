@@ -744,7 +744,7 @@ Box* ASTInterpreter::doOSR(BST_Jump* node) {
     ast_osrs.log();
 
     LivenessAnalysis* liveness = source_info->getLiveness();
-    std::unique_ptr<PhiAnalysis> phis = computeRequiredPhis(getCode()->param_names, source_info->cfg, liveness);
+    std::unique_ptr<PhiAnalysis> phis = computeRequiredPhis(getCode()->param_names, source_info->cfg.get(), liveness);
 
     llvm::SmallVector<int, 16> dead_vregs;
 

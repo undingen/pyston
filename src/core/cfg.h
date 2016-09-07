@@ -183,6 +183,11 @@ public:
 
 public:
     CFG() : next_idx(0) {}
+    ~CFG() {
+        for (auto&& e : blocks) {
+            delete e;
+        }
+    }
 
     CFGBlock* getStartingBlock() { return blocks[0]; }
     VRegInfo& getVRegInfo() { return vreg_info; }

@@ -992,7 +992,7 @@ BORROWED(Box*) FrameInfo::updateBoxedLocals() {
         return code->source->parent_module->getAttrWrapper();
     }
 
-    BoxedDict* d = localsForFrame(frame_info->vregs, code->source->cfg);
+    BoxedDict* d = localsForFrame(frame_info->vregs, code->source->cfg.get());
     BoxedClosure* closure = frame_info->passed_closure;
 
     // Add the locals from the closure

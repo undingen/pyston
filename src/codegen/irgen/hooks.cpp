@@ -56,7 +56,7 @@ namespace pyston {
 
 LivenessAnalysis* SourceInfo::getLiveness() {
     if (!liveness_info)
-        liveness_info = computeLivenessInfo(cfg);
+        liveness_info = computeLivenessInfo(cfg.get());
     return liveness_info.get();
 }
 

@@ -1861,7 +1861,7 @@ private:
     template <typename GetLLVMValCB>
     void _setVRegIfUserVisible(int vreg, GetLLVMValCB get_llvm_val_cb, CompilerVariable* prev,
                                bool potentially_undefined) {
-        auto cfg = irstate->getSourceInfo()->cfg;
+        auto&& cfg = irstate->getSourceInfo()->cfg;
         assert(vreg >= 0);
 
         if (cfg->getVRegInfo().isUserVisibleVReg(vreg)) {
@@ -2611,7 +2611,7 @@ private:
         // cf->func->dump();
 
         SourceInfo* source = irstate->getSourceInfo();
-        auto cfg = source->cfg;
+        auto&& cfg = source->cfg;
         auto&& scope_info = irstate->getScopeInfo();
 
         int num_vregs = symbol_table.numVregs();
@@ -2751,7 +2751,7 @@ public:
         ConcreteSymbolTable* phi_st = new ConcreteSymbolTable(symbol_table.numVregs());
         DefinednessTable* def_vars = new DefinednessTable(definedness_vars);
 
-        auto cfg = source->cfg;
+        auto&& cfg = source->cfg;
         auto&& vreg_info = cfg->getVRegInfo();
 
         // This should have been consumed:

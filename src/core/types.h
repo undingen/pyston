@@ -493,7 +493,7 @@ private:
 public:
     BoxedModule* parent_module;
     ScopingResults scoping;
-    CFG* cfg;
+    std::unique_ptr<CFG> cfg;
     FutureFlags future_flags;
     bool is_generator;
 

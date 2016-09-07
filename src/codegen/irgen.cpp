@@ -347,7 +347,7 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
     PhiAnalysis* phi_analysis = irstate->getPhis();
     assert(phi_analysis);
 
-    CFG* cfg = source->cfg;
+    auto&& cfg = source->cfg;
     auto&& vreg_info = cfg->getVRegInfo();
     int num_vregs = vreg_info.getTotalNumOfVRegs();
 
@@ -1110,7 +1110,7 @@ std::pair<CompiledFunction*, llvm::Function*> doCompile(BoxedCode* code, SourceI
     if (entry_descriptor)
         types = doTypeAnalysis(entry_descriptor, effort, speculation_level);
     else
-        types = doTypeAnalysis(source->cfg, *param_names, spec->arg_types, effort, speculation_level);
+        types = doTypeAnalysis(source->cfg.get(), *param_names, spec->arg_types, effort, speculation_level);
 
 
     _t2.split();
@@ -1131,7 +1131,7 @@ std::pair<CompiledFunction*, llvm::Function*> doCompile(BoxedCode* code, SourceI
     if (entry_descriptor)
         phis = computeRequiredPhis(entry_descriptor, liveness);
     else
-        phis = computeRequiredPhis(*param_names, source->cfg, liveness);
+        phis = computeRequiredPhis(*param_names, source->cfg.get(), liveness);
 
     RefcountTracker refcounter;
 

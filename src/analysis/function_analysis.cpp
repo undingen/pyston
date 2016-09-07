@@ -530,7 +530,7 @@ std::unique_ptr<PhiAnalysis> computeRequiredPhis(const OSREntryDescriptor* entry
     static StatCounter counter("num_phi_analysis");
     counter.log();
 
-    auto cfg = entry_descriptor->code->source->cfg;
+    auto&& cfg = entry_descriptor->code->source->cfg;
     int num_vregs = cfg->getVRegInfo().getTotalNumOfVRegs();
     VRegMap<DefinednessAnalysis::DefinitionLevel> initial_map(num_vregs);
 

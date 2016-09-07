@@ -62,7 +62,6 @@ SourceInfo::SourceInfo(BoxedModule* m, ScopingResults scoping, FutureFlags futur
                        bool is_generator)
     : parent_module(m),
       scoping(std::move(scoping)),
-      cfg(NULL),
       future_flags(future_flags),
       is_generator(is_generator),
       bst_allocator(std::unique_ptr<BSTAllocator>(new BSTAllocator)),

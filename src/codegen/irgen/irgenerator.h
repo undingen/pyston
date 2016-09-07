@@ -88,7 +88,7 @@ public:
                llvm::MDNode* func_dbg_info, RefcountTracker* refcount_tracker);
     ~IRGenState();
 
-    CFG* getCFG() { return getSourceInfo()->cfg; }
+    CFG* getCFG() { return getSourceInfo()->cfg.get(); }
 
     CompiledFunction* getCurFunction() { return cf; }
     BoxedCode* getCode() { return code; }
