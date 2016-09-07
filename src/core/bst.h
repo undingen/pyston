@@ -166,11 +166,37 @@ class StmtVisitor;
 class SliceVisitor;
 class BST_keyword;
 
-struct BSTAllocator {
-    std::vector<BST*> nodes;
-    llvm::BumpPtrAllocator allocator;
+template <int slab_size, int allignment = 8> struct BSTAllocatorSlab {
+    unsigned char data[slab_size];
+    int num_bytes_used = 0;
 
-    ~BSTAllocator();
+    int numBytesFree() const { return slab_size - num_bytes_used; }
+    void* alloc(int num_bytes) {
+        static StatCounter code_bytes("bst_alloc_bytes");
+        code_bytes.log(num_bytes);
+
+        void* ptr = &data[num_bytes_used];
+        num_bytes_used += llvm::RoundUpToAlignment(num_bytes, allignment);
+        return ptr;
+    }
+
+    ~BSTAllocatorSlab();
+};
+
+struct BSTAllocator {
+    static constexpr int slab_size = 4096 - sizeof(int);
+
+    BSTAllocator() = default;
+    BSTAllocator(ASTAllocator&&) = delete;
+
+    llvm::SmallVector<std::unique_ptr<BSTAllocatorSlab<slab_size>>, 4> slabs;
+
+    void* allocate(int num_bytes) {
+        if (slabs.empty() || slabs.back()->numBytesFree() < num_bytes)
+            slabs.emplace_back(llvm::make_unique<BSTAllocatorSlab<slab_size>>());
+
+        return slabs.back()->alloc(num_bytes);
+    }
 };
 
 class BST {
@@ -181,6 +207,7 @@ public:
     uint32_t lineno, col_offset;
 
     virtual void accept(BSTVisitor* v) = 0;
+    virtual int getSize() const = 0;
 
 // #define DEBUG_LINE_NUMBERS 1
 #ifdef DEBUG_LINE_NUMBERS
@@ -198,8 +225,7 @@ public:
         : type(type), lineno(lineno), col_offset(col_offset) {}
 
     static void* operator new(size_t count, BSTAllocator& allocator) {
-        auto node = (BST*)allocator.allocator.Allocate(count, 8);
-        allocator.nodes.push_back(node);
+        auto node = (BST*)allocator.allocate(count);
 
         static StatCounter code_bytes("bst_num_allocs");
         code_bytes.log(1);
@@ -210,13 +236,20 @@ public:
     }
 };
 
-inline BSTAllocator::~BSTAllocator() {
-    for (BST* node : nodes) {
-        static StatCounter code_bytes("bst_num_deallocs");
-        code_bytes.log(1);
+template <int slab_size, int allignment> BSTAllocatorSlab<slab_size, allignment>::~BSTAllocatorSlab() {
+    for (int current_pos = 0; current_pos < num_bytes_used;) {
+        BST* node = (BST*)&data[current_pos];
+        int node_size = node->getSize();
         node->~BST();
+        static StatCounter code_bytes("bst_dealloc_bytes");
+        code_bytes.log(node_size);
+        current_pos += llvm::RoundUpToAlignment(node_size, allignment);
     }
 }
+
+#define DEFINE_BST_NODE(name)                                                                                          \
+    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::name;                                                             \
+    virtual int getSize() const override { return sizeof(*this); }
 
 class BST_expr : public BST {
 public:
@@ -253,7 +286,7 @@ public:
 
     BST_arguments() : BST(BST_TYPE::arguments) {}
 
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::arguments;
+    DEFINE_BST_NODE(arguments)
 };
 
 class BST_Assert : public BST_stmt {
@@ -265,7 +298,7 @@ public:
 
     BST_Assert() : BST_stmt(BST_TYPE::Assert) {}
 
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Assert;
+    DEFINE_BST_NODE(Assert)
 };
 
 class BST_Assign : public BST_stmt {
@@ -278,7 +311,7 @@ public:
 
     BST_Assign() : BST_stmt(BST_TYPE::Assign) {}
 
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Assign;
+    DEFINE_BST_NODE(Assign)
 };
 
 class BST_AugAssign : public BST_stmt {
@@ -292,7 +325,7 @@ public:
 
     BST_AugAssign() : BST_stmt(BST_TYPE::AugAssign) {}
 
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::AugAssign;
+    DEFINE_BST_NODE(AugAssign)
 };
 
 class BST_AugBinOp : public BST_expr {
@@ -305,7 +338,7 @@ public:
 
     BST_AugBinOp() : BST_expr(BST_TYPE::AugBinOp) {}
 
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::AugBinOp;
+    DEFINE_BST_NODE(AugBinOp)
 };
 
 class BST_Attribute : public BST_expr {
@@ -322,7 +355,7 @@ public:
     BST_Attribute(BST_expr* value, AST_TYPE::AST_TYPE ctx_type, InternedString attr)
         : BST_expr(BST_TYPE::Attribute), value(value), ctx_type(ctx_type), attr(attr) {}
 
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Attribute;
+    DEFINE_BST_NODE(Attribute)
 };
 
 class BST_BinOp : public BST_expr {
@@ -335,7 +368,7 @@ public:
 
     BST_BinOp() : BST_expr(BST_TYPE::BinOp) {}
 
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::BinOp;
+    DEFINE_BST_NODE(BinOp)
 };
 
 class BST_Call : public BST_expr {
@@ -352,7 +385,7 @@ public:
 
     BST_Call() : BST_expr(BST_TYPE::Call) {}
 
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Call;
+    DEFINE_BST_NODE(Call)
 };
 
 class BST_Compare : public BST_expr {
@@ -366,7 +399,7 @@ public:
 
     BST_Compare() : BST_expr(BST_TYPE::Compare) {}
 
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Compare;
+    DEFINE_BST_NODE(Compare)
 };
 
 class BST_ClassDef : public BST_stmt {
@@ -379,7 +412,7 @@ public:
 
     BST_ClassDef() : BST_stmt(BST_TYPE::ClassDef) {}
 
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::ClassDef;
+    DEFINE_BST_NODE(ClassDef)
 };
 
 class BST_Dict : public BST_expr {
@@ -391,7 +424,7 @@ public:
 
     BST_Dict() : BST_expr(BST_TYPE::Dict) {}
 
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Dict;
+    DEFINE_BST_NODE(Dict)
 };
 
 class BST_Delete : public BST_stmt {
@@ -402,7 +435,7 @@ public:
 
     BST_Delete() : BST_stmt(BST_TYPE::Delete) {}
 
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Delete;
+    DEFINE_BST_NODE(Delete)
 };
 
 class BST_Ellipsis : public BST_slice {
@@ -412,7 +445,7 @@ public:
 
     BST_Ellipsis() : BST_slice(BST_TYPE::Ellipsis) {}
 
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Ellipsis;
+    DEFINE_BST_NODE(Ellipsis)
 };
 
 class BST_Expr : public BST_stmt {
@@ -425,7 +458,7 @@ public:
     BST_Expr() : BST_stmt(BST_TYPE::Expr) {}
     BST_Expr(BST_expr* value) : BST_stmt(BST_TYPE::Expr), value(value) {}
 
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Expr;
+    DEFINE_BST_NODE(Expr)
 };
 
 class BST_Exec : public BST_stmt {
@@ -439,7 +472,7 @@ public:
 
     BST_Exec() : BST_stmt(BST_TYPE::Exec) {}
 
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Exec;
+    DEFINE_BST_NODE(Exec)
 };
 
 // (Alternative to BST_Module, used for, e.g., eval)
@@ -455,7 +488,7 @@ public:
     BST_Expression(std::unique_ptr<InternedStringPool> interned_strings)
         : BST(BST_TYPE::Expression), interned_strings(std::move(interned_strings)) {}
 
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Expression;
+    DEFINE_BST_NODE(Expression)
 };
 
 class BST_ExtSlice : public BST_slice {
@@ -467,7 +500,7 @@ public:
 
     BST_ExtSlice() : BST_slice(BST_TYPE::ExtSlice) {}
 
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::ExtSlice;
+    DEFINE_BST_NODE(ExtSlice)
 };
 
 class BST_FunctionDef : public BST_stmt {
@@ -481,7 +514,7 @@ public:
 
     BST_FunctionDef() : BST_stmt(BST_TYPE::FunctionDef) {}
 
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::FunctionDef;
+    DEFINE_BST_NODE(FunctionDef)
 };
 
 class BST_Global : public BST_stmt {
@@ -493,7 +526,7 @@ public:
 
     BST_Global() : BST_stmt(BST_TYPE::Global) {}
 
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Global;
+    DEFINE_BST_NODE(Global)
 };
 
 class BST_Index : public BST_slice {
@@ -505,7 +538,7 @@ public:
 
     BST_Index() : BST_slice(BST_TYPE::Index) {}
 
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Index;
+    DEFINE_BST_NODE(Index)
 };
 
 class BST_keyword : public BST {
@@ -518,7 +551,7 @@ public:
 
     BST_keyword() : BST(BST_TYPE::keyword) {}
 
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::keyword;
+    DEFINE_BST_NODE(keyword)
 };
 
 class BST_List : public BST_expr {
@@ -531,7 +564,7 @@ public:
 
     BST_List() : BST_expr(BST_TYPE::List) {}
 
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::List;
+    DEFINE_BST_NODE(List)
 };
 
 class BST_Module : public BST {
@@ -546,7 +579,7 @@ public:
     BST_Module(std::unique_ptr<InternedStringPool> interned_strings)
         : BST(BST_TYPE::Module), interned_strings(std::move(interned_strings)) {}
 
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Module;
+    DEFINE_BST_NODE(Module)
 };
 
 class BST_Name : public BST_expr {
@@ -580,7 +613,7 @@ public:
           lookup_type(ScopeInfo::VarScopeType::UNKNOWN),
           vreg(-1) {}
 
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Name;
+    DEFINE_BST_NODE(Name)
 };
 
 class BST_Num : public BST_expr {
@@ -599,7 +632,7 @@ public:
 
     BST_Num() : BST_expr(BST_TYPE::Num) {}
 
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Num;
+    DEFINE_BST_NODE(Num)
 };
 
 class BST_Repr : public BST_expr {
@@ -611,7 +644,7 @@ public:
 
     BST_Repr() : BST_expr(BST_TYPE::Repr) {}
 
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Repr;
+    DEFINE_BST_NODE(Repr)
 };
 
 class BST_Print : public BST_stmt {
@@ -625,7 +658,7 @@ public:
 
     BST_Print() : BST_stmt(BST_TYPE::Print) {}
 
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Print;
+    DEFINE_BST_NODE(Print)
 };
 
 class BST_Raise : public BST_stmt {
@@ -641,7 +674,7 @@ public:
 
     BST_Raise() : BST_stmt(BST_TYPE::Raise), arg0(NULL), arg1(NULL), arg2(NULL) {}
 
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Raise;
+    DEFINE_BST_NODE(Raise)
 };
 
 class BST_Return : public BST_stmt {
@@ -653,7 +686,7 @@ public:
 
     BST_Return() : BST_stmt(BST_TYPE::Return) {}
 
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Return;
+    DEFINE_BST_NODE(Return)
 };
 
 class BST_Set : public BST_expr {
@@ -665,7 +698,7 @@ public:
 
     BST_Set() : BST_expr(BST_TYPE::Set) {}
 
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Set;
+    DEFINE_BST_NODE(Set)
 };
 
 class BST_Slice : public BST_slice {
@@ -677,7 +710,7 @@ public:
 
     BST_Slice() : BST_slice(BST_TYPE::Slice) {}
 
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Slice;
+    DEFINE_BST_NODE(Slice)
 };
 
 class BST_Str : public BST_expr {
@@ -694,7 +727,7 @@ public:
     BST_Str() : BST_expr(BST_TYPE::Str), str_type(AST_Str::UNSET) {}
     BST_Str(std::string s) : BST_expr(BST_TYPE::Str), str_type(AST_Str::STR), str_data(std::move(s)) {}
 
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Str;
+    DEFINE_BST_NODE(Str)
 };
 
 class BST_Subscript : public BST_expr {
@@ -708,7 +741,7 @@ public:
 
     BST_Subscript() : BST_expr(BST_TYPE::Subscript) {}
 
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Subscript;
+    DEFINE_BST_NODE(Subscript)
 };
 
 class BST_Tuple : public BST_expr {
@@ -721,7 +754,7 @@ public:
 
     BST_Tuple() : BST_expr(BST_TYPE::Tuple) {}
 
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Tuple;
+    DEFINE_BST_NODE(Tuple)
 };
 
 class BST_UnaryOp : public BST_expr {
@@ -734,7 +767,7 @@ public:
 
     BST_UnaryOp() : BST_expr(BST_TYPE::UnaryOp) {}
 
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::UnaryOp;
+    DEFINE_BST_NODE(UnaryOp)
 };
 
 class BST_Yield : public BST_expr {
@@ -746,7 +779,7 @@ public:
 
     BST_Yield() : BST_expr(BST_TYPE::Yield) {}
 
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Yield;
+    DEFINE_BST_NODE(Yield)
 };
 
 class BST_MakeFunction : public BST_expr {
@@ -761,7 +794,7 @@ public:
         : BST_expr(BST_TYPE::MakeFunction, fd->lineno, fd->col_offset), function_def(fd), code(code) {}
     ~BST_MakeFunction();
 
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::MakeFunction;
+    DEFINE_BST_NODE(MakeFunction)
 };
 
 class BST_MakeClass : public BST_expr {
@@ -776,7 +809,7 @@ public:
         : BST_expr(BST_TYPE::MakeClass, cd->lineno, cd->col_offset), class_def(cd), code(code) {}
     ~BST_MakeClass();
 
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::MakeClass;
+    DEFINE_BST_NODE(MakeClass)
 };
 
 
@@ -795,7 +828,7 @@ public:
 
     BST_Branch() : BST_stmt(BST_TYPE::Branch) {}
 
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Branch;
+    DEFINE_BST_NODE(Branch)
 };
 
 class BST_Jump : public BST_stmt {
@@ -807,7 +840,7 @@ public:
 
     BST_Jump() : BST_stmt(BST_TYPE::Jump) {}
 
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Jump;
+    DEFINE_BST_NODE(Jump)
 };
 
 class BST_ClsAttribute : public BST_expr {
@@ -820,7 +853,7 @@ public:
 
     BST_ClsAttribute() : BST_expr(BST_TYPE::ClsAttribute) {}
 
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::ClsAttribute;
+    DEFINE_BST_NODE(ClsAttribute)
 };
 
 class BST_Invoke : public BST_stmt {
@@ -834,7 +867,7 @@ public:
 
     BST_Invoke(BST_stmt* stmt) : BST_stmt(BST_TYPE::Invoke), stmt(stmt) {}
 
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Invoke;
+    DEFINE_BST_NODE(Invoke)
 };
 
 // "LangPrimitive" represents operations that "primitive" to the language,
@@ -865,7 +898,7 @@ public:
 
     BST_LangPrimitive(Opcodes opcode) : BST_expr(BST_TYPE::LangPrimitive), opcode(opcode) {}
 
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::LangPrimitive;
+    DEFINE_BST_NODE(LangPrimitive)
 };
 
 template <typename T> T* bst_cast(BST* node) {
