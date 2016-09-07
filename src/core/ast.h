@@ -23,7 +23,7 @@
 #include <vector>
 
 #include "llvm/ADT/StringRef.h"
-#include "llvm/Support/Allocator.h"
+#include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include "analysis/scoping_analysis.h"
@@ -165,11 +165,34 @@ class ASTStmtVisitor;
 class AST_keyword;
 class AST_stmt;
 
-struct ASTAllocator {
-    std::vector<AST*> nodes;
-    llvm::BumpPtrAllocator allocator;
+template <int slab_size, int allignment = 8> struct ASTAllocatorSlab {
+    unsigned char data[slab_size];
+    int num_bytes_used = 0;
 
-    ~ASTAllocator();
+    int numBytesFree() const { return slab_size - num_bytes_used; }
+    void* alloc(int num_bytes) {
+        void* ptr = &data[num_bytes_used];
+        num_bytes_used += llvm::RoundUpToAlignment(num_bytes, allignment);
+        return ptr;
+    }
+
+    ~ASTAllocatorSlab();
+};
+
+struct ASTAllocator {
+    static constexpr int slab_size = 4096 - sizeof(int);
+
+    ASTAllocator() = default;
+    ASTAllocator(ASTAllocator&&) = delete;
+
+    llvm::SmallVector<std::unique_ptr<ASTAllocatorSlab<slab_size>>, 4> slabs;
+
+    void* allocate(int num_bytes) {
+        if (slabs.empty() || slabs.back()->numBytesFree() < num_bytes)
+            slabs.emplace_back(llvm::make_unique<ASTAllocatorSlab<slab_size>>());
+
+        return slabs.back()->alloc(num_bytes);
+    }
 };
 
 class AST {
@@ -180,6 +203,7 @@ public:
     uint32_t lineno, col_offset;
 
     virtual void accept(ASTVisitor* v) = 0;
+    virtual int getSize() const = 0;
 
 // #define DEBUG_LINE_NUMBERS 1
 #ifdef DEBUG_LINE_NUMBERS
@@ -196,11 +220,7 @@ public:
     AST(AST_TYPE::AST_TYPE type, uint32_t lineno, uint32_t col_offset = 0)
         : type(type), lineno(lineno), col_offset(col_offset) {}
 
-    static void* operator new(size_t count, ASTAllocator& allocator) {
-        auto node = (AST*)allocator.allocator.Allocate(count, 8);
-        allocator.nodes.push_back(node);
-        return node;
-    }
+    static void* operator new(size_t count, ASTAllocator& allocator) { return allocator.allocate(count); }
 
     // These could be virtual methods, but since we already keep track of the type use a switch statement
     // like everywhere else.
@@ -209,14 +229,20 @@ public:
     BORROWED(BoxedString*) getName() noexcept;
 };
 
-inline ASTAllocator::~ASTAllocator() {
-    for (AST* node : nodes) {
+template <int slab_size, int allignment> ASTAllocatorSlab<slab_size, allignment>::~ASTAllocatorSlab() {
+    for (int current_pos = 0; current_pos < num_bytes_used;) {
+        AST* node = (AST*)&data[current_pos];
+        int node_size = node->getSize();
         node->~AST();
+        current_pos += node_size;
     }
 }
 
-
 Box* getDocString(llvm::ArrayRef<AST_stmt*> body);
+
+#define DEFINE_AST_NODE(name)                                                                                          \
+    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::name;                                                             \
+    virtual int getSize() const override { return sizeof(*this); }
 
 class AST_expr : public AST {
 public:
@@ -245,7 +271,7 @@ public:
 
     AST_alias(InternedString name, InternedString asname) : AST(AST_TYPE::alias), name(name), asname(asname) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::alias;
+    DEFINE_AST_NODE(alias)
 };
 
 class AST_Name;
@@ -261,7 +287,7 @@ public:
 
     AST_arguments() : AST(AST_TYPE::arguments) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::arguments;
+    DEFINE_AST_NODE(arguments)
 };
 
 class AST_Assert : public AST_stmt {
@@ -273,7 +299,7 @@ public:
 
     AST_Assert() : AST_stmt(AST_TYPE::Assert) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Assert;
+    DEFINE_AST_NODE(Assert)
 };
 
 class AST_Assign : public AST_stmt {
@@ -286,7 +312,7 @@ public:
 
     AST_Assign() : AST_stmt(AST_TYPE::Assign) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Assign;
+    DEFINE_AST_NODE(Assign)
 };
 
 class AST_AugAssign : public AST_stmt {
@@ -300,7 +326,7 @@ public:
 
     AST_AugAssign() : AST_stmt(AST_TYPE::AugAssign) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::AugAssign;
+    DEFINE_AST_NODE(AugAssign)
 };
 
 class AST_AugBinOp : public AST_expr {
@@ -312,7 +338,7 @@ public:
 
     AST_AugBinOp() : AST_expr(AST_TYPE::AugBinOp) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::AugBinOp;
+    DEFINE_AST_NODE(AugBinOp)
 };
 
 class AST_Attribute : public AST_expr {
@@ -328,7 +354,7 @@ public:
     AST_Attribute(AST_expr* value, AST_TYPE::AST_TYPE ctx_type, InternedString attr)
         : AST_expr(AST_TYPE::Attribute), value(value), ctx_type(ctx_type), attr(attr) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Attribute;
+    DEFINE_AST_NODE(Attribute)
 };
 
 class AST_BinOp : public AST_expr {
@@ -340,7 +366,7 @@ public:
 
     AST_BinOp() : AST_expr(AST_TYPE::BinOp) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::BinOp;
+    DEFINE_AST_NODE(BinOp)
 };
 
 class AST_BoolOp : public AST_expr {
@@ -352,7 +378,7 @@ public:
 
     AST_BoolOp() : AST_expr(AST_TYPE::BoolOp) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::BoolOp;
+    DEFINE_AST_NODE(BoolOp)
 };
 
 class AST_Break : public AST_stmt {
@@ -362,7 +388,7 @@ public:
 
     AST_Break() : AST_stmt(AST_TYPE::Break) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Break;
+    DEFINE_AST_NODE(Break)
 };
 
 class AST_Call : public AST_expr {
@@ -378,7 +404,7 @@ public:
 
     AST_Call() : AST_expr(AST_TYPE::Call) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Call;
+    DEFINE_AST_NODE(Call)
 };
 
 class AST_Compare : public AST_expr {
@@ -391,7 +417,7 @@ public:
 
     AST_Compare() : AST_expr(AST_TYPE::Compare) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Compare;
+    DEFINE_AST_NODE(Compare)
 };
 
 class AST_comprehension : public AST {
@@ -404,7 +430,7 @@ public:
 
     AST_comprehension() : AST(AST_TYPE::comprehension) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::comprehension;
+    DEFINE_AST_NODE(comprehension)
 };
 
 class AST_ClassDef : public AST_stmt {
@@ -418,7 +444,7 @@ public:
 
     AST_ClassDef() : AST_stmt(AST_TYPE::ClassDef) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::ClassDef;
+    DEFINE_AST_NODE(ClassDef)
 };
 
 class AST_Continue : public AST_stmt {
@@ -428,7 +454,7 @@ public:
 
     AST_Continue() : AST_stmt(AST_TYPE::Continue) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Continue;
+    DEFINE_AST_NODE(Continue)
 };
 
 class AST_Dict : public AST_expr {
@@ -439,7 +465,7 @@ public:
 
     AST_Dict() : AST_expr(AST_TYPE::Dict) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Dict;
+    DEFINE_AST_NODE(Dict)
 };
 
 class AST_DictComp : public AST_expr {
@@ -451,7 +477,7 @@ public:
 
     AST_DictComp() : AST_expr(AST_TYPE::DictComp) {}
 
-    const static AST_TYPE::AST_TYPE TYPE = AST_TYPE::DictComp;
+    DEFINE_AST_NODE(DictComp)
 };
 
 class AST_Delete : public AST_stmt {
@@ -462,7 +488,7 @@ public:
 
     AST_Delete() : AST_stmt(AST_TYPE::Delete) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Delete;
+    DEFINE_AST_NODE(Delete)
 };
 
 class AST_Ellipsis : public AST_slice {
@@ -471,7 +497,7 @@ public:
 
     AST_Ellipsis() : AST_slice(AST_TYPE::Ellipsis) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Ellipsis;
+    DEFINE_AST_NODE(Ellipsis)
 };
 
 class AST_Expr : public AST_stmt {
@@ -484,7 +510,7 @@ public:
     AST_Expr() : AST_stmt(AST_TYPE::Expr) {}
     AST_Expr(AST_expr* value) : AST_stmt(AST_TYPE::Expr), value(value) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Expr;
+    DEFINE_AST_NODE(Expr)
 };
 
 class AST_ExceptHandler : public AST {
@@ -497,7 +523,7 @@ public:
 
     AST_ExceptHandler() : AST(AST_TYPE::ExceptHandler) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::ExceptHandler;
+    DEFINE_AST_NODE(ExceptHandler)
 };
 
 class AST_Exec : public AST_stmt {
@@ -511,7 +537,7 @@ public:
 
     AST_Exec() : AST_stmt(AST_TYPE::Exec) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Exec;
+    DEFINE_AST_NODE(Exec)
 };
 
 // (Alternative to AST_Module, used for, e.g., eval)
@@ -527,7 +553,7 @@ public:
     AST_Expression(std::unique_ptr<InternedStringPool> interned_strings)
         : AST(AST_TYPE::Expression), interned_strings(std::move(interned_strings)) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Expression;
+    DEFINE_AST_NODE(Expression)
 };
 
 class AST_ExtSlice : public AST_slice {
@@ -538,7 +564,7 @@ public:
 
     AST_ExtSlice() : AST_slice(AST_TYPE::ExtSlice) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::ExtSlice;
+    DEFINE_AST_NODE(ExtSlice)
 };
 
 class AST_For : public AST_stmt {
@@ -551,7 +577,7 @@ public:
 
     AST_For() : AST_stmt(AST_TYPE::For) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::For;
+    DEFINE_AST_NODE(For)
 };
 
 class AST_FunctionDef : public AST_stmt {
@@ -566,7 +592,7 @@ public:
 
     AST_FunctionDef() : AST_stmt(AST_TYPE::FunctionDef) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::FunctionDef;
+    DEFINE_AST_NODE(FunctionDef)
 };
 
 class AST_GeneratorExp : public AST_expr {
@@ -578,7 +604,7 @@ public:
 
     AST_GeneratorExp() : AST_expr(AST_TYPE::GeneratorExp) {}
 
-    const static AST_TYPE::AST_TYPE TYPE = AST_TYPE::GeneratorExp;
+    DEFINE_AST_NODE(GeneratorExp)
 };
 
 class AST_Global : public AST_stmt {
@@ -590,7 +616,7 @@ public:
 
     AST_Global() : AST_stmt(AST_TYPE::Global) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Global;
+    DEFINE_AST_NODE(Global)
 };
 
 class AST_If : public AST_stmt {
@@ -603,7 +629,7 @@ public:
 
     AST_If() : AST_stmt(AST_TYPE::If) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::If;
+    DEFINE_AST_NODE(If)
 };
 
 class AST_IfExp : public AST_expr {
@@ -614,7 +640,7 @@ public:
 
     AST_IfExp() : AST_expr(AST_TYPE::IfExp) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::IfExp;
+    DEFINE_AST_NODE(IfExp)
 };
 
 class AST_Import : public AST_stmt {
@@ -626,7 +652,7 @@ public:
 
     AST_Import() : AST_stmt(AST_TYPE::Import) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Import;
+    DEFINE_AST_NODE(Import)
 };
 
 class AST_ImportFrom : public AST_stmt {
@@ -640,7 +666,7 @@ public:
 
     AST_ImportFrom() : AST_stmt(AST_TYPE::ImportFrom) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::ImportFrom;
+    DEFINE_AST_NODE(ImportFrom)
 };
 
 class AST_Index : public AST_slice {
@@ -651,7 +677,7 @@ public:
 
     AST_Index() : AST_slice(AST_TYPE::Index) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Index;
+    DEFINE_AST_NODE(Index)
 };
 
 class AST_keyword : public AST {
@@ -664,7 +690,7 @@ public:
 
     AST_keyword() : AST(AST_TYPE::keyword) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::keyword;
+    DEFINE_AST_NODE(keyword)
 };
 
 class AST_Lambda : public AST_expr {
@@ -676,7 +702,7 @@ public:
 
     AST_Lambda() : AST_expr(AST_TYPE::Lambda) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Lambda;
+    DEFINE_AST_NODE(Lambda)
 };
 
 class AST_List : public AST_expr {
@@ -688,7 +714,7 @@ public:
 
     AST_List() : AST_expr(AST_TYPE::List) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::List;
+    DEFINE_AST_NODE(List)
 };
 
 class AST_ListComp : public AST_expr {
@@ -700,7 +726,7 @@ public:
 
     AST_ListComp() : AST_expr(AST_TYPE::ListComp) {}
 
-    const static AST_TYPE::AST_TYPE TYPE = AST_TYPE::ListComp;
+    DEFINE_AST_NODE(ListComp)
 };
 
 class AST_Module : public AST {
@@ -715,7 +741,7 @@ public:
     AST_Module(std::unique_ptr<InternedStringPool> interned_strings)
         : AST(AST_TYPE::Module), interned_strings(std::move(interned_strings)) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Module;
+    DEFINE_AST_NODE(Module)
 };
 
 class AST_Suite : public AST {
@@ -729,7 +755,7 @@ public:
     AST_Suite(std::unique_ptr<InternedStringPool> interned_strings)
         : AST(AST_TYPE::Suite), interned_strings(std::move(interned_strings)) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Suite;
+    DEFINE_AST_NODE(Suite)
 };
 
 class AST_Name : public AST_expr {
@@ -750,7 +776,7 @@ public:
           id(id),
           lookup_type(ScopeInfo::VarScopeType::UNKNOWN) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Name;
+    DEFINE_AST_NODE(Name)
 };
 
 class AST_Num : public AST_expr {
@@ -775,7 +801,7 @@ public:
 
     AST_Num() : AST_expr(AST_TYPE::Num) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Num;
+    DEFINE_AST_NODE(Num)
 };
 
 class AST_Repr : public AST_expr {
@@ -786,7 +812,7 @@ public:
 
     AST_Repr() : AST_expr(AST_TYPE::Repr) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Repr;
+    DEFINE_AST_NODE(Repr)
 };
 
 class AST_Pass : public AST_stmt {
@@ -796,7 +822,7 @@ public:
 
     AST_Pass() : AST_stmt(AST_TYPE::Pass) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Pass;
+    DEFINE_AST_NODE(Pass)
 };
 
 class AST_Print : public AST_stmt {
@@ -810,7 +836,7 @@ public:
 
     AST_Print() : AST_stmt(AST_TYPE::Print) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Print;
+    DEFINE_AST_NODE(Print)
 };
 
 class AST_Raise : public AST_stmt {
@@ -826,7 +852,7 @@ public:
 
     AST_Raise() : AST_stmt(AST_TYPE::Raise), arg0(NULL), arg1(NULL), arg2(NULL) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Raise;
+    DEFINE_AST_NODE(Raise)
 };
 
 class AST_Return : public AST_stmt {
@@ -838,7 +864,7 @@ public:
 
     AST_Return() : AST_stmt(AST_TYPE::Return) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Return;
+    DEFINE_AST_NODE(Return)
 };
 
 class AST_Set : public AST_expr {
@@ -849,7 +875,7 @@ public:
 
     AST_Set() : AST_expr(AST_TYPE::Set) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Set;
+    DEFINE_AST_NODE(Set)
 };
 
 class AST_SetComp : public AST_expr {
@@ -861,7 +887,7 @@ public:
 
     AST_SetComp() : AST_expr(AST_TYPE::SetComp) {}
 
-    const static AST_TYPE::AST_TYPE TYPE = AST_TYPE::SetComp;
+    DEFINE_AST_NODE(SetComp)
 };
 
 class AST_Slice : public AST_slice {
@@ -872,7 +898,7 @@ public:
 
     AST_Slice() : AST_slice(AST_TYPE::Slice) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Slice;
+    DEFINE_AST_NODE(Slice)
 };
 
 class AST_Str : public AST_expr {
@@ -892,7 +918,7 @@ public:
     AST_Str() : AST_expr(AST_TYPE::Str), str_type(UNSET) {}
     AST_Str(std::string s) : AST_expr(AST_TYPE::Str), str_type(STR), str_data(std::move(s)) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Str;
+    DEFINE_AST_NODE(Str)
 };
 
 class AST_Subscript : public AST_expr {
@@ -905,7 +931,7 @@ public:
 
     AST_Subscript() : AST_expr(AST_TYPE::Subscript) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Subscript;
+    DEFINE_AST_NODE(Subscript)
 };
 
 class AST_TryExcept : public AST_stmt {
@@ -918,7 +944,7 @@ public:
 
     AST_TryExcept() : AST_stmt(AST_TYPE::TryExcept) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::TryExcept;
+    DEFINE_AST_NODE(TryExcept)
 };
 
 class AST_TryFinally : public AST_stmt {
@@ -930,7 +956,7 @@ public:
 
     AST_TryFinally() : AST_stmt(AST_TYPE::TryFinally) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::TryFinally;
+    DEFINE_AST_NODE(TryFinally)
 };
 
 class AST_Tuple : public AST_expr {
@@ -942,7 +968,7 @@ public:
 
     AST_Tuple() : AST_expr(AST_TYPE::Tuple) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Tuple;
+    DEFINE_AST_NODE(Tuple)
 };
 
 class AST_UnaryOp : public AST_expr {
@@ -954,7 +980,7 @@ public:
 
     AST_UnaryOp() : AST_expr(AST_TYPE::UnaryOp) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::UnaryOp;
+    DEFINE_AST_NODE(UnaryOp)
 };
 
 class AST_While : public AST_stmt {
@@ -967,7 +993,7 @@ public:
 
     AST_While() : AST_stmt(AST_TYPE::While) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::While;
+    DEFINE_AST_NODE(While)
 };
 
 class AST_With : public AST_stmt {
@@ -980,7 +1006,7 @@ public:
 
     AST_With() : AST_stmt(AST_TYPE::With) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::With;
+    DEFINE_AST_NODE(With)
 };
 
 class AST_Yield : public AST_expr {
@@ -991,7 +1017,7 @@ public:
 
     AST_Yield() : AST_expr(AST_TYPE::Yield) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Yield;
+    DEFINE_AST_NODE(Yield)
 };
 
 
@@ -1009,7 +1035,7 @@ public:
 
     AST_ClsAttribute() : AST_expr(AST_TYPE::ClsAttribute) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::ClsAttribute;
+    DEFINE_AST_NODE(ClsAttribute)
 };
 
 class AST_Invoke : public AST_stmt {
@@ -1023,7 +1049,7 @@ public:
 
     AST_Invoke(AST_stmt* stmt) : AST_stmt(AST_TYPE::Invoke), stmt(stmt) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::Invoke;
+    DEFINE_AST_NODE(Invoke)
 };
 
 // "LangPrimitive" represents operations that "primitive" to the language,
@@ -1053,7 +1079,7 @@ public:
 
     AST_LangPrimitive(Opcodes opcode) : AST_expr(AST_TYPE::LangPrimitive), opcode(opcode) {}
 
-    static const AST_TYPE::AST_TYPE TYPE = AST_TYPE::LangPrimitive;
+    DEFINE_AST_NODE(LangPrimitive)
 };
 
 template <typename T> T* ast_cast(AST* node) {
