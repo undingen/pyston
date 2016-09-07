@@ -234,7 +234,7 @@ template <int slab_size, int allignment> ASTAllocatorSlab<slab_size, allignment>
         AST* node = (AST*)&data[current_pos];
         int node_size = node->getSize();
         node->~AST();
-        current_pos += node_size;
+        current_pos += llvm::RoundUpToAlignment(node_size, allignment);
     }
 }
 
