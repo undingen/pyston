@@ -226,11 +226,8 @@ public:
 
     static void* operator new(size_t count, BSTAllocator& allocator) {
         auto node = (BST*)allocator.allocate(count);
-
-        static StatCounter code_bytes("bst_num_allocs");
-        code_bytes.log(1);
-        static StatCounter code_bytes2("bst_num_allocs_bytes");
-        code_bytes2.log(count);
+        static StatCounter code_bytes("bst_alloc_bytes");
+        code_bytes.log(count);
 
         return node;
     }
