@@ -15,6 +15,7 @@
 
 #include <sstream>
 
+#include "core/cfg.h"
 #include "codegen/baseline_jit.h"
 #include "runtime/objmodel.h"
 #include "runtime/set.h"
@@ -103,11 +104,19 @@ Box* BoxedCode::flags(Box* b, void*) noexcept {
 void BoxedCode::dealloc(Box* b) noexcept {
     BoxedCode* o = static_cast<BoxedCode*>(b);
 
+    if (0 && o->source) {
+        printf("dealloc: %s:%s %d\n", o->filename->c_str(), o->name->c_str(), o->source->ast_type);
+        o->source->cfg->print();
+    }
+
     Py_XDECREF(o->filename);
     Py_XDECREF(o->name);
     Py_XDECREF(o->_doc);
 
+    o->tryDeallocatingTheBJitCode();
     o->source.reset(nullptr);
+
+    o->~BoxedCode();
 
     o->cls->tp_free(o);
 }

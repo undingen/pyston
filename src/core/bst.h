@@ -188,6 +188,7 @@ struct BSTAllocator {
 
     BSTAllocator() = default;
     BSTAllocator(ASTAllocator&&) = delete;
+    ~BSTAllocator() = default;
 
     llvm::SmallVector<std::unique_ptr<BSTAllocatorSlab<slab_size>>, 4> slabs;
 
@@ -224,13 +225,7 @@ public:
     BST(BST_TYPE::BST_TYPE type, uint32_t lineno, uint32_t col_offset = 0)
         : type(type), lineno(lineno), col_offset(col_offset) {}
 
-    static void* operator new(size_t count, BSTAllocator& allocator) {
-        auto node = (BST*)allocator.allocate(count);
-        static StatCounter code_bytes("bst_alloc_bytes");
-        code_bytes.log(count);
-
-        return node;
-    }
+    static void* operator new(size_t count, BSTAllocator& allocator) { return allocator.allocate(count); }
 };
 
 template <int slab_size, int allignment> BSTAllocatorSlab<slab_size, allignment>::~BSTAllocatorSlab() {
