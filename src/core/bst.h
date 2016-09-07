@@ -200,12 +200,20 @@ public:
     static void* operator new(size_t count, BSTAllocator& allocator) {
         auto node = (BST*)allocator.allocator.Allocate(count, 8);
         allocator.nodes.push_back(node);
+
+        static StatCounter code_bytes("bst_num_allocs");
+        code_bytes.log(1);
+        static StatCounter code_bytes2("bst_num_allocs_bytes");
+        code_bytes2.log(count);
+
         return node;
     }
 };
 
 inline BSTAllocator::~BSTAllocator() {
     for (BST* node : nodes) {
+        static StatCounter code_bytes("bst_num_deallocs");
+        code_bytes.log(1);
         node->~BST();
     }
 }
@@ -369,8 +377,6 @@ public:
     std::vector<BST_expr*> bases, decorator_list;
     InternedString name;
 
-    BoxedCode* code;
-
     BST_ClassDef() : BST_stmt(BST_TYPE::ClassDef) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::ClassDef;
@@ -469,8 +475,6 @@ public:
     std::vector<BST_expr*> decorator_list;
     InternedString name; // if the name is not set this is a lambda
     BST_arguments* args;
-
-    BoxedCode* code;
 
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
@@ -748,12 +752,14 @@ public:
 class BST_MakeFunction : public BST_expr {
 public:
     BST_FunctionDef* function_def;
+    BoxedCode* code;
 
     virtual void accept(BSTVisitor* v);
     virtual void* accept_expr(ExprVisitor* v);
 
-    BST_MakeFunction(BST_FunctionDef* fd)
-        : BST_expr(BST_TYPE::MakeFunction, fd->lineno, fd->col_offset), function_def(fd) {}
+    BST_MakeFunction(BST_FunctionDef* fd, BoxedCode* code)
+        : BST_expr(BST_TYPE::MakeFunction, fd->lineno, fd->col_offset), function_def(fd), code(code) {}
+    ~BST_MakeFunction();
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::MakeFunction;
 };
@@ -761,11 +767,14 @@ public:
 class BST_MakeClass : public BST_expr {
 public:
     BST_ClassDef* class_def;
+    BoxedCode* code;
 
     virtual void accept(BSTVisitor* v);
     virtual void* accept_expr(ExprVisitor* v);
 
-    BST_MakeClass(BST_ClassDef* cd) : BST_expr(BST_TYPE::MakeClass, cd->lineno, cd->col_offset), class_def(cd) {}
+    BST_MakeClass(BST_ClassDef* cd, BoxedCode* code)
+        : BST_expr(BST_TYPE::MakeClass, cd->lineno, cd->col_offset), class_def(cd), code(code) {}
+    ~BST_MakeClass();
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::MakeClass;
 };

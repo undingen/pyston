@@ -1285,15 +1285,11 @@ private:
         static BoxedString* gen_name = getStaticString("<generator>");
 
         BoxedCode* code = cfgizer->runRecursively(new_body, gen_name, node->lineno, genexp_args, node);
-        // XXX bad!  this should be tracked ex through co_consts
-        // cur_code->co_consts.push_back(def->code)
-        constants.push_back(code);
 
         BST_FunctionDef* func = new (getAlloc()) BST_FunctionDef();
         func->args = new (getAlloc())
             BST_arguments(); // hacky, but we don't have to fill this in except for the defaults
-        func->code = code;
-        BST_MakeFunction* mkfunc = new (getAlloc()) BST_MakeFunction(func);
+        BST_MakeFunction* mkfunc = new (getAlloc()) BST_MakeFunction(func, code);
         InternedString func_var_name = nodeName();
         pushAssign(func_var_name, mkfunc);
 
@@ -1361,8 +1357,7 @@ private:
         BST_FunctionDef* func = new (getAlloc()) BST_FunctionDef();
         func->args = new (getAlloc())
             BST_arguments(); // hacky, but we don't have to fill this in except for the defaults
-        func->code = code;
-        BST_MakeFunction* mkfunc = new (getAlloc()) BST_MakeFunction(func);
+        BST_MakeFunction* mkfunc = new (getAlloc()) BST_MakeFunction(func, code);
         InternedString func_var_name = nodeName();
         pushAssign(func_var_name, mkfunc);
 
@@ -1431,12 +1426,9 @@ private:
         bdef->args = remapArguments(node->args);
 
         auto name = getStaticString("<lambda>");
-        bdef->code = cfgizer->runRecursively({ stmt }, name, node->lineno, node->args, node);
-        // XXX bad!  this should be tracked ex through co_consts
-        // cur_code->co_consts.push_back(def->code)
-        constants.push_back(bdef->code);
+        auto* code = cfgizer->runRecursively({ stmt }, name, node->lineno, node->args, node);
 
-        return new (getAlloc()) BST_MakeFunction(bdef);
+        return new (getAlloc()) BST_MakeFunction(bdef, code);
     }
 
     BST_expr* remapLangPrimitive(AST_LangPrimitive* node) {
@@ -1877,13 +1869,10 @@ public:
         for (auto expr : node->bases)
             def->bases.push_back(remapExpr(expr));
 
-        def->code = cfgizer->runRecursively(node->body, node->name.getBox(), node->lineno, NULL, node);
-        // XXX bad!  this should be tracked ex through co_consts
-        // cur_code->co_consts.push_back(def->code)
-        constants.push_back(def->code);
+        auto* code = cfgizer->runRecursively(node->body, node->name.getBox(), node->lineno, NULL, node);
 
         auto tmp = nodeName();
-        pushAssign(tmp, new (getAlloc()) BST_MakeClass(def));
+        pushAssign(tmp, new (getAlloc()) BST_MakeClass(def, code));
         pushAssign(scoping->mangleName(def->name), makeName(tmp, AST_TYPE::Load, node->lineno, 0, true));
 
         return true;
@@ -1901,13 +1890,10 @@ public:
             def->decorator_list.push_back(remapExpr(expr));
         def->args = remapArguments(node->args);
 
-        def->code = cfgizer->runRecursively(node->body, node->name.getBox(), node->lineno, node->args, node);
-        // XXX bad!  this should be tracked ex through co_consts
-        // cur_code->co_consts.push_back(def->code)
-        constants.push_back(def->code);
+        auto* code = cfgizer->runRecursively(node->body, node->name.getBox(), node->lineno, node->args, node);
 
         auto tmp = nodeName();
-        pushAssign(tmp, new (getAlloc()) BST_MakeFunction(def));
+        pushAssign(tmp, new (getAlloc()) BST_MakeFunction(def, code));
         pushAssign(scoping->mangleName(def->name), makeName(tmp, AST_TYPE::Load, node->lineno, node->col_offset, true));
 
         return true;

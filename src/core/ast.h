@@ -171,6 +171,9 @@ template <int slab_size, int allignment = 8> struct ASTAllocatorSlab {
 
     int numBytesFree() const { return slab_size - num_bytes_used; }
     void* alloc(int num_bytes) {
+        static StatCounter code_bytes("ast_alloc_bytes");
+        code_bytes.log(num_bytes);
+
         void* ptr = &data[num_bytes_used];
         num_bytes_used += llvm::RoundUpToAlignment(num_bytes, allignment);
         return ptr;
@@ -234,6 +237,8 @@ template <int slab_size, int allignment> ASTAllocatorSlab<slab_size, allignment>
         AST* node = (AST*)&data[current_pos];
         int node_size = node->getSize();
         node->~AST();
+        static StatCounter code_bytes("ast_dealloc_bytes");
+        code_bytes.log(node_size);
         current_pos += llvm::RoundUpToAlignment(node_size, allignment);
     }
 }

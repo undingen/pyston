@@ -74,7 +74,7 @@ public:
     static Box* executeInner(ASTInterpreter& interpreter, CFGBlock* start_block, BST_stmt* start_at);
 
 private:
-    Value createFunction(BST_FunctionDef* node, BST_arguments* args);
+    Value createFunction(BST_MakeFunction* node, BST_arguments* args);
     Value doBinOp(BST_expr* node, Value left, Value right, int op, BinExpType exp_type);
     void doStore(BST_expr* node, STOLEN(Value) value);
     void doStore(BST_Name* name, STOLEN(Value) value);
@@ -1113,7 +1113,7 @@ Value ASTInterpreter::visit_return(BST_Return* node) {
     return s;
 }
 
-Value ASTInterpreter::createFunction(BST_FunctionDef* node, BST_arguments* args) {
+Value ASTInterpreter::createFunction(BST_MakeFunction* node, BST_arguments* args) {
     BoxedCode* code = node->code;
     assert(code);
 
@@ -1203,7 +1203,7 @@ Value ASTInterpreter::visit_makeFunction(BST_MakeFunction* mkfn) {
     for (BST_expr* d : node->decorator_list)
         decorators.push_back(visit_expr(d));
 
-    Value func = createFunction(node, args);
+    Value func = createFunction(mkfn, args);
 
     for (int i = decorators.size() - 1; i >= 0; i--) {
         func.o = runtimeCall(autoDecref(decorators[i].o), ArgPassSpec(1), autoDecref(func.o), 0, 0, 0, 0);
@@ -1233,7 +1233,7 @@ Value ASTInterpreter::visit_makeClass(BST_MakeClass* mkclass) {
     for (BST_expr* d : node->decorator_list)
         decorators.push_back(visit_expr(d).o);
 
-    BoxedCode* code = node->code;
+    BoxedCode* code = mkclass->code;
     assert(code);
 
     const ScopingResults& scope_info = code->source->scoping;

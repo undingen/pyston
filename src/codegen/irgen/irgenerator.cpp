@@ -1579,7 +1579,7 @@ private:
             decorators.push_back(evalExpr(d, unw_info));
         }
 
-        BoxedCode* code = node->code;
+        BoxedCode* code = mkclass->code;
         assert(code);
         const ScopingResults& scope_info = code->source->scoping;
 
@@ -1622,7 +1622,7 @@ private:
         return cls;
     }
 
-    CompilerVariable* _createFunction(BST_FunctionDef* node, const UnwindInfo& unw_info, BST_arguments* args) {
+    CompilerVariable* _createFunction(BST_MakeFunction* node, const UnwindInfo& unw_info, BST_arguments* args) {
         BoxedCode* code = node->code;
         assert(code);
 
@@ -1658,7 +1658,7 @@ private:
             decorators.push_back(evalExpr(d, unw_info));
         }
 
-        CompilerVariable* func = _createFunction(node, unw_info, node->args);
+        CompilerVariable* func = _createFunction(mkfn, unw_info, node->args);
 
         for (int i = decorators.size() - 1; i >= 0; i--) {
             func = decorators[i]->call(emitter, getOpInfoForNode(node, unw_info), ArgPassSpec(1), { func }, NULL);

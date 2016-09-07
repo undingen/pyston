@@ -173,7 +173,7 @@ void BST_ClassDef::accept(BSTVisitor* v) {
 
     visitVector(this->bases, v);
     visitVector(this->decorator_list, v);
-    visitCFG(this->code->source->cfg, v);
+    // visitCFG(this->code->source->cfg, v);
 }
 
 void BST_ClassDef::accept_stmt(StmtVisitor* v) {
@@ -265,7 +265,7 @@ void BST_FunctionDef::accept(BSTVisitor* v) {
 
     visitVector(decorator_list, v);
     args->accept(v);
-    visitCFG(code->source->cfg, v);
+    // visitCFG(code->source->cfg, v);
 }
 
 void BST_FunctionDef::accept_stmt(StmtVisitor* v) {
@@ -549,6 +549,10 @@ void* BST_ClsAttribute::accept_expr(ExprVisitor* v) {
     return v->visit_clsattribute(this);
 }
 
+BST_MakeFunction::~BST_MakeFunction() {
+    Py_DECREF(code);
+}
+
 void BST_MakeFunction::accept(BSTVisitor* v) {
     bool skip = v->visit_makefunction(this);
     if (skip)
@@ -559,6 +563,10 @@ void BST_MakeFunction::accept(BSTVisitor* v) {
 
 void* BST_MakeFunction::accept_expr(ExprVisitor* v) {
     return v->visit_makefunction(this);
+}
+
+BST_MakeClass::~BST_MakeClass() {
+    Py_DECREF(code);
 }
 
 void BST_MakeClass::accept(BSTVisitor* v) {
