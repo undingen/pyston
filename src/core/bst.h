@@ -286,7 +286,7 @@ public:
 class BST_BinOp : public BST_expr {
 public:
     AST_TYPE::AST_TYPE op_type;
-    BST_expr* left, *right;
+    int vreg_left = -1, vreg_right = -1;
 
     virtual void accept(BSTVisitor* v);
     virtual void* accept_expr(ExprVisitor* v);

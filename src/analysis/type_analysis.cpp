@@ -147,6 +147,18 @@ private:
         return rtn;
     }
 
+    CompilerType* getType(int vreg) {
+        CompilerType*& t = sym_table[vreg];
+        if (t == NULL) {
+            // if (VERBOSITY() >= 2) {
+            // printf("%s is undefined!\n", node->id.c_str());
+            // raise(SIGTRAP);
+            //}
+            t = UNDEF;
+        }
+        return t;
+    }
+
     CompilerType* getType(BST_expr* node) {
         type_speculations.erase(node);
 
@@ -273,8 +285,8 @@ private:
     }
 
     void* visit_binop(BST_BinOp* node) override {
-        CompilerType* left = getType(node->left);
-        CompilerType* right = getType(node->right);
+        CompilerType* left = getType(node->vreg_left);
+        CompilerType* right = getType(node->vreg_right);
         if (!hasFixedOps(left) || !hasFixedOps(right))
             return UNKNOWN;
 
@@ -422,15 +434,7 @@ private:
         }
 
         if (name_scope == ScopeInfo::VarScopeType::FAST || name_scope == ScopeInfo::VarScopeType::CLOSURE) {
-            CompilerType*& t = sym_table[node->vreg];
-            if (t == NULL) {
-                // if (VERBOSITY() >= 2) {
-                // printf("%s is undefined!\n", node->id.c_str());
-                // raise(SIGTRAP);
-                //}
-                t = UNDEF;
-            }
-            return t;
+            return getType(node->vreg);
         }
 
         RELEASE_ASSERT(0, "Unknown scope type: %d", (int)name_scope);

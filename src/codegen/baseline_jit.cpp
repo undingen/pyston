@@ -388,7 +388,7 @@ RewriterVar* JitFragmentWriter::emitGetAttr(RewriterVar* obj, BoxedString* s, BS
 RewriterVar* JitFragmentWriter::emitGetBlockLocal(BST_Name* name) {
     auto s = name->id;
     auto vreg = name->vreg;
-    auto it = local_syms.find(s);
+    auto it = local_syms.find(vreg);
     if (it == local_syms.end()) {
         auto r = emitGetLocal(name);
         assert(r->reftype == RefType::OWNED);
@@ -398,8 +398,14 @@ RewriterVar* JitFragmentWriter::emitGetBlockLocal(BST_Name* name) {
     return it->second;
 }
 
+RewriterVar* JitFragmentWriter::emitGetBlockLocalMustExist(int vreg) {
+    auto it = local_syms.find(vreg);
+    RELEASE_ASSERT(it != local_syms.end(), "this should never happen");
+    return it->second;
+}
+
 void JitFragmentWriter::emitKillTemporary(BST_Name* name) {
-    if (!local_syms.count(name->id))
+    if (!local_syms.count(name->vreg))
         emitSetLocal(name, false, imm(nullptr));
 }
 
@@ -689,12 +695,12 @@ void JitFragmentWriter::emitSetBlockLocal(BST_Name* name, STOLEN(RewriterVar*) v
         comment("BJIT: emitSetBlockLocal() start");
     auto vreg = name->vreg;
     auto s = name->id;
-    RewriterVar* prev = local_syms[name->id];
+    RewriterVar* prev = local_syms[vreg];
     // if we never set this sym before in this BB and the symbol gets accessed in several blocks clear it because it
     // could have been set in a previous block.
     if (!prev && !block->cfg->getVRegInfo().isBlockLocalVReg(vreg))
         emitSetLocal(name, false, imm(nullptr)); // clear out the vreg
-    local_syms[s] = v;
+    local_syms[vreg] = v;
     if (LOG_BJIT_ASSEMBLY)
         comment("BJIT: emitSetBlockLocal() end");
 }

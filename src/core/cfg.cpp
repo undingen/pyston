@@ -485,7 +485,7 @@ private:
         return rtn;
     }
 
-    BST_Num* remapNum(AST_Num* num) {
+    BST_Name* remapNum(AST_Num* num) {
         auto r = new BST_Num();
         r->lineno = num->lineno;
         r->num_type = num->num_type;
@@ -501,15 +501,21 @@ private:
                 r->n_long = num->n_long;
                 break;
         }
-        return r;
+
+        auto name = nodeName();
+        pushAssign(name, r);
+        return makeLoad(name, r, /* is_kill */ true);
     }
 
-    BST_Str* remapStr(AST_Str* str) {
+    BST_Name* remapStr(AST_Str* str) {
         auto r = new BST_Str();
         r->str_data = str->str_data;
         r->str_type = str->str_type;
         r->lineno = str->lineno;
-        return r;
+
+        auto name = nodeName();
+        pushAssign(name, r);
+        return makeLoad(name, r, /* is_kill */ true);
     }
 
     BST_expr* applyComprehensionCall(AST_ListComp* node, BST_Name* name) {
@@ -914,12 +920,40 @@ private:
         return rtn;
     }
 
+    void assertAssumption(BST_expr* node) {
+        if (node->type == BST_TYPE::Str || node->type == BST_TYPE::Num)
+            return;
+        if (node->type == BST_TYPE::Name) {
+            BST_Name* name = (BST_Name*)node;
+            assert(name->is_kill && name->lookup_type == ScopeInfo::VarScopeType::FAST
+                   && name->id.isCompilerCreatedName());
+            return;
+        }
+        assert(0);
+    }
+
+    llvm::DenseMap<int*, BST_Name*> name_vreg;
+    void unmapExpr(BST_expr* node, int* vreg) {
+        assertAssumption(node);
+
+        if (node->type == BST_TYPE::Name) {
+            BST_Name* name = (BST_Name*)node;
+            assert(name->is_kill && name->lookup_type == ScopeInfo::VarScopeType::FAST
+                   && name->id.isCompilerCreatedName());
+            name_vreg[vreg] = name;
+            return;
+        }
+
+        assert(0);
+    }
+
     BST_expr* remapBinOp(AST_BinOp* node) {
         BST_BinOp* rtn = new BST_BinOp();
         rtn->lineno = node->lineno;
         rtn->op_type = remapBinOpType(node->op_type);
-        rtn->left = remapExpr(node->left);
-        rtn->right = remapExpr(node->right);
+        unmapExpr(remapExpr(node->left), &rtn->vreg_left);
+        unmapExpr(remapExpr(node->right), &rtn->vreg_right);
+
         return rtn;
     }
 
@@ -2865,10 +2899,12 @@ public:
     llvm::DenseMap<InternedString, DefaultedInt<-1>> sym_vreg_map;
     llvm::DenseMap<InternedString, std::unordered_set<CFGBlock*>> sym_blocks_map;
     std::vector<InternedString> vreg_sym_map;
+    llvm::DenseMap<int*, BST_Name*>& name_vreg;
 
     enum Step { TrackBlockUsage = 0, UserVisible, CrossBlock, SingleBlockUse } step;
 
-    AssignVRegsVisitor() : current_block(0), next_vreg(0) {}
+    AssignVRegsVisitor(llvm::DenseMap<int*, BST_Name*>& name_vreg)
+        : current_block(0), next_vreg(0), name_vreg(name_vreg) {}
 
     bool visit_arguments(BST_arguments* node) override {
         for (BST_expr* d : node->defaults)
@@ -2888,6 +2924,18 @@ public:
         for (auto* d : node->decorator_list)
             d->accept(this);
         node->args->accept(this);
+        return true;
+    }
+
+    void visitVReg(int* vreg) {
+        auto* node = name_vreg[vreg];
+        node->accept(this);
+        *vreg = node->vreg;
+    }
+
+    bool visit_binop(BST_BinOp* node) override {
+        visitVReg(&node->vreg_left);
+        visitVReg(&node->vreg_right);
         return true;
     }
 
@@ -2941,14 +2989,15 @@ public:
     }
 };
 
-void VRegInfo::assignVRegs(CFG* cfg, const ParamNames& param_names) {
+void VRegInfo::assignVRegs(CFG* cfg, const ParamNames& param_names, llvm::DenseMap<int*, BST_Name*>& name_vreg) {
     assert(!hasVRegsAssigned());
 
     // warning: don't rearrange the steps, they need to be run in this exact order!
-    AssignVRegsVisitor visitor;
+    AssignVRegsVisitor visitor(name_vreg);
     for (auto step : { AssignVRegsVisitor::TrackBlockUsage, AssignVRegsVisitor::UserVisible,
                        AssignVRegsVisitor::CrossBlock, AssignVRegsVisitor::SingleBlockUse }) {
         visitor.step = step;
+
         for (CFGBlock* b : cfg->blocks) {
             visitor.current_block = b;
 
@@ -2966,7 +3015,13 @@ void VRegInfo::assignVRegs(CFG* cfg, const ParamNames& param_names) {
             for (BST_stmt* stmt : b->body) {
                 stmt->accept(&visitor);
             }
-
+            /*
+                        for (auto&& e : node_vreg_replacement) {
+                            if (e.first.first == b) {
+                                e.first.second->accept(&visitor);
+                            }
+                        }
+            */
             if (step == AssignVRegsVisitor::SingleBlockUse)
                 num_vregs = std::max(num_vregs, visitor.next_vreg);
         }
@@ -3244,6 +3299,7 @@ static CFG* computeCFG(llvm::ArrayRef<AST_stmt*> body, AST_TYPE::AST_TYPE ast_ty
 
     // Must evaluate end() on every iteration because erase() will invalidate the end.
     for (auto it = rtn->blocks.begin(); it != rtn->blocks.end(); ++it) {
+        break;
         CFGBlock* b = *it;
         while (b->successors.size() == 1) {
             CFGBlock* b2 = b->successors[0];
@@ -3264,6 +3320,20 @@ static CFG* computeCFG(llvm::ArrayRef<AST_stmt*> body, AST_TYPE::AST_TYPE ast_ty
                 printf("Joining blocks %d and %d\n", b->idx, b2->idx);
             }
 
+            /*
+            decltype(visitor.node_vreg_replacement) new_map;
+            for (auto&& e : visitor.node_vreg_replacement) {
+                if (e.first.first == b2) {
+                    assert(!new_map.count(std::make_pair(b, e.first.second)));
+                    new_map[std::make_pair(b, e.first.second)] = e.second;
+                } else {
+                    assert(!new_map.count(e.first));
+                    new_map[e.first] = e.second;
+                }
+            }
+            visitor.node_vreg_replacement = new_map;
+*/
+
             b->body.pop_back();
             b->body.insert(b->body.end(), b2->body.begin(), b2->body.end());
             b->unconnectFrom(b2);
@@ -3278,12 +3348,17 @@ static CFG* computeCFG(llvm::ArrayRef<AST_stmt*> body, AST_TYPE::AST_TYPE ast_ty
         }
     }
 
+    rtn->getVRegInfo().assignVRegs(rtn, param_names, visitor.name_vreg);
+
+    for (auto&& e : visitor.name_vreg) {
+        delete e.second;
+    }
+
+
     if (VERBOSITY("cfg") >= 2) {
         printf("Final cfg:\n");
         rtn->print();
     }
-
-    rtn->getVRegInfo().assignVRegs(rtn, param_names);
 
     return rtn;
 }

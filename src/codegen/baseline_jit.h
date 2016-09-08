@@ -231,7 +231,7 @@ private:
     JitCodeBlock& code_block;
     RewriterVar* interp;
     RewriterVar* vregs_array;
-    llvm::DenseMap<InternedString, RewriterVar*> local_syms;
+    llvm::DenseMap<int /*vreg*/, RewriterVar*> local_syms;
     // keeps track which non block local vregs are known to have a non NULL value
     llvm::DenseSet<int> known_non_null_vregs;
 
@@ -282,6 +282,7 @@ public:
     RewriterVar* emitExceptionMatches(RewriterVar* v, RewriterVar* cls);
     RewriterVar* emitGetAttr(RewriterVar* obj, BoxedString* s, BST_expr* node);
     RewriterVar* emitGetBlockLocal(BST_Name* name);
+    RewriterVar* emitGetBlockLocalMustExist(int vreg);
     void emitKillTemporary(BST_Name* name);
     RewriterVar* emitGetBoxedLocal(BoxedString* s);
     RewriterVar* emitGetBoxedLocals();

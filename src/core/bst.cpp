@@ -114,8 +114,8 @@ void BST_BinOp::accept(BSTVisitor* v) {
     if (skip)
         return;
 
-    left->accept(v);
-    right->accept(v);
+    // left->accept(v);
+    // right->accept(v);
 }
 
 void* BST_BinOp::accept_expr(ExprVisitor* v) {
@@ -634,9 +634,9 @@ bool PrintVisitor::visit_attribute(BST_Attribute* node) {
 }
 
 bool PrintVisitor::visit_binop(BST_BinOp* node) {
-    node->left->accept(this);
+    stream << '#' << node->vreg_left;
     printOp(node->op_type);
-    node->right->accept(this);
+    stream << '#' << node->vreg_right;
     return true;
 }
 

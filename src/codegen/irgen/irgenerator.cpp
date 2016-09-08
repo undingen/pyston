@@ -1117,8 +1117,8 @@ private:
     }
 
     CompilerVariable* evalBinOp(BST_BinOp* node, const UnwindInfo& unw_info) {
-        CompilerVariable* left = evalExpr(node->left, unw_info);
-        CompilerVariable* right = evalExpr(node->right, unw_info);
+        CompilerVariable* left = evalVReg(node->vreg_left);
+        CompilerVariable* right = evalVReg(node->vreg_right);
 
         assert(node->op_type != AST_TYPE::Is && node->op_type != AST_TYPE::IsNot && "not tested yet");
 
@@ -1303,6 +1303,14 @@ private:
             return new ConcreteCompilerVariable(UNKNOWN, r);
         }
     }
+
+    CompilerVariable* evalVReg(int vreg) {
+        CompilerVariable* rtn = symbol_table[vreg];
+        // if (is_kill)
+        symbol_table[vreg] = NULL;
+        return rtn;
+    }
+
 
     CompilerVariable* evalName(BST_Name* node, const UnwindInfo& unw_info) {
         auto&& scope_info = irstate->getScopeInfo();

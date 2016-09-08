@@ -81,6 +81,8 @@ private:
     Box* doOSR(BST_Jump* node);
     Value getNone();
 
+    Value getVReg(int vreg);
+
     Value visit_assert(BST_Assert* node);
     Value visit_assign(BST_Assign* node);
     Value visit_binop(BST_BinOp* node);
@@ -610,9 +612,9 @@ Value ASTInterpreter::visit_unaryop(BST_UnaryOp* node) {
 }
 
 Value ASTInterpreter::visit_binop(BST_BinOp* node) {
-    Value left = visit_expr(node->left);
+    Value left = getVReg(node->vreg_left);
     AUTO_DECREF(left.o);
-    Value right = visit_expr(node->right);
+    Value right = getVReg(node->vreg_right);
     AUTO_DECREF(right.o);
     return doBinOp(node, left, right, node->op_type, BinExpType::BinOp);
 }
@@ -1646,6 +1648,31 @@ Value ASTInterpreter::visit_str(BST_Str* node) {
     }
     Py_INCREF(o);
     return Value(o, jit ? jit->imm(o)->setType(RefType::BORROWED) : NULL);
+}
+
+Value ASTInterpreter::getVReg(int vreg) {
+    assert(vreg >= 0);
+
+    Value v;
+    if (jit)
+        abortJITing();
+
+    frame_info.num_vregs = std::max(frame_info.num_vregs, vreg + 1);
+    Box* val = vregs[vreg];
+
+    if (val) {
+        v.o = val;
+        vregs[vreg] = NULL;
+        return v;
+    }
+
+    current_block->print();
+    printf("vreg: %d num cross: %d\n", vreg, getVRegInfo().getNumOfCrossBlockVRegs());
+    printf("\n\n");
+    current_block->cfg->print();
+
+    assert(0);
+    return Value();
 }
 
 Value ASTInterpreter::visit_name(BST_Name* node) {
