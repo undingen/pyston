@@ -89,8 +89,8 @@ void BST_AugBinOp::accept(BSTVisitor* v) {
     if (skip)
         return;
 
-    left->accept(v);
-    right->accept(v);
+    v->visit_vreg(&vreg_left);
+    v->visit_vreg(&vreg_right);
 }
 
 void* BST_AugBinOp::accept_expr(ExprVisitor* v) {
@@ -619,10 +619,10 @@ void PrintVisitor::printOp(AST_TYPE::AST_TYPE op_type) {
 }
 
 bool PrintVisitor::visit_augbinop(BST_AugBinOp* node) {
-    node->left->accept(this);
+    stream << "#" << node->vreg_left;
     stream << '=';
     printOp(node->op_type);
-    node->right->accept(this);
+    stream << "#" << node->vreg_right;
     return true;
 }
 

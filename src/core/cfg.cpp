@@ -2154,8 +2154,8 @@ public:
 
         BST_AugBinOp* binop = new BST_AugBinOp();
         binop->op_type = remapBinOpType(node->op_type);
-        binop->left = remapped_lhs;
-        binop->right = remapExpr(node->value);
+        unmapExpr(remapped_lhs, &binop->vreg_left);
+        unmapExpr(remapExpr(node->value), &binop->vreg_right);
         binop->lineno = node->lineno;
 
         InternedString node_name(nodeName());

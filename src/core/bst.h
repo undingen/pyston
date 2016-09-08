@@ -256,7 +256,7 @@ public:
 class BST_AugBinOp : public BST_expr {
 public:
     AST_TYPE::AST_TYPE op_type;
-    BST_expr* left, *right;
+    int vreg_left, vreg_right;
 
     virtual void accept(BSTVisitor* v);
     virtual void* accept_expr(ExprVisitor* v);

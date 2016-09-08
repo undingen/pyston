@@ -255,8 +255,8 @@ private:
     }
 
     void* visit_augbinop(BST_AugBinOp* node) override {
-        CompilerType* left = getType(node->left);
-        CompilerType* right = getType(node->right);
+        CompilerType* left = getType(node->vreg_left);
+        CompilerType* right = getType(node->vreg_right);
         if (!hasFixedOps(left) || !hasFixedOps(right))
             return UNKNOWN;
 

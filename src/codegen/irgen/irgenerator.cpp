@@ -1127,8 +1127,8 @@ private:
     }
 
     CompilerVariable* evalAugBinOp(BST_AugBinOp* node, const UnwindInfo& unw_info) {
-        CompilerVariable* left = evalExpr(node->left, unw_info);
-        CompilerVariable* right = evalExpr(node->right, unw_info);
+        CompilerVariable* left = evalVReg(node->vreg_left);
+        CompilerVariable* right = evalVReg(node->vreg_right);
 
         assert(node->op_type != AST_TYPE::Is && node->op_type != AST_TYPE::IsNot && "not tested yet");
 

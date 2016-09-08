@@ -879,9 +879,9 @@ Value ASTInterpreter::visit_clsAttribute(BST_ClsAttribute* node) {
 Value ASTInterpreter::visit_augBinOp(BST_AugBinOp* node) {
     assert(node->op_type != AST_TYPE::Is && node->op_type != AST_TYPE::IsNot && "not tested yet");
 
-    Value left = visit_expr(node->left);
+    Value left = getVReg(node->vreg_left);
     AUTO_DECREF(left.o);
-    Value right = visit_expr(node->right);
+    Value right = getVReg(node->vreg_right);
     AUTO_DECREF(right.o);
     return doBinOp(node, left, right, node->op_type, BinExpType::AugBinOp);
 }
