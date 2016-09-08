@@ -1504,7 +1504,7 @@ private:
         BST_UnaryOp* rtn = new BST_UnaryOp();
         rtn->lineno = node->lineno;
         rtn->op_type = node->op_type;
-        rtn->operand = remapExpr(node->operand);
+        unmapExpr(remapExpr(node->operand), &rtn->vreg_operand);
         return rtn;
     }
 
@@ -2927,15 +2927,10 @@ public:
         return true;
     }
 
-    void visitVReg(int* vreg) {
+    bool visit_vreg(int* vreg) override {
         auto* node = name_vreg[vreg];
         node->accept(this);
         *vreg = node->vreg;
-    }
-
-    bool visit_binop(BST_BinOp* node) override {
-        visitVReg(&node->vreg_left);
-        visitVReg(&node->vreg_right);
         return true;
     }
 

@@ -96,9 +96,8 @@ public:
         return true;
     }
 
-    bool visit_binop(BST_BinOp* node) {
-        _doLoad(node->vreg_left);
-        _doLoad(node->vreg_right);
+    virtual bool visit_vreg(int* vreg) {
+        _doLoad(*vreg);
         return true;
     }
 

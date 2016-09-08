@@ -603,7 +603,7 @@ Value ASTInterpreter::getNone() {
 }
 
 Value ASTInterpreter::visit_unaryop(BST_UnaryOp* node) {
-    Value operand = visit_expr(node->operand);
+    Value operand = getVReg(node->vreg_operand);
     AUTO_DECREF(operand.o);
     if (node->op_type == AST_TYPE::Not)
         return Value(boxBool(!nonzero(operand.o)), jit ? jit->emitNotNonzero(operand) : NULL);

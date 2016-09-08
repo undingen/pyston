@@ -1526,7 +1526,7 @@ private:
     }
 
     CompilerVariable* evalUnaryOp(BST_UnaryOp* node, const UnwindInfo& unw_info) {
-        CompilerVariable* operand = evalExpr(node->operand, unw_info);
+        CompilerVariable* operand = evalVReg(node->vreg_operand);
 
         if (node->op_type == AST_TYPE::Not) {
             CompilerVariable* rtn = operand->nonzero(emitter, getOpInfoForNode(node, unw_info));

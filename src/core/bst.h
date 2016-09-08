@@ -645,7 +645,7 @@ public:
 
 class BST_UnaryOp : public BST_expr {
 public:
-    BST_expr* operand;
+    int vreg_operand;
     AST_TYPE::AST_TYPE op_type;
 
     virtual void accept(BSTVisitor* v);
@@ -792,6 +792,9 @@ class BSTVisitor {
 protected:
 public:
     virtual ~BSTVisitor() {}
+
+    // prseudo
+    virtual bool visit_vreg(int* vreg) { RELEASE_ASSERT(0, ""); }
 
     virtual bool visit_arguments(BST_arguments* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_assert(BST_Assert* node) { RELEASE_ASSERT(0, ""); }

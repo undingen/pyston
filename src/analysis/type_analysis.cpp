@@ -495,7 +495,7 @@ private:
     }
 
     void* visit_unaryop(BST_UnaryOp* node) override {
-        CompilerType* operand = getType(node->operand);
+        CompilerType* operand = getType(node->vreg_operand);
         if (!hasFixedOps(operand))
             return UNKNOWN;
 

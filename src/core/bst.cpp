@@ -114,8 +114,8 @@ void BST_BinOp::accept(BSTVisitor* v) {
     if (skip)
         return;
 
-    // left->accept(v);
-    // right->accept(v);
+    v->visit_vreg(&vreg_left);
+    v->visit_vreg(&vreg_right);
 }
 
 void* BST_BinOp::accept_expr(ExprVisitor* v) {
@@ -458,7 +458,7 @@ void BST_UnaryOp::accept(BSTVisitor* v) {
     if (skip)
         return;
 
-    operand->accept(v);
+    v->visit_vreg(&vreg_operand);
 }
 
 void* BST_UnaryOp::accept_expr(ExprVisitor* v) {
@@ -1051,7 +1051,8 @@ bool PrintVisitor::visit_unaryop(BST_UnaryOp* node) {
             break;
     }
     stream << "(";
-    node->operand->accept(this);
+    // node->operand->accept(this);
+    stream << "#" << node->vreg_operand;
     stream << ")";
     return true;
 }
@@ -1104,6 +1105,9 @@ public:
     FlattenVisitor(std::vector<BST*>* output, bool expand_scopes) : output(output), expand_scopes(expand_scopes) {
         assert(expand_scopes && "not sure if this works properly");
     }
+
+    virtual bool visit_vreg(int* vreg) { return false; }
+
 
     virtual bool visit_arguments(BST_arguments* node) {
         output->push_back(node);
