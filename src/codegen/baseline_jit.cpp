@@ -392,7 +392,7 @@ RewriterVar* JitFragmentWriter::emitGetBlockLocal(BST_Name* name) {
     if (it == local_syms.end()) {
         auto r = emitGetLocal(name);
         assert(r->reftype == RefType::OWNED);
-        emitSetBlockLocal(name, r);
+        emitSetBlockLocal(vreg, r);
         return r;
     }
     return it->second;
@@ -400,13 +400,20 @@ RewriterVar* JitFragmentWriter::emitGetBlockLocal(BST_Name* name) {
 
 RewriterVar* JitFragmentWriter::emitGetBlockLocalMustExist(int vreg) {
     auto it = local_syms.find(vreg);
-    RELEASE_ASSERT(it != local_syms.end(), "this should never happen");
+    if (it == local_syms.end()) {
+        assert(vreg >= 0);
+        RewriterVar* r = vregs_array->getAttr(vreg * 8);
+        r->incref();
+        r->setType(RefType::OWNED);
+        emitSetBlockLocal(vreg, r);
+        return r;
+    }
     return it->second;
 }
 
-void JitFragmentWriter::emitKillTemporary(BST_Name* name) {
-    if (!local_syms.count(name->vreg))
-        emitSetLocal(name, false, imm(nullptr));
+void JitFragmentWriter::emitKillTemporary(int vreg) {
+    if (!local_syms.count(vreg))
+        emitSetLocal(vreg, imm(nullptr));
 }
 
 RewriterVar* JitFragmentWriter::emitGetBoxedLocal(BoxedString* s) {
@@ -690,16 +697,14 @@ void JitFragmentWriter::emitSetAttr(BST_expr* node, RewriterVar* obj, BoxedStrin
     attr->refConsumed(rtn.second);
 }
 
-void JitFragmentWriter::emitSetBlockLocal(BST_Name* name, STOLEN(RewriterVar*) v) {
+void JitFragmentWriter::emitSetBlockLocal(int vreg, STOLEN(RewriterVar*) v) {
     if (LOG_BJIT_ASSEMBLY)
         comment("BJIT: emitSetBlockLocal() start");
-    auto vreg = name->vreg;
-    auto s = name->id;
     RewriterVar* prev = local_syms[vreg];
     // if we never set this sym before in this BB and the symbol gets accessed in several blocks clear it because it
     // could have been set in a previous block.
     if (!prev && !block->cfg->getVRegInfo().isBlockLocalVReg(vreg))
-        emitSetLocal(name, false, imm(nullptr)); // clear out the vreg
+        emitSetLocal(vreg, imm(nullptr)); // clear out the vreg
     local_syms[vreg] = v;
     if (LOG_BJIT_ASSEMBLY)
         comment("BJIT: emitSetBlockLocal() end");
@@ -734,30 +739,35 @@ void JitFragmentWriter::emitSetItemName(BoxedString* s, RewriterVar* v) {
     emitSetItem(emitGetBoxedLocals(), imm(s), v);
 }
 
-void JitFragmentWriter::emitSetLocal(BST_Name* name, bool set_closure, STOLEN(RewriterVar*) v) {
+void JitFragmentWriter::emitSetLocal(int vreg, STOLEN(RewriterVar*) v) {
     if (LOG_BJIT_ASSEMBLY)
         comment("BJIT: emitSetLocal() start");
-    auto vreg = name->vreg;
     assert(vreg >= 0);
-    if (set_closure) {
-        call(false, (void*)ASTInterpreterJitInterface::setLocalClosureHelper, getInterp(), imm(name), v);
-        v->refConsumed();
-    } else {
-        // TODO With definedness analysis, we could know whether we needed to emit an decref/xdecref/neither.
-        // The issue is that definedness analysis is somewhat expensive to compute, so we don't compute it
-        // for the bjit.  We could try calculating it (which would require some re-plumbing), which might help
-        // but I suspect is not that big a deal as long as the llvm jit implements this kind of optimization.
-        bool prev_nullable = known_non_null_vregs.count(vreg) == 0;
+    // TODO With definedness analysis, we could know whether we needed to emit an decref/xdecref/neither.
+    // The issue is that definedness analysis is somewhat expensive to compute, so we don't compute it
+    // for the bjit.  We could try calculating it (which would require some re-plumbing), which might help
+    // but I suspect is not that big a deal as long as the llvm jit implements this kind of optimization.
+    bool prev_nullable = known_non_null_vregs.count(vreg) == 0;
 
-        assert(!block->cfg->getVRegInfo().isBlockLocalVReg(vreg));
-        vregs_array->replaceAttr(8 * vreg, v, prev_nullable);
-        if (v->isContantNull())
-            known_non_null_vregs.erase(vreg);
-        else
-            known_non_null_vregs.insert(vreg);
-    }
+    assert(!block->cfg->getVRegInfo().isBlockLocalVReg(vreg));
+    vregs_array->replaceAttr(8 * vreg, v, prev_nullable);
+    if (v->isContantNull())
+        known_non_null_vregs.erase(vreg);
+    else
+        known_non_null_vregs.insert(vreg);
     if (LOG_BJIT_ASSEMBLY)
         comment("BJIT: emitSetLocal() end");
+}
+
+void JitFragmentWriter::emitSetLocalClosure(BST_Name* name, STOLEN(RewriterVar*) v) {
+    if (LOG_BJIT_ASSEMBLY)
+        comment("BJIT: emitSetLocalClosure() start");
+    auto vreg = name->vreg;
+    assert(vreg >= 0);
+    call(false, (void*)ASTInterpreterJitInterface::setLocalClosureHelper, getInterp(), imm(name), v);
+    v->refConsumed();
+    if (LOG_BJIT_ASSEMBLY)
+        comment("BJIT: emitSetLocalClosure() end");
 }
 
 void JitFragmentWriter::emitSideExit(STOLEN(RewriterVar*) v, Box* cmp_value, CFGBlock* next_block) {

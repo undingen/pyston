@@ -283,7 +283,7 @@ public:
     RewriterVar* emitGetAttr(RewriterVar* obj, BoxedString* s, BST_expr* node);
     RewriterVar* emitGetBlockLocal(BST_Name* name);
     RewriterVar* emitGetBlockLocalMustExist(int vreg);
-    void emitKillTemporary(BST_Name* name);
+    void emitKillTemporary(int vreg);
     RewriterVar* emitGetBoxedLocal(BoxedString* s);
     RewriterVar* emitGetBoxedLocals();
     RewriterVar* emitGetClsAttr(RewriterVar* obj, BoxedString* s);
@@ -319,13 +319,14 @@ public:
     void emitRaise3(RewriterVar* arg0, RewriterVar* arg1, RewriterVar* arg2);
     void emitReturn(RewriterVar* v);
     void emitSetAttr(BST_expr* node, RewriterVar* obj, BoxedString* s, STOLEN(RewriterVar*) attr);
-    void emitSetBlockLocal(BST_Name* name, STOLEN(RewriterVar*) v);
+    void emitSetBlockLocal(int vreg, STOLEN(RewriterVar*) v);
     void emitSetCurrentInst(BST_stmt* node);
     void emitSetExcInfo(RewriterVar* type, RewriterVar* value, RewriterVar* traceback);
     void emitSetGlobal(BoxedString* s, STOLEN(RewriterVar*) v, bool are_globals_from_module);
     void emitSetItemName(BoxedString* s, RewriterVar* v);
     void emitSetItem(RewriterVar* target, RewriterVar* slice, RewriterVar* value);
-    void emitSetLocal(BST_Name* name, bool set_closure, STOLEN(RewriterVar*) v);
+    void emitSetLocal(int vreg, STOLEN(RewriterVar*) v);
+    void emitSetLocalClosure(BST_Name* name, STOLEN(RewriterVar*) v);
     // emitSideExit steals a full ref from v, not just a vref
     void emitSideExit(STOLEN(RewriterVar*) v, Box* cmp_value, CFGBlock* next_block);
     void emitUncacheExcInfo();

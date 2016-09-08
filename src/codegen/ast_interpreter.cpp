@@ -493,10 +493,13 @@ void ASTInterpreter::doStore(BST_Name* node, STOLEN(Value) value) {
             bool is_live = true;
             if (!closure)
                 is_live = source_info->getLiveness()->isLiveAtEnd(node->vreg, current_block);
-            if (is_live)
-                jit->emitSetLocal(node, closure, value);
-            else
-                jit->emitSetBlockLocal(node, value);
+            if (is_live) {
+                if (closure)
+                    jit->emitSetLocalClosure(node, value);
+                else
+                    jit->emitSetLocal(node->vreg, value);
+            } else
+                jit->emitSetBlockLocal(node->vreg, value);
         }
 
         if (closure) {
@@ -1359,7 +1362,7 @@ Value ASTInterpreter::visit_delete(BST_Delete* node) {
                 if (target->id.s()[0] == '#') {
                     assert(vregs[target->vreg] != NULL);
                     if (jit)
-                        jit->emitKillTemporary(target);
+                        jit->emitKillTemporary(target->vreg);
                 } else {
                     abortJITing();
                     if (vregs[target->vreg] == 0) {
@@ -1648,8 +1651,10 @@ Value ASTInterpreter::getVReg(int vreg) {
     assert(vreg >= 0);
 
     Value v;
-    if (jit)
-        abortJITing();
+    if (jit) {
+        v.var = jit->emitGetBlockLocalMustExist(vreg);
+        jit->emitKillTemporary(vreg);
+    }
 
     frame_info.num_vregs = std::max(frame_info.num_vregs, vreg + 1);
     Box* val = vregs[vreg];
@@ -1705,7 +1710,7 @@ Value ASTInterpreter::visit_name(BST_Name* node) {
                     v.var = jit->emitGetBlockLocal(node);
                     if (node->is_kill) {
                         assert(node->id.s()[0] == '#');
-                        jit->emitKillTemporary(node);
+                        jit->emitKillTemporary(node->vreg);
                     }
                 }
             }
