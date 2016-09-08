@@ -1137,8 +1137,8 @@ private:
     }
 
     CompilerVariable* evalCompare(BST_Compare* node, const UnwindInfo& unw_info) {
-        CompilerVariable* left = evalExpr(node->left, unw_info);
-        CompilerVariable* right = evalExpr(node->comparator, unw_info);
+        CompilerVariable* left = evalVReg(node->vreg_left);
+        CompilerVariable* right = evalVReg(node->vreg_comparator);
 
         assert(left);
         assert(right);

@@ -316,8 +316,8 @@ public:
 class BST_Compare : public BST_expr {
 public:
     AST_TYPE::AST_TYPE op;
-    BST_expr* comparator;
-    BST_expr* left;
+    int vreg_comparator = -1;
+    int vreg_left = -1;
 
     virtual void accept(BSTVisitor* v);
     virtual void* accept_expr(ExprVisitor* v);

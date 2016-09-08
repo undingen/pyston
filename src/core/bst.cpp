@@ -145,8 +145,8 @@ void BST_Compare::accept(BSTVisitor* v) {
     if (skip)
         return;
 
-    left->accept(v);
-    comparator->accept(v);
+    v->visit_vreg(&vreg_left);
+    v->visit_vreg(&vreg_comparator);
 }
 
 void* BST_Compare::accept_expr(ExprVisitor* v) {
@@ -674,9 +674,9 @@ bool PrintVisitor::visit_call(BST_Call* node) {
 }
 
 bool PrintVisitor::visit_compare(BST_Compare* node) {
-    node->left->accept(this);
+    stream << "#" << node->vreg_left;
     stream << " " << getOpSymbol(node->op) << " ";
-    node->comparator->accept(this);
+    stream << "#" << node->vreg_comparator;
 
     return true;
 }

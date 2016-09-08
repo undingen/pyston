@@ -344,8 +344,8 @@ private:
     }
 
     void* visit_compare(BST_Compare* node) override {
-        CompilerType* left = getType(node->left);
-        CompilerType* right = getType(node->comparator);
+        CompilerType* left = getType(node->vreg_left);
+        CompilerType* right = getType(node->vreg_comparator);
 
         AST_TYPE::AST_TYPE op_type = node->op;
         if (op_type == AST_TYPE::Is || op_type == AST_TYPE::IsNot || op_type == AST_TYPE::In

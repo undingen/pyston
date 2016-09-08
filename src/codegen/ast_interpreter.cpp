@@ -1425,9 +1425,9 @@ Value ASTInterpreter::visit_exec(BST_Exec* node) {
 }
 
 Value ASTInterpreter::visit_compare(BST_Compare* node) {
-    Value left = visit_expr(node->left);
+    Value left = getVReg(node->vreg_left);
     AUTO_DECREF(left.o);
-    Value right = visit_expr(node->comparator);
+    Value right = getVReg(node->vreg_comparator);
     AUTO_DECREF(right.o);
     return doBinOp(node, left, right, node->op, BinExpType::Compare);
 }

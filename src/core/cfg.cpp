@@ -783,8 +783,8 @@ private:
     BST_Compare* makeCompare(AST_TYPE::AST_TYPE oper, BST_expr* left, BST_expr* right) {
         auto compare = new BST_Compare();
         compare->op = oper;
-        compare->left = left;
-        compare->comparator = right;
+        unmapExpr(left, &compare->vreg_left);
+        unmapExpr(right, &compare->vreg_comparator);
         return compare;
     }
 
@@ -1027,6 +1027,20 @@ private:
         }
     }
 
+    BST_expr* _dup2(BST_expr* val) {
+        if (val == nullptr)
+            return val;
+
+        if (val->type == BST_TYPE::Name) {
+            BST_Name* orig = bst_cast<BST_Name>(val);
+            auto new_name = nodeName();
+            pushAssign(new_name, _dup(orig));
+            return makeLoad(new_name, orig, true);
+        } else {
+            RELEASE_ASSERT(0, "%d", val->type);
+        }
+    }
+
     BST_expr* remapBoolOp(AST_BoolOp* node) {
         assert(curblock);
 
@@ -1128,9 +1142,9 @@ private:
 
             rtn->op = node->ops[0];
 
-            rtn->left = remapExpr(node->left);
+            unmapExpr(remapExpr(node->left), &rtn->vreg_left);
             assert(node->comparators.size() == 1);
-            rtn->comparator = remapExpr(node->comparators[0]);
+            unmapExpr(remapExpr(node->comparators[0]), &rtn->vreg_comparator);
             return rtn;
         } else {
             InternedString name = nodeName();
@@ -1146,11 +1160,12 @@ private:
 
                 BST_Compare* val = new BST_Compare;
                 val->lineno = node->lineno;
-                val->left = left;
+                unmapExpr(left, &val->vreg_left);
+
                 if (i < node->ops.size() - 1)
-                    val->comparator = _dup(right);
+                    unmapExpr(_dup2(right), &val->vreg_comparator);
                 else
-                    val->comparator = right;
+                    unmapExpr(right, &val->vreg_comparator);
                 val->op = node->ops[i];
 
                 pushAssign(name, val);
@@ -1658,7 +1673,7 @@ private:
     CFGBlock* makeFinallyCont(Why reason, BST_expr* whyexpr, CFGBlock* then_block) {
         CFGBlock* otherwise = cfg->addDeferredBlock();
         otherwise->info = "finally_otherwise";
-        pushBranch(makeCompare(AST_TYPE::Eq, whyexpr, makeNum(reason)), then_block, otherwise);
+        pushBranch(makeCompare(AST_TYPE::Eq, _dup2(whyexpr), wrap(makeNum(reason))), then_block, otherwise);
         cfg->placeBlock(otherwise);
         return otherwise;
     }
