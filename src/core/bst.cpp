@@ -369,7 +369,7 @@ void BST_Repr::accept(BSTVisitor* v) {
     if (skip)
         return;
 
-    value->accept(v);
+    v->visit_vreg(&vreg_value);
 }
 
 void* BST_Repr::accept_expr(ExprVisitor* v) {
@@ -951,7 +951,7 @@ bool PrintVisitor::visit_raise(BST_Raise* node) {
 
 bool PrintVisitor::visit_repr(BST_Repr* node) {
     stream << "`";
-    node->value->accept(this);
+    stream << "#" << node->vreg_value;
     stream << "`";
     return true;
 }

@@ -1432,7 +1432,7 @@ private:
     }
 
     CompilerVariable* evalRepr(BST_Repr* node, const UnwindInfo& unw_info) {
-        CompilerVariable* var = evalExpr(node->value, unw_info);
+        CompilerVariable* var = evalVReg(node->vreg_value);
         ConcreteCompilerVariable* cvar = var->makeConverted(emitter, var->getBoxType());
 
         std::vector<llvm::Value*> args{ cvar->getValue() };

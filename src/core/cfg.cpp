@@ -1467,7 +1467,7 @@ private:
     BST_expr* remapRepr(AST_Repr* node) {
         BST_Repr* rtn = new BST_Repr();
         rtn->lineno = node->lineno;
-        rtn->value = remapExpr(node->value);
+        unmapExpr(remapExpr(node->value), &rtn->vreg_value);
         return rtn;
     }
 

@@ -1596,7 +1596,7 @@ Value ASTInterpreter::visit_index(BST_Index* node) {
 }
 
 Value ASTInterpreter::visit_repr(BST_Repr* node) {
-    Value v = visit_expr(node->value);
+    Value v = getVReg(node->vreg_value);
     AUTO_DECREF(v.o);
     return Value(repr(v.o), jit ? jit->emitRepr(v) : NULL);
 }

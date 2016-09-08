@@ -523,7 +523,7 @@ public:
 
 class BST_Repr : public BST_expr {
 public:
-    BST_expr* value;
+    int vreg_value;
 
     virtual void accept(BSTVisitor* v);
     virtual void* accept_expr(ExprVisitor* v);
