@@ -516,7 +516,6 @@ private:
 
 
     void visit_assert(BST_Assert* node) override {
-        getType(node->test);
         if (node->msg)
             getType(node->msg);
     }

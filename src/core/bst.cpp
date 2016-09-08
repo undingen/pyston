@@ -62,7 +62,6 @@ void BST_Assert::accept(BSTVisitor* v) {
     if (skip)
         return;
 
-    test->accept(v);
     if (msg)
         msg->accept(v);
 }
@@ -561,8 +560,7 @@ bool PrintVisitor::visit_arguments(BST_arguments* node) {
 }
 
 bool PrintVisitor::visit_assert(BST_Assert* node) {
-    stream << "assert ";
-    node->test->accept(this);
+    stream << "assert 0";
     if (node->msg) {
         stream << ", ";
         node->msg->accept(this);

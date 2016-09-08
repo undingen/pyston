@@ -230,7 +230,7 @@ public:
 
 class BST_Assert : public BST_stmt {
 public:
-    BST_expr* msg, *test;
+    BST_expr* msg;
 
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);

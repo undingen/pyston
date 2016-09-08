@@ -2050,10 +2050,6 @@ public:
             remapped->msg = remapExpr(node->msg);
         else
             remapped->msg = NULL;
-        BST_Num* fake_test = new BST_Num();
-        fake_test->num_type = AST_Num::INT;
-        fake_test->n_int = 0;
-        remapped->test = fake_test;
         remapped->lineno = node->lineno;
         push_back(remapped);
 

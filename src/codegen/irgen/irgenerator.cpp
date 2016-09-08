@@ -2053,13 +2053,6 @@ private:
     }
 
     void doAssert(BST_Assert* node, const UnwindInfo& unw_info) {
-        // cfg translates all asserts into only 'assert 0' on the failing path.
-        BST_expr* test = node->test;
-        assert(test->type == BST_TYPE::Num);
-        BST_Num* num = bst_cast<BST_Num>(test);
-        assert(num->num_type == AST_Num::INT);
-        assert(num->n_int == 0);
-
         std::vector<llvm::Value*> llvm_args;
 
         // We could patchpoint this or try to avoid the overhead, but this should only

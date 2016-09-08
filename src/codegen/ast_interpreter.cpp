@@ -1287,12 +1287,6 @@ Value ASTInterpreter::visit_raise(BST_Raise* node) {
 
 Value ASTInterpreter::visit_assert(BST_Assert* node) {
     abortJITing();
-#ifndef NDEBUG
-    // Currently we only generate "assert 0" statements
-    Value v = visit_expr(node->test);
-    assert(v.o->cls == int_cls && static_cast<BoxedInt*>(v.o)->n == 0);
-    Py_DECREF(v.o);
-#endif
 
     static BoxedString* AssertionError_str = getStaticString("AssertionError");
     Box* assertion_type = getGlobal(frame_info.globals, AssertionError_str);
