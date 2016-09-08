@@ -147,6 +147,18 @@ private:
         return rtn;
     }
 
+    CompilerType* getType(int vreg) {
+        CompilerType*& t = sym_table[vreg];
+        if (t == NULL) {
+            // if (VERBOSITY() >= 2) {
+            // printf("%s is undefined!\n", node->id.c_str());
+            // raise(SIGTRAP);
+            //}
+            t = UNDEF;
+        }
+        return t;
+    }
+
     CompilerType* getType(BST_expr* node) {
         type_speculations.erase(node);
 
@@ -243,8 +255,8 @@ private:
     }
 
     void* visit_augbinop(BST_AugBinOp* node) override {
-        CompilerType* left = getType(node->left);
-        CompilerType* right = getType(node->right);
+        CompilerType* left = getType(node->vreg_left);
+        CompilerType* right = getType(node->vreg_right);
         if (!hasFixedOps(left) || !hasFixedOps(right))
             return UNKNOWN;
 
@@ -273,8 +285,8 @@ private:
     }
 
     void* visit_binop(BST_BinOp* node) override {
-        CompilerType* left = getType(node->left);
-        CompilerType* right = getType(node->right);
+        CompilerType* left = getType(node->vreg_left);
+        CompilerType* right = getType(node->vreg_right);
         if (!hasFixedOps(left) || !hasFixedOps(right))
             return UNKNOWN;
 
@@ -332,8 +344,8 @@ private:
     }
 
     void* visit_compare(BST_Compare* node) override {
-        CompilerType* left = getType(node->left);
-        CompilerType* right = getType(node->comparator);
+        CompilerType* left = getType(node->vreg_left);
+        CompilerType* right = getType(node->vreg_comparator);
 
         AST_TYPE::AST_TYPE op_type = node->op;
         if (op_type == AST_TYPE::Is || op_type == AST_TYPE::IsNot || op_type == AST_TYPE::In
@@ -366,6 +378,7 @@ private:
 
     void* visit_index(BST_Index* node) override { return getType(node->value); }
 
+    /*
     void* visit_langprimitive(BST_LangPrimitive* node) override {
         switch (node->opcode) {
             case BST_LangPrimitive::CHECK_EXC_MATCH:
@@ -391,6 +404,22 @@ private:
                 RELEASE_ASSERT(0, "%d", node->opcode);
         }
     }
+    */
+
+    void* visit_landingpad(BST_Landingpad* node) override { return UNKNOWN; }
+    void* visit_locals(BST_Locals* node) override { return DICT; }
+    void* visit_getiter(BST_GetIter* node) override { return getType(node->vreg_value)->getPystonIterType(); }
+    void* visit_importfrom(BST_ImportFrom* node) override { return UNKNOWN; }
+    void* visit_importname(BST_ImportName* node) override { return UNKNOWN; }
+    void* visit_importstar(BST_ImportStar* node) override { return UNKNOWN; }
+    void* visit_none(BST_None* node) override { return NONE; }
+    void* visit_nonzero(BST_Nonzero* node) override { return BOOL; }
+    void* visit_checkexcmatch(BST_CheckExcMatch* node) override { return BOOL; }
+    void* visit_setexcinfo(BST_SetExcInfo* node) override { return NONE; }
+    void* visit_uncacheexcinfo(BST_UncacheExcInfo* node) override { return NONE; }
+    void* visit_hasnext(BST_HasNext* node) override { return BOOL; }
+    void* visit_printexpr(BST_PrintExpr* node) override { return NONE; }
+
 
     void* visit_list(BST_List* node) override {
         // Get all the sub-types, even though they're not necessary to
@@ -422,15 +451,7 @@ private:
         }
 
         if (name_scope == ScopeInfo::VarScopeType::FAST || name_scope == ScopeInfo::VarScopeType::CLOSURE) {
-            CompilerType*& t = sym_table[node->vreg];
-            if (t == NULL) {
-                // if (VERBOSITY() >= 2) {
-                // printf("%s is undefined!\n", node->id.c_str());
-                // raise(SIGTRAP);
-                //}
-                t = UNDEF;
-            }
-            return t;
+            return getType(node->vreg);
         }
 
         RELEASE_ASSERT(0, "Unknown scope type: %d", (int)name_scope);
@@ -491,7 +512,7 @@ private:
     }
 
     void* visit_unaryop(BST_UnaryOp* node) override {
-        CompilerType* operand = getType(node->operand);
+        CompilerType* operand = getType(node->vreg_operand);
         if (!hasFixedOps(operand))
             return UNKNOWN;
 
@@ -512,7 +533,6 @@ private:
 
 
     void visit_assert(BST_Assert* node) override {
-        getType(node->test);
         if (node->msg)
             getType(node->msg);
     }

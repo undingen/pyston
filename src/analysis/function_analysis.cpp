@@ -55,7 +55,7 @@ private:
     VRegMap<Status> statuses;
     LivenessAnalysis* analysis;
 
-    void _doLoad(int vreg, BST_Name* node) {
+    void _doLoad(int vreg) {
         Status& status = statuses[vreg];
         status.addUsage(Status::USED);
     }
@@ -96,17 +96,22 @@ public:
         return true;
     }
 
+    virtual bool visit_vreg(int* vreg) {
+        _doLoad(*vreg);
+        return true;
+    }
+
     bool visit_name(BST_Name* node) {
         if (node->vreg == -1)
             return true;
 
         if (node->ctx_type == AST_TYPE::Load)
-            _doLoad(node->vreg, node);
+            _doLoad(node->vreg);
         else if (node->ctx_type == AST_TYPE::Del) {
             // Hack: we don't have a bytecode for temporary-kills:
             if (node->vreg >= analysis->cfg->getVRegInfo().getNumOfUserVisibleVRegs())
                 return true;
-            _doLoad(node->vreg, node);
+            _doLoad(node->vreg);
             _doStore(node->vreg);
         } else if (node->ctx_type == AST_TYPE::Store || node->ctx_type == AST_TYPE::Param)
             _doStore(node->vreg);

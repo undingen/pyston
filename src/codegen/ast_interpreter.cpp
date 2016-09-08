@@ -81,6 +81,8 @@ private:
     Box* doOSR(BST_Jump* node);
     Value getNone();
 
+    Value getVReg(int vreg);
+
     Value visit_assert(BST_Assert* node);
     Value visit_assign(BST_Assign* node);
     Value visit_binop(BST_BinOp* node);
@@ -122,7 +124,21 @@ private:
     Value visit_clsAttribute(BST_ClsAttribute* node);
     Value visit_invoke(BST_Invoke* node);
     Value visit_jump(BST_Jump* node);
-    Value visit_langPrimitive(BST_LangPrimitive* node);
+
+    Value visit_landingpad(BST_Landingpad* node);
+    Value visit_locals(BST_Locals* node);
+    Value visit_getiter(BST_GetIter* node);
+    Value visit_importfrom(BST_ImportFrom* node);
+    Value visit_importname(BST_ImportName* node);
+    Value visit_importstar(BST_ImportStar* node);
+    Value visit_none(BST_None* node);
+    Value visit_nonzero(BST_Nonzero* node);
+    Value visit_checkexcmatch(BST_CheckExcMatch* node);
+    Value visit_setexcinfo(BST_SetExcInfo* node);
+    Value visit_uncacheexcinfo(BST_UncacheExcInfo* node);
+    Value visit_hasnext(BST_HasNext* node);
+    Value visit_printexpr(BST_PrintExpr* node);
+
 
     // for doc on 'exit_offset' have a look at JitFragmentWriter::num_bytes_exit and num_bytes_overlapping
     void startJITing(CFGBlock* block, int exit_offset = 0,
@@ -491,10 +507,13 @@ void ASTInterpreter::doStore(BST_Name* node, STOLEN(Value) value) {
             bool is_live = true;
             if (!closure)
                 is_live = source_info->getLiveness()->isLiveAtEnd(node->vreg, current_block);
-            if (is_live)
-                jit->emitSetLocal(node, closure, value);
-            else
-                jit->emitSetBlockLocal(node, value);
+            if (is_live) {
+                if (closure)
+                    jit->emitSetLocalClosure(node, value);
+                else
+                    jit->emitSetLocal(node->vreg, value);
+            } else
+                jit->emitSetBlockLocal(node->vreg, value);
         }
 
         if (closure) {
@@ -601,7 +620,7 @@ Value ASTInterpreter::getNone() {
 }
 
 Value ASTInterpreter::visit_unaryop(BST_UnaryOp* node) {
-    Value operand = visit_expr(node->operand);
+    Value operand = getVReg(node->vreg_operand);
     AUTO_DECREF(operand.o);
     if (node->op_type == AST_TYPE::Not)
         return Value(boxBool(!nonzero(operand.o)), jit ? jit->emitNotNonzero(operand) : NULL);
@@ -610,9 +629,9 @@ Value ASTInterpreter::visit_unaryop(BST_UnaryOp* node) {
 }
 
 Value ASTInterpreter::visit_binop(BST_BinOp* node) {
-    Value left = visit_expr(node->left);
+    Value left = getVReg(node->vreg_left);
     AUTO_DECREF(left.o);
-    Value right = visit_expr(node->right);
+    Value right = getVReg(node->vreg_right);
     AUTO_DECREF(right.o);
     return doBinOp(node, left, right, node->op_type, BinExpType::BinOp);
 }
@@ -877,13 +896,115 @@ Value ASTInterpreter::visit_clsAttribute(BST_ClsAttribute* node) {
 Value ASTInterpreter::visit_augBinOp(BST_AugBinOp* node) {
     assert(node->op_type != AST_TYPE::Is && node->op_type != AST_TYPE::IsNot && "not tested yet");
 
-    Value left = visit_expr(node->left);
+    Value left = getVReg(node->vreg_left);
     AUTO_DECREF(left.o);
-    Value right = visit_expr(node->right);
+    Value right = getVReg(node->vreg_right);
     AUTO_DECREF(right.o);
     return doBinOp(node, left, right, node->op_type, BinExpType::AugBinOp);
 }
 
+Value ASTInterpreter::visit_landingpad(BST_Landingpad* node) {
+    assert(last_exception.type);
+    return Value(ASTInterpreterJitInterface::landingpadHelper(this), jit ? jit->emitLandingpad() : NULL);
+}
+
+Value ASTInterpreter::visit_locals(BST_Locals* node) {
+    assert(frame_info.boxedLocals != NULL);
+    return Value(incref(frame_info.boxedLocals), jit ? jit->emitGetBoxedLocals() : NULL);
+}
+
+Value ASTInterpreter::visit_getiter(BST_GetIter* node) {
+    Value val = getVReg(node->vreg_value);
+    AUTO_DECREF(val.o);
+    return Value(getPystonIter(val.o), jit ? jit->emitGetPystonIter(val) : NULL);
+}
+
+Value ASTInterpreter::visit_importfrom(BST_ImportFrom* node) {
+    Value module = getVReg(node->vreg_module);
+    AUTO_DECREF(module.o);
+
+    Value name_boxed = getVReg(node->vreg_name);
+    AUTO_DECREF(name_boxed.o);
+
+    Value v;
+    if (jit)
+        v.var = jit->emitImportFrom(module, name_boxed);
+    v.o = importFrom(module.o, (BoxedString*)name_boxed.o);
+    return v;
+}
+Value ASTInterpreter::visit_importname(BST_ImportName* node) {
+    int level = node->level;
+    Value froms = getVReg(node->vreg_from);
+    AUTO_DECREF(froms.o);
+    Value module_name = getVReg(node->vreg_name);
+    AUTO_DECREF(module_name.o);
+    Value v;
+    if (jit)
+        v.var = jit->emitImportName(level, froms, module_name);
+    v.o = import(level, froms.o, (BoxedString*)module_name.o);
+    return v;
+}
+
+Value ASTInterpreter::visit_importstar(BST_ImportStar* node) {
+    Value module = getVReg(node->vreg_name);
+    AUTO_DECREF(module.o);
+    return Value(importStar(module.o, frame_info.globals), jit ? jit->emitImportStar(module) : NULL);
+}
+
+Value ASTInterpreter::visit_none(BST_None* node) {
+    return getNone();
+}
+
+Value ASTInterpreter::visit_nonzero(BST_Nonzero* node) {
+    Value obj = getVReg(node->vreg_value);
+    AUTO_DECREF(obj.o);
+    return Value(boxBool(nonzero(obj.o)), jit ? jit->emitNonzero(obj) : NULL);
+}
+
+Value ASTInterpreter::visit_checkexcmatch(BST_CheckExcMatch* node) {
+    Value obj = getVReg(node->vreg_value);
+    AUTO_DECREF(obj.o);
+    Value cls = getVReg(node->vreg_cls);
+    AUTO_DECREF(cls.o);
+    return Value(boxBool(exceptionMatches(obj.o, cls.o)), jit ? jit->emitExceptionMatches(obj, cls) : NULL);
+}
+
+Value ASTInterpreter::visit_setexcinfo(BST_SetExcInfo* node) {
+    Value type = getVReg(node->vreg_type);
+    assert(type.o);
+    Value value = getVReg(node->vreg_value);
+    assert(value.o);
+    Value traceback = getVReg(node->vreg_traceback);
+    assert(traceback.o);
+
+    if (jit)
+        jit->emitSetExcInfo(type, value, traceback);
+    setFrameExcInfo(getFrameInfo(), type.o, value.o, traceback.o);
+    return getNone();
+}
+
+Value ASTInterpreter::visit_uncacheexcinfo(BST_UncacheExcInfo* node) {
+    if (jit)
+        jit->emitUncacheExcInfo();
+    setFrameExcInfo(getFrameInfo(), NULL, NULL, NULL);
+    return getNone();
+}
+
+Value ASTInterpreter::visit_hasnext(BST_HasNext* node) {
+    Value obj = getVReg(node->vreg_value);
+    AUTO_DECREF(obj.o);
+    return Value(boxBool(hasnext(obj.o)), jit ? jit->emitHasnext(obj) : NULL);
+}
+
+Value ASTInterpreter::visit_printexpr(BST_PrintExpr* node) {
+    abortJITing();
+    Value obj = getVReg(node->vreg_value);
+    AUTO_DECREF(obj.o);
+    printExprHelper(obj.o);
+    return getNone();
+}
+
+#if 0
 Value ASTInterpreter::visit_langPrimitive(BST_LangPrimitive* node) {
     Value v;
     if (node->opcode == BST_LangPrimitive::GET_ITER) {
@@ -988,6 +1109,7 @@ Value ASTInterpreter::visit_langPrimitive(BST_LangPrimitive* node) {
         RELEASE_ASSERT(0, "unknown opcode %d", node->opcode);
     return v;
 }
+#endif
 
 Value ASTInterpreter::visit_yield(BST_Yield* node) {
     Value value = node->value ? visit_expr(node->value) : getNone();
@@ -1285,12 +1407,6 @@ Value ASTInterpreter::visit_raise(BST_Raise* node) {
 
 Value ASTInterpreter::visit_assert(BST_Assert* node) {
     abortJITing();
-#ifndef NDEBUG
-    // Currently we only generate "assert 0" statements
-    Value v = visit_expr(node->test);
-    assert(v.o->cls == int_cls && static_cast<BoxedInt*>(v.o)->n == 0);
-    Py_DECREF(v.o);
-#endif
 
     static BoxedString* AssertionError_str = getStaticString("AssertionError");
     Box* assertion_type = getGlobal(frame_info.globals, AssertionError_str);
@@ -1363,7 +1479,7 @@ Value ASTInterpreter::visit_delete(BST_Delete* node) {
                 if (target->id.s()[0] == '#') {
                     assert(vregs[target->vreg] != NULL);
                     if (jit)
-                        jit->emitKillTemporary(target);
+                        jit->emitKillTemporary(target->vreg);
                 } else {
                     abortJITing();
                     if (vregs[target->vreg] == 0) {
@@ -1423,9 +1539,9 @@ Value ASTInterpreter::visit_exec(BST_Exec* node) {
 }
 
 Value ASTInterpreter::visit_compare(BST_Compare* node) {
-    Value left = visit_expr(node->left);
+    Value left = getVReg(node->vreg_left);
     AUTO_DECREF(left.o);
-    Value right = visit_expr(node->comparator);
+    Value right = getVReg(node->vreg_comparator);
     AUTO_DECREF(right.o);
     return doBinOp(node, left, right, node->op, BinExpType::Compare);
 }
@@ -1468,12 +1584,39 @@ Value ASTInterpreter::visit_expr(BST_expr* node) {
             return visit_augBinOp((BST_AugBinOp*)node);
         case BST_TYPE::ClsAttribute:
             return visit_clsAttribute((BST_ClsAttribute*)node);
-        case BST_TYPE::LangPrimitive:
-            return visit_langPrimitive((BST_LangPrimitive*)node);
         case BST_TYPE::MakeClass:
             return visit_makeClass((BST_MakeClass*)node);
         case BST_TYPE::MakeFunction:
             return visit_makeFunction((BST_MakeFunction*)node);
+
+
+        case BST_TYPE::Landingpad:
+            return visit_landingpad((BST_Landingpad*)node);
+        case BST_TYPE::Locals:
+            return visit_locals((BST_Locals*)node);
+        case BST_TYPE::GetIter:
+            return visit_getiter((BST_GetIter*)node);
+        case BST_TYPE::ImportFrom:
+            return visit_importfrom((BST_ImportFrom*)node);
+        case BST_TYPE::ImportName:
+            return visit_importname((BST_ImportName*)node);
+        case BST_TYPE::ImportStar:
+            return visit_importstar((BST_ImportStar*)node);
+        case BST_TYPE::None:
+            return visit_none((BST_None*)node);
+        case BST_TYPE::Nonzero:
+            return visit_nonzero((BST_Nonzero*)node);
+        case BST_TYPE::CheckExcMatch:
+            return visit_checkexcmatch((BST_CheckExcMatch*)node);
+        case BST_TYPE::SetExcInfo:
+            return visit_setexcinfo((BST_SetExcInfo*)node);
+        case BST_TYPE::UncacheExcInfo:
+            return visit_uncacheexcinfo((BST_UncacheExcInfo*)node);
+        case BST_TYPE::HasNext:
+            return visit_hasnext((BST_HasNext*)node);
+        case BST_TYPE::PrintExpr:
+            return visit_printexpr((BST_PrintExpr*)node);
+
         default:
             RELEASE_ASSERT(0, "");
     };
@@ -1594,7 +1737,7 @@ Value ASTInterpreter::visit_index(BST_Index* node) {
 }
 
 Value ASTInterpreter::visit_repr(BST_Repr* node) {
-    Value v = visit_expr(node->value);
+    Value v = getVReg(node->vreg_value);
     AUTO_DECREF(v.o);
     return Value(repr(v.o), jit ? jit->emitRepr(v) : NULL);
 }
@@ -1648,6 +1791,33 @@ Value ASTInterpreter::visit_str(BST_Str* node) {
     return Value(o, jit ? jit->imm(o)->setType(RefType::BORROWED) : NULL);
 }
 
+Value ASTInterpreter::getVReg(int vreg) {
+    assert(vreg >= 0);
+
+    Value v;
+    if (jit) {
+        v.var = jit->emitGetBlockLocalMustExist(vreg);
+        jit->emitKillTemporary(vreg);
+    }
+
+    frame_info.num_vregs = std::max(frame_info.num_vregs, vreg + 1);
+    Box* val = vregs[vreg];
+
+    if (val) {
+        v.o = val;
+        vregs[vreg] = NULL;
+        return v;
+    }
+
+    current_block->print();
+    printf("vreg: %d num cross: %d\n", vreg, getVRegInfo().getNumOfCrossBlockVRegs());
+    printf("\n\n");
+    current_block->cfg->print();
+
+    assert(0);
+    return Value();
+}
+
 Value ASTInterpreter::visit_name(BST_Name* node) {
     assert(node->lookup_type != ScopeInfo::VarScopeType::UNKNOWN);
 
@@ -1684,7 +1854,7 @@ Value ASTInterpreter::visit_name(BST_Name* node) {
                     v.var = jit->emitGetBlockLocal(node);
                     if (node->is_kill) {
                         assert(node->id.s()[0] == '#');
-                        jit->emitKillTemporary(node);
+                        jit->emitKillTemporary(node->vreg);
                     }
                 }
             }

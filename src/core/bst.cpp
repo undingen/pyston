@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2016 Dropbox, Inc.
+﻿// Copyright (c) 2014-2016 Dropbox, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -62,7 +62,6 @@ void BST_Assert::accept(BSTVisitor* v) {
     if (skip)
         return;
 
-    test->accept(v);
     if (msg)
         msg->accept(v);
 }
@@ -89,8 +88,8 @@ void BST_AugBinOp::accept(BSTVisitor* v) {
     if (skip)
         return;
 
-    left->accept(v);
-    right->accept(v);
+    v->visit_vreg(&vreg_left);
+    v->visit_vreg(&vreg_right);
 }
 
 void* BST_AugBinOp::accept_expr(ExprVisitor* v) {
@@ -114,8 +113,8 @@ void BST_BinOp::accept(BSTVisitor* v) {
     if (skip)
         return;
 
-    left->accept(v);
-    right->accept(v);
+    v->visit_vreg(&vreg_left);
+    v->visit_vreg(&vreg_right);
 }
 
 void* BST_BinOp::accept_expr(ExprVisitor* v) {
@@ -145,8 +144,8 @@ void BST_Compare::accept(BSTVisitor* v) {
     if (skip)
         return;
 
-    left->accept(v);
-    comparator->accept(v);
+    v->visit_vreg(&vreg_left);
+    v->visit_vreg(&vreg_comparator);
 }
 
 void* BST_Compare::accept_expr(ExprVisitor* v) {
@@ -291,16 +290,157 @@ void BST_keyword::accept(BSTVisitor* v) {
     value->accept(v);
 }
 
-void BST_LangPrimitive::accept(BSTVisitor* v) {
-    bool skip = v->visit_langprimitive(this);
+void BST_Landingpad::accept(BSTVisitor* v) {
+    bool skip = v->visit_landingpad(this);
+    if (skip)
+        return;
+}
+
+void* BST_Landingpad::accept_expr(ExprVisitor* v) {
+    return v->visit_landingpad(this);
+}
+
+void BST_Locals::accept(BSTVisitor* v) {
+    bool skip = v->visit_locals(this);
+    if (skip)
+        return;
+}
+
+void* BST_Locals::accept_expr(ExprVisitor* v) {
+    return v->visit_locals(this);
+}
+
+void BST_GetIter::accept(BSTVisitor* v) {
+    bool skip = v->visit_getiter(this);
     if (skip)
         return;
 
-    visitVector(args, v);
+    v->visit_vreg(&vreg_value);
 }
 
-void* BST_LangPrimitive::accept_expr(ExprVisitor* v) {
-    return v->visit_langprimitive(this);
+void* BST_GetIter::accept_expr(ExprVisitor* v) {
+    return v->visit_getiter(this);
+}
+
+void BST_ImportFrom::accept(BSTVisitor* v) {
+    bool skip = v->visit_importfrom(this);
+    if (skip)
+        return;
+
+    v->visit_vreg(&vreg_module);
+    v->visit_vreg(&vreg_name);
+}
+
+void* BST_ImportFrom::accept_expr(ExprVisitor* v) {
+    return v->visit_importfrom(this);
+}
+
+void BST_ImportName::accept(BSTVisitor* v) {
+    bool skip = v->visit_importname(this);
+    if (skip)
+        return;
+
+    v->visit_vreg(&vreg_from);
+    v->visit_vreg(&vreg_name);
+}
+
+void* BST_ImportName::accept_expr(ExprVisitor* v) {
+    return v->visit_importname(this);
+}
+
+void BST_ImportStar::accept(BSTVisitor* v) {
+    bool skip = v->visit_importstar(this);
+    if (skip)
+        return;
+
+    v->visit_vreg(&vreg_name);
+}
+
+void* BST_ImportStar::accept_expr(ExprVisitor* v) {
+    return v->visit_importstar(this);
+}
+
+void BST_None::accept(BSTVisitor* v) {
+    bool skip = v->visit_none(this);
+    if (skip)
+        return;
+}
+
+void* BST_None::accept_expr(ExprVisitor* v) {
+    return v->visit_none(this);
+}
+
+void BST_Nonzero::accept(BSTVisitor* v) {
+    bool skip = v->visit_nonzero(this);
+    if (skip)
+        return;
+
+    v->visit_vreg(&vreg_value);
+}
+
+void* BST_Nonzero::accept_expr(ExprVisitor* v) {
+    return v->visit_nonzero(this);
+}
+
+void BST_CheckExcMatch::accept(BSTVisitor* v) {
+    bool skip = v->visit_checkexcmatch(this);
+    if (skip)
+        return;
+
+    v->visit_vreg(&vreg_value);
+    v->visit_vreg(&vreg_cls);
+}
+
+void* BST_CheckExcMatch::accept_expr(ExprVisitor* v) {
+    return v->visit_checkexcmatch(this);
+}
+
+void BST_SetExcInfo::accept(BSTVisitor* v) {
+    bool skip = v->visit_setexcinfo(this);
+    if (skip)
+        return;
+
+    v->visit_vreg(&vreg_type);
+    v->visit_vreg(&vreg_value);
+    v->visit_vreg(&vreg_traceback);
+}
+
+void* BST_SetExcInfo::accept_expr(ExprVisitor* v) {
+    return v->visit_setexcinfo(this);
+}
+
+void BST_UncacheExcInfo::accept(BSTVisitor* v) {
+    bool skip = v->visit_uncacheexcinfo(this);
+    if (skip)
+        return;
+}
+
+void* BST_UncacheExcInfo::accept_expr(ExprVisitor* v) {
+    return v->visit_uncacheexcinfo(this);
+}
+
+void BST_HasNext::accept(BSTVisitor* v) {
+    bool skip = v->visit_hasnext(this);
+    if (skip)
+        return;
+
+    v->visit_vreg(&vreg_value);
+}
+
+void* BST_HasNext::accept_expr(ExprVisitor* v) {
+    return v->visit_hasnext(this);
+}
+
+void BST_PrintExpr::accept(BSTVisitor* v) {
+    bool skip = v->visit_printexpr(this);
+    if (skip)
+        return;
+
+    v->visit_vreg(&vreg_value);
+}
+
+void* BST_PrintExpr::accept_expr(ExprVisitor* v) {
+    return v->visit_printexpr(this);
 }
 
 void BST_List::accept(BSTVisitor* v) {
@@ -369,7 +509,7 @@ void BST_Repr::accept(BSTVisitor* v) {
     if (skip)
         return;
 
-    value->accept(v);
+    v->visit_vreg(&vreg_value);
 }
 
 void* BST_Repr::accept_expr(ExprVisitor* v) {
@@ -458,7 +598,7 @@ void BST_UnaryOp::accept(BSTVisitor* v) {
     if (skip)
         return;
 
-    operand->accept(v);
+    v->visit_vreg(&vreg_operand);
 }
 
 void* BST_UnaryOp::accept_expr(ExprVisitor* v) {
@@ -561,8 +701,7 @@ bool PrintVisitor::visit_arguments(BST_arguments* node) {
 }
 
 bool PrintVisitor::visit_assert(BST_Assert* node) {
-    stream << "assert ";
-    node->test->accept(this);
+    stream << "assert 0";
     if (node->msg) {
         stream << ", ";
         node->msg->accept(this);
@@ -619,10 +758,10 @@ void PrintVisitor::printOp(AST_TYPE::AST_TYPE op_type) {
 }
 
 bool PrintVisitor::visit_augbinop(BST_AugBinOp* node) {
-    node->left->accept(this);
+    stream << "#" << node->vreg_left;
     stream << '=';
     printOp(node->op_type);
-    node->right->accept(this);
+    stream << "#" << node->vreg_right;
     return true;
 }
 
@@ -634,9 +773,9 @@ bool PrintVisitor::visit_attribute(BST_Attribute* node) {
 }
 
 bool PrintVisitor::visit_binop(BST_BinOp* node) {
-    node->left->accept(this);
+    stream << '#' << node->vreg_left;
     printOp(node->op_type);
-    node->right->accept(this);
+    stream << '#' << node->vreg_right;
     return true;
 }
 
@@ -674,9 +813,9 @@ bool PrintVisitor::visit_call(BST_Call* node) {
 }
 
 bool PrintVisitor::visit_compare(BST_Compare* node) {
-    node->left->accept(this);
+    stream << "#" << node->vreg_left;
     stream << " " << getOpSymbol(node->op) << " ";
-    node->comparator->accept(this);
+    stream << "#" << node->vreg_comparator;
 
     return true;
 }
@@ -807,7 +946,7 @@ bool PrintVisitor::visit_invoke(BST_Invoke* node) {
     node->stmt->accept(this);
     return true;
 }
-
+/*
 bool PrintVisitor::visit_langprimitive(BST_LangPrimitive* node) {
     stream << ":";
     switch (node->opcode) {
@@ -860,6 +999,64 @@ bool PrintVisitor::visit_langprimitive(BST_LangPrimitive* node) {
         node->args[i]->accept(this);
     }
     stream << ")";
+    return true;
+}
+*/
+bool PrintVisitor::visit_landingpad(BST_Landingpad* node) {
+    stream << ":LANDINGPAD()";
+    return true;
+}
+bool PrintVisitor::visit_locals(BST_Locals* node) {
+    stream << ":LOCALS()";
+    return true;
+}
+bool PrintVisitor::visit_getiter(BST_GetIter* node) {
+    stream << ":GET_ITER(#" << node->vreg_value << ")";
+    return true;
+}
+bool PrintVisitor::visit_importfrom(BST_ImportFrom* node) {
+    stream << ":IMPORT_FROM(#" << node->vreg_module << ", #" << node->vreg_name << ")";
+    return true;
+}
+bool PrintVisitor::visit_importname(BST_ImportName* node) {
+    stream << ":IMPORT_NAME(#" << node->vreg_from << ", #" << node->vreg_name << ", " << node->level << ")";
+    return true;
+}
+bool PrintVisitor::visit_importstar(BST_ImportStar* node) {
+    stream << ":IMPORT_STAR(#" << node->vreg_name << ")";
+    return true;
+}
+bool PrintVisitor::visit_none(BST_None* node) {
+    stream << ":NONE()";
+    return true;
+}
+bool PrintVisitor::visit_nonzero(BST_Nonzero* node) {
+    stream << ":NONZERO(#" << node->vreg_value << ")";
+    return true;
+}
+bool PrintVisitor::visit_checkexcmatch(BST_CheckExcMatch* node) {
+    stream << ":CHECK_EXC_MATCH(#";
+    stream << node->vreg_value << ", #";
+    stream << node->vreg_cls << ")";
+    return true;
+}
+bool PrintVisitor::visit_setexcinfo(BST_SetExcInfo* node) {
+    stream << ":SET_EXC_INFO(#";
+    stream << node->vreg_value << ", #";
+    stream << node->vreg_type << ", #";
+    stream << node->vreg_traceback << ")";
+    return true;
+}
+bool PrintVisitor::visit_uncacheexcinfo(BST_UncacheExcInfo* node) {
+    stream << ":UNCACHE_EXC_INFO()";
+    return true;
+}
+bool PrintVisitor::visit_hasnext(BST_HasNext* node) {
+    stream << ":HAS_NEXT(#" << node->vreg_value << ")";
+    return true;
+}
+bool PrintVisitor::visit_printexpr(BST_PrintExpr* node) {
+    stream << ":PRINT_EXPR(#" << node->vreg_value << ")";
     return true;
 }
 
@@ -951,7 +1148,7 @@ bool PrintVisitor::visit_raise(BST_Raise* node) {
 
 bool PrintVisitor::visit_repr(BST_Repr* node) {
     stream << "`";
-    node->value->accept(this);
+    stream << "#" << node->vreg_value;
     stream << "`";
     return true;
 }
@@ -1051,7 +1248,8 @@ bool PrintVisitor::visit_unaryop(BST_UnaryOp* node) {
             break;
     }
     stream << "(";
-    node->operand->accept(this);
+    // node->operand->accept(this);
+    stream << "#" << node->vreg_operand;
     stream << ")";
     return true;
 }
@@ -1104,6 +1302,9 @@ public:
     FlattenVisitor(std::vector<BST*>* output, bool expand_scopes) : output(output), expand_scopes(expand_scopes) {
         assert(expand_scopes && "not sure if this works properly");
     }
+
+    virtual bool visit_vreg(int* vreg) { return false; }
+
 
     virtual bool visit_arguments(BST_arguments* node) {
         output->push_back(node);
@@ -1178,10 +1379,6 @@ public:
         return false;
     }
     virtual bool visit_keyword(BST_keyword* node) {
-        output->push_back(node);
-        return false;
-    }
-    virtual bool visit_langprimitive(BST_LangPrimitive* node) {
         output->push_back(node);
         return false;
     }
@@ -1260,6 +1457,60 @@ public:
         return false;
     }
     virtual bool visit_makefunction(BST_MakeFunction* node) {
+        output->push_back(node);
+        return false;
+    }
+
+
+    virtual bool visit_landingpad(BST_Landingpad* node) override {
+        output->push_back(node);
+        return false;
+    }
+    virtual bool visit_locals(BST_Locals* node) override {
+        output->push_back(node);
+        return false;
+    }
+    virtual bool visit_getiter(BST_GetIter* node) override {
+        output->push_back(node);
+        return false;
+    }
+    virtual bool visit_importfrom(BST_ImportFrom* node) override {
+        output->push_back(node);
+        return false;
+    }
+    virtual bool visit_importname(BST_ImportName* node) override {
+        output->push_back(node);
+        return false;
+    }
+    virtual bool visit_importstar(BST_ImportStar* node) override {
+        output->push_back(node);
+        return false;
+    }
+    virtual bool visit_none(BST_None* node) override {
+        output->push_back(node);
+        return false;
+    }
+    virtual bool visit_nonzero(BST_Nonzero* node) override {
+        output->push_back(node);
+        return false;
+    }
+    virtual bool visit_checkexcmatch(BST_CheckExcMatch* node) override {
+        output->push_back(node);
+        return false;
+    }
+    virtual bool visit_setexcinfo(BST_SetExcInfo* node) override {
+        output->push_back(node);
+        return false;
+    }
+    virtual bool visit_uncacheexcinfo(BST_UncacheExcInfo* node) override {
+        output->push_back(node);
+        return false;
+    }
+    virtual bool visit_hasnext(BST_HasNext* node) override {
+        output->push_back(node);
+        return false;
+    }
+    virtual bool visit_printexpr(BST_PrintExpr* node) override {
         output->push_back(node);
         return false;
     }

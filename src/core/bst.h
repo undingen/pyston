@@ -142,7 +142,20 @@ namespace BST_TYPE {
     /* These aren't real BST types, but since we use BST types to represent binexp types */                            \
     /* and divmod+truediv are essentially types of binops, we add them here (at least for now): */                     \
     X(DivMod, 250)                                                                                                     \
-    X(TrueDiv, 251)
+    X(TrueDiv, 251)                                                                                                    \
+                                                                                                                       \
+    X(Landingpad, 210)                                                                                                 \
+    X(Locals, 211)                                                                                                     \
+    X(GetIter, 212)                                                                                                    \
+    X(ImportName, 214)                                                                                                 \
+    X(ImportStar, 215)                                                                                                 \
+    X(None, 216)                                                                                                       \
+    X(Nonzero, 217)                                                                                                    \
+    X(CheckExcMatch, 218)                                                                                              \
+    X(SetExcInfo, 219)                                                                                                 \
+    X(UncacheExcInfo, 220)                                                                                             \
+    X(HasNext, 221)                                                                                                    \
+    X(PrintExpr, 222)
 
 #define GENERATE_ENUM(ENUM, N) ENUM = N,
 #define GENERATE_STRING(STRING, N) m[N] = #STRING;
@@ -230,7 +243,7 @@ public:
 
 class BST_Assert : public BST_stmt {
 public:
-    BST_expr* msg, *test;
+    BST_expr* msg;
 
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
@@ -256,7 +269,7 @@ public:
 class BST_AugBinOp : public BST_expr {
 public:
     AST_TYPE::AST_TYPE op_type;
-    BST_expr* left, *right;
+    int vreg_left, vreg_right;
 
     virtual void accept(BSTVisitor* v);
     virtual void* accept_expr(ExprVisitor* v);
@@ -286,7 +299,7 @@ public:
 class BST_BinOp : public BST_expr {
 public:
     AST_TYPE::AST_TYPE op_type;
-    BST_expr* left, *right;
+    int vreg_left = -1, vreg_right = -1;
 
     virtual void accept(BSTVisitor* v);
     virtual void* accept_expr(ExprVisitor* v);
@@ -316,8 +329,8 @@ public:
 class BST_Compare : public BST_expr {
 public:
     AST_TYPE::AST_TYPE op;
-    BST_expr* comparator;
-    BST_expr* left;
+    int vreg_comparator = -1;
+    int vreg_left = -1;
 
     virtual void accept(BSTVisitor* v);
     virtual void* accept_expr(ExprVisitor* v);
@@ -523,7 +536,7 @@ public:
 
 class BST_Repr : public BST_expr {
 public:
-    BST_expr* value;
+    int vreg_value;
 
     virtual void accept(BSTVisitor* v);
     virtual void* accept_expr(ExprVisitor* v);
@@ -645,7 +658,7 @@ public:
 
 class BST_UnaryOp : public BST_expr {
 public:
-    BST_expr* operand;
+    int vreg_operand;
     AST_TYPE::AST_TYPE op_type;
 
     virtual void accept(BSTVisitor* v);
@@ -750,36 +763,164 @@ public:
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Invoke;
 };
 
-// "LangPrimitive" represents operations that "primitive" to the language,
-// but aren't directly *exactly* representable as normal Python.
-// ClsAttribute would fall into this category.
-// These are basically bytecodes, framed as pseudo-BST-nodes.
-class BST_LangPrimitive : public BST_expr {
+
+// grabs the info about the last raised exception
+class BST_Landingpad : public BST_expr {
 public:
-    enum Opcodes : unsigned char {
-        LANDINGPAD, // grabs the info about the last raised exception
-        LOCALS,
-        GET_ITER,
-        IMPORT_FROM,
-        IMPORT_NAME,
-        IMPORT_STAR,
-        NONE,
-        NONZERO, // determines whether something is "true" for purposes of `if' and so forth
-        CHECK_EXC_MATCH,
-        SET_EXC_INFO,
-        UNCACHE_EXC_INFO,
-        HASNEXT,
-        PRINT_EXPR,
-    } opcode;
-    std::vector<BST_expr*> args;
+    virtual void accept(BSTVisitor* v);
+    virtual void* accept_expr(ExprVisitor* v);
+
+    BST_Landingpad() : BST_expr(BST_TYPE::Landingpad) {}
+
+    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Landingpad;
+};
+
+class BST_Locals : public BST_expr {
+public:
+    virtual void accept(BSTVisitor* v);
+    virtual void* accept_expr(ExprVisitor* v);
+
+    BST_Locals() : BST_expr(BST_TYPE::Locals) {}
+
+    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Locals;
+};
+
+class BST_GetIter : public BST_expr {
+public:
+    int vreg_value = -1;
 
     virtual void accept(BSTVisitor* v);
     virtual void* accept_expr(ExprVisitor* v);
 
-    BST_LangPrimitive(Opcodes opcode) : BST_expr(BST_TYPE::LangPrimitive), opcode(opcode) {}
+    BST_GetIter() : BST_expr(BST_TYPE::GetIter) {}
 
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::LangPrimitive;
+    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::GetIter;
 };
+
+class BST_ImportFrom : public BST_expr {
+public:
+    int vreg_module = -1;
+    int vreg_name = -1;
+
+    virtual void accept(BSTVisitor* v);
+    virtual void* accept_expr(ExprVisitor* v);
+
+    BST_ImportFrom() : BST_expr(BST_TYPE::ImportFrom) {}
+
+    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::ImportFrom;
+};
+
+class BST_ImportName : public BST_expr {
+public:
+    int vreg_from = -1;
+    int level = -1;
+    int vreg_name = -1;
+
+
+    virtual void accept(BSTVisitor* v);
+    virtual void* accept_expr(ExprVisitor* v);
+
+    BST_ImportName() : BST_expr(BST_TYPE::ImportName) {}
+
+    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::ImportName;
+};
+
+class BST_ImportStar : public BST_expr {
+public:
+    int vreg_name = -1;
+
+    virtual void accept(BSTVisitor* v);
+    virtual void* accept_expr(ExprVisitor* v);
+
+    BST_ImportStar() : BST_expr(BST_TYPE::ImportStar) {}
+
+    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::ImportStar;
+};
+
+class BST_None : public BST_expr {
+public:
+    virtual void accept(BSTVisitor* v);
+    virtual void* accept_expr(ExprVisitor* v);
+
+    BST_None() : BST_expr(BST_TYPE::None) {}
+
+    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::None;
+};
+
+// determines whether something is "true" for purposes of `if' and so forth
+class BST_Nonzero : public BST_expr {
+public:
+    int vreg_value = -1;
+
+    virtual void accept(BSTVisitor* v);
+    virtual void* accept_expr(ExprVisitor* v);
+
+    BST_Nonzero() : BST_expr(BST_TYPE::Nonzero) {}
+
+    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Nonzero;
+};
+
+class BST_CheckExcMatch : public BST_expr {
+public:
+    int vreg_value = -1;
+    int vreg_cls = -1;
+
+    virtual void accept(BSTVisitor* v);
+    virtual void* accept_expr(ExprVisitor* v);
+
+    BST_CheckExcMatch() : BST_expr(BST_TYPE::CheckExcMatch) {}
+
+    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::CheckExcMatch;
+};
+
+class BST_SetExcInfo : public BST_expr {
+public:
+    int vreg_type = -1;
+    int vreg_value = -1;
+    int vreg_traceback = -1;
+
+    virtual void accept(BSTVisitor* v);
+    virtual void* accept_expr(ExprVisitor* v);
+
+    BST_SetExcInfo() : BST_expr(BST_TYPE::SetExcInfo) {}
+
+    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::SetExcInfo;
+};
+
+class BST_UncacheExcInfo : public BST_expr {
+public:
+    virtual void accept(BSTVisitor* v);
+    virtual void* accept_expr(ExprVisitor* v);
+
+    BST_UncacheExcInfo() : BST_expr(BST_TYPE::UncacheExcInfo) {}
+
+    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::UncacheExcInfo;
+};
+
+class BST_HasNext : public BST_expr {
+public:
+    int vreg_value = -1;
+
+    virtual void accept(BSTVisitor* v);
+    virtual void* accept_expr(ExprVisitor* v);
+
+    BST_HasNext() : BST_expr(BST_TYPE::HasNext) {}
+
+    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::HasNext;
+};
+
+class BST_PrintExpr : public BST_expr {
+public:
+    int vreg_value = -1;
+
+    virtual void accept(BSTVisitor* v);
+    virtual void* accept_expr(ExprVisitor* v);
+
+    BST_PrintExpr() : BST_expr(BST_TYPE::PrintExpr) {}
+
+    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::PrintExpr;
+};
+
 
 template <typename T> T* bst_cast(BST* node) {
     ASSERT(!node || node->type == T::TYPE, "%d", node ? node->type : 0);
@@ -792,6 +933,9 @@ class BSTVisitor {
 protected:
 public:
     virtual ~BSTVisitor() {}
+
+    // prseudo
+    virtual bool visit_vreg(int* vreg) { RELEASE_ASSERT(0, ""); }
 
     virtual bool visit_arguments(BST_arguments* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_assert(BST_Assert* node) { RELEASE_ASSERT(0, ""); }
@@ -813,7 +957,6 @@ public:
     virtual bool visit_index(BST_Index* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_invoke(BST_Invoke* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_keyword(BST_keyword* node) { RELEASE_ASSERT(0, ""); }
-    virtual bool visit_langprimitive(BST_LangPrimitive* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_list(BST_List* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_name(BST_Name* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_num(BST_Num* node) { RELEASE_ASSERT(0, ""); }
@@ -833,6 +976,21 @@ public:
     virtual bool visit_makefunction(BST_MakeFunction* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_branch(BST_Branch* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_jump(BST_Jump* node) { RELEASE_ASSERT(0, ""); }
+
+
+    virtual bool visit_landingpad(BST_Landingpad* node) { RELEASE_ASSERT(0, ""); }
+    virtual bool visit_locals(BST_Locals* node) { RELEASE_ASSERT(0, ""); }
+    virtual bool visit_getiter(BST_GetIter* node) { RELEASE_ASSERT(0, ""); }
+    virtual bool visit_importfrom(BST_ImportFrom* node) { RELEASE_ASSERT(0, ""); }
+    virtual bool visit_importname(BST_ImportName* node) { RELEASE_ASSERT(0, ""); }
+    virtual bool visit_importstar(BST_ImportStar* node) { RELEASE_ASSERT(0, ""); }
+    virtual bool visit_none(BST_None* node) { RELEASE_ASSERT(0, ""); }
+    virtual bool visit_nonzero(BST_Nonzero* node) { RELEASE_ASSERT(0, ""); }
+    virtual bool visit_checkexcmatch(BST_CheckExcMatch* node) { RELEASE_ASSERT(0, ""); }
+    virtual bool visit_setexcinfo(BST_SetExcInfo* node) { RELEASE_ASSERT(0, ""); }
+    virtual bool visit_uncacheexcinfo(BST_UncacheExcInfo* node) { RELEASE_ASSERT(0, ""); }
+    virtual bool visit_hasnext(BST_HasNext* node) { RELEASE_ASSERT(0, ""); }
+    virtual bool visit_printexpr(BST_PrintExpr* node) { RELEASE_ASSERT(0, ""); }
 };
 
 class NoopBSTVisitor : public BSTVisitor {
@@ -860,7 +1018,6 @@ public:
     virtual bool visit_index(BST_Index* node) { return false; }
     virtual bool visit_invoke(BST_Invoke* node) { return false; }
     virtual bool visit_keyword(BST_keyword* node) { return false; }
-    virtual bool visit_langprimitive(BST_LangPrimitive* node) { return false; }
     virtual bool visit_list(BST_List* node) { return false; }
     virtual bool visit_name(BST_Name* node) { return false; }
     virtual bool visit_num(BST_Num* node) { return false; }
@@ -880,6 +1037,20 @@ public:
     virtual bool visit_jump(BST_Jump* node) { return false; }
     virtual bool visit_makeclass(BST_MakeClass* node) { return false; }
     virtual bool visit_makefunction(BST_MakeFunction* node) { return false; }
+
+    virtual bool visit_landingpad(BST_Landingpad* node) override { return false; }
+    virtual bool visit_locals(BST_Locals* node) override { return false; }
+    virtual bool visit_getiter(BST_GetIter* node) override { return false; }
+    virtual bool visit_importfrom(BST_ImportFrom* node) override { return false; }
+    virtual bool visit_importname(BST_ImportName* node) override { return false; }
+    virtual bool visit_importstar(BST_ImportStar* node) override { return false; }
+    virtual bool visit_none(BST_None* node) override { return false; }
+    virtual bool visit_nonzero(BST_Nonzero* node) override { return false; }
+    virtual bool visit_checkexcmatch(BST_CheckExcMatch* node) override { return false; }
+    virtual bool visit_setexcinfo(BST_SetExcInfo* node) override { return false; }
+    virtual bool visit_uncacheexcinfo(BST_UncacheExcInfo* node) override { return false; }
+    virtual bool visit_hasnext(BST_HasNext* node) override { return false; }
+    virtual bool visit_printexpr(BST_PrintExpr* node) override { return false; }
 };
 
 class ExprVisitor {
@@ -894,7 +1065,6 @@ public:
     virtual void* visit_clsattribute(BST_ClsAttribute* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_compare(BST_Compare* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_dict(BST_Dict* node) { RELEASE_ASSERT(0, ""); }
-    virtual void* visit_langprimitive(BST_LangPrimitive* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_list(BST_List* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_name(BST_Name* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_num(BST_Num* node) { RELEASE_ASSERT(0, ""); }
@@ -907,6 +1077,20 @@ public:
     virtual void* visit_yield(BST_Yield* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_makeclass(BST_MakeClass* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_makefunction(BST_MakeFunction* node) { RELEASE_ASSERT(0, ""); }
+
+    virtual void* visit_landingpad(BST_Landingpad* node) { RELEASE_ASSERT(0, ""); }
+    virtual void* visit_locals(BST_Locals* node) { RELEASE_ASSERT(0, ""); }
+    virtual void* visit_getiter(BST_GetIter* node) { RELEASE_ASSERT(0, ""); }
+    virtual void* visit_importfrom(BST_ImportFrom* node) { RELEASE_ASSERT(0, ""); }
+    virtual void* visit_importname(BST_ImportName* node) { RELEASE_ASSERT(0, ""); }
+    virtual void* visit_importstar(BST_ImportStar* node) { RELEASE_ASSERT(0, ""); }
+    virtual void* visit_none(BST_None* node) { RELEASE_ASSERT(0, ""); }
+    virtual void* visit_nonzero(BST_Nonzero* node) { RELEASE_ASSERT(0, ""); }
+    virtual void* visit_checkexcmatch(BST_CheckExcMatch* node) { RELEASE_ASSERT(0, ""); }
+    virtual void* visit_setexcinfo(BST_SetExcInfo* node) { RELEASE_ASSERT(0, ""); }
+    virtual void* visit_uncacheexcinfo(BST_UncacheExcInfo* node) { RELEASE_ASSERT(0, ""); }
+    virtual void* visit_hasnext(BST_HasNext* node) { RELEASE_ASSERT(0, ""); }
+    virtual void* visit_printexpr(BST_PrintExpr* node) { RELEASE_ASSERT(0, ""); }
 };
 
 class StmtVisitor {
@@ -972,7 +1156,6 @@ public:
     virtual bool visit_index(BST_Index* node);
     virtual bool visit_invoke(BST_Invoke* node);
     virtual bool visit_keyword(BST_keyword* node);
-    virtual bool visit_langprimitive(BST_LangPrimitive* node);
     virtual bool visit_list(BST_List* node);
     virtual bool visit_name(BST_Name* node);
     virtual bool visit_num(BST_Num* node);
@@ -992,6 +1175,20 @@ public:
     virtual bool visit_jump(BST_Jump* node);
     virtual bool visit_makefunction(BST_MakeFunction* node);
     virtual bool visit_makeclass(BST_MakeClass* node);
+
+    virtual bool visit_landingpad(BST_Landingpad* node);
+    virtual bool visit_locals(BST_Locals* node);
+    virtual bool visit_getiter(BST_GetIter* node);
+    virtual bool visit_importfrom(BST_ImportFrom* node);
+    virtual bool visit_importname(BST_ImportName* node);
+    virtual bool visit_importstar(BST_ImportStar* node);
+    virtual bool visit_none(BST_None* node);
+    virtual bool visit_nonzero(BST_Nonzero* node);
+    virtual bool visit_checkexcmatch(BST_CheckExcMatch* node);
+    virtual bool visit_setexcinfo(BST_SetExcInfo* node);
+    virtual bool visit_uncacheexcinfo(BST_UncacheExcInfo* node);
+    virtual bool visit_hasnext(BST_HasNext* node);
+    virtual bool visit_printexpr(BST_PrintExpr* node);
 };
 
 // Given an BST node, return a vector of the node plus all its descendents.
