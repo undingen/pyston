@@ -231,7 +231,7 @@ private:
     JitCodeBlock& code_block;
     RewriterVar* interp;
     RewriterVar* vregs_array;
-    llvm::DenseMap<InternedString, RewriterVar*> local_syms;
+    llvm::DenseMap<int /*vreg*/, RewriterVar*> local_syms;
     // keeps track which non block local vregs are known to have a non NULL value
     llvm::DenseSet<int> known_non_null_vregs;
 
@@ -266,39 +266,41 @@ public:
     RewriterVar* imm(uint64_t val);
     RewriterVar* imm(void* val);
 
-    RewriterVar* emitAugbinop(BST_expr* node, RewriterVar* lhs, RewriterVar* rhs, int op_type);
+    RewriterVar* emitAugbinop(BST* node, RewriterVar* lhs, RewriterVar* rhs, int op_type);
     RewriterVar* emitApplySlice(RewriterVar* target, RewriterVar* lower, RewriterVar* upper);
-    RewriterVar* emitBinop(BST_expr* node, RewriterVar* lhs, RewriterVar* rhs, int op_type);
-    RewriterVar* emitCallattr(BST_expr* node, RewriterVar* obj, BoxedString* attr, CallattrFlags flags,
+    RewriterVar* emitBinop(BST* node, RewriterVar* lhs, RewriterVar* rhs, int op_type);
+    RewriterVar* emitCallattr(BST* node, RewriterVar* obj, BoxedString* attr, CallattrFlags flags,
                               const llvm::ArrayRef<RewriterVar*> args, std::vector<BoxedString*>* keyword_names);
-    RewriterVar* emitCompare(BST_expr* node, RewriterVar* lhs, RewriterVar* rhs, int op_type);
+    RewriterVar* emitCompare(BST* node, RewriterVar* lhs, RewriterVar* rhs, int op_type);
     RewriterVar* emitCreateDict();
     void emitDictSet(RewriterVar* dict, RewriterVar* k, RewriterVar* v);
     RewriterVar* emitCreateList(const llvm::ArrayRef<STOLEN(RewriterVar*)> values);
     RewriterVar* emitCreateSet(const llvm::ArrayRef<RewriterVar*> values);
     RewriterVar* emitCreateSlice(RewriterVar* start, RewriterVar* stop, RewriterVar* step);
     RewriterVar* emitCreateTuple(const llvm::ArrayRef<RewriterVar*> values);
-    RewriterVar* emitDeref(BST_Name* name);
+    RewriterVar* emitDeref(BST_LoadName* name);
     RewriterVar* emitExceptionMatches(RewriterVar* v, RewriterVar* cls);
-    RewriterVar* emitGetAttr(RewriterVar* obj, BoxedString* s, BST_expr* node);
-    RewriterVar* emitGetBlockLocal(BST_Name* name);
-    void emitKillTemporary(BST_Name* name);
+    RewriterVar* emitGetAttr(BST* node, RewriterVar* obj, BoxedString* s);
+    RewriterVar* emitGetBlockLocal(InternedString name, int vreg);
+    RewriterVar* emitGetBlockLocalMustExist(int vreg);
+    void emitKillTemporary(int vreg);
     RewriterVar* emitGetBoxedLocal(BoxedString* s);
     RewriterVar* emitGetBoxedLocals();
     RewriterVar* emitGetClsAttr(RewriterVar* obj, BoxedString* s);
     RewriterVar* emitGetGlobal(BoxedString* s);
-    RewriterVar* emitGetItem(BST_expr* node, RewriterVar* value, RewriterVar* slice);
-    RewriterVar* emitGetLocal(BST_Name* name);
+    RewriterVar* emitGetItem(BST* node, RewriterVar* value, RewriterVar* slice);
+    RewriterVar* emitGetLocal(InternedString name, int vreg);
+    RewriterVar* emitGetLocalMustExist(int vreg);
     RewriterVar* emitGetPystonIter(RewriterVar* v);
     RewriterVar* emitHasnext(RewriterVar* v);
-    RewriterVar* emitImportFrom(RewriterVar* module, BoxedString* name);
-    RewriterVar* emitImportName(int level, RewriterVar* from_imports, llvm::StringRef module_name);
+    RewriterVar* emitImportFrom(RewriterVar* module, RewriterVar* name);
+    RewriterVar* emitImportName(int level, RewriterVar* from_imports, RewriterVar* module_name);
     RewriterVar* emitImportStar(RewriterVar* module);
     RewriterVar* emitLandingpad();
     RewriterVar* emitNonzero(RewriterVar* v);
     RewriterVar* emitNotNonzero(RewriterVar* v);
     RewriterVar* emitRepr(RewriterVar* v);
-    RewriterVar* emitRuntimeCall(BST_expr* node, RewriterVar* obj, ArgPassSpec argspec,
+    RewriterVar* emitRuntimeCall(BST* node, RewriterVar* obj, ArgPassSpec argspec,
                                  const llvm::ArrayRef<RewriterVar*> args, std::vector<BoxedString*>* keyword_names);
     RewriterVar* emitUnaryop(RewriterVar* v, int op_type);
     std::vector<RewriterVar*> emitUnpackIntoArray(RewriterVar* v, uint64_t num);
@@ -317,14 +319,15 @@ public:
     void emitRaise0();
     void emitRaise3(RewriterVar* arg0, RewriterVar* arg1, RewriterVar* arg2);
     void emitReturn(RewriterVar* v);
-    void emitSetAttr(BST_expr* node, RewriterVar* obj, BoxedString* s, STOLEN(RewriterVar*) attr);
-    void emitSetBlockLocal(BST_Name* name, STOLEN(RewriterVar*) v);
+    void emitSetAttr(BST* node, RewriterVar* obj, BoxedString* s, STOLEN(RewriterVar*) attr);
+    void emitSetBlockLocal(int vreg, STOLEN(RewriterVar*) v);
     void emitSetCurrentInst(BST_stmt* node);
     void emitSetExcInfo(RewriterVar* type, RewriterVar* value, RewriterVar* traceback);
     void emitSetGlobal(BoxedString* s, STOLEN(RewriterVar*) v, bool are_globals_from_module);
     void emitSetItemName(BoxedString* s, RewriterVar* v);
     void emitSetItem(RewriterVar* target, RewriterVar* slice, RewriterVar* value);
-    void emitSetLocal(BST_Name* name, bool set_closure, STOLEN(RewriterVar*) v);
+    void emitSetLocal(int vreg, STOLEN(RewriterVar*) v);
+    void emitSetLocalClosure(BST_StoreName* name, STOLEN(RewriterVar*) v);
     // emitSideExit steals a full ref from v, not just a vref
     void emitSideExit(STOLEN(RewriterVar*) v, Box* cmp_value, CFGBlock* next_block);
     void emitUncacheExcInfo();
