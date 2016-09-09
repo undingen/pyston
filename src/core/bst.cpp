@@ -992,43 +992,43 @@ bool PrintVisitor::visit_langprimitive(BST_LangPrimitive* node) {
     return true;
 }
 */
-bool PrintVisitor::visit_landingpad(BST_Landingpad* node) override {
+bool PrintVisitor::visit_landingpad(BST_Landingpad* node) {
     return true;
 }
-bool PrintVisitor::visit_locals(BST_Locals* node) override {
+bool PrintVisitor::visit_locals(BST_Locals* node) {
     return true;
 }
-bool PrintVisitor::visit_getiter(BST_GetIter* node) override {
+bool PrintVisitor::visit_getiter(BST_GetIter* node) {
     return true;
 }
-bool PrintVisitor::visit_importfrom(BST_ImportFrom* node) override {
+bool PrintVisitor::visit_importfrom(BST_ImportFrom* node) {
     return true;
 }
-bool PrintVisitor::visit_importname(BST_ImportName* node) override {
+bool PrintVisitor::visit_importname(BST_ImportName* node) {
     return true;
 }
-bool PrintVisitor::visit_importstar(BST_ImportStar* node) override {
+bool PrintVisitor::visit_importstar(BST_ImportStar* node) {
     return true;
 }
-bool PrintVisitor::visit_none(BST_None* node) override {
+bool PrintVisitor::visit_none(BST_None* node) {
     return true;
 }
-bool PrintVisitor::visit_nonzero(BST_Nonzero* node) override {
+bool PrintVisitor::visit_nonzero(BST_Nonzero* node) {
     return true;
 }
-bool PrintVisitor::visit_checkexcmatch(BST_CheckExcMatch* node) override {
+bool PrintVisitor::visit_checkexcmatch(BST_CheckExcMatch* node) {
     return true;
 }
-bool PrintVisitor::visit_setexcinfo(BST_SetExcInfo* node) override {
+bool PrintVisitor::visit_setexcinfo(BST_SetExcInfo* node) {
     return true;
 }
-bool PrintVisitor::visit_uncacheexcinfo(BST_UncacheExcInfo* node) override {
+bool PrintVisitor::visit_uncacheexcinfo(BST_UncacheExcInfo* node) {
     return true;
 }
-bool PrintVisitor::visit_hasnext(BST_HasNext* node) override {
+bool PrintVisitor::visit_hasnext(BST_HasNext* node) {
     return true;
 }
-bool PrintVisitor::visit_printexpr(BST_PrintExpr* node) override {
+bool PrintVisitor::visit_printexpr(BST_PrintExpr* node) {
     return true;
 }
 
@@ -1351,10 +1351,6 @@ public:
         return false;
     }
     virtual bool visit_keyword(BST_keyword* node) {
-        output->push_back(node);
-        return false;
-    }
-    virtual bool visit_langprimitive(BST_LangPrimitive* node) {
         output->push_back(node);
         return false;
     }
