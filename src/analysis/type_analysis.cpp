@@ -378,6 +378,7 @@ private:
 
     void* visit_index(BST_Index* node) override { return getType(node->value); }
 
+    /*
     void* visit_langprimitive(BST_LangPrimitive* node) override {
         switch (node->opcode) {
             case BST_LangPrimitive::CHECK_EXC_MATCH:
@@ -385,7 +386,7 @@ private:
             case BST_LangPrimitive::LOCALS:
                 return DICT;
             case BST_LangPrimitive::GET_ITER:
-                return getType(node->args[0])->getPystonIterType();
+
             case BST_LangPrimitive::LANDINGPAD:
             case BST_LangPrimitive::IMPORT_FROM:
             case BST_LangPrimitive::IMPORT_STAR:
@@ -403,6 +404,22 @@ private:
                 RELEASE_ASSERT(0, "%d", node->opcode);
         }
     }
+    */
+
+    void* visit_landingpad(BST_Landingpad* node) override { return UNKNOWN; }
+    void* visit_locals(BST_Locals* node) override { return DICT; }
+    void* visit_getiter(BST_GetIter* node) override { return getType(node->vreg_value)->getPystonIterType(); }
+    void* visit_importfrom(BST_ImportFrom* node) override { return UNKNOWN; }
+    void* visit_importname(BST_ImportName* node) override { return UNKNOWN; }
+    void* visit_importstar(BST_ImportStar* node) override { return UNKNOWN; }
+    void* visit_none(BST_None* node) override { return NONE; }
+    void* visit_nonzero(BST_Nonzero* node) override { return BOOL; }
+    void* visit_checkexcmatch(BST_CheckExcMatch* node) override { return BOOL; }
+    void* visit_setexcinfo(BST_SetExcInfo* node) override { return NONE; }
+    void* visit_uncacheexcinfo(BST_UncacheExcInfo* node) override { return NONE; }
+    void* visit_hasnext(BST_HasNext* node) override { return BOOL; }
+    void* visit_printexpr(BST_PrintExpr* node) override { return NONE; }
+
 
     void* visit_list(BST_List* node) override {
         // Get all the sub-types, even though they're not necessary to
