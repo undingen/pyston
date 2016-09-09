@@ -463,8 +463,8 @@ private:
     }
 
     BST_expr* callNonzero(BST_expr* e) {
-        BST_LangPrimitive* call = new BST_LangPrimitive(BST_LangPrimitive::NONZERO);
-        call->args.push_back(e);
+        BST_Nonzero* call = new BST_Nonzero;
+        unmapExpr(e, &call->vreg_value);
         call->lineno = e->lineno;
 
         // Simple optimization: allow the generation of nested nodes if there isn't a
@@ -541,8 +541,8 @@ private:
             bool is_innermost = (i == n - 1);
 
             BST_expr* remapped_iter = remapExpr(c->iter);
-            BST_LangPrimitive* iter_call = new BST_LangPrimitive(BST_LangPrimitive::GET_ITER);
-            iter_call->args.push_back(remapped_iter);
+            BST_GetIter* iter_call = new BST_GetIter;
+            unmapExpr(remapped_iter, &iter_call->vreg_value);
             iter_call->lineno = c->target->lineno; // Not sure if this should be c->target or c->iter
             InternedString iter_name = nodeName("lc_iter", i);
             pushAssign(iter_name, iter_call);
@@ -555,8 +555,8 @@ private:
             pushJump(test_block);
 
             curblock = test_block;
-            BST_LangPrimitive* test_call = new BST_LangPrimitive(BST_LangPrimitive::HASNEXT);
-            test_call->args.push_back(makeName(iter_name, AST_TYPE::Load, node->lineno));
+            BST_HasNext* test_call = new BST_HasNext;
+            unmapExpr(makeName(iter_name, AST_TYPE::Load, node->lineno), &test_call->vreg_value);
             test_call->lineno = c->target->lineno;
             BST_expr* test = wrap(test_call);
 
@@ -1442,12 +1442,11 @@ private:
     BST_expr* remapLangPrimitive(AST_LangPrimitive* node) {
         // AST_LangPrimitive can be PRINT_EXPR
         assert(node->opcode == AST_LangPrimitive::PRINT_EXPR);
-        BST_LangPrimitive* rtn = new BST_LangPrimitive(BST_LangPrimitive::PRINT_EXPR);
+        BST_PrintExpr* rtn = new BST_PrintExpr;
         rtn->lineno = node->lineno;
 
-        for (AST_expr* arg : node->args) {
-            rtn->args.push_back(remapExpr(arg));
-        }
+        assert(node->args.size() == 1);
+        unmapExpr(remapExpr(node->args[0]), &rtn->vreg_value);
         return rtn;
     }
 
@@ -1531,7 +1530,7 @@ private:
         InternedString node_name(nodeName());
         pushAssign(node_name, rtn);
 
-        push_back(makeExpr(new BST_LangPrimitive(BST_LangPrimitive::UNCACHE_EXC_INFO)));
+        push_back(makeExpr(new BST_UncacheExcInfo));
 
         if (root_type != AST_TYPE::FunctionDef && root_type != AST_TYPE::Lambda)
             raiseExcHelper(SyntaxError, "'yield' outside function");
@@ -1750,15 +1749,11 @@ public:
 
         if (type == BST_TYPE::Expr) {
             auto expr = bst_cast<BST_Expr>(node)->value;
-            if (expr->type == BST_TYPE::LangPrimitive) {
-                auto lp = bst_cast<BST_LangPrimitive>(expr);
-                if (lp->opcode == BST_LangPrimitive::UNCACHE_EXC_INFO
-                    || lp->opcode == BST_LangPrimitive::SET_EXC_INFO) {
-                    curblock->push_back(node);
-                    return;
-                }
-                // TODO: there are others that are also nothrow
+            if (expr->type == BST_TYPE::UncacheExcInfo || expr->type == BST_TYPE::SetExcInfo) {
+                curblock->push_back(node);
+                return;
             }
+            // TODO: there are others that are also nothrow
         }
 
         if (node->type == BST_TYPE::Assign) {
@@ -1844,7 +1839,7 @@ public:
         target->elts.push_back(makeName(exc_info.exc_traceback_name, AST_TYPE::Store, node->lineno));
         exc_asgn->target = target;
 
-        exc_asgn->value = new BST_LangPrimitive(BST_LangPrimitive::LANDINGPAD);
+        exc_asgn->value = new BST_Landingpad;
         curblock->push_back(exc_asgn);
 
         pushJump(exc_info.exc_dest);
@@ -1917,11 +1912,8 @@ public:
 
     bool visit_import(AST_Import* node) override {
         for (AST_alias* a : node->names) {
-            BST_LangPrimitive* import = new BST_LangPrimitive(BST_LangPrimitive::IMPORT_NAME);
+            BST_ImportName* import = new BST_ImportName;
             import->lineno = node->lineno;
-
-            import->args.push_back(new BST_Num());
-            static_cast<BST_Num*>(import->args[0])->num_type = AST_Num::INT;
 
             // level == 0 means only check sys path for imports, nothing package-relative,
             // level == -1 means check both sys path and relative for imports.
@@ -1931,9 +1923,10 @@ public:
                 level = -1;
             else
                 level = 0;
-            static_cast<BST_Num*>(import->args[0])->n_int = level;
-            import->args.push_back(new BST_LangPrimitive(BST_LangPrimitive::NONE));
-            import->args.push_back(new BST_Str(a->name.s()));
+            import->level = level;
+
+            unmapExpr(wrap(new BST_None), &import->vreg_from);
+            unmapExpr(wrap(new BST_Str(a->name.s())), &import->vreg_name);
 
             InternedString tmpname = nodeName();
             pushAssign(tmpname, import);
@@ -1969,11 +1962,8 @@ public:
     }
 
     bool visit_importfrom(AST_ImportFrom* node) override {
-        BST_LangPrimitive* import = new BST_LangPrimitive(BST_LangPrimitive::IMPORT_NAME);
+        BST_ImportName* import = new BST_ImportName;
         import->lineno = node->lineno;
-
-        import->args.push_back(new BST_Num());
-        static_cast<BST_Num*>(import->args[0])->num_type = AST_Num::INT;
 
         // level == 0 means only check sys path for imports, nothing package-relative,
         // level == -1 means check both sys path and relative for imports.
@@ -1983,14 +1973,15 @@ public:
             level = -1;
         else
             level = node->level;
-        static_cast<BST_Num*>(import->args[0])->n_int = level;
+        import->level = level;
 
-        import->args.push_back(new BST_Tuple());
-        static_cast<BST_Tuple*>(import->args[1])->ctx_type = AST_TYPE::Load;
+        auto tuple = new BST_Tuple;
+        tuple->ctx_type = AST_TYPE::Load;
         for (int i = 0; i < node->names.size(); i++) {
-            static_cast<BST_Tuple*>(import->args[1])->elts.push_back(new BST_Str(node->names[i]->name.s()));
+            tuple->elts.push_back(new BST_Str(node->names[i]->name.s()));
         }
-        import->args.push_back(new BST_Str(node->module.s()));
+        unmapExpr(wrap(tuple), &import->vreg_name);
+        unmapExpr(wrap(new BST_Str(node->module.s())), &import->vreg_from);
 
         InternedString tmp_module_name = nodeName();
         pushAssign(tmp_module_name, import);
@@ -2001,9 +1992,9 @@ public:
             bool is_kill = (i == node->names.size());
             if (a->name.s() == "*") {
 
-                BST_LangPrimitive* import_star = new BST_LangPrimitive(BST_LangPrimitive::IMPORT_STAR);
+                BST_ImportStar* import_star = new BST_ImportStar;
                 import_star->lineno = node->lineno;
-                import_star->args.push_back(makeLoad(tmp_module_name, node, is_kill));
+                unmapExpr(makeLoad(tmp_module_name, node, is_kill), &import_star->vreg_name);
 
                 BST_Expr* import_star_expr = new BST_Expr();
                 import_star_expr->value = import_star;
@@ -2011,10 +2002,10 @@ public:
 
                 push_back(import_star_expr);
             } else {
-                BST_LangPrimitive* import_from = new BST_LangPrimitive(BST_LangPrimitive::IMPORT_FROM);
+                BST_ImportFrom* import_from = new BST_ImportFrom;
                 import_from->lineno = node->lineno;
-                import_from->args.push_back(makeLoad(tmp_module_name, node, is_kill));
-                import_from->args.push_back(new BST_Str(a->name.s()));
+                unmapExpr(makeLoad(tmp_module_name, node, is_kill), &import_from->vreg_module);
+                unmapExpr(wrap(new BST_Str(a->name.s())), &import_from->vreg_name);
 
                 InternedString tmp_import_name = nodeName();
                 pushAssign(tmp_import_name, import_from);
@@ -2441,8 +2432,8 @@ public:
         // critical edges and needed to be broken, otherwise it's not too different.
 
         BST_expr* remapped_iter = remapExpr(node->iter);
-        BST_LangPrimitive* iter_call = new BST_LangPrimitive(BST_LangPrimitive::GET_ITER);
-        iter_call->args.push_back(remapped_iter);
+        BST_GetIter* iter_call = new BST_GetIter;
+        unmapExpr(remapped_iter, &iter_call->vreg_value);
         iter_call->lineno = node->lineno;
 
         InternedString itername = createUniqueName("#iter_");
@@ -2454,9 +2445,9 @@ public:
         pushJump(test_block);
         curblock = test_block;
 
-        BST_LangPrimitive* test_call = new BST_LangPrimitive(BST_LangPrimitive::HASNEXT);
+        BST_HasNext* test_call = new BST_HasNext;
         test_call->lineno = node->lineno;
-        test_call->args.push_back(makeName(itername, AST_TYPE::Load, node->lineno));
+        unmapExpr(makeName(itername, AST_TYPE::Load, node->lineno), &test_call->vreg_value);
         BST_Branch* test_br = makeBranch(test_call);
 
         push_back(test_br);
@@ -2494,8 +2485,8 @@ public:
         popContinuation();
 
         if (curblock) {
-            BST_LangPrimitive* end_call = new BST_LangPrimitive(BST_LangPrimitive::HASNEXT);
-            end_call->args.push_back(makeName(itername, AST_TYPE::Load, node->lineno));
+            BST_HasNext* end_call = new BST_HasNext;
+            unmapExpr(makeName(itername, AST_TYPE::Load, node->lineno), &end_call->vreg_value);
             end_call->lineno = node->lineno;
             BST_Branch* end_br = makeBranch(end_call);
             push_back(end_br);
@@ -2603,10 +2594,10 @@ public:
                 if (exc_handler->type) {
                     BST_expr* handled_type = remapExpr(exc_handler->type);
 
-                    BST_LangPrimitive* is_caught_here = new BST_LangPrimitive(BST_LangPrimitive::CHECK_EXC_MATCH);
+                    BST_CheckExcMatch* is_caught_here = new BST_CheckExcMatch;
                     // TODO This is supposed to be exc_type_name (value doesn't matter for checking matches)
-                    is_caught_here->args.push_back(makeLoad(exc_value_name, exc_handler));
-                    is_caught_here->args.push_back(handled_type);
+                    unmapExpr(makeLoad(exc_value_name, exc_handler), &is_caught_here->vreg_value);
+                    unmapExpr(handled_type, &is_caught_here->vreg_cls);
                     is_caught_here->lineno = exc_handler->lineno;
 
                     BST_Branch* br = new BST_Branch();
@@ -2630,10 +2621,10 @@ public:
                     pushAssign(exc_handler->name, makeLoad(exc_value_name, exc_handler));
                 }
 
-                BST_LangPrimitive* set_exc_info = new BST_LangPrimitive(BST_LangPrimitive::SET_EXC_INFO);
-                set_exc_info->args.push_back(makeLoad(exc_type_name, node, true));
-                set_exc_info->args.push_back(makeLoad(exc_value_name, node, true));
-                set_exc_info->args.push_back(makeLoad(exc_traceback_name, node, true));
+                BST_SetExcInfo* set_exc_info = new BST_SetExcInfo;
+                unmapExpr(makeLoad(exc_type_name, node, true), &set_exc_info->vreg_type);
+                unmapExpr(makeLoad(exc_value_name, node, true), &set_exc_info->vreg_value);
+                unmapExpr(makeLoad(exc_traceback_name, node, true), &set_exc_info->vreg_traceback);
                 push_back(makeExpr(set_exc_info));
 
                 for (AST_stmt* subnode : exc_handler->body) {
@@ -3134,7 +3125,7 @@ static CFG* computeCFG(llvm::ArrayRef<AST_stmt*> body, AST_TYPE::AST_TYPE ast_ty
     // The functions we create for classdefs are supposed to return a dictionary of their locals.
     // This is the place that we add all of that:
     if (ast_type == AST_TYPE::ClassDef) {
-        BST_LangPrimitive* locals = new BST_LangPrimitive(BST_LangPrimitive::LOCALS);
+        BST_Locals* locals = new BST_Locals;
 
         BST_Return* rtn = new BST_Return();
         rtn->lineno = getLastLineno(body, lineno);

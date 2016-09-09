@@ -108,6 +108,7 @@ private:
     Value visit_num(BST_Num* node);
     Value visit_repr(BST_Repr* node);
     Value visit_set(BST_Set* node);
+    Value visit_str(BST_Str* node);
     Value visit_subscript(BST_Subscript* node);
     Value visit_slice(BST_Slice* node);
     Value visit_slice(BST_slice* node);
@@ -927,8 +928,8 @@ Value ASTInterpreter::visit_importfrom(BST_ImportFrom* node) {
 
     Value v;
     if (jit)
-        v.var = jit->emitImportFrom(module, name_boxed.o);
-    v.o = importFrom(module.o, name_boxed.o);
+        v.var = jit->emitImportFrom(module, name_boxed);
+    v.o = importFrom(module.o, (BoxedString*)name_boxed.o);
     return v;
 }
 Value ASTInterpreter::visit_importname(BST_ImportName* node) {
@@ -936,10 +937,11 @@ Value ASTInterpreter::visit_importname(BST_ImportName* node) {
     Value froms = getVReg(node->vreg_from);
     AUTO_DECREF(froms.o);
     Value module_name = getVReg(node->vreg_name);
+    AUTO_DECREF(module_name.o);
     Value v;
     if (jit)
-        v.var = jit->emitImportName(level, froms, ((BoxedString*)module_name.o)->s());
-    v.o = import(level, froms.o, ((BoxedString*)module_name.o)->s());
+        v.var = jit->emitImportName(level, froms, module_name);
+    v.o = import(level, froms.o, (BoxedString*)module_name.o);
     return v;
 }
 
@@ -954,7 +956,7 @@ Value ASTInterpreter::visit_none(BST_None* node) {
 }
 
 Value ASTInterpreter::visit_nonzero(BST_Nonzero* node) {
-    Value obj = visit_expr(node->args[0]);
+    Value obj = getVReg(node->vreg_value);
     AUTO_DECREF(obj.o);
     return Value(boxBool(nonzero(obj.o)), jit ? jit->emitNonzero(obj) : NULL);
 }

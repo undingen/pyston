@@ -558,6 +558,16 @@ void* BST_Slice::accept_slice(SliceVisitor* v) {
     return v->visit_slice(this);
 }
 
+void BST_Str::accept(BSTVisitor* v) {
+    bool skip = v->visit_str(this);
+    if (skip)
+        return;
+}
+
+void* BST_Str::accept_expr(ExprVisitor* v) {
+    return v->visit_str(this);
+}
+
 void BST_Subscript::accept(BSTVisitor* v) {
     bool skip = v->visit_subscript(this);
     if (skip)
