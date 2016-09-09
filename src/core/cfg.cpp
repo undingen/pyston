@@ -464,7 +464,7 @@ private:
 
     BST_expr* callNonzero(BST_expr* e) {
         BST_Nonzero* call = new BST_Nonzero;
-        unmapExpr(e, &call->vreg_value);
+        unmapExpr(_dup2(wrap(e)), &call->vreg_value);
         call->lineno = e->lineno;
 
         // Simple optimization: allow the generation of nested nodes if there isn't a
@@ -556,7 +556,7 @@ private:
 
             curblock = test_block;
             BST_HasNext* test_call = new BST_HasNext;
-            unmapExpr(makeName(iter_name, AST_TYPE::Load, node->lineno), &test_call->vreg_value);
+            unmapExpr(_dup2(makeName(iter_name, AST_TYPE::Load, node->lineno)), &test_call->vreg_value);
             test_call->lineno = c->target->lineno;
             BST_expr* test = wrap(test_call);
 
@@ -1980,8 +1980,8 @@ public:
         for (int i = 0; i < node->names.size(); i++) {
             tuple->elts.push_back(new BST_Str(node->names[i]->name.s()));
         }
-        unmapExpr(wrap(tuple), &import->vreg_name);
-        unmapExpr(wrap(new BST_Str(node->module.s())), &import->vreg_from);
+        unmapExpr(wrap(tuple), &import->vreg_from);
+        unmapExpr(wrap(new BST_Str(node->module.s())), &import->vreg_name);
 
         InternedString tmp_module_name = nodeName();
         pushAssign(tmp_module_name, import);
@@ -2004,7 +2004,7 @@ public:
             } else {
                 BST_ImportFrom* import_from = new BST_ImportFrom;
                 import_from->lineno = node->lineno;
-                unmapExpr(makeLoad(tmp_module_name, node, is_kill), &import_from->vreg_module);
+                unmapExpr(_dup2(makeLoad(tmp_module_name, node, is_kill)), &import_from->vreg_module);
                 unmapExpr(wrap(new BST_Str(a->name.s())), &import_from->vreg_name);
 
                 InternedString tmp_import_name = nodeName();
@@ -2433,7 +2433,7 @@ public:
 
         BST_expr* remapped_iter = remapExpr(node->iter);
         BST_GetIter* iter_call = new BST_GetIter;
-        unmapExpr(remapped_iter, &iter_call->vreg_value);
+        unmapExpr(_dup2(remapped_iter), &iter_call->vreg_value);
         iter_call->lineno = node->lineno;
 
         InternedString itername = createUniqueName("#iter_");
@@ -2447,7 +2447,7 @@ public:
 
         BST_HasNext* test_call = new BST_HasNext;
         test_call->lineno = node->lineno;
-        unmapExpr(makeName(itername, AST_TYPE::Load, node->lineno), &test_call->vreg_value);
+        unmapExpr(_dup2(makeName(itername, AST_TYPE::Load, node->lineno)), &test_call->vreg_value);
         BST_Branch* test_br = makeBranch(test_call);
 
         push_back(test_br);
@@ -2486,7 +2486,7 @@ public:
 
         if (curblock) {
             BST_HasNext* end_call = new BST_HasNext;
-            unmapExpr(makeName(itername, AST_TYPE::Load, node->lineno), &end_call->vreg_value);
+            unmapExpr(_dup2(makeName(itername, AST_TYPE::Load, node->lineno)), &end_call->vreg_value);
             end_call->lineno = node->lineno;
             BST_Branch* end_br = makeBranch(end_call);
             push_back(end_br);
@@ -2596,7 +2596,7 @@ public:
 
                     BST_CheckExcMatch* is_caught_here = new BST_CheckExcMatch;
                     // TODO This is supposed to be exc_type_name (value doesn't matter for checking matches)
-                    unmapExpr(makeLoad(exc_value_name, exc_handler), &is_caught_here->vreg_value);
+                    unmapExpr(_dup2(makeLoad(exc_value_name, exc_handler)), &is_caught_here->vreg_value);
                     unmapExpr(handled_type, &is_caught_here->vreg_cls);
                     is_caught_here->lineno = exc_handler->lineno;
 

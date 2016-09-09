@@ -1444,6 +1444,10 @@ public:
     }
 
 
+    virtual bool visit_landingpad(BST_Landingpad* node) override {
+        output->push_back(node);
+        return false;
+    }
     virtual bool visit_locals(BST_Locals* node) override {
         output->push_back(node);
         return false;

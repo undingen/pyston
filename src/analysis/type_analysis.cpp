@@ -386,7 +386,7 @@ private:
             case BST_LangPrimitive::LOCALS:
                 return DICT;
             case BST_LangPrimitive::GET_ITER:
-
+                return getType(node->args[0])->getPystonIterType();
             case BST_LangPrimitive::LANDINGPAD:
             case BST_LangPrimitive::IMPORT_FROM:
             case BST_LangPrimitive::IMPORT_STAR:
