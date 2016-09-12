@@ -1003,42 +1003,60 @@ bool PrintVisitor::visit_langprimitive(BST_LangPrimitive* node) {
 }
 */
 bool PrintVisitor::visit_landingpad(BST_Landingpad* node) {
+    stream << ":LANDINGPAD()";
     return true;
 }
 bool PrintVisitor::visit_locals(BST_Locals* node) {
+    stream << ":LOCALS()";
     return true;
 }
 bool PrintVisitor::visit_getiter(BST_GetIter* node) {
+    stream << ":GET_ITER(#" << node->vreg_value << ")";
     return true;
 }
 bool PrintVisitor::visit_importfrom(BST_ImportFrom* node) {
+    stream << ":IMPORT_FROM(#" << node->vreg_module << ", #" << node->vreg_name << ")";
     return true;
 }
 bool PrintVisitor::visit_importname(BST_ImportName* node) {
+    stream << ":IMPORT_NAME(#" << node->vreg_from << ", #" << node->vreg_name << ", " << node->level << ")";
     return true;
 }
 bool PrintVisitor::visit_importstar(BST_ImportStar* node) {
+    stream << ":IMPORT_STAR(#" << node->vreg_name << ")";
     return true;
 }
 bool PrintVisitor::visit_none(BST_None* node) {
+    stream << ":NONE()";
     return true;
 }
 bool PrintVisitor::visit_nonzero(BST_Nonzero* node) {
+    stream << ":NONZERO(#" << node->vreg_value << ")";
     return true;
 }
 bool PrintVisitor::visit_checkexcmatch(BST_CheckExcMatch* node) {
+    stream << ":CHECK_EXC_MATCH(#";
+    stream << node->vreg_value << ", #";
+    stream << node->vreg_cls << ")";
     return true;
 }
 bool PrintVisitor::visit_setexcinfo(BST_SetExcInfo* node) {
+    stream << ":SET_EXC_INFO(#";
+    stream << node->vreg_value << ", #";
+    stream << node->vreg_type << ", #";
+    stream << node->vreg_traceback << ")";
     return true;
 }
 bool PrintVisitor::visit_uncacheexcinfo(BST_UncacheExcInfo* node) {
+    stream << ":UNCACHE_EXC_INFO()";
     return true;
 }
 bool PrintVisitor::visit_hasnext(BST_HasNext* node) {
+    stream << ":HAS_NEXT(#" << node->vreg_value << ")";
     return true;
 }
 bool PrintVisitor::visit_printexpr(BST_PrintExpr* node) {
+    stream << ":PRINT_EXPR(#" << node->vreg_value << ")";
     return true;
 }
 
