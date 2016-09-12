@@ -378,7 +378,7 @@ private:
         return DICT;
     }
 
-    void* visit_index(BST_Index* node) override { return getType(node->value); }
+    void* visit_index(BST_Index* node) override { return getType(node->vreg_value); }
 
     /*
     void* visit_langprimitive(BST_LangPrimitive* node) override {
@@ -612,11 +612,9 @@ private:
     }
 
     void visit_exec(BST_Exec* node) override {
-        getType(node->body);
-        if (node->globals)
-            getType(node->globals);
-        if (node->locals)
-            getType(node->locals);
+        getType(node->vreg_body);
+        getType(node->vreg_globals);
+        getType(node->vreg_locals);
     }
 
     void visit_invoke(BST_Invoke* node) override { node->stmt->accept_stmt(this); }
@@ -624,28 +622,23 @@ private:
     void visit_jump(BST_Jump* node) override {}
 
     void visit_print(BST_Print* node) override {
-        if (node->dest)
-            getType(node->dest);
+        getType(node->vreg_dest);
 
-        if (EXPAND_UNNEEDED && node->value)
-            getType(node->value);
+        if (EXPAND_UNNEEDED)
+            getType(node->vreg_value);
     }
 
     void visit_raise(BST_Raise* node) override {
         if (EXPAND_UNNEEDED) {
-            if (node->arg0)
-                getType(node->arg0);
-            if (node->arg1)
-                getType(node->arg1);
-            if (node->arg2)
-                getType(node->arg2);
+            getType(node->vreg_arg0);
+            getType(node->vreg_arg1);
+            getType(node->vreg_arg2);
         }
     }
 
     void visit_return(BST_Return* node) override {
         if (EXPAND_UNNEEDED) {
-            if (node->value != NULL)
-                getType(node->value);
+            getType(node->vreg_value);
         }
     }
 

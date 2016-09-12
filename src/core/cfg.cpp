@@ -422,7 +422,7 @@ private:
         }
 
         BST_Return* node = new BST_Return();
-        node->value = value;
+        unmapExpr(value, &node->vreg_value);
         node->lineno = value->lineno;
         push_back(node);
         curblock = NULL;
@@ -683,9 +683,9 @@ private:
                      InternedString exc_traceback_name) {
         auto raise = new BST_Raise();
         raise->lineno = lineno;
-        raise->arg0 = makeLoad(exc_type_name, lineno, true);
-        raise->arg1 = makeLoad(exc_value_name, lineno, true);
-        raise->arg2 = makeLoad(exc_traceback_name, lineno, true);
+        unmapExpr(makeLoad(exc_type_name, lineno, true), &raise->vreg_arg0);
+        unmapExpr(makeLoad(exc_value_name, lineno, true), &raise->vreg_arg1);
+        unmapExpr(makeLoad(exc_traceback_name, lineno, true), &raise->vreg_arg2);
         push_back(raise);
         curblock = nullptr;
     }
@@ -790,7 +790,7 @@ private:
 
     BST_Index* makeIndex(BST_expr* value) {
         auto index = new BST_Index();
-        index->value = value;
+        unmapExpr(value, &index->vreg_value);
         index->lineno = value->lineno;
         return index;
     }
@@ -946,6 +946,10 @@ private:
 
         assert(0);
     }
+    void unmapExprFromUnmapped(int* vreg_old, int* vreg) {
+        assert(name_vreg.count(vreg_old));
+        name_vreg[vreg] = _dup2(name_vreg[vreg_old]);
+    }
 
     BST_expr* remapBinOp(AST_BinOp* node) {
         BST_BinOp* rtn = new BST_BinOp();
@@ -977,7 +981,7 @@ private:
         } else if (val->type == BST_TYPE::Index) {
             BST_Index* orig = bst_cast<BST_Index>(val);
             BST_Index* made = new BST_Index();
-            made->value = _dup(orig->value);
+            unmapExprFromUnmapped(&orig->vreg_value, &made->vreg_value);
             made->lineno = orig->lineno;
             return made;
         } else if (val->type == BST_TYPE::Slice) {
@@ -1027,9 +1031,9 @@ private:
         }
     }
 
-    BST_expr* _dup2(BST_expr* val) {
+    BST_Name* _dup2(BST_expr* val) {
         if (val == nullptr)
-            return val;
+            return nullptr;
 
         if (val->type == BST_TYPE::Name) {
             BST_Name* orig = bst_cast<BST_Name>(val);
@@ -1407,7 +1411,7 @@ private:
     BST_slice* remapIndex(AST_Index* node) {
         BST_Index* rtn = new BST_Index();
         rtn->lineno = node->lineno;
-        rtn->value = remapExpr(node->value);
+        unmapExpr(remapExpr(node->value), &rtn->vreg_value);
         return rtn;
     }
 
@@ -1525,7 +1529,7 @@ private:
     BST_expr* remapYield(AST_Yield* node) {
         BST_Yield* rtn = new BST_Yield();
         rtn->lineno = node->lineno;
-        rtn->value = remapExpr(node->value);
+        unmapExpr(remapExpr(node->value), &rtn->vreg_value);
 
         InternedString node_name(nodeName());
         pushAssign(node_name, rtn);
@@ -2240,14 +2244,14 @@ public:
             remapped->lineno = node->lineno;
 
             if (i < node->values.size() - 1) {
-                remapped->dest = _dup(dest);
+                unmapExpr(_dup(dest), &remapped->vreg_dest);
                 remapped->nl = false;
             } else {
-                remapped->dest = dest;
+                unmapExpr(dest, &remapped->vreg_dest);
                 remapped->nl = node->nl;
             }
 
-            remapped->value = remapExpr(v);
+            unmapExpr(remapExpr(v), &remapped->vreg_value);
             push_back(remapped);
 
             i++;
@@ -2259,7 +2263,7 @@ public:
             BST_Print* final = new BST_Print();
             final->lineno = node->lineno;
             // TODO not good to reuse 'dest' like this
-            final->dest = dest;
+            unmapExpr(dest, &final->vreg_dest);
             final->nl = node->nl;
             push_back(final);
         }
@@ -2353,9 +2357,9 @@ public:
     bool visit_exec(AST_Exec* node) override {
         BST_Exec* astexec = new BST_Exec();
         astexec->lineno = node->lineno;
-        astexec->body = remapExpr(node->body);
-        astexec->globals = remapExpr(node->globals);
-        astexec->locals = remapExpr(node->locals);
+        unmapExpr(remapExpr(node->body), &astexec->vreg_body);
+        unmapExpr(remapExpr(node->globals), &astexec->vreg_globals);
+        unmapExpr(remapExpr(node->locals), &astexec->vreg_locals);
         push_back(astexec);
         return true;
     }
@@ -2535,11 +2539,11 @@ public:
         remapped->lineno = node->lineno;
 
         if (node->arg0)
-            remapped->arg0 = remapExpr(node->arg0);
+            unmapExpr(remapExpr(node->arg0), &remapped->vreg_arg0);
         if (node->arg1)
-            remapped->arg1 = remapExpr(node->arg1);
+            unmapExpr(remapExpr(node->arg1), &remapped->vreg_arg1);
         if (node->arg2)
-            remapped->arg2 = remapExpr(node->arg2);
+            unmapExpr(remapExpr(node->arg2), &remapped->vreg_arg2);
         push_back(remapped);
 
         if (!curblock)
@@ -2647,9 +2651,9 @@ public:
 
             if (!caught_all) {
                 BST_Raise* raise = new BST_Raise();
-                raise->arg0 = makeLoad(exc_type_name, node, true);
-                raise->arg1 = makeLoad(exc_value_name, node, true);
-                raise->arg2 = makeLoad(exc_traceback_name, node, true);
+                unmapExpr(makeLoad(exc_type_name, node, true), &raise->vreg_arg0);
+                unmapExpr(makeLoad(exc_value_name, node, true), &raise->vreg_arg1);
+                unmapExpr(makeLoad(exc_traceback_name, node, true), &raise->vreg_arg2);
 
                 // This is weird but I think it is right.
                 // Even though the line number of the trackback will correctly point to the line that
@@ -3129,7 +3133,7 @@ static CFG* computeCFG(llvm::ArrayRef<AST_stmt*> body, AST_TYPE::AST_TYPE ast_ty
 
         BST_Return* rtn = new BST_Return();
         rtn->lineno = getLastLineno(body, lineno);
-        rtn->value = locals;
+        visitor.unmapExpr(visitor._dup2(visitor.wrap(locals)), &rtn->vreg_value);
         visitor.push_back(rtn);
     } else {
         // Put a fake "return" statement at the end of every function just to make sure they all have one;
@@ -3137,7 +3141,7 @@ static CFG* computeCFG(llvm::ArrayRef<AST_stmt*> body, AST_TYPE::AST_TYPE ast_ty
         // having to support not having a return statement:
         BST_Return* return_stmt = new BST_Return();
         return_stmt->lineno = getLastLineno(body, lineno);
-        return_stmt->value = NULL;
+        return_stmt->vreg_value = VREG_UNDEFINED;
         visitor.push_back(return_stmt);
     }
 
@@ -3347,8 +3351,10 @@ static CFG* computeCFG(llvm::ArrayRef<AST_stmt*> body, AST_TYPE::AST_TYPE ast_ty
 
     rtn->getVRegInfo().assignVRegs(rtn, param_names, visitor.name_vreg);
 
+    std::unordered_set<BST_Name*> names;
     for (auto&& e : visitor.name_vreg) {
-        delete e.second;
+        if (names.insert(e.second).second)
+            delete e.second;
     }
 
 

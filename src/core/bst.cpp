@@ -208,12 +208,13 @@ void BST_Exec::accept(BSTVisitor* v) {
     if (skip)
         return;
 
-    if (body)
-        body->accept(v);
-    if (globals)
-        globals->accept(v);
-    if (locals)
-        locals->accept(v);
+
+    if (vreg_body != VREG_UNDEFINED)
+        v->visit_vreg(&vreg_body);
+    if (vreg_globals != VREG_UNDEFINED)
+        v->visit_vreg(&vreg_globals);
+    if (vreg_locals != VREG_UNDEFINED)
+        v->visit_vreg(&vreg_locals);
 }
 
 void BST_Exec::accept_stmt(StmtVisitor* v) {
@@ -263,7 +264,7 @@ void BST_Index::accept(BSTVisitor* v) {
     if (skip)
         return;
 
-    this->value->accept(v);
+    v->visit_vreg(&vreg_value);
 }
 
 void* BST_Index::accept_slice(SliceVisitor* v) {
@@ -476,11 +477,11 @@ void BST_Print::accept(BSTVisitor* v) {
     if (skip)
         return;
 
-    if (dest)
-        dest->accept(v);
+    if (vreg_dest != VREG_UNDEFINED)
+        v->visit_vreg(&vreg_dest);
 
-    if (value)
-        value->accept(v);
+    if (vreg_value != VREG_UNDEFINED)
+        v->visit_vreg(&vreg_value);
 }
 
 void BST_Print::accept_stmt(StmtVisitor* v) {
@@ -492,12 +493,12 @@ void BST_Raise::accept(BSTVisitor* v) {
     if (skip)
         return;
 
-    if (arg0)
-        arg0->accept(v);
-    if (arg1)
-        arg1->accept(v);
-    if (arg2)
-        arg2->accept(v);
+    if (vreg_arg0 != VREG_UNDEFINED)
+        v->visit_vreg(&vreg_arg0);
+    if (vreg_arg1 != VREG_UNDEFINED)
+        v->visit_vreg(&vreg_arg1);
+    if (vreg_arg2 != VREG_UNDEFINED)
+        v->visit_vreg(&vreg_arg2);
 }
 
 void BST_Raise::accept_stmt(StmtVisitor* v) {
@@ -521,8 +522,8 @@ void BST_Return::accept(BSTVisitor* v) {
     if (skip)
         return;
 
-    if (value)
-        value->accept(v);
+    if (vreg_value != VREG_UNDEFINED)
+        v->visit_vreg(&vreg_value);
 }
 
 void BST_Return::accept_stmt(StmtVisitor* v) {
@@ -610,8 +611,8 @@ void BST_Yield::accept(BSTVisitor* v) {
     if (skip)
         return;
 
-    if (value)
-        value->accept(v);
+    if (vreg_value != VREG_UNDEFINED)
+        v->visit_vreg(&vreg_value);
 }
 
 void* BST_Yield::accept_expr(ExprVisitor* v) {
@@ -878,14 +879,14 @@ bool PrintVisitor::visit_ellipsis(BST_Ellipsis*) {
 bool PrintVisitor::visit_exec(BST_Exec* node) {
     stream << "exec ";
 
-    node->body->accept(this);
-    if (node->globals) {
+    stream << "#" << node->vreg_body;
+    if (node->vreg_globals != VREG_UNDEFINED) {
         stream << " in ";
-        node->globals->accept(this);
+        stream << "#" << node->vreg_globals;
 
-        if (node->locals) {
+        if (node->vreg_locals != VREG_UNDEFINED) {
             stream << ", ";
-            node->locals->accept(this);
+            stream << "#" << node->vreg_locals;
         }
     }
     stream << "\n";
@@ -1117,13 +1118,13 @@ bool PrintVisitor::visit_num(BST_Num* node) {
 
 bool PrintVisitor::visit_print(BST_Print* node) {
     stream << "print ";
-    if (node->dest) {
+    if (node->vreg_dest != VREG_UNDEFINED) {
         stream << ">>";
-        node->dest->accept(this);
+        stream << "#" << node->vreg_dest;
         stream << ", ";
     }
-    if (node->value)
-        node->value->accept(this);
+    if (node->vreg_value != VREG_UNDEFINED)
+        stream << "#" << node->vreg_value;
     if (!node->nl)
         stream << ",";
     return true;
@@ -1131,17 +1132,17 @@ bool PrintVisitor::visit_print(BST_Print* node) {
 
 bool PrintVisitor::visit_raise(BST_Raise* node) {
     stream << "raise";
-    if (node->arg0) {
+    if (node->vreg_arg0 != VREG_UNDEFINED) {
         stream << " ";
-        node->arg0->accept(this);
+        stream << "#" << node->vreg_arg0;
     }
-    if (node->arg1) {
+    if (node->vreg_arg1 != VREG_UNDEFINED) {
         stream << ", ";
-        node->arg1->accept(this);
+        stream << "#" << node->vreg_arg1;
     }
-    if (node->arg2) {
+    if (node->vreg_arg2 != VREG_UNDEFINED) {
         stream << ", ";
-        node->arg2->accept(this);
+        stream << "#" << node->vreg_arg2;
     }
     return true;
 }
@@ -1256,8 +1257,8 @@ bool PrintVisitor::visit_unaryop(BST_UnaryOp* node) {
 
 bool PrintVisitor::visit_yield(BST_Yield* node) {
     stream << "yield ";
-    if (node->value)
-        node->value->accept(this);
+    if (node->vreg_value != VREG_UNDEFINED)
+        stream << "#" << node->vreg_value;
     return true;
 }
 

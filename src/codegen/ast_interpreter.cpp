@@ -1112,7 +1112,7 @@ Value ASTInterpreter::visit_langPrimitive(BST_LangPrimitive* node) {
 #endif
 
 Value ASTInterpreter::visit_yield(BST_Yield* node) {
-    Value value = node->value ? visit_expr(node->value) : getNone();
+    Value value = node->vreg_value != VREG_UNDEFINED ? getVReg(node->vreg_value) : getNone();
     return Value(ASTInterpreterJitInterface::yieldHelper(this, value.o), jit ? jit->emitYield(value) : NULL);
 }
 
@@ -1200,7 +1200,7 @@ Value ASTInterpreter::visit_stmt(BST_stmt* node) {
 }
 
 Value ASTInterpreter::visit_return(BST_Return* node) {
-    Value s = node->value ? visit_expr(node->value) : getNone();
+    Value s = node->vreg_value != VREG_UNDEFINED ? getVReg(node->vreg_value) : getNone();
 
     if (jit) {
         jit->emitReturn(s);
@@ -1380,9 +1380,9 @@ Value ASTInterpreter::visit_makeClass(BST_MakeClass* mkclass) {
 }
 
 Value ASTInterpreter::visit_raise(BST_Raise* node) {
-    if (node->arg0 == NULL) {
-        assert(!node->arg1);
-        assert(!node->arg2);
+    if (node->vreg_arg0 == VREG_UNDEFINED) {
+        assert(node->vreg_arg1 == VREG_UNDEFINED);
+        assert(node->vreg_arg2 == VREG_UNDEFINED);
 
         if (jit) {
             jit->emitRaise0();
@@ -1392,9 +1392,9 @@ Value ASTInterpreter::visit_raise(BST_Raise* node) {
         ASTInterpreterJitInterface::raise0Helper(this);
     }
 
-    Value arg0 = node->arg0 ? visit_expr(node->arg0) : getNone();
-    Value arg1 = node->arg1 ? visit_expr(node->arg1) : getNone();
-    Value arg2 = node->arg2 ? visit_expr(node->arg2) : getNone();
+    Value arg0 = node->vreg_arg0 == VREG_UNDEFINED ? getVReg(node->vreg_arg0) : getNone();
+    Value arg1 = node->vreg_arg1 == VREG_UNDEFINED ? getVReg(node->vreg_arg1) : getNone();
+    Value arg2 = node->vreg_arg2 == VREG_UNDEFINED ? getVReg(node->vreg_arg2) : getNone();
 
     if (jit) {
         jit->emitRaise3(arg0, arg1, arg2);
@@ -1508,13 +1508,13 @@ Value ASTInterpreter::visit_assign(BST_Assign* node) {
 }
 
 Value ASTInterpreter::visit_print(BST_Print* node) {
-    Value dest = node->dest ? visit_expr(node->dest) : Value();
-    Value var = node->value ? visit_expr(node->value) : Value();
+    Value dest = node->vreg_dest != VREG_UNDEFINED ? getVReg(node->vreg_dest) : Value();
+    Value var = node->vreg_value != VREG_UNDEFINED ? getVReg(node->vreg_value) : Value();
 
     if (jit)
         jit->emitPrint(dest, var, node->nl);
 
-    if (node->dest)
+    if (node->vreg_dest != VREG_UNDEFINED)
         printHelper(autoDecref(dest.o), autoXDecref(var.o), node->nl);
     else
         printHelper(NULL, autoXDecref(var.o), node->nl);
@@ -1524,11 +1524,11 @@ Value ASTInterpreter::visit_print(BST_Print* node) {
 
 Value ASTInterpreter::visit_exec(BST_Exec* node) {
     // TODO implement the locals and globals arguments
-    Value code = visit_expr(node->body);
+    Value code = getVReg(node->vreg_body);
     AUTO_DECREF(code.o);
-    Value globals = node->globals == NULL ? Value() : visit_expr(node->globals);
+    Value globals = node->vreg_globals == VREG_UNDEFINED ? Value() : getVReg(node->vreg_globals);
     AUTO_XDECREF(globals.o);
-    Value locals = node->locals == NULL ? Value() : visit_expr(node->locals);
+    Value locals = node->vreg_locals == VREG_UNDEFINED ? Value() : getVReg(node->vreg_locals);
     AUTO_XDECREF(locals.o);
 
     if (jit)
@@ -1733,7 +1733,7 @@ Value ASTInterpreter::visit_num(BST_Num* node) {
 }
 
 Value ASTInterpreter::visit_index(BST_Index* node) {
-    return visit_expr(node->value);
+    return getVReg(node->vreg_value);
 }
 
 Value ASTInterpreter::visit_repr(BST_Repr* node) {

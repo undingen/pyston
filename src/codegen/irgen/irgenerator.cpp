@@ -1216,7 +1216,7 @@ private:
         inst->setMetadata(message, mdnode);
     }
 
-    CompilerVariable* evalIndex(BST_Index* node, const UnwindInfo& unw_info) { return evalExpr(node->value, unw_info); }
+    CompilerVariable* evalIndex(BST_Index* node, const UnwindInfo& unw_info) { return evalVReg(node->vreg_value); }
 
 
     CompilerVariable* evalList(BST_List* node, const UnwindInfo& unw_info) {
@@ -1519,7 +1519,7 @@ private:
     }
 
     CompilerVariable* evalYield(BST_Yield* node, const UnwindInfo& unw_info) {
-        CompilerVariable* value = node->value ? evalExpr(node->value, unw_info) : emitter.getNone();
+        CompilerVariable* value = node->vreg_value != VREG_UNDEFINED ? evalVReg(node->vreg_value) : emitter.getNone();
         ConcreteCompilerVariable* convertedValue = value->makeConverted(emitter, value->getBoxType());
 
         std::vector<llvm::Value*> args;
@@ -2211,20 +2211,20 @@ private:
     }
 
     void doExec(BST_Exec* node, const UnwindInfo& unw_info) {
-        CompilerVariable* body = evalExpr(node->body, unw_info);
+        CompilerVariable* body = evalVReg(node->vreg_body);
         llvm::Value* vbody = body->makeConverted(emitter, body->getBoxType())->getValue();
 
         llvm::Value* vglobals;
-        if (node->globals) {
-            CompilerVariable* globals = evalExpr(node->globals, unw_info);
+        if (node->vreg_globals != VREG_UNDEFINED) {
+            CompilerVariable* globals = evalVReg(node->vreg_globals);
             vglobals = globals->makeConverted(emitter, globals->getBoxType())->getValue();
         } else {
             vglobals = getNullPtr(g.llvm_value_type_ptr);
         }
 
         llvm::Value* vlocals;
-        if (node->locals) {
-            CompilerVariable* locals = evalExpr(node->locals, unw_info);
+        if (node->vreg_locals != VREG_UNDEFINED) {
+            CompilerVariable* locals = evalVReg(node->vreg_locals);
             vlocals = locals->makeConverted(emitter, locals->getBoxType())->getValue();
         } else {
             vlocals = getNullPtr(g.llvm_value_type_ptr);
@@ -2237,8 +2237,8 @@ private:
 
     void doPrint(BST_Print* node, const UnwindInfo& unw_info) {
         ConcreteCompilerVariable* dest = NULL;
-        if (node->dest) {
-            auto d = evalExpr(node->dest, unw_info);
+        if (node->vreg_dest != VREG_UNDEFINED) {
+            auto d = evalVReg(node->vreg_dest);
             dest = d->makeConverted(emitter, d->getBoxType());
         } else {
             dest = new ConcreteCompilerVariable(UNKNOWN,
@@ -2248,8 +2248,8 @@ private:
 
         ConcreteCompilerVariable* converted;
 
-        if (node->value) {
-            CompilerVariable* var = evalExpr(node->value, unw_info);
+        if (node->vreg_value != VREG_UNDEFINED) {
+            CompilerVariable* var = evalVReg(node->vreg_value);
             converted = var->makeConverted(emitter, var->getBoxType());
         } else {
             converted = new ConcreteCompilerVariable(UNKNOWN, getNullPtr(g.llvm_value_type_ptr));
@@ -2263,10 +2263,10 @@ private:
         assert(!unw_info.hasHandler());
 
         CompilerVariable* val;
-        if (node->value == NULL) {
+        if (node->vreg_value == VREG_UNDEFINED) {
             val = emitter.getNone();
         } else {
-            val = evalExpr(node->value, unw_info);
+            val = evalVReg(node->vreg_value);
         }
         assert(val);
 
@@ -2501,9 +2501,9 @@ private:
         else
             target_exception_style = irstate->getExceptionStyle();
 
-        if (node->arg0 == NULL) {
-            assert(!node->arg1);
-            assert(!node->arg2);
+        if (node->vreg_arg0 == VREG_UNDEFINED) {
+            assert(node->vreg_arg1 == VREG_UNDEFINED);
+            assert(node->vreg_arg2 == VREG_UNDEFINED);
 
             llvm::Value* exc_info = emitter.getBuilder()->CreateConstInBoundsGEP2_32(irstate->getFrameInfoVar(), 0, 0);
             if (target_exception_style == CAPI) {
@@ -2519,9 +2519,9 @@ private:
         }
 
         std::vector<llvm::Value*> args;
-        for (auto a : { node->arg0, node->arg1, node->arg2 }) {
-            if (a) {
-                CompilerVariable* v = evalExpr(a, unw_info);
+        for (auto a : { node->vreg_arg0, node->vreg_arg1, node->vreg_arg2 }) {
+            if (a != VREG_UNDEFINED) {
+                CompilerVariable* v = evalVReg(a);
                 ConcreteCompilerVariable* converted = v->makeConverted(emitter, v->getBoxType());
                 args.push_back(converted->getValue());
             } else {

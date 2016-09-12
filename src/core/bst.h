@@ -405,9 +405,9 @@ public:
 
 class BST_Exec : public BST_stmt {
 public:
-    BST_expr* body;
-    BST_expr* globals;
-    BST_expr* locals;
+    int vreg_body = VREG_UNDEFINED;
+    int vreg_globals = VREG_UNDEFINED;
+    int vreg_locals = VREG_UNDEFINED;
 
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
@@ -447,7 +447,7 @@ public:
 
 class BST_Index : public BST_slice {
 public:
-    BST_expr* value;
+    int vreg_value = VREG_UNDEFINED;
 
     virtual void accept(BSTVisitor* v);
     virtual void* accept_slice(SliceVisitor* v);
@@ -550,14 +550,14 @@ public:
 
 class BST_Print : public BST_stmt {
 public:
-    BST_expr* dest;
+    int vreg_dest = VREG_UNDEFINED;
     bool nl;
-    BST_expr* value;
+    int vreg_value = VREG_UNDEFINED;
 
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
 
-    BST_Print() : BST_stmt(BST_TYPE::Print), value(NULL) {}
+    BST_Print() : BST_stmt(BST_TYPE::Print) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Print;
 };
@@ -568,19 +568,19 @@ public:
     // Renaming to arg{0..2} since I find that confusing, since they are filled in
     // sequentially rather than semantically.
     // Ie "raise Exception()" will have type==Exception(), inst==None, tback==None
-    BST_expr* arg0, *arg1, *arg2;
+    int vreg_arg0 = VREG_UNDEFINED, vreg_arg1 = VREG_UNDEFINED, vreg_arg2 = VREG_UNDEFINED;
 
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
 
-    BST_Raise() : BST_stmt(BST_TYPE::Raise), arg0(NULL), arg1(NULL), arg2(NULL) {}
+    BST_Raise() : BST_stmt(BST_TYPE::Raise) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Raise;
 };
 
 class BST_Return : public BST_stmt {
 public:
-    BST_expr* value;
+    int vreg_value = VREG_UNDEFINED;
 
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
@@ -673,7 +673,7 @@ public:
 
 class BST_Yield : public BST_expr {
 public:
-    BST_expr* value;
+    int vreg_value = VREG_UNDEFINED;
 
     virtual void accept(BSTVisitor* v);
     virtual void* accept_expr(ExprVisitor* v);
