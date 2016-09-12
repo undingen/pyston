@@ -1411,7 +1411,7 @@ Value ASTInterpreter::visit_assert(BST_Assert* node) {
     static BoxedString* AssertionError_str = getStaticString("AssertionError");
     Box* assertion_type = getGlobal(frame_info.globals, AssertionError_str);
     AUTO_DECREF(assertion_type);
-    Box* msg = node->msg ? visit_expr(node->msg).o : 0;
+    Box* msg = node->vreg_msg != VREG_UNDEFINED ? getVReg(node->vreg_msg).o : 0;
     AUTO_XDECREF(msg);
     assertFail(assertion_type, msg);
 

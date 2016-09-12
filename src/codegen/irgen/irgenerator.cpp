@@ -2079,8 +2079,8 @@ private:
             RefType::OWNED));
 
         ConcreteCompilerVariable* converted_msg = NULL;
-        if (node->msg) {
-            CompilerVariable* msg = evalExpr(node->msg, unw_info);
+        if (node->vreg_msg == VREG_UNDEFINED) {
+            CompilerVariable* msg = evalVReg(node->vreg_msg);
             converted_msg = msg->makeConverted(emitter, msg->getBoxType());
             llvm_args.push_back(converted_msg->getValue());
         } else {

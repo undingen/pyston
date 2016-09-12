@@ -2038,9 +2038,9 @@ public:
 
         BST_Assert* remapped = new BST_Assert();
         if (node->msg)
-            remapped->msg = remapExpr(node->msg);
+            unmapExpr(remapExpr(node->msg), &remapped->vreg_msg);
         else
-            remapped->msg = NULL;
+            remapped->vreg_msg = VREG_UNDEFINED;
         remapped->lineno = node->lineno;
         push_back(remapped);
 

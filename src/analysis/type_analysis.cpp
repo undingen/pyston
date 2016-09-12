@@ -148,6 +148,8 @@ private:
     }
 
     CompilerType* getType(int vreg) {
+        if (vreg == VREG_UNDEFINED)
+            return UNDEF;
         CompilerType*& t = sym_table[vreg];
         if (t == NULL) {
             // if (VERBOSITY() >= 2) {
@@ -532,10 +534,7 @@ private:
     void* visit_yield(BST_Yield*) override { return UNKNOWN; }
 
 
-    void visit_assert(BST_Assert* node) override {
-        if (node->msg)
-            getType(node->msg);
-    }
+    void visit_assert(BST_Assert* node) override { getType(node->vreg_msg); }
 
     void visit_assign(BST_Assign* node) override {
         CompilerType* t = getType(node->value);

@@ -62,8 +62,8 @@ void BST_Assert::accept(BSTVisitor* v) {
     if (skip)
         return;
 
-    if (msg)
-        msg->accept(v);
+    if (vreg_msg != VREG_UNDEFINED)
+        v->visit_vreg(&vreg_msg);
 }
 
 void BST_Assert::accept_stmt(StmtVisitor* v) {
@@ -702,9 +702,9 @@ bool PrintVisitor::visit_arguments(BST_arguments* node) {
 
 bool PrintVisitor::visit_assert(BST_Assert* node) {
     stream << "assert 0";
-    if (node->msg) {
+    if (node->vreg_msg != VREG_UNDEFINED) {
         stream << ", ";
-        node->msg->accept(this);
+        visit_vreg(&node->vreg_msg);
     }
     return true;
 }

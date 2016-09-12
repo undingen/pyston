@@ -179,6 +179,8 @@ class StmtVisitor;
 class SliceVisitor;
 class BST_keyword;
 
+static constexpr int VREG_UNDEFINED = std::numeric_limits<int>::min();
+
 class BST {
 public:
     virtual ~BST() {}
@@ -243,7 +245,7 @@ public:
 
 class BST_Assert : public BST_stmt {
 public:
-    BST_expr* msg;
+    int vreg_msg;
 
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
