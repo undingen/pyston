@@ -1792,6 +1792,10 @@ Value ASTInterpreter::visit_str(BST_Str* node) {
 }
 
 Value ASTInterpreter::getVReg(int vreg) {
+    if (vreg < 0) {
+        Box* o = parent_module->constants[-vreg - 1];
+        return Value(incref(o), jit ? jit->imm(o)->setType(RefType::BORROWED) : NULL);
+    }
     assert(vreg >= 0);
     assert(vreg != VREG_UNDEFINED);
 

@@ -150,6 +150,9 @@ private:
     CompilerType* getType(int vreg) {
         if (vreg == VREG_UNDEFINED)
             return UNDEF;
+        if (vreg < 0) {
+            return UNKNOWN;
+        }
         CompilerType*& t = sym_table[vreg];
         if (t == NULL) {
             // if (VERBOSITY() >= 2) {

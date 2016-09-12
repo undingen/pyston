@@ -1281,6 +1281,18 @@ private:
 
     CompilerVariable* evalVReg(int vreg) {
         assert(vreg != VREG_UNDEFINED);
+        if (vreg < 0) {
+            Box* o = irstate->getSourceInfo()->parent_module->constants[-vreg - 1];
+            if (o->cls == int_cls) {
+                return makeInt(((BoxedInt*)o)->n);
+            } else if (o->cls == float_cls) {
+                return makeFloat(((BoxedFloat*)o)->d);
+            } else if (o->cls == complex_cls) {
+                return makePureImaginary(emitter, o);
+            } else {
+                return makeLong(emitter, o);
+            }
+        }
         CompilerVariable* rtn = symbol_table[vreg];
         // if (is_kill)
         symbol_table[vreg] = NULL;

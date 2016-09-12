@@ -485,7 +485,7 @@ private:
         return rtn;
     }
 
-    BST_Name* remapNum(AST_Num* num) {
+    BST_expr* remapNum(AST_Num* num) {
         auto r = new BST_Num();
         r->lineno = num->lineno;
         r->num_type = num->num_type;
@@ -502,9 +502,10 @@ private:
                 break;
         }
 
-        auto name = nodeName();
-        pushAssign(name, r);
-        return makeLoad(name, r, /* is_kill */ true);
+        return r;
+        // auto name = nodeName();
+        // pushAssign(name, r);
+        // return makeLoad(name, r, /* is_kill */ true);
     }
 
     BST_Name* remapStr(AST_Str* str) {
@@ -933,6 +934,7 @@ private:
     }
 
     llvm::DenseMap<int*, BST_Name*> name_vreg;
+
     void unmapExpr(BST_expr* node, int* vreg) {
         if (!node) {
             *vreg = VREG_UNDEFINED;
@@ -948,13 +950,36 @@ private:
             assert(!name_vreg.count(vreg));
             name_vreg[vreg] = name;
             return;
+        } else if (node->type == BST_TYPE::Num) {
+            BST_Num* num = (BST_Num*)node;
+            Box* o = NULL;
+
+            if (num->num_type == AST_Num::INT) {
+                o = source->parent_module->getIntConstant(num->n_int);
+            } else if (num->num_type == AST_Num::FLOAT) {
+                o = source->parent_module->getFloatConstant(num->n_float);
+            } else if (num->num_type == AST_Num::LONG) {
+                o = source->parent_module->getLongConstant(num->n_long);
+            } else if (num->num_type == AST_Num::COMPLEX) {
+                o = source->parent_module->getPureImaginaryConstant(num->n_float);
+            } else
+                RELEASE_ASSERT(0, "not implemented");
+
+            source->parent_module->constants.push_back(o);
+            *vreg = -source->parent_module->constants.size();
+            return;
         }
 
         assert(0);
     }
     void unmapExprFromUnmapped(int* vreg_old, int* vreg) {
+        if (*vreg_old < 0 && *vreg_old != VREG_UNDEFINED) {
+            *vreg = *vreg_old;
+            return;
+        }
+
         assert(name_vreg.count(vreg_old));
-        name_vreg[vreg] = _dup2(name_vreg[vreg_old]);
+        name_vreg[vreg] = (BST_Name*)_dup2(name_vreg[vreg_old]);
     }
 
     BST_expr* remapBinOp(AST_BinOp* node) {
@@ -1037,7 +1062,7 @@ private:
         }
     }
 
-    BST_Name* _dup2(BST_expr* val) {
+    BST_expr* _dup2(BST_expr* val) {
         if (val == nullptr)
             return nullptr;
 
@@ -1046,6 +1071,8 @@ private:
             auto new_name = nodeName();
             pushAssign(new_name, _dup(orig));
             return makeLoad(new_name, orig, true);
+        } else if (val->type == BST_TYPE::Num) {
+            return val;
         } else {
             RELEASE_ASSERT(0, "%d", val->type);
         }
@@ -2941,7 +2968,8 @@ public:
 
     bool visit_vreg(int* vreg) override {
         if (!name_vreg.count(vreg)) {
-            *vreg = VREG_UNDEFINED;
+            if (*vreg >= 0)
+                *vreg = VREG_UNDEFINED;
             return true;
         }
 
