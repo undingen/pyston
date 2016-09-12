@@ -991,9 +991,6 @@ private:
     }
 
     CompilerVariable* evalImportName(BST_ImportName* node, const UnwindInfo& unw_info) {
-        RELEASE_ASSERT(irstate->getSourceInfo()->ast_type == BST_TYPE::Module,
-                       "import * not supported in functions (yet)");
-
         int level = node->level;
 
         // TODO this could be a constant Box* too
