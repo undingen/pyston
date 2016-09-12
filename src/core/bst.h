@@ -1138,6 +1138,11 @@ public:
     virtual ~PrintVisitor() {}
     void flush() { stream.flush(); }
 
+    virtual bool visit_vreg(int* vreg) {
+        stream << "#" << *vreg;
+        return true;
+    }
+
     virtual bool visit_arguments(BST_arguments* node);
     virtual bool visit_assert(BST_Assert* node);
     virtual bool visit_assign(BST_Assign* node);

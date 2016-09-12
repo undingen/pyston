@@ -62,8 +62,8 @@ void BST_Assert::accept(BSTVisitor* v) {
     if (skip)
         return;
 
-    if (vreg_msg != VREG_UNDEFINED)
-        v->visit_vreg(&vreg_msg);
+    // if (vreg_msg != VREG_UNDEFINED)
+    v->visit_vreg(&vreg_msg);
 }
 
 void BST_Assert::accept_stmt(StmtVisitor* v) {
@@ -209,12 +209,12 @@ void BST_Exec::accept(BSTVisitor* v) {
         return;
 
 
-    if (vreg_body != VREG_UNDEFINED)
-        v->visit_vreg(&vreg_body);
-    if (vreg_globals != VREG_UNDEFINED)
-        v->visit_vreg(&vreg_globals);
-    if (vreg_locals != VREG_UNDEFINED)
-        v->visit_vreg(&vreg_locals);
+    // if (vreg_body != VREG_UNDEFINED)
+    v->visit_vreg(&vreg_body);
+    // if (vreg_globals != VREG_UNDEFINED)
+    v->visit_vreg(&vreg_globals);
+    // if (vreg_locals != VREG_UNDEFINED)
+    v->visit_vreg(&vreg_locals);
 }
 
 void BST_Exec::accept_stmt(StmtVisitor* v) {
@@ -477,11 +477,11 @@ void BST_Print::accept(BSTVisitor* v) {
     if (skip)
         return;
 
-    if (vreg_dest != VREG_UNDEFINED)
-        v->visit_vreg(&vreg_dest);
+    // if (vreg_dest != VREG_UNDEFINED)
+    v->visit_vreg(&vreg_dest);
 
-    if (vreg_value != VREG_UNDEFINED)
-        v->visit_vreg(&vreg_value);
+    // if (vreg_value != VREG_UNDEFINED)
+    v->visit_vreg(&vreg_value);
 }
 
 void BST_Print::accept_stmt(StmtVisitor* v) {
@@ -493,12 +493,12 @@ void BST_Raise::accept(BSTVisitor* v) {
     if (skip)
         return;
 
-    if (vreg_arg0 != VREG_UNDEFINED)
-        v->visit_vreg(&vreg_arg0);
-    if (vreg_arg1 != VREG_UNDEFINED)
-        v->visit_vreg(&vreg_arg1);
-    if (vreg_arg2 != VREG_UNDEFINED)
-        v->visit_vreg(&vreg_arg2);
+    // if (vreg_arg0 != VREG_UNDEFINED)
+    v->visit_vreg(&vreg_arg0);
+    // if (vreg_arg1 != VREG_UNDEFINED)
+    v->visit_vreg(&vreg_arg1);
+    // if (vreg_arg2 != VREG_UNDEFINED)
+    v->visit_vreg(&vreg_arg2);
 }
 
 void BST_Raise::accept_stmt(StmtVisitor* v) {
@@ -522,8 +522,8 @@ void BST_Return::accept(BSTVisitor* v) {
     if (skip)
         return;
 
-    if (vreg_value != VREG_UNDEFINED)
-        v->visit_vreg(&vreg_value);
+    // if (vreg_value != VREG_UNDEFINED)
+    v->visit_vreg(&vreg_value);
 }
 
 void BST_Return::accept_stmt(StmtVisitor* v) {
@@ -611,8 +611,8 @@ void BST_Yield::accept(BSTVisitor* v) {
     if (skip)
         return;
 
-    if (vreg_value != VREG_UNDEFINED)
-        v->visit_vreg(&vreg_value);
+    // if (vreg_value != VREG_UNDEFINED)
+    v->visit_vreg(&vreg_value);
 }
 
 void* BST_Yield::accept_expr(ExprVisitor* v) {
@@ -1156,6 +1156,8 @@ bool PrintVisitor::visit_repr(BST_Repr* node) {
 
 bool PrintVisitor::visit_return(BST_Return* node) {
     stream << "return ";
+    if (node->vreg_value != VREG_UNDEFINED)
+        stream << "#" << node->vreg_value;
     return false;
 }
 

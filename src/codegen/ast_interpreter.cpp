@@ -1392,9 +1392,9 @@ Value ASTInterpreter::visit_raise(BST_Raise* node) {
         ASTInterpreterJitInterface::raise0Helper(this);
     }
 
-    Value arg0 = node->vreg_arg0 == VREG_UNDEFINED ? getVReg(node->vreg_arg0) : getNone();
-    Value arg1 = node->vreg_arg1 == VREG_UNDEFINED ? getVReg(node->vreg_arg1) : getNone();
-    Value arg2 = node->vreg_arg2 == VREG_UNDEFINED ? getVReg(node->vreg_arg2) : getNone();
+    Value arg0 = node->vreg_arg0 != VREG_UNDEFINED ? getVReg(node->vreg_arg0) : getNone();
+    Value arg1 = node->vreg_arg1 != VREG_UNDEFINED ? getVReg(node->vreg_arg1) : getNone();
+    Value arg2 = node->vreg_arg2 != VREG_UNDEFINED ? getVReg(node->vreg_arg2) : getNone();
 
     if (jit) {
         jit->emitRaise3(arg0, arg1, arg2);
@@ -1793,6 +1793,7 @@ Value ASTInterpreter::visit_str(BST_Str* node) {
 
 Value ASTInterpreter::getVReg(int vreg) {
     assert(vreg >= 0);
+    assert(vreg != VREG_UNDEFINED);
 
     Value v;
     if (jit) {

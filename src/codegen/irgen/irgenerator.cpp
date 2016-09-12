@@ -1280,6 +1280,7 @@ private:
     }
 
     CompilerVariable* evalVReg(int vreg) {
+        assert(vreg != VREG_UNDEFINED);
         CompilerVariable* rtn = symbol_table[vreg];
         // if (is_kill)
         symbol_table[vreg] = NULL;
@@ -2079,7 +2080,7 @@ private:
             RefType::OWNED));
 
         ConcreteCompilerVariable* converted_msg = NULL;
-        if (node->vreg_msg == VREG_UNDEFINED) {
+        if (node->vreg_msg != VREG_UNDEFINED) {
             CompilerVariable* msg = evalVReg(node->vreg_msg);
             converted_msg = msg->makeConverted(emitter, msg->getBoxType());
             llvm_args.push_back(converted_msg->getValue());

@@ -422,7 +422,7 @@ private:
         }
 
         BST_Return* node = new BST_Return();
-        unmapExpr(value, &node->vreg_value);
+        unmapExpr(_dup2(value), &node->vreg_value);
         node->lineno = value->lineno;
         push_back(node);
         curblock = NULL;
@@ -934,12 +934,18 @@ private:
 
     llvm::DenseMap<int*, BST_Name*> name_vreg;
     void unmapExpr(BST_expr* node, int* vreg) {
+        if (!node) {
+            *vreg = VREG_UNDEFINED;
+            return;
+        }
+
         assertAssumption(node);
 
         if (node->type == BST_TYPE::Name) {
             BST_Name* name = (BST_Name*)node;
             assert(name->is_kill && name->lookup_type == ScopeInfo::VarScopeType::FAST
                    && name->id.isCompilerCreatedName());
+            assert(!name_vreg.count(vreg));
             name_vreg[vreg] = name;
             return;
         }
@@ -2244,7 +2250,7 @@ public:
             remapped->lineno = node->lineno;
 
             if (i < node->values.size() - 1) {
-                unmapExpr(_dup(dest), &remapped->vreg_dest);
+                unmapExpr(_dup2(_dup(dest)), &remapped->vreg_dest);
                 remapped->nl = false;
             } else {
                 unmapExpr(dest, &remapped->vreg_dest);
@@ -2934,6 +2940,11 @@ public:
     }
 
     bool visit_vreg(int* vreg) override {
+        if (!name_vreg.count(vreg)) {
+            *vreg = VREG_UNDEFINED;
+            return true;
+        }
+
         auto* node = name_vreg[vreg];
         node->accept(this);
         *vreg = node->vreg;
@@ -3133,7 +3144,7 @@ static CFG* computeCFG(llvm::ArrayRef<AST_stmt*> body, AST_TYPE::AST_TYPE ast_ty
 
         BST_Return* rtn = new BST_Return();
         rtn->lineno = getLastLineno(body, lineno);
-        visitor.unmapExpr(visitor._dup2(visitor.wrap(locals)), &rtn->vreg_value);
+        visitor.unmapExpr(visitor.wrap(locals), &rtn->vreg_value);
         visitor.push_back(rtn);
     } else {
         // Put a fake "return" statement at the end of every function just to make sure they all have one;
@@ -3353,8 +3364,8 @@ static CFG* computeCFG(llvm::ArrayRef<AST_stmt*> body, AST_TYPE::AST_TYPE ast_ty
 
     std::unordered_set<BST_Name*> names;
     for (auto&& e : visitor.name_vreg) {
-        if (names.insert(e.second).second)
-            delete e.second;
+        // if (names.insert(e.second).second)
+        //   delete e.second;
     }
 
 

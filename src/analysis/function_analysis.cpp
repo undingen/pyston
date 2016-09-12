@@ -97,7 +97,8 @@ public:
     }
 
     virtual bool visit_vreg(int* vreg) {
-        _doLoad(*vreg);
+        if (*vreg != VREG_UNDEFINED)
+            _doLoad(*vreg);
         return true;
     }
 
