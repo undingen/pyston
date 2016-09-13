@@ -150,26 +150,29 @@ private:
         return rtn;
     }
 
+    CompilerType* getConstantType(int vreg) {
+        Box* o = mod->constants[-vreg - 1];
+        if (o->cls == int_cls)
+            return INT;
+        else if (o->cls == float_cls)
+            return FLOAT;
+        else if (o->cls == complex_cls)
+            return BOXED_COMPLEX;
+        else if (o->cls == long_cls)
+            return LONG;
+        else if (o->cls == str_cls)
+            return STR;
+        else if (o->cls == unicode_cls)
+            return typeFromClass(unicode_cls);
+        else
+            RELEASE_ASSERT(0, "");
+    }
+
     CompilerType* getType(int vreg) {
         if (vreg == VREG_UNDEFINED)
             return UNDEF;
-        if (vreg < 0) {
-            Box* o = mod->constants[-vreg - 1];
-            if (o->cls == int_cls)
-                return INT;
-            else if (o->cls == float_cls)
-                return FLOAT;
-            else if (o->cls == complex_cls)
-                return BOXED_COMPLEX;
-            else if (o->cls == long_cls)
-                return LONG;
-            else if (o->cls == str_cls)
-                return STR;
-            else if (o->cls == unicode_cls)
-                return typeFromClass(unicode_cls);
-            else
-                RELEASE_ASSERT(0, "");
-        }
+        if (vreg < 0)
+            return getConstantType(vreg);
         CompilerType*& t = sym_table[vreg];
         if (t == NULL) {
             // if (VERBOSITY() >= 2) {

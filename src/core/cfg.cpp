@@ -172,7 +172,7 @@ void CFGBlock::unconnectFrom(CFGBlock* successor) {
                                   successor->predecessors.end());
 }
 
-void CFGBlock::print(llvm::raw_ostream& stream) {
+void CFGBlock::print(llvm::raw_ostream& stream, BoxedModule* mod) {
     stream << "Block " << idx;
     if (info)
         stream << " '" << info << "'";
@@ -187,7 +187,7 @@ void CFGBlock::print(llvm::raw_ostream& stream) {
     }
     stream << "\n";
 
-    PrintVisitor pv(4);
+    PrintVisitor pv(4, stream, mod);
     for (int j = 0; j < body.size(); j++) {
         stream << "    ";
         body[j]->accept(&pv);
@@ -2945,11 +2945,11 @@ public:
     }
 };
 
-void CFG::print(llvm::raw_ostream& stream) {
+void CFG::print(llvm::raw_ostream& stream, BoxedModule* mod) {
     stream << "CFG:\n";
     stream << blocks.size() << " blocks\n";
     for (int i = 0; i < blocks.size(); i++)
-        blocks[i]->print(stream);
+        blocks[i]->print(stream, mod);
 }
 
 class AssignVRegsVisitor : public NoopBSTVisitor {
@@ -3418,7 +3418,7 @@ static CFG* computeCFG(llvm::ArrayRef<AST_stmt*> body, AST_TYPE::AST_TYPE ast_ty
 
     if (VERBOSITY("cfg") >= 2) {
         printf("Final cfg:\n");
-        rtn->print();
+        rtn->print(llvm::outs(), source->parent_module);
     }
 
     return rtn;

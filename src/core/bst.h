@@ -1130,18 +1130,16 @@ class PrintVisitor : public BSTVisitor {
 private:
     llvm::raw_ostream& stream;
     int indent;
+    BoxedModule* mod;
     void printIndent();
     void printOp(AST_TYPE::AST_TYPE op_type);
 
 public:
-    PrintVisitor(int indent = 0, llvm::raw_ostream& stream = llvm::outs()) : stream(stream), indent(indent) {}
+    PrintVisitor(int indent, llvm::raw_ostream& stream, BoxedModule* mod) : stream(stream), indent(indent), mod(mod) {}
     virtual ~PrintVisitor() {}
     void flush() { stream.flush(); }
 
-    virtual bool visit_vreg(int* vreg) {
-        stream << "#" << *vreg;
-        return true;
-    }
+    virtual bool visit_vreg(int* vreg);
 
     virtual bool visit_arguments(BST_arguments* node);
     virtual bool visit_assert(BST_Assert* node);

@@ -678,7 +678,7 @@ void* BST_MakeClass::accept_expr(ExprVisitor* v) {
 }
 
 void print_bst(BST* bst) {
-    PrintVisitor v;
+    PrintVisitor v(0, llvm::outs(), NULL);
     bst->accept(&v);
     v.flush();
 }
@@ -687,6 +687,18 @@ void PrintVisitor::printIndent() {
     for (int i = 0; i < indent; i++) {
         stream << ' ';
     }
+}
+
+extern "C" BoxedString* repr(Box* obj);
+bool PrintVisitor::visit_vreg(int* vreg) {
+    if (*vreg != VREG_UNDEFINED)
+        stream << "#" << *vreg;
+    else
+        stream << "#undef";
+    if (mod && *vreg < 0 && *vreg != VREG_UNDEFINED)
+        stream << "(" << autoDecref(repr(mod->constants[-*vreg - 1]))->s() << ")";
+
+    return true;
 }
 
 bool PrintVisitor::visit_arguments(BST_arguments* node) {
@@ -1012,19 +1024,31 @@ bool PrintVisitor::visit_locals(BST_Locals* node) {
     return true;
 }
 bool PrintVisitor::visit_getiter(BST_GetIter* node) {
-    stream << ":GET_ITER(#" << node->vreg_value << ")";
+    stream << ":GET_ITER(";
+    visit_vreg(&node->vreg_value);
+    stream << ")";
     return true;
 }
 bool PrintVisitor::visit_importfrom(BST_ImportFrom* node) {
-    stream << ":IMPORT_FROM(#" << node->vreg_module << ", #" << node->vreg_name << ")";
+    stream << ":IMPORT_FROM(";
+    visit_vreg(&node->vreg_module);
+    stream << ", ";
+    visit_vreg(&node->vreg_name);
+    stream << ")";
     return true;
 }
 bool PrintVisitor::visit_importname(BST_ImportName* node) {
-    stream << ":IMPORT_NAME(#" << node->vreg_from << ", #" << node->vreg_name << ", " << node->level << ")";
+    stream << ":IMPORT_NAME(";
+    visit_vreg(&node->vreg_from);
+    stream << ", ";
+    visit_vreg(&node->vreg_name);
+    stream << ", " << node->level << ")";
     return true;
 }
 bool PrintVisitor::visit_importstar(BST_ImportStar* node) {
-    stream << ":IMPORT_STAR(#" << node->vreg_name << ")";
+    stream << ":IMPORT_STAR(";
+    visit_vreg(&node->vreg_name);
+    stream << ")";
     return true;
 }
 bool PrintVisitor::visit_none(BST_None* node) {
@@ -1032,20 +1056,27 @@ bool PrintVisitor::visit_none(BST_None* node) {
     return true;
 }
 bool PrintVisitor::visit_nonzero(BST_Nonzero* node) {
-    stream << ":NONZERO(#" << node->vreg_value << ")";
+    stream << ":NONZERO(";
+    visit_vreg(&node->vreg_value);
+    stream << ")";
     return true;
 }
 bool PrintVisitor::visit_checkexcmatch(BST_CheckExcMatch* node) {
-    stream << ":CHECK_EXC_MATCH(#";
-    stream << node->vreg_value << ", #";
-    stream << node->vreg_cls << ")";
+    stream << ":CHECK_EXC_MATCH(";
+    visit_vreg(&node->vreg_value);
+    stream << ", ";
+    visit_vreg(&node->vreg_cls);
+    stream << ")";
     return true;
 }
 bool PrintVisitor::visit_setexcinfo(BST_SetExcInfo* node) {
-    stream << ":SET_EXC_INFO(#";
-    stream << node->vreg_value << ", #";
-    stream << node->vreg_type << ", #";
-    stream << node->vreg_traceback << ")";
+    stream << ":SET_EXC_INFO(";
+    visit_vreg(&node->vreg_value);
+    stream << ", ";
+    visit_vreg(&node->vreg_type);
+    stream << ", ";
+    visit_vreg(&node->vreg_traceback);
+    stream << ")";
     return true;
 }
 bool PrintVisitor::visit_uncacheexcinfo(BST_UncacheExcInfo* node) {
@@ -1053,11 +1084,15 @@ bool PrintVisitor::visit_uncacheexcinfo(BST_UncacheExcInfo* node) {
     return true;
 }
 bool PrintVisitor::visit_hasnext(BST_HasNext* node) {
-    stream << ":HAS_NEXT(#" << node->vreg_value << ")";
+    stream << ":HAS_NEXT(";
+    visit_vreg(&node->vreg_value);
+    stream << ")";
     return true;
 }
 bool PrintVisitor::visit_printexpr(BST_PrintExpr* node) {
-    stream << ":PRINT_EXPR(#" << node->vreg_value << ")";
+    stream << ":PRINT_EXPR(";
+    visit_vreg(&node->vreg_value);
+    stream << ")";
     return true;
 }
 
@@ -1100,6 +1135,8 @@ bool PrintVisitor::visit_name(BST_Name* node) {
 #endif
     return false;
 }
+
+
 
 bool PrintVisitor::visit_num(BST_Num* node) {
     if (node->num_type == AST_Num::INT) {

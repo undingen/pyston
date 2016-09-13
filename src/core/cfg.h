@@ -88,7 +88,7 @@ public:
     void unconnectFrom(CFGBlock* successor);
 
     void push_back(BST_stmt* node) { body.push_back(node); }
-    void print(llvm::raw_ostream& stream = llvm::outs());
+    void print(llvm::raw_ostream& stream = llvm::outs(), BoxedModule* mod = NULL);
     void _print() { print(); }
 };
 
@@ -211,7 +211,7 @@ public:
         blocks.push_back(block);
     }
 
-    void print(llvm::raw_ostream& stream = llvm::outs());
+    void print(llvm::raw_ostream& stream = llvm::outs(), BoxedModule* mod = NULL);
 };
 
 class VRegSet {
