@@ -93,14 +93,17 @@ private:
     ExprTypeMap& expr_types;
     TypeSpeculations& type_speculations;
     TypeAnalysis::SpeculationLevel speculation;
+    BoxedModule* mod; // TODO: needed for the constants, move them somewhere else
 
     BasicBlockTypePropagator(CFGBlock* block, TypeMap& initial, ExprTypeMap& expr_types,
-                             TypeSpeculations& type_speculations, TypeAnalysis::SpeculationLevel speculation)
+                             TypeSpeculations& type_speculations, TypeAnalysis::SpeculationLevel speculation,
+                             BoxedModule* mod)
         : block(block),
           sym_table(initial),
           expr_types(expr_types),
           type_speculations(type_speculations),
-          speculation(speculation) {}
+          speculation(speculation),
+          mod(mod) {}
 
     void run() {
         for (int i = 0; i < block->body.size(); i++) {
@@ -151,7 +154,21 @@ private:
         if (vreg == VREG_UNDEFINED)
             return UNDEF;
         if (vreg < 0) {
-            return UNKNOWN;
+            Box* o = mod->constants[-vreg - 1];
+            if (o->cls == int_cls)
+                return INT;
+            else if (o->cls == float_cls)
+                return FLOAT;
+            else if (o->cls == complex_cls)
+                return BOXED_COMPLEX;
+            else if (o->cls == long_cls)
+                return LONG;
+            else if (o->cls == str_cls)
+                return STR;
+            else if (o->cls == unicode_cls)
+                return typeFromClass(unicode_cls);
+            else
+                RELEASE_ASSERT(0, "");
         }
         CompilerType*& t = sym_table[vreg];
         if (t == NULL) {
@@ -647,9 +664,10 @@ private:
 
 public:
     static TypeMap propagate(CFGBlock* block, const TypeMap& starting, ExprTypeMap& expr_types,
-                             TypeSpeculations& type_speculations, TypeAnalysis::SpeculationLevel speculation) {
+                             TypeSpeculations& type_speculations, TypeAnalysis::SpeculationLevel speculation,
+                             BoxedModule* mod) {
         TypeMap ending = starting;
-        BasicBlockTypePropagator(block, ending, expr_types, type_speculations, speculation).run();
+        BasicBlockTypePropagator(block, ending, expr_types, type_speculations, speculation, mod).run();
         return ending;
     }
 };
@@ -729,7 +747,7 @@ public:
     }
 
     static PropagatingTypeAnalysis* doAnalysis(SpeculationLevel speculation, TypeMap&& initial_types,
-                                               CFGBlock* initial_block) {
+                                               CFGBlock* initial_block, BoxedModule* mod) {
         Timer _t("PropagatingTypeAnalysis::doAnalysis()");
 
         CFG* cfg = initial_block->cfg;
@@ -770,7 +788,7 @@ public:
             }
 
             TypeMap ending = BasicBlockTypePropagator::propagate(block, starting_types.find(block)->second, expr_types,
-                                                                 type_speculations, speculation);
+                                                                 type_speculations, speculation, mod);
 
             if (VERBOSITY("types") >= 3) {
                 printf("before (after):\n");
@@ -826,7 +844,7 @@ public:
 
 // public entry point:
 TypeAnalysis* doTypeAnalysis(CFG* cfg, const ParamNames& arg_names, const std::vector<ConcreteCompilerType*>& arg_types,
-                             EffortLevel effort, TypeAnalysis::SpeculationLevel speculation) {
+                             EffortLevel effort, TypeAnalysis::SpeculationLevel speculation, BoxedModule* mod) {
     // if (effort == EffortLevel::INTERPRETED) {
     // return new NullTypeAnalysis();
     //}
@@ -845,11 +863,11 @@ TypeAnalysis* doTypeAnalysis(CFG* cfg, const ParamNames& arg_names, const std::v
 
     assert(i == arg_types.size());
 
-    return PropagatingTypeAnalysis::doAnalysis(speculation, std::move(initial_types), cfg->getStartingBlock());
+    return PropagatingTypeAnalysis::doAnalysis(speculation, std::move(initial_types), cfg->getStartingBlock(), mod);
 }
 
 TypeAnalysis* doTypeAnalysis(const OSREntryDescriptor* entry_descriptor, EffortLevel effort,
-                             TypeAnalysis::SpeculationLevel speculation) {
+                             TypeAnalysis::SpeculationLevel speculation, BoxedModule* mod) {
     auto cfg = entry_descriptor->code->source->cfg;
     auto&& vreg_info = cfg->getVRegInfo();
     TypeMap initial_types(vreg_info.getTotalNumOfVRegs());
@@ -859,6 +877,6 @@ TypeAnalysis* doTypeAnalysis(const OSREntryDescriptor* entry_descriptor, EffortL
     }
 
     return PropagatingTypeAnalysis::doAnalysis(speculation, std::move(initial_types),
-                                               entry_descriptor->backedge->target);
+                                               entry_descriptor->backedge->target, mod);
 }
 }

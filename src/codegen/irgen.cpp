@@ -1108,9 +1108,10 @@ std::pair<CompiledFunction*, llvm::Function*> doCompile(BoxedCode* code, SourceI
         speculation_level = TypeAnalysis::SOME;
     TypeAnalysis* types;
     if (entry_descriptor)
-        types = doTypeAnalysis(entry_descriptor, effort, speculation_level);
+        types = doTypeAnalysis(entry_descriptor, effort, speculation_level, source->parent_module);
     else
-        types = doTypeAnalysis(source->cfg, *param_names, spec->arg_types, effort, speculation_level);
+        types = doTypeAnalysis(source->cfg, *param_names, spec->arg_types, effort, speculation_level,
+                               source->parent_module);
 
 
     _t2.split();
