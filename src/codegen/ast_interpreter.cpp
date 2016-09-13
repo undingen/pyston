@@ -171,7 +171,7 @@ public:
     const VRegInfo& getVRegInfo() const { return source_info->cfg->getVRegInfo(); }
 
 #ifndef NDEBUG
-    const llvm::DenseMap<InternedString, DefaultedInt<-1>>& getSymVRegMap() const {
+    const llvm::DenseMap<InternedString, DefaultedInt<VREG_UNDEFINED>>& getSymVRegMap() const {
         return getVRegInfo().getSymVRegMap();
     }
 #endif
@@ -1848,7 +1848,7 @@ Value ASTInterpreter::visit_name(BST_Name* node) {
                 if (node->is_kill) {
                     is_live = false;
                 } else if (node->lookup_type == ScopeInfo::VarScopeType::FAST) {
-                    assert(node->vreg != -1);
+                    assert(node->vreg >= 0);
                     is_live = source_info->getLiveness()->isLiveAtEnd(node->vreg, current_block);
                 }
 

@@ -2956,7 +2956,7 @@ class AssignVRegsVisitor : public NoopBSTVisitor {
 public:
     CFGBlock* current_block;
     int next_vreg;
-    llvm::DenseMap<InternedString, DefaultedInt<-1>> sym_vreg_map;
+    llvm::DenseMap<InternedString, DefaultedInt<VREG_UNDEFINED>> sym_vreg_map;
     llvm::DenseMap<InternedString, std::unordered_set<CFGBlock*>> sym_blocks_map;
     std::vector<InternedString> vreg_sym_map;
     llvm::DenseMap<int*, BST_Name*>& name_vreg;
@@ -3007,7 +3007,7 @@ public:
     }
 
     bool visit_name(BST_Name* node) override {
-        if (node->vreg != -1)
+        if (node->vreg != VREG_UNDEFINED)
             return true;
 
         ASSERT(node->lookup_type != ScopeInfo::VarScopeType::UNKNOWN, "%s", node->id.c_str());

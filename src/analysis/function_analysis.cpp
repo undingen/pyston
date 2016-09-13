@@ -103,7 +103,7 @@ public:
     }
 
     bool visit_name(BST_Name* node) {
-        if (node->vreg == -1)
+        if (node->vreg == VREG_UNDEFINED)
             return true;
 
         if (node->ctx_type == AST_TYPE::Load)

@@ -301,7 +301,7 @@ public:
 class BST_BinOp : public BST_expr {
 public:
     AST_TYPE::AST_TYPE op_type;
-    int vreg_left = -1, vreg_right = -1;
+    int vreg_left = VREG_UNDEFINED, vreg_right = VREG_UNDEFINED;
 
     virtual void accept(BSTVisitor* v);
     virtual void* accept_expr(ExprVisitor* v);
@@ -331,8 +331,8 @@ public:
 class BST_Compare : public BST_expr {
 public:
     AST_TYPE::AST_TYPE op;
-    int vreg_comparator = -1;
-    int vreg_left = -1;
+    int vreg_comparator = VREG_UNDEFINED;
+    int vreg_left = VREG_UNDEFINED;
 
     virtual void accept(BSTVisitor* v);
     virtual void* accept_expr(ExprVisitor* v);
@@ -495,14 +495,14 @@ public:
 
     // These are only valid for lookup_type == FAST or CLOSURE
     // The interpreter and baseline JIT store variables with FAST and CLOSURE scopes in an array (vregs) this specifies
-    // the zero based index of this variable inside the vregs array. If uninitialized it's value is -1.
+    // the zero based index of this variable inside the vregs array. If uninitialized it's value is VREG_UNDEFINED.
     int vreg;
     bool is_kill = false;
 
     // Only valid for lookup_type == DEREF:
     DerefInfo deref_info = DerefInfo({ INT_MAX, INT_MAX });
     // Only valid for lookup_type == CLOSURE:
-    int closure_offset = -1;
+    int closure_offset = VREG_UNDEFINED;
 
     virtual void accept(BSTVisitor* v);
     virtual void* accept_expr(ExprVisitor* v);
@@ -512,7 +512,7 @@ public:
           ctx_type(ctx_type),
           id(id),
           lookup_type(ScopeInfo::VarScopeType::UNKNOWN),
-          vreg(-1) {}
+          vreg(VREG_UNDEFINED) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Name;
 };
@@ -789,7 +789,7 @@ public:
 
 class BST_GetIter : public BST_expr {
 public:
-    int vreg_value = -1;
+    int vreg_value = VREG_UNDEFINED;
 
     virtual void accept(BSTVisitor* v);
     virtual void* accept_expr(ExprVisitor* v);
@@ -801,8 +801,8 @@ public:
 
 class BST_ImportFrom : public BST_expr {
 public:
-    int vreg_module = -1;
-    int vreg_name = -1;
+    int vreg_module = VREG_UNDEFINED;
+    int vreg_name = VREG_UNDEFINED;
 
     virtual void accept(BSTVisitor* v);
     virtual void* accept_expr(ExprVisitor* v);
@@ -814,9 +814,9 @@ public:
 
 class BST_ImportName : public BST_expr {
 public:
-    int vreg_from = -1;
-    int level = -1;
-    int vreg_name = -1;
+    int vreg_from = VREG_UNDEFINED;
+    int level = VREG_UNDEFINED;
+    int vreg_name = VREG_UNDEFINED;
 
 
     virtual void accept(BSTVisitor* v);
@@ -829,7 +829,7 @@ public:
 
 class BST_ImportStar : public BST_expr {
 public:
-    int vreg_name = -1;
+    int vreg_name = VREG_UNDEFINED;
 
     virtual void accept(BSTVisitor* v);
     virtual void* accept_expr(ExprVisitor* v);
@@ -852,7 +852,7 @@ public:
 // determines whether something is "true" for purposes of `if' and so forth
 class BST_Nonzero : public BST_expr {
 public:
-    int vreg_value = -1;
+    int vreg_value = VREG_UNDEFINED;
 
     virtual void accept(BSTVisitor* v);
     virtual void* accept_expr(ExprVisitor* v);
@@ -864,8 +864,8 @@ public:
 
 class BST_CheckExcMatch : public BST_expr {
 public:
-    int vreg_value = -1;
-    int vreg_cls = -1;
+    int vreg_value = VREG_UNDEFINED;
+    int vreg_cls = VREG_UNDEFINED;
 
     virtual void accept(BSTVisitor* v);
     virtual void* accept_expr(ExprVisitor* v);
@@ -877,9 +877,9 @@ public:
 
 class BST_SetExcInfo : public BST_expr {
 public:
-    int vreg_type = -1;
-    int vreg_value = -1;
-    int vreg_traceback = -1;
+    int vreg_type = VREG_UNDEFINED;
+    int vreg_value = VREG_UNDEFINED;
+    int vreg_traceback = VREG_UNDEFINED;
 
     virtual void accept(BSTVisitor* v);
     virtual void* accept_expr(ExprVisitor* v);
@@ -901,7 +901,7 @@ public:
 
 class BST_HasNext : public BST_expr {
 public:
-    int vreg_value = -1;
+    int vreg_value = VREG_UNDEFINED;
 
     virtual void accept(BSTVisitor* v);
     virtual void* accept_expr(ExprVisitor* v);
@@ -913,7 +913,7 @@ public:
 
 class BST_PrintExpr : public BST_expr {
 public:
-    int vreg_value = -1;
+    int vreg_value = VREG_UNDEFINED;
 
     virtual void accept(BSTVisitor* v);
     virtual void* accept_expr(ExprVisitor* v);

@@ -110,8 +110,8 @@ class VRegInfo {
 private:
 #ifndef NDEBUG
     // this maps use too much memory, we only use them in the debug build for asserts
-    llvm::DenseMap<InternedString, DefaultedInt<-1>> sym_vreg_map_user_visible;
-    llvm::DenseMap<InternedString, DefaultedInt<-1>> sym_vreg_map;
+    llvm::DenseMap<InternedString, DefaultedInt<VREG_UNDEFINED>> sym_vreg_map_user_visible;
+    llvm::DenseMap<InternedString, DefaultedInt<VREG_UNDEFINED>> sym_vreg_map;
 #endif
 
     // Reverse map, from vreg->symbol name.
@@ -126,8 +126,8 @@ public:
 #ifndef NDEBUG
     // map of all assigned names. if the name is block local the vreg number is not unique because this vregs get reused
     // between blocks.
-    const llvm::DenseMap<InternedString, DefaultedInt<-1>>& getSymVRegMap() const { return sym_vreg_map; }
-    const llvm::DenseMap<InternedString, DefaultedInt<-1>>& getUserVisibleSymVRegMap() const {
+    const llvm::DenseMap<InternedString, DefaultedInt<VREG_UNDEFINED>>& getSymVRegMap() const { return sym_vreg_map; }
+    const llvm::DenseMap<InternedString, DefaultedInt<VREG_UNDEFINED>>& getUserVisibleSymVRegMap() const {
         return sym_vreg_map_user_visible;
     }
 
