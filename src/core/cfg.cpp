@@ -1730,7 +1730,7 @@ private:
     CFGBlock* makeFinallyCont(Why reason, BST_expr* whyexpr, CFGBlock* then_block) {
         CFGBlock* otherwise = cfg->addDeferredBlock();
         otherwise->info = "finally_otherwise";
-        pushBranch(makeCompare(AST_TYPE::Eq, _dup2(whyexpr), wrap(makeNum(reason))), then_block, otherwise);
+        pushBranch(makeCompare(AST_TYPE::Eq, _dup2(whyexpr), makeNum(reason)), then_block, otherwise);
         cfg->placeBlock(otherwise);
         return otherwise;
     }
