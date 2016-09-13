@@ -1289,8 +1289,18 @@ private:
                 return makeFloat(((BoxedFloat*)o)->d);
             } else if (o->cls == complex_cls) {
                 return makePureImaginary(emitter, o);
-            } else {
+            } else if (o->cls == long_cls) {
                 return makeLong(emitter, o);
+            } else if (o->cls == str_cls) {
+                llvm::Value* rtn = embedRelocatablePtr(o, g.llvm_value_type_ptr);
+                emitter.setType(rtn, RefType::BORROWED);
+                return new ConcreteCompilerVariable(STR, rtn);
+            } else if (o->cls == unicode_cls) {
+                llvm::Value* rtn = embedRelocatablePtr(o, g.llvm_value_type_ptr);
+                emitter.setType(rtn, RefType::BORROWED);
+                return new ConcreteCompilerVariable(typeFromClass(unicode_cls), rtn);
+            } else {
+                RELEASE_ASSERT(0, "");
             }
         }
         CompilerVariable* rtn = symbol_table[vreg];
