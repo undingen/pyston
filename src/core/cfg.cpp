@@ -508,15 +508,16 @@ private:
         // return makeLoad(name, r, /* is_kill */ true);
     }
 
-    BST_Name* remapStr(AST_Str* str) {
+    BST_expr* remapStr(AST_Str* str) {
         auto r = new BST_Str();
         r->str_data = str->str_data;
         r->str_type = str->str_type;
         r->lineno = str->lineno;
 
-        auto name = nodeName();
-        pushAssign(name, r);
-        return makeLoad(name, r, /* is_kill */ true);
+        return r;
+        // auto name = nodeName();
+        // pushAssign(name, r);
+        // return makeLoad(name, r, /* is_kill */ true);
     }
 
     BST_expr* applyComprehensionCall(AST_ListComp* node, BST_Name* name) {
@@ -968,6 +969,21 @@ private:
             source->parent_module->constants.push_back(o);
             *vreg = -source->parent_module->constants.size();
             return;
+        } else if (node->type == BST_TYPE::Str) {
+            BST_Str* str = (BST_Str*)node;
+            Box* o = NULL;
+
+            if (str->str_type == AST_Str::STR) {
+                o = source->parent_module->getStringConstant(str->str_data, true);
+            } else if (str->str_type == AST_Str::UNICODE) {
+                o = source->parent_module->getUnicodeConstant(str->str_data);
+            } else {
+                RELEASE_ASSERT(0, "%d", str->str_type);
+            }
+
+            source->parent_module->constants.push_back(o);
+            *vreg = -source->parent_module->constants.size();
+            return;
         }
 
         assert(0);
@@ -1072,6 +1088,8 @@ private:
             pushAssign(new_name, _dup(orig));
             return makeLoad(new_name, orig, true);
         } else if (val->type == BST_TYPE::Num) {
+            return val;
+        } else if (val->type == BST_TYPE::Str) {
             return val;
         } else {
             RELEASE_ASSERT(0, "%d", val->type);
