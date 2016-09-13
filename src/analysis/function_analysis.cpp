@@ -253,11 +253,11 @@ private:
                 auto name = bst_cast<BST_Name>(t);
                 if (name->lookup_type == ScopeInfo::VarScopeType::FAST
                     || name->lookup_type == ScopeInfo::VarScopeType::CLOSURE) {
-                    assert(name->vreg != -1);
+                    assert(name->vreg >= 0);
                     _doSet(name->vreg);
                 } else if (name->lookup_type == ScopeInfo::VarScopeType::GLOBAL
                            || name->lookup_type == ScopeInfo::VarScopeType::NAME) {
-                    assert(name->vreg == -1);
+                    assert(name->vreg == VREG_UNDEFINED);
                     // skip
                 } else {
                     RELEASE_ASSERT(0, "%d", static_cast<int>(name->lookup_type));

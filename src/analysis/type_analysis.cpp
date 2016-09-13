@@ -220,7 +220,7 @@ private:
                     || name->lookup_type == ScopeInfo::VarScopeType::CLOSURE) {
                     _doSet(name->vreg, t);
                 } else
-                    assert(name->vreg == -1);
+                    assert(name->vreg == VREG_UNDEFINED);
                 break;
             }
             case BST_TYPE::Subscript:
