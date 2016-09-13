@@ -296,10 +296,10 @@ public:
             BST_Name* name = bst_cast<BST_Name>(t);
             if (name->lookup_type != ScopeInfo::VarScopeType::GLOBAL
                 && name->lookup_type != ScopeInfo::VarScopeType::NAME) {
-                assert(name->vreg != -1);
+                assert(name->vreg >= 0);
                 state[name->vreg] = DefinednessAnalysis::Undefined;
             } else
-                assert(name->vreg == -1);
+                assert(name->vreg == VREG_UNDEFINED);
         } else {
             // The CFG pass should reduce all deletes to the "basic" deletes on names/attributes/subscripts.
             // If not, probably the best way to do this would be to just do a full BST traversal

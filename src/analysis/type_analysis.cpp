@@ -602,7 +602,7 @@ private:
                     || name->lookup_type == ScopeInfo::VarScopeType::CLOSURE) {
                     sym_table[name->vreg] = NULL;
                 } else
-                    assert(name->vreg == -1);
+                    assert(name->vreg == VREG_UNDEFINED);
                 break;
             }
             default:

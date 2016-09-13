@@ -422,7 +422,7 @@ private:
         }
 
         BST_Return* node = new BST_Return();
-        unmapExpr(_dup2(value), &node->vreg_value);
+        unmapExpr(_assureKilled(value), &node->vreg_value);
         node->lineno = value->lineno;
         push_back(node);
         curblock = NULL;
@@ -464,7 +464,7 @@ private:
 
     BST_expr* callNonzero(BST_expr* e) {
         BST_Nonzero* call = new BST_Nonzero;
-        unmapExpr(_dup2(wrap(e)), &call->vreg_value);
+        unmapExpr(_assureKilled(wrap(e)), &call->vreg_value);
         call->lineno = e->lineno;
 
         // Simple optimization: allow the generation of nested nodes if there isn't a
@@ -1087,6 +1087,26 @@ private:
 
         if (val->type == BST_TYPE::Name) {
             BST_Name* orig = bst_cast<BST_Name>(val);
+            auto new_name = nodeName();
+            pushAssign(new_name, _dup(orig));
+            return makeLoad(new_name, orig, true);
+        } else if (val->type == BST_TYPE::Num) {
+            return val;
+        } else if (val->type == BST_TYPE::Str) {
+            return val;
+        } else {
+            RELEASE_ASSERT(0, "%d", val->type);
+        }
+    }
+
+    BST_expr* _assureKilled(BST_expr* val) {
+        if (val == nullptr)
+            return nullptr;
+
+        if (val->type == BST_TYPE::Name) {
+            BST_Name* orig = bst_cast<BST_Name>(val);
+            if (orig->is_kill && orig->id.isCompilerCreatedName())
+                return val;
             auto new_name = nodeName();
             pushAssign(new_name, _dup(orig));
             return makeLoad(new_name, orig, true);
@@ -1730,7 +1750,7 @@ private:
     CFGBlock* makeFinallyCont(Why reason, BST_expr* whyexpr, CFGBlock* then_block) {
         CFGBlock* otherwise = cfg->addDeferredBlock();
         otherwise->info = "finally_otherwise";
-        pushBranch(makeCompare(AST_TYPE::Eq, _dup2(whyexpr), makeNum(reason)), then_block, otherwise);
+        pushBranch(makeCompare(AST_TYPE::Eq, _assureKilled(whyexpr), makeNum(reason)), then_block, otherwise);
         cfg->placeBlock(otherwise);
         return otherwise;
     }
@@ -2062,7 +2082,7 @@ public:
             } else {
                 BST_ImportFrom* import_from = new BST_ImportFrom;
                 import_from->lineno = node->lineno;
-                unmapExpr(_dup2(makeLoad(tmp_module_name, node, is_kill)), &import_from->vreg_module);
+                unmapExpr(_assureKilled(makeLoad(tmp_module_name, node, is_kill)), &import_from->vreg_module);
                 unmapExpr(new BST_Str(a->name.s()), &import_from->vreg_name);
 
                 InternedString tmp_import_name = nodeName();
@@ -2298,7 +2318,7 @@ public:
             remapped->lineno = node->lineno;
 
             if (i < node->values.size() - 1) {
-                unmapExpr(_dup2(_dup(dest)), &remapped->vreg_dest);
+                unmapExpr(_assureKilled(_dup(dest)), &remapped->vreg_dest);
                 remapped->nl = false;
             } else {
                 unmapExpr(dest, &remapped->vreg_dest);
@@ -2491,7 +2511,7 @@ public:
 
         BST_expr* remapped_iter = remapExpr(node->iter);
         BST_GetIter* iter_call = new BST_GetIter;
-        unmapExpr(_dup2(remapped_iter), &iter_call->vreg_value);
+        unmapExpr(_assureKilled(remapped_iter), &iter_call->vreg_value);
         iter_call->lineno = node->lineno;
 
         InternedString itername = createUniqueName("#iter_");
@@ -2505,7 +2525,7 @@ public:
 
         BST_HasNext* test_call = new BST_HasNext;
         test_call->lineno = node->lineno;
-        unmapExpr(_dup2(makeName(itername, AST_TYPE::Load, node->lineno)), &test_call->vreg_value);
+        unmapExpr(_assureKilled(makeName(itername, AST_TYPE::Load, node->lineno)), &test_call->vreg_value);
         BST_Branch* test_br = makeBranch(test_call);
 
         push_back(test_br);
@@ -3360,7 +3380,6 @@ static CFG* computeCFG(llvm::ArrayRef<AST_stmt*> body, AST_TYPE::AST_TYPE ast_ty
 
     // Must evaluate end() on every iteration because erase() will invalidate the end.
     for (auto it = rtn->blocks.begin(); it != rtn->blocks.end(); ++it) {
-        break;
         CFGBlock* b = *it;
         while (b->successors.size() == 1) {
             CFGBlock* b2 = b->successors[0];
@@ -3380,20 +3399,6 @@ static CFG* computeCFG(llvm::ArrayRef<AST_stmt*> body, AST_TYPE::AST_TYPE ast_ty
                 // rtn->print();
                 printf("Joining blocks %d and %d\n", b->idx, b2->idx);
             }
-
-            /*
-            decltype(visitor.node_vreg_replacement) new_map;
-            for (auto&& e : visitor.node_vreg_replacement) {
-                if (e.first.first == b2) {
-                    assert(!new_map.count(std::make_pair(b, e.first.second)));
-                    new_map[std::make_pair(b, e.first.second)] = e.second;
-                } else {
-                    assert(!new_map.count(e.first));
-                    new_map[e.first] = e.second;
-                }
-            }
-            visitor.node_vreg_replacement = new_map;
-*/
 
             b->body.pop_back();
             b->body.insert(b->body.end(), b2->body.begin(), b2->body.end());
