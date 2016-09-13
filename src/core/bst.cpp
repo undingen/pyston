@@ -1195,7 +1195,7 @@ bool PrintVisitor::visit_return(BST_Return* node) {
     stream << "return ";
     if (node->vreg_value != VREG_UNDEFINED)
         visit_vreg(&node->vreg_value);
-    return false;
+    return true;
 }
 
 bool PrintVisitor::visit_set(BST_Set* node) {
