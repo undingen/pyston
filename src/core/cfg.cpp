@@ -968,6 +968,8 @@ private:
 
             source->parent_module->constants.push_back(o);
             *vreg = -source->parent_module->constants.size();
+
+            // delete node;
             return;
         } else if (node->type == BST_TYPE::Str) {
             BST_Str* str = (BST_Str*)node;
@@ -983,6 +985,7 @@ private:
 
             source->parent_module->constants.push_back(o);
             *vreg = -source->parent_module->constants.size();
+            // delete node;
             return;
         }
 
@@ -1981,7 +1984,7 @@ public:
             import->level = level;
 
             unmapExpr(wrap(new BST_None), &import->vreg_from);
-            unmapExpr(wrap(new BST_Str(a->name.s())), &import->vreg_name);
+            unmapExpr(new BST_Str(a->name.s()), &import->vreg_name);
 
             InternedString tmpname = nodeName();
             pushAssign(tmpname, import);
@@ -2036,7 +2039,7 @@ public:
             tuple->elts.push_back(new BST_Str(node->names[i]->name.s()));
         }
         unmapExpr(wrap(tuple), &import->vreg_from);
-        unmapExpr(wrap(new BST_Str(node->module.s())), &import->vreg_name);
+        unmapExpr(new BST_Str(node->module.s()), &import->vreg_name);
 
         InternedString tmp_module_name = nodeName();
         pushAssign(tmp_module_name, import);
@@ -2060,7 +2063,7 @@ public:
                 BST_ImportFrom* import_from = new BST_ImportFrom;
                 import_from->lineno = node->lineno;
                 unmapExpr(_dup2(makeLoad(tmp_module_name, node, is_kill)), &import_from->vreg_module);
-                unmapExpr(wrap(new BST_Str(a->name.s())), &import_from->vreg_name);
+                unmapExpr(new BST_Str(a->name.s()), &import_from->vreg_name);
 
                 InternedString tmp_import_name = nodeName();
                 pushAssign(tmp_import_name, import_from);
@@ -3408,10 +3411,8 @@ static CFG* computeCFG(llvm::ArrayRef<AST_stmt*> body, AST_TYPE::AST_TYPE ast_ty
 
     rtn->getVRegInfo().assignVRegs(rtn, param_names, visitor.name_vreg);
 
-    std::unordered_set<BST_Name*> names;
     for (auto&& e : visitor.name_vreg) {
-        // if (names.insert(e.second).second)
-        //   delete e.second;
+        delete e.second;
     }
 
 
