@@ -759,10 +759,10 @@ void PrintVisitor::printOp(AST_TYPE::AST_TYPE op_type) {
 }
 
 bool PrintVisitor::visit_augbinop(BST_AugBinOp* node) {
-    stream << "#" << node->vreg_left;
+    visit_vreg(&node->vreg_left);
     stream << '=';
     printOp(node->op_type);
-    stream << "#" << node->vreg_right;
+    visit_vreg(&node->vreg_right);
     return true;
 }
 
@@ -774,9 +774,9 @@ bool PrintVisitor::visit_attribute(BST_Attribute* node) {
 }
 
 bool PrintVisitor::visit_binop(BST_BinOp* node) {
-    stream << '#' << node->vreg_left;
+    visit_vreg(&node->vreg_left);
     printOp(node->op_type);
-    stream << '#' << node->vreg_right;
+    visit_vreg(&node->vreg_right);
     return true;
 }
 
@@ -814,9 +814,9 @@ bool PrintVisitor::visit_call(BST_Call* node) {
 }
 
 bool PrintVisitor::visit_compare(BST_Compare* node) {
-    stream << "#" << node->vreg_left;
+    visit_vreg(&node->vreg_left);
     stream << " " << getOpSymbol(node->op) << " ";
-    stream << "#" << node->vreg_comparator;
+    visit_vreg(&node->vreg_comparator);
 
     return true;
 }
@@ -879,14 +879,14 @@ bool PrintVisitor::visit_ellipsis(BST_Ellipsis*) {
 bool PrintVisitor::visit_exec(BST_Exec* node) {
     stream << "exec ";
 
-    stream << "#" << node->vreg_body;
+    visit_vreg(&node->vreg_body);
     if (node->vreg_globals != VREG_UNDEFINED) {
         stream << " in ";
-        stream << "#" << node->vreg_globals;
+        visit_vreg(&node->vreg_globals);
 
         if (node->vreg_locals != VREG_UNDEFINED) {
             stream << ", ";
-            stream << "#" << node->vreg_locals;
+            visit_vreg(&node->vreg_locals);
         }
     }
     stream << "\n";
@@ -1120,11 +1120,11 @@ bool PrintVisitor::visit_print(BST_Print* node) {
     stream << "print ";
     if (node->vreg_dest != VREG_UNDEFINED) {
         stream << ">>";
-        stream << "#" << node->vreg_dest;
+        visit_vreg(&node->vreg_dest);
         stream << ", ";
     }
     if (node->vreg_value != VREG_UNDEFINED)
-        stream << "#" << node->vreg_value;
+        visit_vreg(&node->vreg_value);
     if (!node->nl)
         stream << ",";
     return true;
@@ -1134,22 +1134,22 @@ bool PrintVisitor::visit_raise(BST_Raise* node) {
     stream << "raise";
     if (node->vreg_arg0 != VREG_UNDEFINED) {
         stream << " ";
-        stream << "#" << node->vreg_arg0;
+        visit_vreg(&node->vreg_arg0);
     }
     if (node->vreg_arg1 != VREG_UNDEFINED) {
         stream << ", ";
-        stream << "#" << node->vreg_arg1;
+        visit_vreg(&node->vreg_arg1);
     }
     if (node->vreg_arg2 != VREG_UNDEFINED) {
         stream << ", ";
-        stream << "#" << node->vreg_arg2;
+        visit_vreg(&node->vreg_arg2);
     }
     return true;
 }
 
 bool PrintVisitor::visit_repr(BST_Repr* node) {
     stream << "`";
-    stream << "#" << node->vreg_value;
+    visit_vreg(&node->vreg_value);
     stream << "`";
     return true;
 }
@@ -1157,7 +1157,7 @@ bool PrintVisitor::visit_repr(BST_Repr* node) {
 bool PrintVisitor::visit_return(BST_Return* node) {
     stream << "return ";
     if (node->vreg_value != VREG_UNDEFINED)
-        stream << "#" << node->vreg_value;
+        visit_vreg(&node->vreg_value);
     return false;
 }
 
@@ -1252,7 +1252,7 @@ bool PrintVisitor::visit_unaryop(BST_UnaryOp* node) {
     }
     stream << "(";
     // node->operand->accept(this);
-    stream << "#" << node->vreg_operand;
+    visit_vreg(&node->vreg_operand);
     stream << ")";
     return true;
 }
@@ -1260,7 +1260,7 @@ bool PrintVisitor::visit_unaryop(BST_UnaryOp* node) {
 bool PrintVisitor::visit_yield(BST_Yield* node) {
     stream << "yield ";
     if (node->vreg_value != VREG_UNDEFINED)
-        stream << "#" << node->vreg_value;
+        visit_vreg(&node->vreg_value);
     return true;
 }
 
