@@ -126,6 +126,7 @@ public:
 
     virtual llvm::Value* setType(llvm::Value* v, RefType reftype) = 0;
     virtual llvm::Value* setNullable(llvm::Value* v, bool nullable) = 0;
+    virtual RefType getType(llvm::Value* v) = 0;
     virtual void refConsumed(llvm::Value* v, llvm::Instruction* inst) = 0;
     virtual void refUsed(llvm::Value* v, llvm::Instruction* inst) = 0;
     virtual ConcreteCompilerVariable* getNone() = 0;
@@ -226,6 +227,7 @@ private:
 public:
     llvm::Value* setType(llvm::Value* v, RefType reftype);
     llvm::Value* setNullable(llvm::Value* v, bool nullable = true);
+    RefType getType(llvm::Value* v);
     void refConsumed(llvm::Value* v, llvm::Instruction*);
     void refUsed(llvm::Value* v, llvm::Instruction*);
     void setMayThrow(llvm::Instruction*);

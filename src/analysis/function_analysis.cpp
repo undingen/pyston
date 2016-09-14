@@ -466,11 +466,13 @@ const VRegSet& PhiAnalysis::getAllRequiredFor(CFGBlock* block) {
 }
 
 bool PhiAnalysis::isRequired(int vreg, CFGBlock* block) {
+    assert(vreg >= 0);
     assert(required_phis.count(block));
     return required_phis.find(block)->second[vreg];
 }
 
 bool PhiAnalysis::isRequiredAfter(int vreg, CFGBlock* block) {
+    assert(vreg >= 0);
     // If there are multiple successors, then none of them are allowed
     // to require any phi nodes
     if (block->successors.size() != 1)
@@ -481,6 +483,7 @@ bool PhiAnalysis::isRequiredAfter(int vreg, CFGBlock* block) {
 }
 
 bool PhiAnalysis::isPotentiallyUndefinedAfter(int vreg, CFGBlock* block) {
+    assert(vreg >= 0);
     for (auto b : block->successors) {
         if (isPotentiallyUndefinedAt(vreg, b))
             return true;
@@ -489,6 +492,7 @@ bool PhiAnalysis::isPotentiallyUndefinedAfter(int vreg, CFGBlock* block) {
 }
 
 bool PhiAnalysis::isPotentiallyUndefinedAt(int vreg, CFGBlock* block) {
+    assert(vreg >= 0);
     assert(definedness.defined_at_beginning.count(block));
     return definedness.defined_at_beginning.find(block)->second[vreg] != DefinednessAnalysis::Defined;
 }

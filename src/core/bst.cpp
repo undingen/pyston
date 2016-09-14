@@ -1115,6 +1115,7 @@ bool PrintVisitor::visit_keyword(BST_keyword* node) {
 
 bool PrintVisitor::visit_name(BST_Name* node) {
     stream << node->id.s();
+    stream << "(#" << node->vreg << ")";
 #if 0
     if (node->lookup_type == ScopeInfo::VarScopeType::UNKNOWN)
         stream << "<U>";

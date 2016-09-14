@@ -94,6 +94,11 @@ llvm::Value* RefcountTracker::setNullable(llvm::Value* v, bool nullable) {
     return v;
 }
 
+RefType RefcountTracker::getType(llvm::Value* v) {
+    assert(vars.count(v));
+    return vars.lookup(v).reftype;
+}
+
 bool RefcountTracker::isNullable(llvm::Value* v) {
     assert(vars.count(v));
     return vars.lookup(v).nullable;

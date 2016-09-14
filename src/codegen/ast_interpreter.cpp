@@ -320,7 +320,8 @@ void ASTInterpreter::startJITing(CFGBlock* block, int exit_offset, llvm::DenseSe
     if (block == block->cfg->getStartingBlock() && block->predecessors.empty()) {
         auto param_names = getCode()->param_names;
         for (auto&& arg : param_names.allArgsAsName()) {
-            known_non_null_vregs.insert(arg->vreg);
+            if (arg->vreg >= 0)
+                known_non_null_vregs.insert(arg->vreg);
         }
     }
     jit = code_block->newFragment(block, exit_offset, std::move(known_non_null_vregs));

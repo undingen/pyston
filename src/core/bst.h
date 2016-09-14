@@ -245,7 +245,7 @@ public:
 
 class BST_Assert : public BST_stmt {
 public:
-    int vreg_msg;
+    int vreg_msg = VREG_UNDEFINED;
 
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
@@ -271,7 +271,7 @@ public:
 class BST_AugBinOp : public BST_expr {
 public:
     AST_TYPE::AST_TYPE op_type;
-    int vreg_left, vreg_right;
+    int vreg_left = VREG_UNDEFINED, vreg_right = VREG_UNDEFINED;
 
     virtual void accept(BSTVisitor* v);
     virtual void* accept_expr(ExprVisitor* v);
@@ -502,7 +502,7 @@ public:
     // Only valid for lookup_type == DEREF:
     DerefInfo deref_info = DerefInfo({ INT_MAX, INT_MAX });
     // Only valid for lookup_type == CLOSURE:
-    int closure_offset = VREG_UNDEFINED;
+    int closure_offset = -1;
 
     virtual void accept(BSTVisitor* v);
     virtual void* accept_expr(ExprVisitor* v);
@@ -538,7 +538,7 @@ public:
 
 class BST_Repr : public BST_expr {
 public:
-    int vreg_value;
+    int vreg_value = VREG_UNDEFINED;
 
     virtual void accept(BSTVisitor* v);
     virtual void* accept_expr(ExprVisitor* v);
@@ -660,7 +660,7 @@ public:
 
 class BST_UnaryOp : public BST_expr {
 public:
-    int vreg_operand;
+    int vreg_operand = VREG_UNDEFINED;
     AST_TYPE::AST_TYPE op_type;
 
     virtual void accept(BSTVisitor* v);

@@ -744,6 +744,8 @@ public:
         return v;
     }
 
+    RefType getType(llvm::Value* v) override { return irstate->getRefcounts()->getType(v); }
+
     ConcreteCompilerVariable* getNone() override {
         llvm::Constant* none = embedRelocatablePtr(Py_None, g.llvm_value_type_ptr, "cNone");
         setType(none, RefType::BORROWED);
@@ -968,6 +970,10 @@ private:
         CompilerVariable* name = evalVReg(node->vreg_name);
         ConcreteCompilerVariable* converted_name = name->makeConverted(emitter, name->getBoxType());
 
+        // llvm::Value* name_casted = emitter.getBuilder()->CreateBitCast(converted_name->getValue(),
+        // g.llvm_boxedstring_type_ptr);
+        // emitter.setType(name_casted, emitter.getType(converted_name->getValue()));
+
         llvm::Value* r = emitter.createCall2(unw_info, g.funcs.importFrom, converted_module->getValue(),
                                              converted_name->getValue());
         emitter.setType(r, RefType::OWNED);
@@ -999,6 +1005,10 @@ private:
 
         CompilerVariable* name = evalVReg(node->vreg_name);
         ConcreteCompilerVariable* converted_name = name->makeConverted(emitter, name->getBoxType());
+
+        // llvm::Value* name_casted = emitter.getBuilder()->CreateBitCast(converted_name->getValue(),
+        // g.llvm_boxedstring_type_ptr);
+        // emitter.setType(name_casted, emitter.getType(converted_name->getValue()));
 
         llvm::Value* imported
             = emitter.createCall(unw_info, g.funcs.import, { getConstantInt(level, g.i32), converted_froms->getValue(),
@@ -1304,7 +1314,6 @@ private:
             }
         }
         CompilerVariable* rtn = symbol_table[vreg];
-        // if (is_kill)
         symbol_table[vreg] = NULL;
         return rtn;
     }
@@ -1382,6 +1391,7 @@ private:
             return new ConcreteCompilerVariable(UNKNOWN, r);
         } else {
             // vst is one of {FAST, CLOSURE}
+            assert(node->vreg >= 0);
             if (!symbol_table[node->vreg]) {
                 // TODO should mark as DEAD here, though we won't end up setting all the names appropriately
                 // state = DEAD;
@@ -1881,14 +1891,24 @@ private:
     }
 
     void setDefinedVar(int vreg, llvm::Value* val) {
+        assert(vreg >= 0);
         // printf("Setting definedness var for %s\n", name.c_str());
         assert(val->getType() == BOOL->llvmType());
         llvm::Value*& cur = definedness_vars[vreg];
+        if (cur != NULL) {
+
+            llvm::outs() << "this is already defined: " << vreg << "\n\n";
+            cur->dump();
+            myblock->print();
+            myblock->cfg->print();
+            llvm::outs().flush();
+        }
         assert(cur == NULL);
         cur = val;
     }
 
     llvm::Value* getDefinedVar(int vreg, bool allow_missing = false) {
+        assert(vreg >= 0);
         auto r = definedness_vars[vreg];
         if (!r)
             assert(allow_missing);
@@ -1896,6 +1916,7 @@ private:
     }
 
     llvm::Value* popDefinedVar(int vreg, bool allow_missing = false) {
+        assert(vreg >= 0);
         llvm::Value* rtn = getDefinedVar(vreg, allow_missing);
         definedness_vars[vreg] = NULL;
         if (!allow_missing)
