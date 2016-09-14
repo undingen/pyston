@@ -753,29 +753,27 @@ private:
     }
 
     BST_expr* makeCall(BST_expr* func, llvm::ArrayRef<BST_expr*> args = {}) {
+        BST_Call* rtn = NULL;
         if (func->type == BST_TYPE::Attribute) {
             BST_CallAttr* call = new BST_CallAttr();
             call->attr = bst_cast<BST_Attribute>(func)->attr;
             unmapExpr(bst_cast<BST_Attribute>(func)->value, &call->vreg_value);
-            call->lineno = func->lineno;
-            call->args = args;
-            return call;
+            rtn = call;
         } else if (func->type == BST_TYPE::ClsAttribute) {
             BST_CallClsAttr* call = new BST_CallClsAttr();
             call->attr = bst_cast<BST_ClsAttribute>(func)->attr;
             unmapExpr(bst_cast<BST_ClsAttribute>(func)->value, &call->vreg_value);
-            call->lineno = func->lineno;
-            call->args = args;
-            return call;
+            rtn = call;
         } else if (func->type == BST_TYPE::Name) {
             BST_CallFunc* call = new BST_CallFunc();
             unmapExpr(func, &call->vreg_func);
-            call->lineno = func->lineno;
-            call->args = args;
-            return call;
+            rtn = call;
         } else {
             RELEASE_ASSERT(0, "");
         }
+        rtn->lineno = func->lineno;
+        rtn->args = args;
+        return rtn;
     }
 
     BST_Compare* makeCompare(AST_TYPE::AST_TYPE oper, BST_expr* left, BST_expr* right) {
@@ -1166,66 +1164,38 @@ private:
         return makeLoad(name, node, true);
     }
 
-    BST_expr* remapCall(AST_Call* node) {
+    BST_Call* remapCall(AST_Call* node) {
+        BST_Call* rtn_shared = NULL;
         if (node->func->type == AST_TYPE::Attribute) {
             BST_CallAttr* rtn = new BST_CallAttr();
-            rtn->lineno = node->lineno;
-
             auto func = remapAttribute(ast_cast<AST_Attribute>(node->func));
             rtn->attr = func->attr;
             unmapExpr(func->value, &rtn->vreg_value);
-
-            for (auto e : node->args) {
-                rtn->args.push_back(remapExpr(e));
-            }
-            for (auto e : node->keywords) {
-                BST_keyword* kw = new BST_keyword();
-                kw->value = remapExpr(e->value);
-                kw->arg = e->arg;
-                rtn->keywords.push_back(kw);
-            }
-            unmapExpr(remapExpr(node->starargs), &rtn->vreg_starargs);
-            unmapExpr(remapExpr(node->kwargs), &rtn->vreg_kwargs);
-            return rtn;
+            rtn_shared = rtn;
         } else if (node->func->type == AST_TYPE::ClsAttribute) {
             BST_CallClsAttr* rtn = new BST_CallClsAttr();
-            rtn->lineno = node->lineno;
-
             auto func = remapClsAttribute(ast_cast<AST_ClsAttribute>(node->func));
             rtn->attr = func->attr;
             unmapExpr(func->value, &rtn->vreg_value);
-
-            for (auto e : node->args) {
-                rtn->args.push_back(remapExpr(e));
-            }
-            for (auto e : node->keywords) {
-                BST_keyword* kw = new BST_keyword();
-                kw->value = remapExpr(e->value);
-                kw->arg = e->arg;
-                rtn->keywords.push_back(kw);
-            }
-            unmapExpr(remapExpr(node->starargs), &rtn->vreg_starargs);
-            unmapExpr(remapExpr(node->kwargs), &rtn->vreg_kwargs);
-            return rtn;
         } else {
             BST_CallFunc* rtn = new BST_CallFunc();
-            rtn->lineno = node->lineno;
-
             unmapExpr(remapExpr(node->func), &rtn->vreg_func);
-
-            for (auto e : node->args) {
-                rtn->args.push_back(remapExpr(e));
-            }
-            for (auto e : node->keywords) {
-                BST_keyword* kw = new BST_keyword();
-                kw->value = remapExpr(e->value);
-                kw->arg = e->arg;
-                rtn->keywords.push_back(kw);
-            }
-            unmapExpr(remapExpr(node->starargs), &rtn->vreg_starargs);
-            unmapExpr(remapExpr(node->kwargs), &rtn->vreg_kwargs);
-            return rtn;
+            rtn_shared = rtn;
         }
+
+        rtn_shared->lineno = node->lineno;
+        for (auto e : node->args) {
+            rtn_shared->args.push_back(remapExpr(e));
+        }
+        for (auto e : node->keywords) {
+            BST_keyword* kw = new BST_keyword();
+            kw->value = remapExpr(e->value);
+            kw->arg = e->arg;
+            rtn_shared->keywords.push_back(kw);
+        }
+        unmapExpr(remapExpr(node->starargs), &rtn_shared->vreg_starargs);
+        unmapExpr(remapExpr(node->kwargs), &rtn_shared->vreg_kwargs);
+        return rtn_shared;
     }
 
     BST_ClsAttribute* remapClsAttribute(AST_ClsAttribute* node) {

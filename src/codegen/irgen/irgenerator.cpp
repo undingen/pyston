@@ -1149,7 +1149,7 @@ private:
         } else if (node->type == BST_TYPE::CallClsAttr) {
             is_callattr = true;
             callattr_clsonly = true;
-            auto* attr_ast = bst_cast<BST_CallAttr>(node);
+            auto* attr_ast = bst_cast<BST_CallClsAttr>(node);
             func = evalVReg(attr_ast->vreg_value);
             attr = attr_ast->attr;
         } else {

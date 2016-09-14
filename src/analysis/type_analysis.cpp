@@ -372,10 +372,6 @@ private:
         CompilerType* t = getType(node->vreg_value);
         CompilerType* func = t->getattrType(node->attr, false);
 
-        // if (speculation != TypeAnalysis::NONE && (node->attr == "x" || node->attr == "y" || node->attr == "z")) {
-        // rtn = processSpeculation(float_cls, node, rtn);
-        //}
-
         if (speculation != TypeAnalysis::NONE) {
             BoxedClass* speculated_class = predictClassFor(node);
             func = processSpeculation(speculated_class, node, func);
