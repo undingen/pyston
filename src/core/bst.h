@@ -395,8 +395,6 @@ public:
 
 class BST_Dict : public BST_expr {
 public:
-    std::vector<BST_expr*> keys, values;
-
     virtual void accept(BSTVisitor* v);
     virtual void* accept_expr(ExprVisitor* v);
 

@@ -212,11 +212,6 @@ void BST_Dict::accept(BSTVisitor* v) {
     bool skip = v->visit_dict(this);
     if (skip)
         return;
-
-    for (int i = 0; i < keys.size(); i++) {
-        keys[i]->accept(v);
-        values[i]->accept(v);
-    }
 }
 
 void* BST_Dict::accept_expr(ExprVisitor* v) {
@@ -969,15 +964,7 @@ bool PrintVisitor::visit_delete(BST_Delete* node) {
 }
 
 bool PrintVisitor::visit_dict(BST_Dict* node) {
-    stream << "{";
-    for (int i = 0; i < node->keys.size(); i++) {
-        if (i > 0)
-            stream << ", ";
-        node->keys[i]->accept(this);
-        stream << ":";
-        node->values[i]->accept(this);
-    }
-    stream << "}";
+    stream << "{}";
     return true;
 }
 

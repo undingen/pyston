@@ -421,17 +421,7 @@ private:
         return attr_type->callType(ArgPassSpec(2), arg_types, NULL);
     }
 
-    void* visit_dict(BST_Dict* node) override {
-        // Get all the sub-types, even though they're not necessary to
-        // determine the expression type, so that things like speculations
-        // can be processed.
-        for (BST_expr* k : node->keys)
-            getType(k);
-        for (BST_expr* v : node->values)
-            getType(v);
-
-        return DICT;
-    }
+    void* visit_dict(BST_Dict* node) override { return DICT; }
 
     void* visit_index(BST_Index* node) override { return getType(node->vreg_value); }
 

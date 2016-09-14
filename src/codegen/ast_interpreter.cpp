@@ -1771,20 +1771,8 @@ Value ASTInterpreter::visit_repr(BST_Repr* node) {
 }
 
 Value ASTInterpreter::visit_dict(BST_Dict* node) {
-    RELEASE_ASSERT(node->keys.size() == node->values.size(), "not implemented");
-
     BoxedDict* dict = new BoxedDict();
     RewriterVar* r_dict = jit ? jit->emitCreateDict() : NULL;
-    for (size_t i = 0; i < node->keys.size(); ++i) {
-        Value v = visit_expr(node->values[i]);
-        Value k = visit_expr(node->keys[i]);
-
-        dictSetInternal(dict, k.o, v.o);
-        if (jit) {
-            jit->emitDictSet(r_dict, k, v);
-        }
-    }
-
     return Value(dict, r_dict);
 }
 

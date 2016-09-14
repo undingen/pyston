@@ -1199,24 +1199,7 @@ private:
     CompilerVariable* evalDict(BST_Dict* node, const UnwindInfo& unw_info) {
         llvm::Value* v = emitter.getBuilder()->CreateCall(g.funcs.createDict);
         emitter.setType(v, RefType::OWNED);
-        ConcreteCompilerVariable* rtn = new ConcreteCompilerVariable(DICT, v);
-        if (node->keys.size()) {
-            static BoxedString* setitem_str = getStaticString("__setitem__");
-            CompilerVariable* setitem = rtn->getattr(emitter, getEmptyOpInfo(unw_info), setitem_str, true);
-            for (int i = 0; i < node->keys.size(); i++) {
-                CompilerVariable* value = evalExpr(node->values[i], unw_info);
-                CompilerVariable* key = evalExpr(node->keys[i], unw_info);
-                assert(key);
-                assert(value);
-
-                std::vector<CompilerVariable*> args;
-                args.push_back(key);
-                args.push_back(value);
-                // TODO should use callattr
-                CompilerVariable* rtn = setitem->call(emitter, getEmptyOpInfo(unw_info), ArgPassSpec(2), args, NULL);
-            }
-        }
-        return rtn;
+        return new ConcreteCompilerVariable(DICT, v);
     }
 
     void _addAnnotation(const char* message) {
