@@ -268,7 +268,7 @@ private:
                 break;
             case BST_TYPE::Tuple: {
                 BST_Tuple* tt = bst_cast<BST_Tuple>(t);
-                for (int i = 0; i < tt->elts.size(); i++) {
+                for (int i = 0; i < tt->num_elts; i++) {
                     _doSet(tt->elts[i]);
                 }
                 break;

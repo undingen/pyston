@@ -529,7 +529,7 @@ private:
         assert(curblock);
 
         InternedString rtn_name = nodeName();
-        pushAssign(rtn_name, BST_List::createList(0));
+        pushAssign(rtn_name, BST_List::create(0));
         std::vector<CFGBlock*> exit_blocks;
 
         // Where the current level should jump to after finishing its iteration.
@@ -855,7 +855,7 @@ private:
                 elts = &_t->elts;
             }
 
-            BST_Tuple* new_target = new BST_Tuple();
+            BST_Tuple* new_target = BST_Tuple::create(elts->size());
             new_target->ctx_type = AST_TYPE::Store;
             new_target->lineno = target->lineno;
 
@@ -866,7 +866,7 @@ private:
 
             for (int i = 0; i < elts->size(); i++) {
                 InternedString tmp_name = nodeName("", i);
-                new_target->elts.push_back(makeName(tmp_name, AST_TYPE::Store, target->lineno));
+                unmapExprDst(makeName(tmp_name, AST_TYPE::Store, target->lineno), &new_target->elts[i]);
 
                 pushAssign((*elts)[i], makeLoad(tmp_name, target, /* is_kill */ true));
             }
@@ -995,6 +995,27 @@ private:
 
         assert(name_vreg.count(vreg_old));
         name_vreg[vreg] = (BST_Name*)_dup2(name_vreg[vreg_old]);
+    }
+
+    void unmapExprDst(BST_expr* node, int* vreg) {
+        /*
+        if (!node) {
+            *vreg = VREG_UNDEFINED;
+            return;
+        }
+        */
+
+        // assertAssumption(node);
+
+        if (node->type == BST_TYPE::Name) {
+            BST_Name* name = (BST_Name*)node;
+            assert(name->lookup_type == ScopeInfo::VarScopeType::FAST);
+            assert(!name_vreg.count(vreg));
+            name_vreg[vreg] = name;
+            return;
+        }
+
+        assert(0);
     }
 
     BST_expr* remapBinOp(AST_BinOp* node) {
@@ -1529,7 +1550,7 @@ private:
     BST_expr* remapList(AST_List* node) {
         assert(node->ctx_type == AST_TYPE::Load);
 
-        BST_List* rtn = BST_List::createList(node->elts.size());
+        BST_List* rtn = BST_List::create(node->elts.size());
         rtn->lineno = node->lineno;
         rtn->ctx_type = node->ctx_type;
         for (int i = 0; i < node->elts.size(); ++i) {
@@ -1571,12 +1592,12 @@ private:
     BST_expr* remapTuple(AST_Tuple* node) {
         assert(node->ctx_type == AST_TYPE::Load);
 
-        BST_Tuple* rtn = new BST_Tuple();
+        BST_Tuple* rtn = BST_Tuple::create(node->elts.size());
         rtn->lineno = node->lineno;
         rtn->ctx_type = node->ctx_type;
 
-        for (auto elt : node->elts) {
-            rtn->elts.push_back(remapExpr(elt));
+        for (int i = 0; i < node->elts.size(); ++i) {
+            unmapExpr(remapExpr(node->elts[i]), &rtn->elts[i]);
         }
         return rtn;
     }
@@ -1909,10 +1930,11 @@ public:
         curblock = exc_dest;
         // TODO: need to clear some temporaries here
         BST_Assign* exc_asgn = new BST_Assign();
-        BST_Tuple* target = new BST_Tuple();
-        target->elts.push_back(makeName(exc_info.exc_type_name, AST_TYPE::Store, node->lineno));
-        target->elts.push_back(makeName(exc_info.exc_value_name, AST_TYPE::Store, node->lineno));
-        target->elts.push_back(makeName(exc_info.exc_traceback_name, AST_TYPE::Store, node->lineno));
+        BST_Tuple* target = BST_Tuple::create(3);
+        int* array = target->elts;
+        unmapExprDst(makeName(exc_info.exc_type_name, AST_TYPE::Store, node->lineno), &array[0]);
+        unmapExprDst(makeName(exc_info.exc_value_name, AST_TYPE::Store, node->lineno), &array[1]);
+        unmapExprDst(makeName(exc_info.exc_traceback_name, AST_TYPE::Store, node->lineno), &array[2]);
         exc_asgn->target = target;
 
         exc_asgn->value = new BST_Landingpad;
@@ -2051,10 +2073,10 @@ public:
             level = node->level;
         import->level = level;
 
-        auto tuple = new BST_Tuple;
+        auto tuple = BST_Tuple::create(node->names.size());
         tuple->ctx_type = AST_TYPE::Load;
         for (int i = 0; i < node->names.size(); i++) {
-            tuple->elts.push_back(new BST_Str(node->names[i]->name.s()));
+            unmapExpr(new BST_Str(node->names[i]->name.s()), &tuple->elts[i]);
         }
         unmapExpr(wrap(tuple), &import->vreg_from);
         unmapExpr(new BST_Str(node->module.s()), &import->vreg_name);

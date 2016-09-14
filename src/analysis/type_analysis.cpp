@@ -224,9 +224,9 @@ private:
                 break;
             case BST_TYPE::Tuple: {
                 BST_Tuple* tt = bst_cast<BST_Tuple>(target);
-                auto val_types = t->unpackTypes(tt->elts.size());
-                assert(val_types.size() == tt->elts.size());
-                for (int i = 0; i < tt->elts.size(); i++) {
+                auto val_types = t->unpackTypes(tt->num_elts);
+                assert(val_types.size() == tt->num_elts);
+                for (int i = 0; i < tt->num_elts; i++) {
                     _doSet(tt->elts[i], val_types[i]);
                 }
                 break;
@@ -562,7 +562,7 @@ private:
 
     void* visit_tuple(BST_Tuple* node) override {
         std::vector<CompilerType*> elt_types;
-        for (int i = 0; i < node->elts.size(); i++) {
+        for (int i = 0; i < node->num_elts; i++) {
             elt_types.push_back(getType(node->elts[i]));
         }
         return makeTupleType(elt_types);

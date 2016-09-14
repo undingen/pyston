@@ -515,7 +515,7 @@ public:
     virtual void accept(BSTVisitor* v);
     virtual void* accept_expr(ExprVisitor* v);
 
-    static BST_List* createList(int num_elts) {
+    static BST_List* create(int num_elts) {
         BST_List* o = (BST_List*)new char[offsetof(BST_List, elts) + num_elts * sizeof(int)];
         new (o) BST_List(num_elts);
         return o;
@@ -695,15 +695,28 @@ public:
 
 class BST_Tuple : public BST_expr {
 public:
-    std::vector<BST_expr*> elts;
     AST_TYPE::AST_TYPE ctx_type;
+    int num_elts;
+    int elts[1];
+
 
     virtual void accept(BSTVisitor* v);
     virtual void* accept_expr(ExprVisitor* v);
 
-    BST_Tuple() : BST_expr(BST_TYPE::Tuple) {}
+    static BST_Tuple* create(int num_elts) {
+        BST_Tuple* o = (BST_Tuple*)new char[offsetof(BST_Tuple, elts) + num_elts * sizeof(int)];
+        new (o) BST_Tuple(num_elts);
+        return o;
+    }
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Tuple;
+
+private:
+    BST_Tuple(int num_elts) : BST_expr(BST_TYPE::Tuple), num_elts(num_elts) {
+        for (int i = 0; i < num_elts; ++i) {
+            elts[i] = VREG_UNDEFINED;
+        }
+    }
 };
 
 class BST_UnaryOp : public BST_expr {

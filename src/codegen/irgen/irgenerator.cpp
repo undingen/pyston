@@ -1525,8 +1525,8 @@ private:
 
     CompilerVariable* evalTuple(BST_Tuple* node, const UnwindInfo& unw_info) {
         std::vector<CompilerVariable*> elts;
-        for (int i = 0; i < node->elts.size(); i++) {
-            CompilerVariable* value = evalExpr(node->elts[i], unw_info);
+        for (int i = 0; i < node->num_elts; i++) {
+            CompilerVariable* value = evalVReg(node->elts[i]);
             elts.push_back(value);
         }
 
@@ -2076,21 +2076,25 @@ private:
     }
 
     void _doUnpackTuple(BST_Tuple* target, CompilerVariable* val, const UnwindInfo& unw_info) {
-        int ntargets = target->elts.size();
+        int ntargets = target->num_elts;
 
         std::vector<CompilerVariable*> unpacked = val->unpack(emitter, getOpInfoForNode(target, unw_info), ntargets);
-
-#ifndef NDEBUG
-        for (auto e : target->elts) {
-            ASSERT(e->type == BST_TYPE::Name && bst_cast<BST_Name>(e)->id.s()[0] == '#',
-                   "should only be unpacking tuples into cfg-generated names!");
-        }
-#endif
 
         for (int i = 0; i < ntargets; i++) {
             CompilerVariable* thisval = unpacked[i];
             _doSet(target->elts[i], thisval, unw_info);
         }
+    }
+
+    void _doSet(int vreg, CompilerVariable* val, const UnwindInfo& unw_info) {
+        CompilerVariable* prev = symbol_table[vreg];
+        symbol_table[vreg] = val;
+
+        // Clear out the is_defined name since it is now definitely defined:
+        bool maybe_was_undefined = popDefinedVar(vreg, true);
+
+        auto&& get_llvm_val = [&]() { return val->makeConverted(emitter, UNKNOWN)->getValue(); };
+        _setVRegIfUserVisible(vreg, get_llvm_val, prev, maybe_was_undefined);
     }
 
     void _doSet(BST* target, CompilerVariable* val, const UnwindInfo& unw_info) {

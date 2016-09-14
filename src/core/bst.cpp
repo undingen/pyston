@@ -618,7 +618,8 @@ void BST_Tuple::accept(BSTVisitor* v) {
     if (skip)
         return;
 
-    visitVector(elts, v);
+    for (int i = 0; i < num_elts; ++i)
+        v->visit_vreg(&elts[i]);
 }
 
 void* BST_Tuple::accept_expr(ExprVisitor* v) {
@@ -1355,11 +1356,11 @@ bool PrintVisitor::visit_subscript(BST_Subscript* node) {
 
 bool PrintVisitor::visit_tuple(BST_Tuple* node) {
     stream << "(";
-    int n = node->elts.size();
+    int n = node->num_elts;
     for (int i = 0; i < n; i++) {
         if (i)
             stream << ", ";
-        node->elts[i]->accept(this);
+        visit_vreg(&node->elts[i]);
     }
     if (n == 1)
         stream << ",";

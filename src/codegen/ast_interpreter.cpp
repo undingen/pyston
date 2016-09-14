@@ -78,6 +78,7 @@ private:
     Value doBinOp(BST_expr* node, Value left, Value right, int op, BinExpType exp_type);
     void doStore(BST_expr* node, STOLEN(Value) value);
     void doStore(BST_Name* name, STOLEN(Value) value);
+    void doStore(int vreg, STOLEN(Value) value);
     Box* doOSR(BST_Jump* node);
     Value getNone();
 
@@ -486,6 +487,30 @@ Value ASTInterpreter::doBinOp(BST_expr* node, Value left, Value right, int op, B
     return Value();
 }
 
+void ASTInterpreter::doStore(int vreg, STOLEN(Value) value) {
+    if (jit) {
+        /*
+        bool is_live = true;
+        if (!closure)
+            is_live = source_info->getLiveness()->isLiveAtEnd(node->vreg, current_block);
+        if (is_live) {
+            if (closure)
+                jit->emitSetLocalClosure(node, value);
+            else
+                jit->emitSetLocal(node->vreg, value);
+        } else
+            jit->emitSetBlockLocal(node->vreg, value);
+        */
+        abortJITing();
+    }
+
+
+    frame_info.num_vregs = std::max(frame_info.num_vregs, vreg + 1);
+    Box* prev = vregs[vreg];
+    vregs[vreg] = value.o;
+    Py_XDECREF(prev);
+}
+
 void ASTInterpreter::doStore(BST_Name* node, STOLEN(Value) value) {
     assert(node->lookup_type != ScopeInfo::VarScopeType::UNKNOWN);
 
@@ -546,22 +571,20 @@ void ASTInterpreter::doStore(BST_expr* node, STOLEN(Value) value) {
 
         BST_Tuple* tuple = (BST_Tuple*)node;
         Box* keep_alive;
-        Box** array = unpackIntoArray(value.o, tuple->elts.size(), &keep_alive);
+        Box** array = unpackIntoArray(value.o, tuple->num_elts, &keep_alive);
         AUTO_DECREF(keep_alive);
 
         std::vector<RewriterVar*> array_vars;
         if (jit) {
-            array_vars = jit->emitUnpackIntoArray(value, tuple->elts.size());
-            assert(array_vars.size() == tuple->elts.size());
+            array_vars = jit->emitUnpackIntoArray(value, tuple->num_elts);
+            assert(array_vars.size() == tuple->num_elts);
         }
 
-        unsigned i = 0;
-        for (BST_expr* e : tuple->elts) {
-            doStore(e, Value(array[i], jit ? array_vars[i] : NULL));
-            ++i;
+        for (int i = 0; i < tuple->num_elts; ++i) {
+            doStore(tuple->elts[i], Value(array[i], jit ? array_vars[i] : NULL));
         }
     } else if (node->type == BST_TYPE::List) {
-        assert(0);
+        RELEASE_ASSERT(0, "");
         AUTO_DECREF(value.o);
 
         BST_List* list = (BST_List*)node;
@@ -575,9 +598,9 @@ void ASTInterpreter::doStore(BST_expr* node, STOLEN(Value) value) {
             assert(array_vars.size() == list->num_elts);
         }
 
-        // for (int i = 0; i<list->num_elts; ++i) {
-        //    doStore(list[], Value(array[i], jit ? array_vars[i] : NULL));
-        //}
+        for (int i = 0; i < list->num_elts; ++i) {
+            doStore(list->elts[i], Value(array[i], jit ? array_vars[i] : NULL));
+        }
     } else if (node->type == BST_TYPE::Subscript) {
         AUTO_DECREF(value.o);
         BST_Subscript* subscript = (BST_Subscript*)node;
@@ -1954,11 +1977,10 @@ Value ASTInterpreter::visit_list(BST_List* node) {
 Value ASTInterpreter::visit_tuple(BST_Tuple* node) {
     llvm::SmallVector<RewriterVar*, 8> items;
 
-    BoxedTuple* rtn = BoxedTuple::create(node->elts.size());
-    int rtn_idx = 0;
-    for (BST_expr* e : node->elts) {
-        Value v = visit_expr(e);
-        rtn->elts[rtn_idx++] = v.o;
+    BoxedTuple* rtn = BoxedTuple::create(node->num_elts);
+    for (int i = 0; i < node->num_elts; ++i) {
+        Value v = getVReg(node->elts[i]);
+        rtn->elts[i] = v.o;
         items.push_back(v);
     }
 
