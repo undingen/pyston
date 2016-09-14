@@ -608,28 +608,15 @@ private:
         return UNKNOWN;
     }
 
-    void visit_delete(BST_Delete* node) override {
-        BST_expr* target = node->target;
-        switch (target->type) {
-            case BST_TYPE::Subscript:
-                getType(bst_cast<BST_Subscript>(target)->value);
-                break;
-            case BST_TYPE::Attribute:
-                getType(bst_cast<BST_Attribute>(target)->value);
-                break;
-            case BST_TYPE::Name: {
-                auto name = bst_cast<BST_Name>(target);
-                assert(name->lookup_type != ScopeInfo::VarScopeType::UNKNOWN);
-                if (name->lookup_type == ScopeInfo::VarScopeType::FAST
-                    || name->lookup_type == ScopeInfo::VarScopeType::CLOSURE) {
-                    sym_table[name->vreg] = NULL;
-                } else
-                    assert(name->vreg == VREG_UNDEFINED);
-                break;
-            }
-            default:
-                RELEASE_ASSERT(0, "%d", target->type);
-        }
+    void visit_deletesub(BST_DeleteSub* node) { getType(node->vreg_value); }
+    void visit_deleteattr(BST_DeleteAttr* node) { getType(node->vreg_value); }
+    void visit_deletename(BST_DeleteName* node) {
+        assert(node->lookup_type != ScopeInfo::VarScopeType::UNKNOWN);
+        if (node->lookup_type == ScopeInfo::VarScopeType::FAST
+            || node->lookup_type == ScopeInfo::VarScopeType::CLOSURE) {
+            sym_table[node->vreg] = NULL;
+        } else
+            assert(node->vreg == VREG_UNDEFINED);
     }
 
     void visit_expr(BST_Expr* node) override {

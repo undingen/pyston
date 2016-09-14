@@ -2133,27 +2133,9 @@ private:
         _doSet(node->target, val, unw_info);
     }
 
-    void doDelete(BST_Delete* node, const UnwindInfo& unw_info) {
-        BST_expr* target = node->target;
-        switch (target->type) {
-            case BST_TYPE::Subscript:
-                _doDelitem(static_cast<BST_Subscript*>(target), unw_info);
-                break;
-            case BST_TYPE::Attribute:
-                _doDelAttr(static_cast<BST_Attribute*>(target), unw_info);
-                break;
-            case BST_TYPE::Name:
-                _doDelName(static_cast<BST_Name*>(target), unw_info);
-                break;
-            default:
-                ASSERT(0, "Unsupported del target: %d", target->type);
-                abort();
-        }
-    }
-
     // invoke delitem in objmodel.cpp, which will invoke the listDelitem of list
-    void _doDelitem(BST_Subscript* target, const UnwindInfo& unw_info) {
-        CompilerVariable* tget = evalExpr(target->value, unw_info);
+    void _doDelitem(BST_DeleteSub* target, const UnwindInfo& unw_info) {
+        CompilerVariable* tget = evalVReg(target->vreg_value);
         CompilerVariable* slice = evalSlice(target->slice, unw_info);
 
         ConcreteCompilerVariable* converted_target = tget->makeConverted(emitter, tget->getBoxType());
@@ -2181,12 +2163,12 @@ private:
         }
     }
 
-    void _doDelAttr(BST_Attribute* node, const UnwindInfo& unw_info) {
-        CompilerVariable* value = evalExpr(node->value, unw_info);
+    void _doDelAttr(BST_DeleteAttr* node, const UnwindInfo& unw_info) {
+        CompilerVariable* value = evalVReg(node->vreg_value);
         value->delattr(emitter, getEmptyOpInfo(unw_info), node->attr.getBox());
     }
 
-    void _doDelName(BST_Name* target, const UnwindInfo& unw_info) {
+    void _doDelName(BST_DeleteName* target, const UnwindInfo& unw_info) {
         // Hack: we don't have a bytecode for temporary-kills:
         if (target->id.s()[0] == '#') {
             // The refcounter will automatically delete this object.
@@ -2593,8 +2575,14 @@ private:
             case BST_TYPE::Assign:
                 doAssign(bst_cast<BST_Assign>(node), unw_info);
                 break;
-            case BST_TYPE::Delete:
-                doDelete(bst_cast<BST_Delete>(node), unw_info);
+            case BST_TYPE::DeleteAttr:
+                _doDelAttr(bst_cast<BST_DeleteAttr>(node), unw_info);
+                break;
+            case BST_TYPE::DeleteSub:
+                _doDelitem(bst_cast<BST_DeleteSub>(node), unw_info);
+                break;
+            case BST_TYPE::DeleteName:
+                _doDelName(bst_cast<BST_DeleteName>(node), unw_info);
                 break;
             case BST_TYPE::Exec:
                 doExec(bst_cast<BST_Exec>(node), unw_info);

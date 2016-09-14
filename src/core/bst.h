@@ -48,7 +48,6 @@ namespace BST_TYPE {
     X(ClassDef, 10)                                                                                                    \
     X(Compare, 11)                                                                                                     \
     X(comprehension, 12)                                                                                               \
-    X(Delete, 13)                                                                                                      \
     X(Dict, 14)                                                                                                        \
     X(Exec, 16)                                                                                                        \
     X(ExceptHandler, 17)                                                                                               \
@@ -157,7 +156,10 @@ namespace BST_TYPE {
     X(HasNext, 221)                                                                                                    \
     X(PrintExpr, 222)                                                                                                  \
     X(CallAttr, 223)                                                                                                   \
-    X(CallClsAttr, 224)
+    X(CallClsAttr, 224)                                                                                                \
+    X(DeleteAttr, 225)                                                                                                 \
+    X(DeleteSub, 226)                                                                                                  \
+    X(DeleteName, 227)
 
 #define GENERATE_ENUM(ENUM, N) ENUM = N,
 #define GENERATE_STRING(STRING, N) m[N] = #STRING;
@@ -269,7 +271,35 @@ public:
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Assign;
 };
+/*
+class BST_AssignSubscriptSlice : public BST_stmt {
+public:
+    int vreg_target = VREG_UNDEFINED;
+    int vreg_lower = VREG_UNDEFINED, vreg_upper = VREG_UNDEFINED, vreg_step = VREG_UNDEFINED;
+    int vreg_value = VREG_UNDEFINED;
 
+    virtual void accept(BSTVisitor* v);
+    virtual void accept_stmt(StmtVisitor* v);
+
+    BST_Assign() : BST_stmt(BST_TYPE::Assign) {}
+
+    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Assign;
+};
+
+class BST_AssignSubscriptIndex : public BST_stmt {
+public:
+    int vreg_target = VREG_UNDEFINED;
+    int vreg_index = VREG_UNDEFINED;
+    int vreg_value = VREG_UNDEFINED;
+
+    virtual void accept(BSTVisitor* v);
+    virtual void accept_stmt(StmtVisitor* v);
+
+    BST_Assign() : BST_stmt(BST_TYPE::Assign) {}
+
+    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Assign;
+};
+*/
 class BST_AugBinOp : public BST_expr {
 public:
     AST_TYPE::AST_TYPE op_type;
@@ -403,15 +433,54 @@ public:
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Dict;
 };
 
-class BST_Delete : public BST_stmt {
+class BST_DeleteAttr : public BST_stmt {
 public:
-    BST_expr* target;
+    int vreg_value = VREG_UNDEFINED;
+    AST_TYPE::AST_TYPE ctx_type;
+    InternedString attr;
+
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
 
-    BST_Delete() : BST_stmt(BST_TYPE::Delete) {}
+    BST_DeleteAttr() : BST_stmt(BST_TYPE::DeleteAttr) {}
 
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Delete;
+    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::DeleteAttr;
+};
+
+class BST_DeleteName : public BST_stmt {
+public:
+    AST_TYPE::AST_TYPE ctx_type;
+    InternedString id;
+    ScopeInfo::VarScopeType lookup_type;
+    int vreg = VREG_UNDEFINED;
+    bool is_kill = false;
+
+    // Only valid for lookup_type == DEREF:
+    DerefInfo deref_info = DerefInfo({ INT_MAX, INT_MAX });
+    // Only valid for lookup_type == CLOSURE:
+    int closure_offset = -1;
+
+
+    virtual void accept(BSTVisitor* v);
+    virtual void accept_stmt(StmtVisitor* v);
+
+    BST_DeleteName() : BST_stmt(BST_TYPE::DeleteName) {}
+
+    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::DeleteName;
+};
+
+class BST_DeleteSub : public BST_stmt {
+public:
+    int vreg_value = VREG_UNDEFINED;
+    BST_slice* slice;
+    AST_TYPE::AST_TYPE ctx_type;
+
+    virtual void accept(BSTVisitor* v);
+    virtual void accept_stmt(StmtVisitor* v);
+
+    BST_DeleteSub() : BST_stmt(BST_TYPE::DeleteSub) {}
+
+    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::DeleteSub;
 };
 
 class BST_Ellipsis : public BST_slice {
@@ -1022,7 +1091,9 @@ public:
     virtual bool visit_clsattribute(BST_ClsAttribute* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_compare(BST_Compare* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_classdef(BST_ClassDef* node) { RELEASE_ASSERT(0, ""); }
-    virtual bool visit_delete(BST_Delete* node) { RELEASE_ASSERT(0, ""); }
+    virtual bool visit_deletesub(BST_DeleteSub* node) { RELEASE_ASSERT(0, ""); }
+    virtual bool visit_deleteattr(BST_DeleteAttr* node) { RELEASE_ASSERT(0, ""); }
+    virtual bool visit_deletename(BST_DeleteName* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_dict(BST_Dict* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_ellipsis(BST_Ellipsis* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_exec(BST_Exec* node) { RELEASE_ASSERT(0, ""); }
@@ -1085,7 +1156,9 @@ public:
     virtual bool visit_clsattribute(BST_ClsAttribute* node) { return false; }
     virtual bool visit_compare(BST_Compare* node) { return false; }
     virtual bool visit_classdef(BST_ClassDef* node) { return false; }
-    virtual bool visit_delete(BST_Delete* node) { return false; }
+    virtual bool visit_deletesub(BST_DeleteSub* node) { return false; }
+    virtual bool visit_deleteattr(BST_DeleteAttr* node) { return false; }
+    virtual bool visit_deletename(BST_DeleteName* node) { return false; }
     virtual bool visit_dict(BST_Dict* node) { return false; }
     virtual bool visit_ellipsis(BST_Ellipsis* node) { return false; }
     virtual bool visit_exec(BST_Exec* node) { return false; }
@@ -1180,7 +1253,9 @@ public:
     virtual void visit_assert(BST_Assert* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_assign(BST_Assign* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_classdef(BST_ClassDef* node) { RELEASE_ASSERT(0, ""); }
-    virtual void visit_delete(BST_Delete* node) { RELEASE_ASSERT(0, ""); }
+    virtual void visit_deletesub(BST_DeleteSub* node) { RELEASE_ASSERT(0, ""); }
+    virtual void visit_deleteattr(BST_DeleteAttr* node) { RELEASE_ASSERT(0, ""); }
+    virtual void visit_deletename(BST_DeleteName* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_exec(BST_Exec* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_expr(BST_Expr* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_functiondef(BST_FunctionDef* node) { RELEASE_ASSERT(0, ""); }
@@ -1230,7 +1305,9 @@ public:
     virtual bool visit_compare(BST_Compare* node);
     virtual bool visit_classdef(BST_ClassDef* node);
     virtual bool visit_clsattribute(BST_ClsAttribute* node);
-    virtual bool visit_delete(BST_Delete* node);
+    virtual bool visit_deletesub(BST_DeleteSub* node);
+    virtual bool visit_deleteattr(BST_DeleteAttr* node);
+    virtual bool visit_deletename(BST_DeleteName* node);
     virtual bool visit_dict(BST_Dict* node);
     virtual bool visit_ellipsis(BST_Ellipsis* node);
     virtual bool visit_exec(BST_Exec* node);

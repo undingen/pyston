@@ -34,7 +34,7 @@
 
 namespace pyston {
 
-void fillScopingInfo(BST_Name* node, ScopeInfo* scope_info) {
+static void fillScopingInfo(BST_Name* node, ScopeInfo* scope_info) {
     node->lookup_type = scope_info->getScopeTypeOfName(node->id);
 
     if (node->lookup_type == ScopeInfo::VarScopeType::CLOSURE)
@@ -1887,14 +1887,11 @@ public:
         }
 
         // Deleting temporary names is safe, since we only use it to represent kills.
-        if (node->type == BST_TYPE::Delete) {
-            BST_Delete* del = bst_cast<BST_Delete>(node);
-            if (del->target->type == BST_TYPE::Name) {
-                BST_Name* target = bst_cast<BST_Name>(del->target);
-                if (target->id.s()[0] == '#') {
-                    curblock->push_back(node);
-                    return;
-                }
+        if (node->type == BST_TYPE::DeleteName) {
+            BST_DeleteName* del = bst_cast<BST_DeleteName>(node);
+            if (del->id.s()[0] == '#') {
+                curblock->push_back(node);
+                return;
             }
         }
 
@@ -2259,25 +2256,44 @@ public:
 
     bool visit_delete(AST_Delete* node) override {
         for (auto t : node->targets) {
-            BST_expr* target = NULL;
             switch (t->type) {
                 case AST_TYPE::Subscript: {
                     AST_Subscript* s = static_cast<AST_Subscript*>(t);
-                    BST_Subscript* astsubs = new BST_Subscript();
-                    astsubs->value = remapExpr(s->value);
-                    astsubs->slice = remapSlice(s->slice);
-                    astsubs->ctx_type = AST_TYPE::Del;
-                    target = astsubs;
+                    auto* del = new BST_DeleteSub;
+                    del->lineno = node->lineno;
+                    unmapExpr(remapExpr(s->value), &del->vreg_value);
+                    del->slice = remapSlice(s->slice);
+                    del->ctx_type = AST_TYPE::Del;
+                    push_back(del);
                     break;
                 }
                 case AST_TYPE::Attribute: {
-                    BST_Attribute* astattr = static_cast<BST_Attribute*>(remapExpr(t, false));
-                    astattr->ctx_type = AST_TYPE::Del;
-                    target = astattr;
+                    AST_Attribute* astattr = static_cast<AST_Attribute*>(t);
+                    auto* del = new BST_DeleteAttr;
+                    del->lineno = node->lineno;
+                    del->ctx_type = AST_TYPE::Del;
+                    unmapExpr(remapExpr(astattr->value), &del->vreg_value);
+                    del->attr = scoping->mangleName(astattr->attr);
+                    push_back(del);
                     break;
                 }
                 case AST_TYPE::Name: {
-                    target = remapName(ast_cast<AST_Name>(t));
+                    AST_Name* s = static_cast<AST_Name*>(t);
+
+                    auto* del = new BST_DeleteName;
+                    del->lineno = node->lineno;
+                    del->id = s->id;
+                    del->ctx_type = AST_TYPE::Del;
+
+                    del->lookup_type = scoping->getScopeTypeOfName(s->id);
+
+                    if (del->lookup_type == ScopeInfo::VarScopeType::CLOSURE)
+                        del->closure_offset = scoping->getClosureOffset(s->id);
+                    else if (del->lookup_type == ScopeInfo::VarScopeType::DEREF)
+                        del->deref_info = scoping->getDerefInfo(s->id);
+                    assert(del->lookup_type != ScopeInfo::VarScopeType::UNKNOWN);
+
+                    push_back(del);
                     break;
                 }
                 case AST_TYPE::List: {
@@ -2308,13 +2324,6 @@ public:
                 }
                 default:
                     RELEASE_ASSERT(0, "Unsupported del target: %d", t->type);
-            }
-
-            if (target != NULL) {
-                BST_Delete* astdel = new BST_Delete();
-                astdel->lineno = node->lineno;
-                astdel->target = target;
-                push_back(astdel);
             }
         }
 
@@ -2517,8 +2526,18 @@ public:
 
     BST_stmt* makeKill(InternedString name) {
         // There might be a better way to represent this, maybe with a dedicated AST_Kill bytecode?
-        auto del = new BST_Delete();
-        del->target = makeName(name, AST_TYPE::Del, 0, false);
+        auto del = new BST_DeleteName();
+        del->ctx_type = AST_TYPE::Del;
+        del->id = name;
+        del->lineno = 0;
+        del->lookup_type = scoping->getScopeTypeOfName(name);
+
+        if (del->lookup_type == ScopeInfo::VarScopeType::CLOSURE)
+            del->closure_offset = scoping->getClosureOffset(name);
+        else if (del->lookup_type == ScopeInfo::VarScopeType::DEREF)
+            del->deref_info = scoping->getDerefInfo(name);
+        assert(del->lookup_type != ScopeInfo::VarScopeType::UNKNOWN);
+
         return del;
     }
 
@@ -3049,6 +3068,34 @@ public:
     }
 
     bool visit_name(BST_Name* node) override {
+        if (node->vreg != VREG_UNDEFINED)
+            return true;
+
+        ASSERT(node->lookup_type != ScopeInfo::VarScopeType::UNKNOWN, "%s", node->id.c_str());
+
+        if (node->lookup_type != ScopeInfo::VarScopeType::FAST && node->lookup_type != ScopeInfo::VarScopeType::CLOSURE)
+            return true;
+
+        if (step == TrackBlockUsage) {
+            sym_blocks_map[node->id].insert(current_block);
+            return true;
+        } else if (step == UserVisible) {
+            if (node->id.isCompilerCreatedName())
+                return true;
+        } else {
+            bool is_block_local = node->lookup_type == ScopeInfo::VarScopeType::FAST
+                                  && isNameUsedInSingleBlock(node->id);
+            if (step == CrossBlock && is_block_local)
+                return true;
+            if (step == SingleBlockUse && !is_block_local)
+                return true;
+        }
+        node->vreg = assignVReg(node->id);
+        return true;
+    }
+
+
+    bool visit_deletename(BST_DeleteName* node) override {
         if (node->vreg != VREG_UNDEFINED)
             return true;
 

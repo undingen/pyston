@@ -196,16 +196,41 @@ void BST_ClassDef::accept_stmt(StmtVisitor* v) {
     v->visit_classdef(this);
 }
 
-void BST_Delete::accept(BSTVisitor* v) {
-    bool skip = v->visit_delete(this);
+void BST_DeleteAttr::accept(BSTVisitor* v) {
+    bool skip = v->visit_deleteattr(this);
     if (skip)
         return;
 
-    target->accept(v);
+    v->visit_vreg(&vreg_value);
 }
 
-void BST_Delete::accept_stmt(StmtVisitor* v) {
-    v->visit_delete(this);
+void BST_DeleteAttr::accept_stmt(StmtVisitor* v) {
+    v->visit_deleteattr(this);
+}
+
+void BST_DeleteSub::accept(BSTVisitor* v) {
+    bool skip = v->visit_deletesub(this);
+    if (skip)
+        return;
+
+    v->visit_vreg(&vreg_value);
+    slice->accept(v);
+}
+
+void BST_DeleteSub::accept_stmt(StmtVisitor* v) {
+    v->visit_deletesub(this);
+}
+
+
+void BST_DeleteName::accept(BSTVisitor* v) {
+    bool skip = v->visit_deletename(this);
+    if (skip)
+        return;
+    v->visit_vreg(&vreg);
+}
+
+void BST_DeleteName::accept_stmt(StmtVisitor* v) {
+    v->visit_deletename(this);
 }
 
 void BST_Dict::accept(BSTVisitor* v) {
@@ -233,12 +258,8 @@ void BST_Exec::accept(BSTVisitor* v) {
     if (skip)
         return;
 
-
-    // if (vreg_body != VREG_UNDEFINED)
     v->visit_vreg(&vreg_body);
-    // if (vreg_globals != VREG_UNDEFINED)
     v->visit_vreg(&vreg_globals);
-    // if (vreg_locals != VREG_UNDEFINED)
     v->visit_vreg(&vreg_locals);
 }
 
@@ -959,9 +980,25 @@ bool PrintVisitor::visit_classdef(BST_ClassDef* node) {
     return true;
 }
 
-bool PrintVisitor::visit_delete(BST_Delete* node) {
+bool PrintVisitor::visit_deletesub(BST_DeleteSub* node) {
     stream << "del ";
-    node->target->accept(this);
+    visit_vreg(&node->vreg_value);
+    stream << "[";
+    node->slice->accept(this);
+    stream << "]";
+    return true;
+}
+bool PrintVisitor::visit_deleteattr(BST_DeleteAttr* node) {
+    stream << "del ";
+    visit_vreg(&node->vreg_value);
+    stream << '.';
+    stream << node->attr.s();
+    return true;
+}
+bool PrintVisitor::visit_deletename(BST_DeleteName* node) {
+    stream << "del ";
+    stream << node->id.s();
+    stream << "(#" << node->vreg << ")";
     return true;
 }
 
@@ -1479,7 +1516,15 @@ public:
         output->push_back(node);
         return false;
     }
-    virtual bool visit_delete(BST_Delete* node) {
+    virtual bool visit_deletesub(BST_DeleteSub* node) {
+        output->push_back(node);
+        return false;
+    }
+    virtual bool visit_deleteattr(BST_DeleteAttr* node) {
+        output->push_back(node);
+        return false;
+    }
+    virtual bool visit_deletename(BST_DeleteName* node) {
         output->push_back(node);
         return false;
     }

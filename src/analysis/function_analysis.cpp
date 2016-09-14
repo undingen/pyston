@@ -290,24 +290,19 @@ public:
     virtual bool visit_raise(BST_Raise* node) { return true; }
     virtual bool visit_return(BST_Return* node) { return true; }
 
-    virtual bool visit_delete(BST_Delete* node) {
-        auto t = node->target;
-        if (t->type == BST_TYPE::Name) {
-            BST_Name* name = bst_cast<BST_Name>(t);
-            if (name->lookup_type != ScopeInfo::VarScopeType::GLOBAL
-                && name->lookup_type != ScopeInfo::VarScopeType::NAME) {
-                assert(name->vreg >= 0);
-                state[name->vreg] = DefinednessAnalysis::Undefined;
-            } else
-                assert(name->vreg == VREG_UNDEFINED);
-        } else {
-            // The CFG pass should reduce all deletes to the "basic" deletes on names/attributes/subscripts.
-            // If not, probably the best way to do this would be to just do a full BST traversal
-            // and look for BST_Name's with a ctx of Del
-            assert(t->type == BST_TYPE::Attribute || t->type == BST_TYPE::Subscript);
-        }
+    virtual bool visit_deletename(BST_DeleteName* node) {
+        if (node->lookup_type != ScopeInfo::VarScopeType::GLOBAL
+            && node->lookup_type != ScopeInfo::VarScopeType::NAME) {
+            assert(node->vreg >= 0);
+            state[node->vreg] = DefinednessAnalysis::Undefined;
+        } else
+            assert(node->vreg == VREG_UNDEFINED);
         return true;
     }
+
+    virtual bool visit_deleteattr(BST_DeleteAttr* node) { return true; }
+    virtual bool visit_deletesub(BST_DeleteSub* node) { return true; }
+
 
     virtual bool visit_classdef(BST_ClassDef* node) {
         assert(0 && "I think this isn't needed");
