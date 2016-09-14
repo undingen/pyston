@@ -1232,8 +1232,8 @@ private:
 
     CompilerVariable* evalList(BST_List* node, const UnwindInfo& unw_info) {
         std::vector<CompilerVariable*> elts;
-        for (int i = 0; i < node->elts.size(); i++) {
-            CompilerVariable* value = evalExpr(node->elts[i], unw_info);
+        for (int i = 0; i < node->num_elts; i++) {
+            CompilerVariable* value = evalVReg(node->elts[i]);
             elts.push_back(value);
         }
 
@@ -1246,7 +1246,7 @@ private:
             v, *llvm::cast<llvm::FunctionType>(llvm::cast<llvm::PointerType>(f->getType())->getElementType())
                     ->param_begin());
 
-        for (int i = 0; i < node->elts.size(); i++) {
+        for (int i = 0; i < node->num_elts; i++) {
             CompilerVariable* elt = elts[i];
             ConcreteCompilerVariable* converted = elt->makeConverted(emitter, elt->getBoxType());
 

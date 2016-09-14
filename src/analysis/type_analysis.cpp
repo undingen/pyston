@@ -482,8 +482,8 @@ private:
         // Get all the sub-types, even though they're not necessary to
         // determine the expression type, so that things like speculations
         // can be processed.
-        for (BST_expr* elt : node->elts) {
-            getType(elt);
+        for (int i = 0; i < node->num_elts; ++i) {
+            getType(node->elts[i]);
         }
 
         return LIST;

@@ -508,15 +508,27 @@ public:
 
 class BST_List : public BST_expr {
 public:
-    std::vector<BST_expr*> elts;
     AST_TYPE::AST_TYPE ctx_type;
+    int num_elts;
+    int elts[1];
 
     virtual void accept(BSTVisitor* v);
     virtual void* accept_expr(ExprVisitor* v);
 
-    BST_List() : BST_expr(BST_TYPE::List) {}
+    static BST_List* createList(int num_elts) {
+        BST_List* o = (BST_List*)new char[offsetof(BST_List, elts) + num_elts * sizeof(int)];
+        new (o) BST_List(num_elts);
+        return o;
+    }
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::List;
+
+private:
+    BST_List(int num_elts) : BST_expr(BST_TYPE::List), num_elts(num_elts) {
+        for (int i = 0; i < num_elts; ++i) {
+            elts[i] = VREG_UNDEFINED;
+        }
+    }
 };
 
 class BST_Name : public BST_expr {

@@ -525,11 +525,11 @@ private:
         return makeCall(makeLoadAttribute(name, internString("append"), true), { elt });
     }
 
-    template <typename ResultASTType, typename CompType> BST_expr* remapComprehension(CompType* node) {
+    template <typename CompType> BST_expr* remapComprehension(CompType* node) {
         assert(curblock);
 
         InternedString rtn_name = nodeName();
-        pushAssign(rtn_name, new ResultASTType());
+        pushAssign(rtn_name, BST_List::createList(0));
         std::vector<CFGBlock*> exit_blocks;
 
         // Where the current level should jump to after finishing its iteration.
@@ -1529,13 +1529,13 @@ private:
     BST_expr* remapList(AST_List* node) {
         assert(node->ctx_type == AST_TYPE::Load);
 
-        BST_List* rtn = new BST_List();
+        BST_List* rtn = BST_List::createList(node->elts.size());
         rtn->lineno = node->lineno;
         rtn->ctx_type = node->ctx_type;
-
-        for (auto elt : node->elts) {
-            rtn->elts.push_back(remapExpr(elt));
+        for (int i = 0; i < node->elts.size(); ++i) {
+            unmapExpr(remapExpr(node->elts[i]), &rtn->elts[i]);
         }
+
         return rtn;
     }
 
@@ -1700,7 +1700,7 @@ private:
                 rtn = remapList(ast_cast<AST_List>(node));
                 break;
             case AST_TYPE::ListComp:
-                rtn = remapComprehension<BST_List>(ast_cast<AST_ListComp>(node));
+                rtn = remapComprehension(ast_cast<AST_ListComp>(node));
                 break;
             case AST_TYPE::Name:
                 rtn = remapName(ast_cast<AST_Name>(node));

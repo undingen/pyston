@@ -479,7 +479,8 @@ void BST_List::accept(BSTVisitor* v) {
     if (skip)
         return;
 
-    visitVector(elts, v);
+    for (int i = 0; i < num_elts; ++i)
+        v->visit_vreg(&elts[i]);
 }
 
 void* BST_List::accept_expr(ExprVisitor* v) {
@@ -1194,10 +1195,10 @@ bool PrintVisitor::visit_printexpr(BST_PrintExpr* node) {
 
 bool PrintVisitor::visit_list(BST_List* node) {
     stream << "[";
-    for (int i = 0, n = node->elts.size(); i < n; ++i) {
+    for (int i = 0, n = node->num_elts; i < n; ++i) {
         if (i > 0)
             stream << ", ";
-        node->elts[i]->accept(this);
+        visit_vreg(&node->elts[i]);
     }
     stream << "]";
     return true;

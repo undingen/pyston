@@ -561,24 +561,23 @@ void ASTInterpreter::doStore(BST_expr* node, STOLEN(Value) value) {
             ++i;
         }
     } else if (node->type == BST_TYPE::List) {
+        assert(0);
         AUTO_DECREF(value.o);
 
         BST_List* list = (BST_List*)node;
         Box* keep_alive;
-        Box** array = unpackIntoArray(value.o, list->elts.size(), &keep_alive);
+        Box** array = unpackIntoArray(value.o, list->num_elts, &keep_alive);
         AUTO_DECREF(keep_alive);
 
         std::vector<RewriterVar*> array_vars;
         if (jit) {
-            array_vars = jit->emitUnpackIntoArray(value, list->elts.size());
-            assert(array_vars.size() == list->elts.size());
+            array_vars = jit->emitUnpackIntoArray(value, list->num_elts);
+            assert(array_vars.size() == list->num_elts);
         }
 
-        unsigned i = 0;
-        for (BST_expr* e : list->elts) {
-            doStore(e, Value(array[i], jit ? array_vars[i] : NULL));
-            ++i;
-        }
+        // for (int i = 0; i<list->num_elts; ++i) {
+        //    doStore(list[], Value(array[i], jit ? array_vars[i] : NULL));
+        //}
     } else if (node->type == BST_TYPE::Subscript) {
         AUTO_DECREF(value.o);
         BST_Subscript* subscript = (BST_Subscript*)node;
@@ -1934,10 +1933,10 @@ Value ASTInterpreter::visit_list(BST_List* node) {
     llvm::SmallVector<RewriterVar*, 8> items;
 
     BoxedList* list = new BoxedList();
-    list->ensure(node->elts.size());
-    for (BST_expr* e : node->elts) {
+    list->ensure(node->num_elts);
+    for (int i = 0; i < node->num_elts; ++i) {
         try {
-            Value v = visit_expr(e);
+            Value v = getVReg(node->elts[i]);
             items.push_back(v);
             listAppendInternalStolen(list, v.o);
         } catch (ExcInfo e) {
