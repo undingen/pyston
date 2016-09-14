@@ -1438,8 +1438,8 @@ private:
 
     CompilerVariable* evalSet(BST_Set* node, const UnwindInfo& unw_info) {
         std::vector<CompilerVariable*> elts;
-        for (int i = 0; i < node->elts.size(); i++) {
-            CompilerVariable* value = evalExpr(node->elts[i], unw_info);
+        for (int i = 0; i < node->num_elts; i++) {
+            CompilerVariable* value = evalVReg(node->elts[i]);
             elts.push_back(value);
         }
 

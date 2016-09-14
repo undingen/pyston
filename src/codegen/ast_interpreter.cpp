@@ -1782,8 +1782,8 @@ Value ASTInterpreter::visit_set(BST_Set* node) {
         // insert the elements in reverse like cpython does
         // important for {1, 1L}
         llvm::SmallVector<RewriterVar*, 8> items;
-        for (auto it = node->elts.rbegin(), it_end = node->elts.rend(); it != it_end; ++it) {
-            Value v = visit_expr(*it);
+        for (int i = node->num_elts - 1; i >= 0; --i) {
+            Value v = getVReg(node->elts[i]);
             _setAddStolen(set, v.o);
             items.push_back(v);
         }

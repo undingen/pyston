@@ -561,7 +561,9 @@ void BST_Set::accept(BSTVisitor* v) {
     if (skip)
         return;
 
-    visitVector(elts, v);
+    for (int i = 0; i < num_elts; ++i) {
+        v->visit_vreg(&elts[i]);
+    }
 }
 
 void* BST_Set::accept_expr(ExprVisitor* v) {
@@ -1288,18 +1290,18 @@ bool PrintVisitor::visit_set(BST_Set* node) {
     // An empty set literal is not writeable in Python (it's a dictionary),
     // but we sometimes generate it (ex in set comprehension lowering).
     // Just to make it clear when printing, print empty set literals as "SET{}".
-    if (!node->elts.size())
+    if (!node->num_elts)
         stream << "SET";
 
     stream << "{";
 
     bool first = true;
-    for (auto e : node->elts) {
+    for (int i = 0; i < node->num_elts; ++i) {
         if (!first)
             stream << ", ";
         first = false;
 
-        e->accept(this);
+        visit_vreg(&node->num_elts[&i]);
     }
 
     stream << "}";

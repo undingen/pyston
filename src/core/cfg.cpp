@@ -1568,11 +1568,11 @@ private:
     }
 
     BST_expr* remapSet(AST_Set* node) {
-        BST_Set* rtn = new BST_Set();
+        BST_Set* rtn = BST_Set::create(node->elts.size());
         rtn->lineno = node->lineno;
 
-        for (auto e : node->elts) {
-            rtn->elts.push_back(remapExpr(e));
+        for (int i = 0; i < node->elts.size(); ++i) {
+            unmapExpr(remapExpr(node->elts[i]), &rtn->elts[i]);
         }
 
         return rtn;

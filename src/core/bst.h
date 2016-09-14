@@ -638,14 +638,26 @@ public:
 
 class BST_Set : public BST_expr {
 public:
-    std::vector<BST_expr*> elts;
+    int num_elts;
+    int elts[1];
 
     virtual void accept(BSTVisitor* v);
     virtual void* accept_expr(ExprVisitor* v);
 
-    BST_Set() : BST_expr(BST_TYPE::Set) {}
+    static BST_Set* create(int num_elts) {
+        BST_Set* o = (BST_Set*)new char[offsetof(BST_Set, elts) + num_elts * sizeof(int)];
+        new (o) BST_Set(num_elts);
+        return o;
+    }
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Set;
+
+private:
+    BST_Set(int num_elts) : BST_expr(BST_TYPE::Set), num_elts(num_elts) {
+        for (int i = 0; i < num_elts; ++i) {
+            elts[i] = VREG_UNDEFINED;
+        }
+    }
 };
 
 class BST_Slice : public BST_slice {
