@@ -1140,21 +1140,22 @@ private:
         bool callattr_clsonly = false;
         InternedString attr;
         CompilerVariable* func;
-        if (node->func->type == BST_TYPE::Attribute) {
+        if (node->type == BST_TYPE::CallAttr) {
             is_callattr = true;
             callattr_clsonly = false;
-            BST_Attribute* attr_ast = bst_cast<BST_Attribute>(node->func);
-            func = evalExpr(attr_ast->value, unw_info);
+            auto* attr_ast = bst_cast<BST_CallAttr>(node);
+            func = evalVReg(attr_ast->vreg_value);
             attr = attr_ast->attr;
-        } else if (node->func->type == BST_TYPE::ClsAttribute) {
+        } else if (node->type == BST_TYPE::CallClsAttr) {
             is_callattr = true;
             callattr_clsonly = true;
-            BST_ClsAttribute* attr_ast = bst_cast<BST_ClsAttribute>(node->func);
-            func = evalExpr(attr_ast->value, unw_info);
+            auto* attr_ast = bst_cast<BST_CallAttr>(node);
+            func = evalVReg(attr_ast->vreg_value);
             attr = attr_ast->attr;
         } else {
             is_callattr = false;
-            func = evalExpr(node->func, unw_info);
+            auto* attr_ast = bst_cast<BST_CallFunc>(node);
+            func = evalVReg(attr_ast->vreg_func);
         }
 
         std::vector<CompilerVariable*> args;
@@ -1172,13 +1173,13 @@ private:
             args.push_back(a);
         }
 
-        if (node->starargs)
-            args.push_back(evalExpr(node->starargs, unw_info));
-        if (node->kwargs)
-            args.push_back(evalExpr(node->kwargs, unw_info));
+        if (node->vreg_starargs != VREG_UNDEFINED)
+            args.push_back(evalVReg(node->vreg_starargs));
+        if (node->vreg_kwargs != VREG_UNDEFINED)
+            args.push_back(evalVReg(node->vreg_kwargs));
 
-        struct ArgPassSpec argspec(node->args.size(), node->keywords.size(), node->starargs != NULL,
-                                   node->kwargs != NULL);
+        struct ArgPassSpec argspec(node->args.size(), node->keywords.size(), node->vreg_starargs != VREG_UNDEFINED,
+                                   node->vreg_kwargs != VREG_UNDEFINED);
 
 
         // if (VERBOSITY("irgen") >= 1)
@@ -1791,8 +1792,10 @@ private:
             case BST_TYPE::BinOp:
                 rtn = evalBinOp(bst_cast<BST_BinOp>(node), unw_info);
                 break;
-            case BST_TYPE::Call:
-                rtn = evalCall(bst_cast<BST_Call>(node), unw_info);
+            case BST_TYPE::CallFunc:
+            case BST_TYPE::CallAttr:
+            case BST_TYPE::CallClsAttr:
+                rtn = evalCall((BST_Call*)node, unw_info);
                 break;
             case BST_TYPE::Compare:
                 rtn = evalCompare(bst_cast<BST_Compare>(node), unw_info);

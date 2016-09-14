@@ -1553,7 +1553,9 @@ Value ASTInterpreter::visit_expr(BST_expr* node) {
             return visit_attribute((BST_Attribute*)node);
         case BST_TYPE::BinOp:
             return visit_binop((BST_BinOp*)node);
-        case BST_TYPE::Call:
+        case BST_TYPE::CallFunc:
+        case BST_TYPE::CallAttr:
+        case BST_TYPE::CallClsAttr:
             return visit_call((BST_Call*)node);
         case BST_TYPE::Compare:
             return visit_compare((BST_Compare*)node);
@@ -1633,20 +1635,21 @@ Value ASTInterpreter::visit_call(BST_Call* node) {
 
     bool is_callattr = false;
     bool callattr_clsonly = false;
-    if (node->func->type == BST_TYPE::Attribute) {
+    if (node->type == BST_TYPE::CallAttr) {
         is_callattr = true;
         callattr_clsonly = false;
-        BST_Attribute* attr_ast = bst_cast<BST_Attribute>(node->func);
-        func = visit_expr(attr_ast->value);
+        auto* attr_ast = bst_cast<BST_CallAttr>(node);
+        func = getVReg(attr_ast->vreg_value);
         attr = attr_ast->attr;
-    } else if (node->func->type == BST_TYPE::ClsAttribute) {
+    } else if (node->type == BST_TYPE::CallClsAttr) {
         is_callattr = true;
         callattr_clsonly = true;
-        BST_ClsAttribute* attr_ast = bst_cast<BST_ClsAttribute>(node->func);
-        func = visit_expr(attr_ast->value);
+        auto* attr_ast = bst_cast<BST_CallClsAttr>(node);
+        func = getVReg(attr_ast->vreg_value);
         attr = attr_ast->attr;
     } else {
-        func = visit_expr(node->func);
+        auto* attr_ast = bst_cast<BST_CallFunc>(node);
+        func = getVReg(attr_ast->vreg_func);
     }
 
     AUTO_DECREF(func.o);
@@ -1672,21 +1675,22 @@ Value ASTInterpreter::visit_call(BST_Call* node) {
         args_vars.push_back(v);
     }
 
-    if (node->starargs) {
-        Value v = visit_expr(node->starargs);
+    if (node->vreg_starargs != VREG_UNDEFINED) {
+        Value v = getVReg(node->vreg_starargs);
         args.push_back(v.o);
         args_vars.push_back(v);
     }
 
-    if (node->kwargs) {
-        Value v = visit_expr(node->kwargs);
+    if (node->vreg_kwargs != VREG_UNDEFINED) {
+        Value v = getVReg(node->vreg_kwargs);
         args.push_back(v.o);
         args_vars.push_back(v);
     }
 
     AUTO_DECREF_ARRAY(args.data(), args.size());
 
-    ArgPassSpec argspec(node->args.size(), node->keywords.size(), node->starargs, node->kwargs);
+    ArgPassSpec argspec(node->args.size(), node->keywords.size(), node->vreg_starargs != VREG_UNDEFINED,
+                        node->vreg_kwargs != VREG_UNDEFINED);
 
     if (is_callattr) {
         CallattrFlags callattr_flags{.cls_only = callattr_clsonly, .null_on_nonexistent = false, .argspec = argspec };
@@ -1707,6 +1711,7 @@ Value ASTInterpreter::visit_call(BST_Call* node) {
 
     return v;
 }
+
 
 
 Value ASTInterpreter::visit_expr(BST_Expr* node) {

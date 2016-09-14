@@ -74,9 +74,6 @@ static BoxedClass* simpleCallSpeculation(BST_Call* node, CompilerType* rtn_type,
         return NULL;
     }
 
-    if (node->func->type == BST_TYPE::Name && bst_cast<BST_Name>(node->func)->id.s() == "xrange")
-        return xrange_cls;
-
     return predictClassFor(node);
 }
 
@@ -332,9 +329,7 @@ private:
         return rtn;
     }
 
-    void* visit_call(BST_Call* node) override {
-        CompilerType* func = getType(node->func);
-
+    CompilerType* handleCall(CompilerType* func, BST_Call* node) {
         std::vector<CompilerType*> arg_types;
         for (int i = 0; i < node->args.size(); i++) {
             arg_types.push_back(getType(node->args[i]));
@@ -345,8 +340,8 @@ private:
             kw_types.push_back(std::make_pair(kw->arg, getType(kw->value)));
         }
 
-        CompilerType* starargs = node->starargs ? getType(node->starargs) : NULL;
-        CompilerType* kwargs = node->kwargs ? getType(node->kwargs) : NULL;
+        CompilerType* starargs = node->vreg_starargs != VREG_UNDEFINED ? getType(node->vreg_starargs) : NULL;
+        CompilerType* kwargs = node->vreg_kwargs != VREG_UNDEFINED ? getType(node->vreg_kwargs) : NULL;
 
         if (starargs || kwargs || kw_types.size()) {
             // Bail out for anything but simple calls, for now:
@@ -366,6 +361,45 @@ private:
         }
 
         return rtn_type;
+    }
+
+    void* visit_callfunc(BST_CallFunc* node) override {
+        CompilerType* func = getType(node->vreg_func);
+        return handleCall(func, node);
+    }
+
+    void* visit_callattr(BST_CallAttr* node) override {
+        CompilerType* t = getType(node->vreg_value);
+        CompilerType* func = t->getattrType(node->attr, false);
+
+        // if (speculation != TypeAnalysis::NONE && (node->attr == "x" || node->attr == "y" || node->attr == "z")) {
+        // rtn = processSpeculation(float_cls, node, rtn);
+        //}
+
+        if (speculation != TypeAnalysis::NONE) {
+            BoxedClass* speculated_class = predictClassFor(node);
+            func = processSpeculation(speculated_class, node, func);
+        }
+
+        if (VERBOSITY() >= 2 && func == UNDEF) {
+            printf("Think %s.%s is undefined, at %d\n", t->debugName().c_str(), node->attr.c_str(), node->lineno);
+            print_bst(node);
+            printf("\n");
+        }
+
+        return handleCall(func, node);
+    }
+
+    void* visit_callclsattr(BST_CallClsAttr* node) override {
+        CompilerType* t = getType(node->vreg_value);
+        CompilerType* func = t->getattrType(node->attr, true);
+        if (VERBOSITY() >= 2 && func == UNDEF) {
+            printf("Think %s.%s is undefined, at %d\n", t->debugName().c_str(), node->attr.c_str(), node->lineno);
+            print_bst(node);
+            printf("\n");
+        }
+
+        return handleCall(func, node);
     }
 
     void* visit_compare(BST_Compare* node) override {

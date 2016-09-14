@@ -522,7 +522,7 @@ private:
 
     BST_expr* applyComprehensionCall(AST_ListComp* node, BST_Name* name) {
         BST_expr* elt = remapExpr(node->elt);
-        return makeCall(makeLoadAttribute(name, internString("append"), true), elt);
+        return makeCall(makeLoadAttribute(name, internString("append"), true), { elt });
     }
 
     template <typename ResultASTType, typename CompType> BST_expr* remapComprehension(CompType* node) {
@@ -752,34 +752,30 @@ private:
         return call;
     }
 
-    BST_Call* makeCall(BST_expr* func) {
-        BST_Call* call = new BST_Call();
-        call->starargs = NULL;
-        call->kwargs = NULL;
-        call->func = func;
-        call->lineno = func->lineno;
-        return call;
-    }
-
-    BST_Call* makeCall(BST_expr* func, BST_expr* arg0) {
-        auto call = makeCall(func);
-        call->args.push_back(arg0);
-        return call;
-    }
-
-    BST_Call* makeCall(BST_expr* func, BST_expr* arg0, BST_expr* arg1) {
-        auto call = makeCall(func);
-        call->args.push_back(arg0);
-        call->args.push_back(arg1);
-        return call;
-    }
-
-    BST_Call* makeCall(BST_expr* func, BST_expr* arg0, BST_expr* arg1, BST_expr* arg2) {
-        auto call = makeCall(func);
-        call->args.push_back(arg0);
-        call->args.push_back(arg1);
-        call->args.push_back(arg2);
-        return call;
+    BST_expr* makeCall(BST_expr* func, llvm::ArrayRef<BST_expr*> args = {}) {
+        if (func->type == BST_TYPE::Attribute) {
+            BST_CallAttr* call = new BST_CallAttr();
+            call->attr = bst_cast<BST_Attribute>(func)->attr;
+            unmapExpr(bst_cast<BST_Attribute>(func)->value, &call->vreg_value);
+            call->lineno = func->lineno;
+            call->args = args;
+            return call;
+        } else if (func->type == BST_TYPE::ClsAttribute) {
+            BST_CallClsAttr* call = new BST_CallClsAttr();
+            call->attr = bst_cast<BST_ClsAttribute>(func)->attr;
+            unmapExpr(bst_cast<BST_ClsAttribute>(func)->value, &call->vreg_value);
+            call->lineno = func->lineno;
+            call->args = args;
+            return call;
+        } else if (func->type == BST_TYPE::Name) {
+            BST_CallFunc* call = new BST_CallFunc();
+            unmapExpr(func, &call->vreg_func);
+            call->lineno = func->lineno;
+            call->args = args;
+            return call;
+        } else {
+            RELEASE_ASSERT(0, "");
+        }
     }
 
     BST_Compare* makeCompare(AST_TYPE::AST_TYPE oper, BST_expr* left, BST_expr* right) {
@@ -912,7 +908,7 @@ private:
         return createUniqueName(llvm::Twine("#") + suffix + "_" + llvm::Twine(idx) + "_");
     }
 
-    BST_expr* remapAttribute(AST_Attribute* node) {
+    BST_Attribute* remapAttribute(AST_Attribute* node) {
         BST_Attribute* rtn = new BST_Attribute();
 
         rtn->lineno = node->lineno;
@@ -942,10 +938,12 @@ private:
             return;
         }
 
-        assertAssumption(node);
+        // assertAssumption(node);
 
         if (node->type == BST_TYPE::Name) {
             BST_Name* name = (BST_Name*)node;
+            if (!name->is_kill)
+                name = (BST_Name*)_dup2(name);
             assert(name->is_kill && name->lookup_type == ScopeInfo::VarScopeType::FAST
                    && name->id.isCompilerCreatedName());
             assert(!name_vreg.count(vreg));
@@ -1169,39 +1167,68 @@ private:
     }
 
     BST_expr* remapCall(AST_Call* node) {
-        BST_Call* rtn = new BST_Call();
-        rtn->lineno = node->lineno;
-
         if (node->func->type == AST_TYPE::Attribute) {
-            // TODO this is a cludge to make sure that "callattrs" stick together.
-            // Probably better to create an AST_Callattr type, and solidify the
-            // idea that a callattr is a single expression.
-            rtn->func = remapAttribute(ast_cast<AST_Attribute>(node->func));
+            BST_CallAttr* rtn = new BST_CallAttr();
+            rtn->lineno = node->lineno;
+
+            auto func = remapAttribute(ast_cast<AST_Attribute>(node->func));
+            rtn->attr = func->attr;
+            unmapExpr(func->value, &rtn->vreg_value);
+
+            for (auto e : node->args) {
+                rtn->args.push_back(remapExpr(e));
+            }
+            for (auto e : node->keywords) {
+                BST_keyword* kw = new BST_keyword();
+                kw->value = remapExpr(e->value);
+                kw->arg = e->arg;
+                rtn->keywords.push_back(kw);
+            }
+            unmapExpr(remapExpr(node->starargs), &rtn->vreg_starargs);
+            unmapExpr(remapExpr(node->kwargs), &rtn->vreg_kwargs);
+            return rtn;
         } else if (node->func->type == AST_TYPE::ClsAttribute) {
-            // TODO this is a cludge to make sure that "callattrs" stick together.
-            // Probably better to create an AST_Callattr type, and solidify the
-            // idea that a callattr is a single expression.
-            rtn->func = remapClsAttribute(ast_cast<AST_ClsAttribute>(node->func));
+            BST_CallClsAttr* rtn = new BST_CallClsAttr();
+            rtn->lineno = node->lineno;
+
+            auto func = remapClsAttribute(ast_cast<AST_ClsAttribute>(node->func));
+            rtn->attr = func->attr;
+            unmapExpr(func->value, &rtn->vreg_value);
+
+            for (auto e : node->args) {
+                rtn->args.push_back(remapExpr(e));
+            }
+            for (auto e : node->keywords) {
+                BST_keyword* kw = new BST_keyword();
+                kw->value = remapExpr(e->value);
+                kw->arg = e->arg;
+                rtn->keywords.push_back(kw);
+            }
+            unmapExpr(remapExpr(node->starargs), &rtn->vreg_starargs);
+            unmapExpr(remapExpr(node->kwargs), &rtn->vreg_kwargs);
+            return rtn;
         } else {
-            rtn->func = remapExpr(node->func);
-        }
+            BST_CallFunc* rtn = new BST_CallFunc();
+            rtn->lineno = node->lineno;
 
-        for (auto e : node->args) {
-            rtn->args.push_back(remapExpr(e));
-        }
-        for (auto e : node->keywords) {
-            BST_keyword* kw = new BST_keyword();
-            kw->value = remapExpr(e->value);
-            kw->arg = e->arg;
-            rtn->keywords.push_back(kw);
-        }
-        rtn->starargs = remapExpr(node->starargs);
-        rtn->kwargs = remapExpr(node->kwargs);
+            unmapExpr(remapExpr(node->func), &rtn->vreg_func);
 
-        return rtn;
+            for (auto e : node->args) {
+                rtn->args.push_back(remapExpr(e));
+            }
+            for (auto e : node->keywords) {
+                BST_keyword* kw = new BST_keyword();
+                kw->value = remapExpr(e->value);
+                kw->arg = e->arg;
+                rtn->keywords.push_back(kw);
+            }
+            unmapExpr(remapExpr(node->starargs), &rtn->vreg_starargs);
+            unmapExpr(remapExpr(node->kwargs), &rtn->vreg_kwargs);
+            return rtn;
+        }
     }
 
-    BST_expr* remapClsAttribute(AST_ClsAttribute* node) {
+    BST_ClsAttribute* remapClsAttribute(AST_ClsAttribute* node) {
         BST_ClsAttribute* rtn = new BST_ClsAttribute();
 
         rtn->lineno = node->lineno;
@@ -1383,7 +1410,7 @@ private:
         InternedString func_var_name = nodeName();
         pushAssign(func_var_name, mkfunc);
 
-        return makeCall(makeLoad(func_var_name, node, true), first);
+        return makeCall(makeLoad(func_var_name, node, true), { first });
     }
 
     void emitComprehensionYield(ASTAllocator& allocator, AST_DictComp* node, InternedString dict_name,
@@ -1448,7 +1475,7 @@ private:
         InternedString func_var_name = nodeName();
         pushAssign(func_var_name, mkfunc);
 
-        return makeCall(makeLoad(func_var_name, node, true), first);
+        return makeCall(makeLoad(func_var_name, node, true), { first });
     }
 
     BST_expr* remapIfExp(AST_IfExp* node) {
@@ -2911,8 +2938,9 @@ public:
 
             // call the context-manager's exit method
             InternedString suppressname = nodeName("suppress");
-            pushAssign(suppressname, makeCall(makeLoad(exitname, node, true), makeLoad(exc_type_name, node),
-                                              makeLoad(exc_value_name, node), makeLoad(exc_traceback_name, node)));
+            pushAssign(suppressname, makeCall(makeLoad(exitname, node, true),
+                                              { makeLoad(exc_type_name, node), makeLoad(exc_value_name, node),
+                                                makeLoad(exc_traceback_name, node) }));
 
             // if it returns true, suppress the error and go to our exit block
             CFGBlock* reraise_block = cfg->addDeferredBlock();
@@ -2940,8 +2968,9 @@ public:
             cfg->placeBlock(finally_block);
             curblock = finally_block;
             // call the context-manager's exit method, ignoring result
-            push_back(makeExpr(makeCall(makeLoad(exitname, node, true), makeLoad(nonename, node),
-                                        makeLoad(nonename, node), makeLoad(nonename, node))));
+            push_back(
+                makeExpr(makeCall(makeLoad(exitname, node, true),
+                                  { makeLoad(nonename, node), makeLoad(nonename, node), makeLoad(nonename, node) })));
 
             if (finally_did_why & (1 << Why::CONTINUE))
                 exitFinallyIf(node, Why::CONTINUE, whyname, /* is_kill */ finally_did_why == (1 << Why::CONTINUE));
