@@ -372,10 +372,12 @@ private:
         CompilerType* t = getType(node->vreg_value);
         CompilerType* func = t->getattrType(node->attr, false);
 
+        /*
         if (speculation != TypeAnalysis::NONE) {
             BoxedClass* speculated_class = predictClassFor(node);
             func = processSpeculation(speculated_class, node, func);
         }
+        */
 
         if (VERBOSITY() >= 2 && func == UNDEF) {
             printf("Think %s.%s is undefined, at %d\n", t->debugName().c_str(), node->attr.c_str(), node->lineno);
