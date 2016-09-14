@@ -1177,6 +1177,7 @@ private:
             auto func = remapClsAttribute(ast_cast<AST_ClsAttribute>(node->func));
             rtn->attr = func->attr;
             unmapExpr(func->value, &rtn->vreg_value);
+            rtn_shared = rtn;
         } else {
             BST_CallFunc* rtn = new BST_CallFunc();
             unmapExpr(remapExpr(node->func), &rtn->vreg_func);
