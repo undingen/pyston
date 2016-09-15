@@ -620,7 +620,7 @@ private:
 
             curblock = body_end;
             if (is_innermost) {
-                push_back(makeExpr(applyComprehensionCall(node, makeLoad(rtn_name, node))));
+                push_back(makeAssign(applyComprehensionCall(node, makeLoad(rtn_name, node))));
 
                 pushJump(test_block, true);
 
@@ -891,10 +891,12 @@ private:
         return stmt;
     }
 
-    BST_stmt* makeExpr(BST_expr* expr) {
-        BST_Expr* stmt = new BST_Expr();
+    BST_stmt* makeAssign(BST_expr* expr) {
+        InternedString id = nodeName();
+        BST_Assign* stmt = new BST_Assign();
         stmt->value = expr;
         stmt->lineno = expr->lineno;
+        stmt->target = makeName(id, AST_TYPE::Store, expr->lineno, 0);
         return stmt;
     }
 
@@ -1627,7 +1629,7 @@ private:
         InternedString node_name(nodeName());
         pushAssign(node_name, rtn);
 
-        push_back(makeExpr(new BST_UncacheExcInfo));
+        push_back(makeAssign(new BST_UncacheExcInfo));
 
         if (root_type != AST_TYPE::FunctionDef && root_type != AST_TYPE::Lambda)
             raiseExcHelper(SyntaxError, "'yield' outside function");
@@ -1844,15 +1846,6 @@ public:
             return;
         }
 
-        if (type == BST_TYPE::Expr) {
-            auto expr = bst_cast<BST_Expr>(node)->value;
-            if (expr->type == BST_TYPE::UncacheExcInfo || expr->type == BST_TYPE::SetExcInfo) {
-                curblock->push_back(node);
-                return;
-            }
-            // TODO: there are others that are also nothrow
-        }
-
         if (node->type == BST_TYPE::Assign) {
             BST_Assign* asgn = bst_cast<BST_Assign>(node);
             if (asgn->target->type == BST_TYPE::Name) {
@@ -1883,6 +1876,9 @@ public:
                     curblock->push_back(node);
                     return;
                 }
+            } else if (asgn->value->type == BST_TYPE::UncacheExcInfo || asgn->value->type == BST_TYPE::SetExcInfo) {
+                curblock->push_back(node);
+                return;
             }
         }
 
@@ -2091,11 +2087,8 @@ public:
                 import_star->lineno = node->lineno;
                 unmapExpr(makeLoad(tmp_module_name, node, is_kill), &import_star->vreg_name);
 
-                BST_Expr* import_star_expr = new BST_Expr();
-                import_star_expr->value = import_star;
-                import_star_expr->lineno = node->lineno;
-
-                push_back(import_star_expr);
+                InternedString tmp_import_name = nodeName();
+                pushAssign(tmp_import_name, import_star);
             } else {
                 BST_ImportFrom* import_from = new BST_ImportFrom;
                 import_from->lineno = node->lineno;
@@ -2331,10 +2324,8 @@ public:
     }
 
     bool visit_expr(AST_Expr* node) override {
-        BST_Expr* remapped = new BST_Expr();
-        remapped->lineno = node->lineno;
-        remapped->value = remapExpr(node->value, false);
-        push_back(remapped);
+        InternedString name = nodeName();
+        pushAssign(name, remapExpr(node->value, false));
         return true;
     }
 
@@ -2742,7 +2733,7 @@ public:
                 unmapExpr(makeLoad(exc_type_name, node, true), &set_exc_info->vreg_type);
                 unmapExpr(makeLoad(exc_value_name, node, true), &set_exc_info->vreg_value);
                 unmapExpr(makeLoad(exc_traceback_name, node, true), &set_exc_info->vreg_traceback);
-                push_back(makeExpr(set_exc_info));
+                push_back(makeAssign(set_exc_info));
 
                 for (AST_stmt* subnode : exc_handler->body) {
                     subnode->accept(this);
@@ -2913,7 +2904,7 @@ public:
         if (node->optional_vars)
             pushAssign(node->optional_vars, enter);
         else
-            push_back(makeExpr(enter));
+            push_back(makeAssign(enter));
 
         // push continuations
         CFGBlock* finally_block = cfg->addDeferredBlock();
@@ -2981,8 +2972,8 @@ public:
             curblock = finally_block;
             // call the context-manager's exit method, ignoring result
             push_back(
-                makeExpr(makeCall(makeLoad(exitname, node, true),
-                                  { makeLoad(nonename, node), makeLoad(nonename, node), makeLoad(nonename, node) })));
+                makeAssign(makeCall(makeLoad(exitname, node, true),
+                                    { makeLoad(nonename, node), makeLoad(nonename, node), makeLoad(nonename, node) })));
 
             if (finally_did_why & (1 << Why::CONTINUE))
                 exitFinallyIf(node, Why::CONTINUE, whyname, /* is_kill */ finally_did_why == (1 << Why::CONTINUE));

@@ -493,19 +493,6 @@ public:
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Ellipsis;
 };
 
-class BST_Expr : public BST_stmt {
-public:
-    BST_expr* value;
-
-    virtual void accept(BSTVisitor* v);
-    virtual void accept_stmt(StmtVisitor* v);
-
-    BST_Expr() : BST_stmt(BST_TYPE::Expr) {}
-    BST_Expr(BST_expr* value) : BST_stmt(BST_TYPE::Expr), value(value) {}
-
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Expr;
-};
-
 class BST_Exec : public BST_stmt {
 public:
     int vreg_body = VREG_UNDEFINED;
@@ -1097,7 +1084,6 @@ public:
     virtual bool visit_dict(BST_Dict* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_ellipsis(BST_Ellipsis* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_exec(BST_Exec* node) { RELEASE_ASSERT(0, ""); }
-    virtual bool visit_expr(BST_Expr* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_extslice(BST_ExtSlice* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_functiondef(BST_FunctionDef* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_index(BST_Index* node) { RELEASE_ASSERT(0, ""); }
@@ -1162,7 +1148,6 @@ public:
     virtual bool visit_dict(BST_Dict* node) { return false; }
     virtual bool visit_ellipsis(BST_Ellipsis* node) { return false; }
     virtual bool visit_exec(BST_Exec* node) { return false; }
-    virtual bool visit_expr(BST_Expr* node) { return false; }
     virtual bool visit_extslice(BST_ExtSlice* node) { return false; }
     virtual bool visit_functiondef(BST_FunctionDef* node) { return false; }
     virtual bool visit_index(BST_Index* node) { return false; }
@@ -1257,7 +1242,6 @@ public:
     virtual void visit_deleteattr(BST_DeleteAttr* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_deletename(BST_DeleteName* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_exec(BST_Exec* node) { RELEASE_ASSERT(0, ""); }
-    virtual void visit_expr(BST_Expr* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_functiondef(BST_FunctionDef* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_invoke(BST_Invoke* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_print(BST_Print* node) { RELEASE_ASSERT(0, ""); }
@@ -1311,7 +1295,6 @@ public:
     virtual bool visit_dict(BST_Dict* node);
     virtual bool visit_ellipsis(BST_Ellipsis* node);
     virtual bool visit_exec(BST_Exec* node);
-    virtual bool visit_expr(BST_Expr* node);
     virtual bool visit_extslice(BST_ExtSlice* node);
     virtual bool visit_functiondef(BST_FunctionDef* node);
     virtual bool visit_index(BST_Index* node);

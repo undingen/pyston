@@ -283,7 +283,6 @@ public:
 
     virtual bool visit_assert(BST_Assert* node) { return true; }
     virtual bool visit_branch(BST_Branch* node) { return true; }
-    virtual bool visit_expr(BST_Expr* node) { return true; }
     virtual bool visit_invoke(BST_Invoke* node) { return false; }
     virtual bool visit_jump(BST_Jump* node) { return true; }
     virtual bool visit_print(BST_Print* node) { return true; }

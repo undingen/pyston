@@ -103,7 +103,6 @@ private:
     Value visit_dict(BST_Dict* node);
     Value visit_ellipsis(BST_Ellipsis* node);
     Value visit_expr(BST_expr* node);
-    Value visit_expr(BST_Expr* node);
     Value visit_extslice(BST_ExtSlice* node);
     Value visit_index(BST_Index* node);
     Value visit_list(BST_List* node);
@@ -1178,19 +1177,6 @@ Value ASTInterpreter::visit_stmt(BST_stmt* node) {
             rtn = visit_exec((BST_Exec*)node);
             ASTInterpreterJitInterface::pendingCallsCheckHelper();
             break;
-        case BST_TYPE::Expr:
-            // docstrings are str constant expression statements.
-            // ignore those while interpreting.
-            if ((((BST_Expr*)node)->value)->type != BST_TYPE::Str) {
-                rtn = visit_expr((BST_Expr*)node);
-                Py_DECREF(rtn.o);
-                rtn = Value();
-                ASTInterpreterJitInterface::pendingCallsCheckHelper();
-            }
-            break;
-        case BST_TYPE::Pass:
-            ASTInterpreterJitInterface::pendingCallsCheckHelper();
-            break; // nothing todo
         case BST_TYPE::Print:
             rtn = visit_print((BST_Print*)node);
             ASTInterpreterJitInterface::pendingCallsCheckHelper();
@@ -1733,11 +1719,6 @@ Value ASTInterpreter::visit_call(BST_Call* node) {
     return v;
 }
 
-
-
-Value ASTInterpreter::visit_expr(BST_Expr* node) {
-    return visit_expr(node->value);
-}
 
 Value ASTInterpreter::visit_num(BST_Num* node) {
     Box* o = NULL;
@@ -2300,11 +2281,6 @@ extern "C" Box* astInterpretDeoptFromASM(BoxedCode* code, BST_expr* after_expr, 
             auto name = bst_cast<BST_Name>(asgn->target);
             assert(name->id.s()[0] == '#');
             interpreter.addSymbol(name->vreg, expr_val, true);
-            break;
-        } else if (enclosing_stmt->type == BST_TYPE::Expr) {
-            auto expr = bst_cast<BST_Expr>(enclosing_stmt);
-            RELEASE_ASSERT(expr->value == after_expr, "%p %p", expr->value, after_expr);
-            assert(expr->value == after_expr);
             break;
         } else if (enclosing_stmt->type == BST_TYPE::Invoke) {
             auto invoke = bst_cast<BST_Invoke>(enclosing_stmt);

@@ -267,19 +267,6 @@ void BST_Exec::accept_stmt(StmtVisitor* v) {
     v->visit_exec(this);
 }
 
-void BST_Expr::accept(BSTVisitor* v) {
-    bool skip = v->visit_expr(this);
-    if (skip)
-        return;
-
-    value->accept(v);
-}
-
-void BST_Expr::accept_stmt(StmtVisitor* v) {
-    v->visit_expr(this);
-}
-
-
 void BST_ExtSlice::accept(BSTVisitor* v) {
     bool skip = v->visit_extslice(this);
     if (skip)
@@ -1029,10 +1016,6 @@ bool PrintVisitor::visit_exec(BST_Exec* node) {
     return true;
 }
 
-bool PrintVisitor::visit_expr(BST_Expr* node) {
-    return false;
-}
-
 bool PrintVisitor::visit_extslice(BST_ExtSlice* node) {
     for (int i = 0; i < node->dims.size(); ++i) {
         if (i > 0)
@@ -1537,10 +1520,6 @@ public:
         return false;
     }
     virtual bool visit_exec(BST_Exec* node) {
-        output->push_back(node);
-        return false;
-    }
-    virtual bool visit_expr(BST_Expr* node) {
         output->push_back(node);
         return false;
     }

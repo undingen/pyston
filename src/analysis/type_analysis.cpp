@@ -619,13 +619,6 @@ private:
             assert(node->vreg == VREG_UNDEFINED);
     }
 
-    void visit_expr(BST_Expr* node) override {
-        if (EXPAND_UNNEEDED) {
-            if (node->value != NULL)
-                getType(node->value);
-        }
-    }
-
     void* visit_makefunction(BST_MakeFunction* mkfn) override {
         BST_FunctionDef* node = mkfn->function_def;
 

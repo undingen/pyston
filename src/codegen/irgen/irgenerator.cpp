@@ -2330,8 +2330,6 @@ private:
         emitter.getBuilder()->CreateCondBr(v, iftrue, iffalse);
     }
 
-    void doExpr(BST_Expr* node, const UnwindInfo& unw_info) { CompilerVariable* var = evalExpr(node->value, unw_info); }
-
     void doOSRExit(llvm::BasicBlock* normal_target, BST_Jump* osr_key) {
         RELEASE_ASSERT(0, "I don't think this can get hit any more and it has not been updated");
 #if 0
@@ -2587,14 +2585,8 @@ private:
             case BST_TYPE::Exec:
                 doExec(bst_cast<BST_Exec>(node), unw_info);
                 break;
-            case BST_TYPE::Expr:
-                if ((((BST_Expr*)node)->value)->type != BST_TYPE::Str)
-                    doExpr(bst_cast<BST_Expr>(node), unw_info);
-                break;
             case BST_TYPE::Global:
                 // Should have been handled already
-                break;
-            case BST_TYPE::Pass:
                 break;
             case BST_TYPE::Print:
                 doPrint(bst_cast<BST_Print>(node), unw_info);
