@@ -491,19 +491,11 @@ Value ASTInterpreter::doBinOp(BST* node, Value left, Value right, int op, BinExp
 
 void ASTInterpreter::doStore(int vreg, STOLEN(Value) value) {
     if (jit) {
-        /*
-        bool is_live = true;
-        if (!closure)
-            is_live = source_info->getLiveness()->isLiveAtEnd(node->vreg, current_block);
-        if (is_live) {
-            if (closure)
-                jit->emitSetLocalClosure(node, value);
-            else
-                jit->emitSetLocal(node->vreg, value);
-        } else
-            jit->emitSetBlockLocal(node->vreg, value);
-        */
-        abortJITing();
+        bool is_live = source_info->getLiveness()->isLiveAtEnd(vreg, current_block);
+        if (is_live)
+            jit->emitSetLocal(vreg, value);
+        else
+            jit->emitSetBlockLocal(vreg, value);
     }
 
 
