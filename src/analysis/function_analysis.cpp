@@ -96,9 +96,13 @@ public:
         return true;
     }
 
-    virtual bool visit_vreg(int* vreg) {
-        if (*vreg >= 0)
-            _doLoad(*vreg);
+    virtual bool visit_vreg(int* vreg, bool is_dst) {
+        if (*vreg >= 0) {
+            if (is_dst)
+                _doStore(*vreg);
+            else
+                _doLoad(*vreg);
+        }
         return true;
     }
 
@@ -317,6 +321,11 @@ public:
 
     virtual bool visit_assign(BST_Assign* node) {
         _doSet(node->target);
+        return true;
+    }
+
+    virtual bool visit_assignvregvreg(BST_AssignVRegVReg* node) {
+        _doSet(node->vreg_target);
         return true;
     }
 

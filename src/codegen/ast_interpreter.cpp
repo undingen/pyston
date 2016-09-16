@@ -86,6 +86,7 @@ private:
 
     Value visit_assert(BST_Assert* node);
     Value visit_assign(BST_Assign* node);
+    Value visit_assignvregvreg(BST_AssignVRegVReg* node);
     Value visit_binop(BST_BinOp* node);
     Value visit_call(BST_Call* node);
     Value visit_compare(BST_Compare* node);
@@ -1161,6 +1162,10 @@ Value ASTInterpreter::visit_stmt(BST_stmt* node) {
             rtn = visit_assign((BST_Assign*)node);
             ASTInterpreterJitInterface::pendingCallsCheckHelper();
             break;
+        case BST_TYPE::AssignVRegVReg:
+            rtn = visit_assignvregvreg((BST_AssignVRegVReg*)node);
+            ASTInterpreterJitInterface::pendingCallsCheckHelper();
+            break;
         case BST_TYPE::DeleteAttr:
             rtn = visit_deleteattr((BST_DeleteAttr*)node);
             ASTInterpreterJitInterface::pendingCallsCheckHelper();
@@ -1512,6 +1517,12 @@ Value ASTInterpreter::visit_deletename(BST_DeleteName* target) {
 Value ASTInterpreter::visit_assign(BST_Assign* node) {
     Value v = visit_expr(node->value);
     doStore(node->target, v);
+    return Value();
+}
+
+Value ASTInterpreter::visit_assignvregvreg(BST_AssignVRegVReg* node) {
+    Value v = getVReg(node->vreg_src);
+    doStore(node->vreg_target, v);
     return Value();
 }
 

@@ -876,6 +876,19 @@ private:
     }
 
     void pushAssign(InternedString id, BST_expr* val) {
+        if (id.isCompilerCreatedName()) {
+            if (val->type == BST_TYPE::Name && bst_cast<BST_Name>(val)->id.isCompilerCreatedName()
+                && bst_cast<BST_Name>(val)->is_kill) {
+                BST_AssignVRegVReg* assign = new BST_AssignVRegVReg;
+                assign->lineno = val->lineno;
+                unmapExprDst(val, &assign->vreg_src);
+                unmapDst(id, &assign->vreg_target);
+                push_back(assign);
+                return;
+            }
+        }
+
+
         BST_Assign* assign = new BST_Assign();
         assign->value = val;
         assign->lineno = val->lineno;
@@ -931,6 +944,7 @@ private:
     }
 
     llvm::DenseMap<int*, BST_Name*> name_vreg;
+    llvm::DenseMap<int*, InternedString> id_vreg;
 
     void unmapExpr(BST_expr* node, int* vreg) {
         if (!node) {
@@ -996,6 +1010,7 @@ private:
         }
 
         assert(name_vreg.count(vreg_old));
+        assert(!name_vreg.count(vreg));
         name_vreg[vreg] = (BST_Name*)_dup2(name_vreg[vreg_old]);
     }
 
@@ -1018,6 +1033,12 @@ private:
         }
 
         assert(0);
+    }
+
+    void unmapDst(InternedString id, int* vreg) {
+        assert(id.isCompilerCreatedName());
+        assert(!id_vreg.count(vreg));
+        id_vreg[vreg] = id;
     }
 
     BST_expr* remapBinOp(AST_BinOp* node) {
@@ -3012,11 +3033,12 @@ public:
     llvm::DenseMap<InternedString, std::unordered_set<CFGBlock*>> sym_blocks_map;
     std::vector<InternedString> vreg_sym_map;
     llvm::DenseMap<int*, BST_Name*>& name_vreg;
+    llvm::DenseMap<int*, InternedString>& id_vreg;
 
     enum Step { TrackBlockUsage = 0, UserVisible, CrossBlock, SingleBlockUse } step;
 
-    AssignVRegsVisitor(llvm::DenseMap<int*, BST_Name*>& name_vreg)
-        : current_block(0), next_vreg(0), name_vreg(name_vreg) {}
+    AssignVRegsVisitor(llvm::DenseMap<int*, BST_Name*>& name_vreg, llvm::DenseMap<int*, InternedString>& id_vreg)
+        : current_block(0), next_vreg(0), name_vreg(name_vreg), id_vreg(id_vreg) {}
 
     bool visit_arguments(BST_arguments* node) override {
         for (BST_expr* d : node->defaults)
@@ -3039,7 +3061,27 @@ public:
         return true;
     }
 
-    bool visit_vreg(int* vreg) override {
+    bool visit_vreg(int* vreg, bool is_dst = false) override {
+        if (is_dst) {
+            assert(id_vreg.count(vreg));
+            if (*vreg != VREG_UNDEFINED)
+                return true;
+            InternedString id = id_vreg[vreg];
+            if (step == TrackBlockUsage) {
+                sym_blocks_map[id].insert(current_block);
+                return true;
+            } else if (step == UserVisible) {
+                return true;
+            } else {
+                bool is_block_local = isNameUsedInSingleBlock(id);
+                if (step == CrossBlock && is_block_local)
+                    return true;
+                if (step == SingleBlockUse && !is_block_local)
+                    return true;
+            }
+            *vreg = assignVReg(id);
+            return true;
+        }
         if (!name_vreg.count(vreg)) {
             if (*vreg >= 0)
                 *vreg = VREG_UNDEFINED;
@@ -3130,11 +3172,12 @@ public:
     }
 };
 
-void VRegInfo::assignVRegs(CFG* cfg, const ParamNames& param_names, llvm::DenseMap<int*, BST_Name*>& name_vreg) {
+void VRegInfo::assignVRegs(CFG* cfg, const ParamNames& param_names, llvm::DenseMap<int*, BST_Name*>& name_vreg,
+                           llvm::DenseMap<int*, InternedString>& id_vreg) {
     assert(!hasVRegsAssigned());
 
     // warning: don't rearrange the steps, they need to be run in this exact order!
-    AssignVRegsVisitor visitor(name_vreg);
+    AssignVRegsVisitor visitor(name_vreg, id_vreg);
     for (auto step : { AssignVRegsVisitor::TrackBlockUsage, AssignVRegsVisitor::UserVisible,
                        AssignVRegsVisitor::CrossBlock, AssignVRegsVisitor::SingleBlockUse }) {
         visitor.step = step;
@@ -3474,7 +3517,7 @@ static CFG* computeCFG(llvm::ArrayRef<AST_stmt*> body, AST_TYPE::AST_TYPE ast_ty
         }
     }
 
-    rtn->getVRegInfo().assignVRegs(rtn, param_names, visitor.name_vreg);
+    rtn->getVRegInfo().assignVRegs(rtn, param_names, visitor.name_vreg, visitor.id_vreg);
 
     for (auto&& e : visitor.name_vreg) {
         delete e.second;

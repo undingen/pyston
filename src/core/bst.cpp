@@ -83,6 +83,19 @@ void BST_Assign::accept_stmt(StmtVisitor* v) {
     v->visit_assign(this);
 }
 
+void BST_AssignVRegVReg::accept(BSTVisitor* v) {
+    bool skip = v->visit_assignvregvreg(this);
+    if (skip)
+        return;
+
+    v->visit_vreg(&vreg_target, true);
+    v->visit_vreg(&vreg_src);
+}
+
+void BST_AssignVRegVReg::accept_stmt(StmtVisitor* v) {
+    v->visit_assignvregvreg(this);
+}
+
 void BST_AugBinOp::accept(BSTVisitor* v) {
     bool skip = v->visit_augbinop(this);
     if (skip)
@@ -727,7 +740,7 @@ void PrintVisitor::printIndent() {
 }
 
 extern "C" BoxedString* repr(Box* obj);
-bool PrintVisitor::visit_vreg(int* vreg) {
+bool PrintVisitor::visit_vreg(int* vreg, bool is_dst) {
     if (*vreg != VREG_UNDEFINED)
         stream << "#" << *vreg;
     else
@@ -763,6 +776,13 @@ bool PrintVisitor::visit_assign(BST_Assign* node) {
     node->target->accept(this);
     stream << " = ";
     node->value->accept(this);
+    return true;
+}
+
+bool PrintVisitor::visit_assignvregvreg(BST_AssignVRegVReg* node) {
+    visit_vreg(&node->vreg_target, true);
+    stream << " = ";
+    visit_vreg(&node->vreg_src);
     return true;
 }
 
@@ -1451,7 +1471,7 @@ public:
         assert(expand_scopes && "not sure if this works properly");
     }
 
-    virtual bool visit_vreg(int* vreg) { return false; }
+    virtual bool visit_vreg(int* vreg, bool is_dst = false) { return false; }
 
 
     virtual bool visit_arguments(BST_arguments* node) {
@@ -1463,6 +1483,10 @@ public:
         return false;
     }
     virtual bool visit_assign(BST_Assign* node) {
+        output->push_back(node);
+        return false;
+    }
+    virtual bool visit_assignvregvreg(BST_AssignVRegVReg* node) {
         output->push_back(node);
         return false;
     }

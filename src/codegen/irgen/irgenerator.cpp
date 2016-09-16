@@ -2133,6 +2133,12 @@ private:
         _doSet(node->target, val, unw_info);
     }
 
+    void doAssign(BST_AssignVRegVReg* node, const UnwindInfo& unw_info) {
+        CompilerVariable* val = evalVReg(node->vreg_src);
+
+        _doSet(node->vreg_target, val, unw_info);
+    }
+
     // invoke delitem in objmodel.cpp, which will invoke the listDelitem of list
     void _doDelitem(BST_DeleteSub* target, const UnwindInfo& unw_info) {
         CompilerVariable* tget = evalVReg(target->vreg_value);
@@ -2572,6 +2578,9 @@ private:
                 break;
             case BST_TYPE::Assign:
                 doAssign(bst_cast<BST_Assign>(node), unw_info);
+                break;
+            case BST_TYPE::AssignVRegVReg:
+                doAssign(bst_cast<BST_AssignVRegVReg>(node), unw_info);
                 break;
             case BST_TYPE::DeleteAttr:
                 _doDelAttr(bst_cast<BST_DeleteAttr>(node), unw_info);
