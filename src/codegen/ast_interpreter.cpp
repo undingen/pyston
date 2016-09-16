@@ -1281,6 +1281,7 @@ Value ASTInterpreter::visit_stmt(BST_stmt* node) {
                     RELEASE_ASSERT(0, "not implemented");
             };
             doStore(((BST_ass*)node)->vreg_dst, v);
+            ASTInterpreterJitInterface::pendingCallsCheckHelper();
             rtn = Value();
             break;
         }
