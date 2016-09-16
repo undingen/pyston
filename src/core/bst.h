@@ -448,12 +448,12 @@ public:
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::ClassDef;
 };
 
-class BST_Dict : public BST_expr {
+class BST_Dict : public BST_ass {
 public:
     virtual void accept(BSTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    virtual void accept_stmt(StmtVisitor* v);
 
-    BST_Dict() : BST_expr(BST_TYPE::Dict) {}
+    BST_Dict() : BST_ass(BST_TYPE::Dict) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Dict;
 };
@@ -585,14 +585,14 @@ public:
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::keyword;
 };
 
-class BST_List : public BST_expr {
+class BST_List : public BST_ass {
 public:
     AST_TYPE::AST_TYPE ctx_type;
     int num_elts;
     int elts[1];
 
     virtual void accept(BSTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    virtual void accept_stmt(StmtVisitor* v);
 
     static BST_List* create(int num_elts) {
         BST_List* o = (BST_List*)new char[offsetof(BST_List, elts) + num_elts * sizeof(int)];
@@ -603,7 +603,7 @@ public:
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::List;
 
 private:
-    BST_List(int num_elts) : BST_expr(BST_TYPE::List), num_elts(num_elts) {
+    BST_List(int num_elts) : BST_ass(BST_TYPE::List), num_elts(num_elts) {
         for (int i = 0; i < num_elts; ++i) {
             elts[i] = VREG_UNDEFINED;
         }
@@ -663,14 +663,14 @@ public:
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Num;
 };
 
-class BST_Repr : public BST_expr {
+class BST_Repr : public BST_ass {
 public:
     int vreg_value = VREG_UNDEFINED;
 
     virtual void accept(BSTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    virtual void accept_stmt(StmtVisitor* v);
 
-    BST_Repr() : BST_expr(BST_TYPE::Repr) {}
+    BST_Repr() : BST_ass(BST_TYPE::Repr) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Repr;
 };
@@ -717,13 +717,13 @@ public:
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Return;
 };
 
-class BST_Set : public BST_expr {
+class BST_Set : public BST_ass {
 public:
     int num_elts;
     int elts[1];
 
     virtual void accept(BSTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    virtual void accept_stmt(StmtVisitor* v);
 
     static BST_Set* create(int num_elts) {
         BST_Set* o = (BST_Set*)new char[offsetof(BST_Set, elts) + num_elts * sizeof(int)];
@@ -734,7 +734,7 @@ public:
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Set;
 
 private:
-    BST_Set(int num_elts) : BST_expr(BST_TYPE::Set), num_elts(num_elts) {
+    BST_Set(int num_elts) : BST_ass(BST_TYPE::Set), num_elts(num_elts) {
         for (int i = 0; i < num_elts; ++i) {
             elts[i] = VREG_UNDEFINED;
         }
@@ -810,27 +810,27 @@ private:
     }
 };
 
-class BST_UnaryOp : public BST_expr {
+class BST_UnaryOp : public BST_ass {
 public:
     int vreg_operand = VREG_UNDEFINED;
     AST_TYPE::AST_TYPE op_type;
 
     virtual void accept(BSTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    virtual void accept_stmt(StmtVisitor* v);
 
-    BST_UnaryOp() : BST_expr(BST_TYPE::UnaryOp) {}
+    BST_UnaryOp() : BST_ass(BST_TYPE::UnaryOp) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::UnaryOp;
 };
 
-class BST_Yield : public BST_expr {
+class BST_Yield : public BST_ass {
 public:
     int vreg_value = VREG_UNDEFINED;
 
     virtual void accept(BSTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    virtual void accept_stmt(StmtVisitor* v);
 
-    BST_Yield() : BST_expr(BST_TYPE::Yield) {}
+    BST_Yield() : BST_ass(BST_TYPE::Yield) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Yield;
 };
@@ -929,42 +929,42 @@ public:
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Landingpad;
 };
 
-class BST_Locals : public BST_expr {
+class BST_Locals : public BST_ass {
 public:
     virtual void accept(BSTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    virtual void accept_stmt(StmtVisitor* v);
 
-    BST_Locals() : BST_expr(BST_TYPE::Locals) {}
+    BST_Locals() : BST_ass(BST_TYPE::Locals) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Locals;
 };
 
-class BST_GetIter : public BST_expr {
+class BST_GetIter : public BST_ass {
 public:
     int vreg_value = VREG_UNDEFINED;
 
     virtual void accept(BSTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    virtual void accept_stmt(StmtVisitor* v);
 
-    BST_GetIter() : BST_expr(BST_TYPE::GetIter) {}
+    BST_GetIter() : BST_ass(BST_TYPE::GetIter) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::GetIter;
 };
 
-class BST_ImportFrom : public BST_expr {
+class BST_ImportFrom : public BST_ass {
 public:
     int vreg_module = VREG_UNDEFINED;
     int vreg_name = VREG_UNDEFINED;
 
     virtual void accept(BSTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    virtual void accept_stmt(StmtVisitor* v);
 
-    BST_ImportFrom() : BST_expr(BST_TYPE::ImportFrom) {}
+    BST_ImportFrom() : BST_ass(BST_TYPE::ImportFrom) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::ImportFrom;
 };
 
-class BST_ImportName : public BST_expr {
+class BST_ImportName : public BST_ass {
 public:
     int vreg_from = VREG_UNDEFINED;
     int level = VREG_UNDEFINED;
@@ -972,21 +972,21 @@ public:
 
 
     virtual void accept(BSTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    virtual void accept_stmt(StmtVisitor* v);
 
-    BST_ImportName() : BST_expr(BST_TYPE::ImportName) {}
+    BST_ImportName() : BST_ass(BST_TYPE::ImportName) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::ImportName;
 };
 
-class BST_ImportStar : public BST_expr {
+class BST_ImportStar : public BST_ass {
 public:
     int vreg_name = VREG_UNDEFINED;
 
     virtual void accept(BSTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    virtual void accept_stmt(StmtVisitor* v);
 
-    BST_ImportStar() : BST_expr(BST_TYPE::ImportStar) {}
+    BST_ImportStar() : BST_ass(BST_TYPE::ImportStar) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::ImportStar;
 };
@@ -1002,27 +1002,27 @@ public:
 };
 
 // determines whether something is "true" for purposes of `if' and so forth
-class BST_Nonzero : public BST_expr {
+class BST_Nonzero : public BST_ass {
 public:
     int vreg_value = VREG_UNDEFINED;
 
     virtual void accept(BSTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    virtual void accept_stmt(StmtVisitor* v);
 
-    BST_Nonzero() : BST_expr(BST_TYPE::Nonzero) {}
+    BST_Nonzero() : BST_ass(BST_TYPE::Nonzero) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Nonzero;
 };
 
-class BST_CheckExcMatch : public BST_expr {
+class BST_CheckExcMatch : public BST_ass {
 public:
     int vreg_value = VREG_UNDEFINED;
     int vreg_cls = VREG_UNDEFINED;
 
     virtual void accept(BSTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    virtual void accept_stmt(StmtVisitor* v);
 
-    BST_CheckExcMatch() : BST_expr(BST_TYPE::CheckExcMatch) {}
+    BST_CheckExcMatch() : BST_ass(BST_TYPE::CheckExcMatch) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::CheckExcMatch;
 };
@@ -1051,14 +1051,14 @@ public:
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::UncacheExcInfo;
 };
 
-class BST_HasNext : public BST_expr {
+class BST_HasNext : public BST_ass {
 public:
     int vreg_value = VREG_UNDEFINED;
 
     virtual void accept(BSTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    virtual void accept_stmt(StmtVisitor* v);
 
-    BST_HasNext() : BST_expr(BST_TYPE::HasNext) {}
+    BST_HasNext() : BST_ass(BST_TYPE::HasNext) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::HasNext;
 };
@@ -1221,34 +1221,20 @@ public:
     virtual ~ExprVisitor() {}
 
 
+
     virtual void* visit_attribute(BST_Attribute* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_clsattribute(BST_ClsAttribute* node) { RELEASE_ASSERT(0, ""); }
-    virtual void* visit_dict(BST_Dict* node) { RELEASE_ASSERT(0, ""); }
-    virtual void* visit_list(BST_List* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_name(BST_Name* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_num(BST_Num* node) { RELEASE_ASSERT(0, ""); }
-    virtual void* visit_repr(BST_Repr* node) { RELEASE_ASSERT(0, ""); }
-    virtual void* visit_set(BST_Set* node) { RELEASE_ASSERT(0, ""); }
+    virtual void* visit_tuple(BST_Tuple* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_str(BST_Str* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_subscript(BST_Subscript* node) { RELEASE_ASSERT(0, ""); }
-    virtual void* visit_tuple(BST_Tuple* node) { RELEASE_ASSERT(0, ""); }
-    virtual void* visit_unaryop(BST_UnaryOp* node) { RELEASE_ASSERT(0, ""); }
-    virtual void* visit_yield(BST_Yield* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_makeclass(BST_MakeClass* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_makefunction(BST_MakeFunction* node) { RELEASE_ASSERT(0, ""); }
-
     virtual void* visit_landingpad(BST_Landingpad* node) { RELEASE_ASSERT(0, ""); }
-    virtual void* visit_locals(BST_Locals* node) { RELEASE_ASSERT(0, ""); }
-    virtual void* visit_getiter(BST_GetIter* node) { RELEASE_ASSERT(0, ""); }
-    virtual void* visit_importfrom(BST_ImportFrom* node) { RELEASE_ASSERT(0, ""); }
-    virtual void* visit_importname(BST_ImportName* node) { RELEASE_ASSERT(0, ""); }
-    virtual void* visit_importstar(BST_ImportStar* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_none(BST_None* node) { RELEASE_ASSERT(0, ""); }
-    virtual void* visit_nonzero(BST_Nonzero* node) { RELEASE_ASSERT(0, ""); }
-    virtual void* visit_checkexcmatch(BST_CheckExcMatch* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_setexcinfo(BST_SetExcInfo* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_uncacheexcinfo(BST_UncacheExcInfo* node) { RELEASE_ASSERT(0, ""); }
-    virtual void* visit_hasnext(BST_HasNext* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_printexpr(BST_PrintExpr* node) { RELEASE_ASSERT(0, ""); }
 };
 
@@ -1276,6 +1262,21 @@ public:
     virtual void visit_print(BST_Print* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_raise(BST_Raise* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_return(BST_Return* node) { RELEASE_ASSERT(0, ""); }
+
+    virtual void visit_set(BST_Set* node) { RELEASE_ASSERT(0, ""); }
+    virtual void visit_dict(BST_Dict* node) { RELEASE_ASSERT(0, ""); }
+    virtual void visit_list(BST_List* node) { RELEASE_ASSERT(0, ""); }
+    virtual void visit_repr(BST_Repr* node) { RELEASE_ASSERT(0, ""); }
+    virtual void visit_unaryop(BST_UnaryOp* node) { RELEASE_ASSERT(0, ""); }
+    virtual void visit_yield(BST_Yield* node) { RELEASE_ASSERT(0, ""); }
+    virtual void visit_locals(BST_Locals* node) { RELEASE_ASSERT(0, ""); }
+    virtual void visit_getiter(BST_GetIter* node) { RELEASE_ASSERT(0, ""); }
+    virtual void visit_importfrom(BST_ImportFrom* node) { RELEASE_ASSERT(0, ""); }
+    virtual void visit_importname(BST_ImportName* node) { RELEASE_ASSERT(0, ""); }
+    virtual void visit_importstar(BST_ImportStar* node) { RELEASE_ASSERT(0, ""); }
+    virtual void visit_nonzero(BST_Nonzero* node) { RELEASE_ASSERT(0, ""); }
+    virtual void visit_checkexcmatch(BST_CheckExcMatch* node) { RELEASE_ASSERT(0, ""); }
+    virtual void visit_hasnext(BST_HasNext* node) { RELEASE_ASSERT(0, ""); }
 
     virtual void visit_branch(BST_Branch* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_jump(BST_Jump* node) { RELEASE_ASSERT(0, ""); }

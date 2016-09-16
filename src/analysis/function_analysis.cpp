@@ -331,6 +331,58 @@ public:
         _doSet(node->vreg_dst);
         return true;
     }
+    virtual bool visit_dict(BST_Dict* node) {
+        _doSet(node->vreg_dst);
+        return true;
+    }
+    virtual bool visit_list(BST_List* node) {
+        _doSet(node->vreg_dst);
+        return true;
+    }
+    virtual bool visit_repr(BST_Repr* node) {
+        _doSet(node->vreg_dst);
+        return true;
+    }
+    virtual bool visit_unaryop(BST_UnaryOp* node) {
+        _doSet(node->vreg_dst);
+        return true;
+    }
+    virtual bool visit_yield(BST_Yield* node) {
+        _doSet(node->vreg_dst);
+        return true;
+    }
+    virtual bool visit_locals(BST_Locals* node) {
+        _doSet(node->vreg_dst);
+        return true;
+    }
+    virtual bool visit_getiter(BST_GetIter* node) {
+        _doSet(node->vreg_dst);
+        return true;
+    }
+    virtual bool visit_importfrom(BST_ImportFrom* node) {
+        _doSet(node->vreg_dst);
+        return true;
+    }
+    virtual bool visit_importname(BST_ImportName* node) {
+        _doSet(node->vreg_dst);
+        return true;
+    }
+    virtual bool visit_importstar(BST_ImportStar* node) {
+        _doSet(node->vreg_dst);
+        return true;
+    }
+    virtual bool visit_nonzero(BST_Nonzero* node) {
+        _doSet(node->vreg_dst);
+        return true;
+    }
+    virtual bool visit_checkexcmatch(BST_CheckExcMatch* node) {
+        _doSet(node->vreg_dst);
+        return true;
+    }
+    virtual bool visit_hasnext(BST_HasNext* node) {
+        _doSet(node->vreg_dst);
+        return true;
+    }
 
     virtual bool visit_classdef(BST_ClassDef* node) {
         assert(0 && "I think this isn't needed");

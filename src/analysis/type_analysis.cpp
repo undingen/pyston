@@ -433,7 +433,7 @@ private:
         _doSet(node->vreg_dst, t);
     }
 
-    void* visit_dict(BST_Dict* node) override { return DICT; }
+    void visit_dict(BST_Dict* node) override { _doSet(node->vreg_dst, DICT); }
 
     void* visit_index(BST_Index* node) override { return getType(node->vreg_value); }
 
@@ -466,21 +466,23 @@ private:
     */
 
     void* visit_landingpad(BST_Landingpad* node) override { return UNKNOWN; }
-    void* visit_locals(BST_Locals* node) override { return DICT; }
-    void* visit_getiter(BST_GetIter* node) override { return getType(node->vreg_value)->getPystonIterType(); }
-    void* visit_importfrom(BST_ImportFrom* node) override { return UNKNOWN; }
-    void* visit_importname(BST_ImportName* node) override { return UNKNOWN; }
-    void* visit_importstar(BST_ImportStar* node) override { return UNKNOWN; }
+    void visit_locals(BST_Locals* node) override { _doSet(node->vreg_dst, DICT); }
+    void visit_getiter(BST_GetIter* node) override {
+        _doSet(node->vreg_dst, getType(node->vreg_value)->getPystonIterType());
+    }
+    void visit_importfrom(BST_ImportFrom* node) override { _doSet(node->vreg_dst, UNKNOWN); }
+    void visit_importname(BST_ImportName* node) override { _doSet(node->vreg_dst, UNKNOWN); }
+    void visit_importstar(BST_ImportStar* node) override { _doSet(node->vreg_dst, UNKNOWN); }
     void* visit_none(BST_None* node) override { return NONE; }
-    void* visit_nonzero(BST_Nonzero* node) override { return BOOL; }
-    void* visit_checkexcmatch(BST_CheckExcMatch* node) override { return BOOL; }
+    void visit_nonzero(BST_Nonzero* node) override { return _doSet(node->vreg_dst, UNKNOWN); }
+    void visit_checkexcmatch(BST_CheckExcMatch* node) override { return _doSet(node->vreg_dst, UNKNOWN); }
     void* visit_setexcinfo(BST_SetExcInfo* node) override { return NONE; }
     void* visit_uncacheexcinfo(BST_UncacheExcInfo* node) override { return NONE; }
-    void* visit_hasnext(BST_HasNext* node) override { return BOOL; }
+    void visit_hasnext(BST_HasNext* node) override { return _doSet(node->vreg_dst, BOOL); }
     void* visit_printexpr(BST_PrintExpr* node) override { return NONE; }
 
 
-    void* visit_list(BST_List* node) override {
+    void visit_list(BST_List* node) override {
         // Get all the sub-types, even though they're not necessary to
         // determine the expression type, so that things like speculations
         // can be processed.
@@ -488,7 +490,7 @@ private:
             getType(node->elts[i]);
         }
 
-        return LIST;
+        _doSet(node->vreg_dst, LIST);
     }
 
     void* visit_name(BST_Name* node) override {
@@ -530,9 +532,12 @@ private:
         abort();
     }
 
-    void* visit_repr(BST_Repr* node) override { return STR; }
+    void visit_repr(BST_Repr* node) override { _doSet(node->vreg_dst, STR); }
 
-    void* visit_set(BST_Set* node) override { return SET; }
+    void visit_set(BST_Set* node) override {
+        _doSet(node->vreg_dst, SET);
+        ;
+    }
 
     void* visit_slice(BST_Slice* node) override { return SLICE; }
 
@@ -570,10 +575,12 @@ private:
         return makeTupleType(elt_types);
     }
 
-    void* visit_unaryop(BST_UnaryOp* node) override {
+    void visit_unaryop(BST_UnaryOp* node) override {
         CompilerType* operand = getType(node->vreg_operand);
-        if (!hasFixedOps(operand))
-            return UNKNOWN;
+        if (!hasFixedOps(operand)) {
+            _doSet(node->vreg_dst, UNKNOWN);
+            return;
+        }
 
         // TODO this isn't the exact behavior
         BoxedString* name = getOpName(node->op_type);
@@ -585,10 +592,10 @@ private:
         std::vector<CompilerType*> arg_types;
         CompilerType* rtn_type = attr_type->callType(ArgPassSpec(0), arg_types, NULL);
         rtn_type = unboxedType(rtn_type->getConcreteType());
-        return rtn_type;
+        _doSet(node->vreg_dst, rtn_type);
     }
 
-    void* visit_yield(BST_Yield*) override { return UNKNOWN; }
+    void visit_yield(BST_Yield* node) override { _doSet(node->vreg_dst, UNKNOWN); }
 
 
     void visit_assert(BST_Assert* node) override { getType(node->vreg_msg); }

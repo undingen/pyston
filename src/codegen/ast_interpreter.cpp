@@ -1232,8 +1232,58 @@ Value ASTInterpreter::visit_stmt(BST_stmt* node) {
         case BST_TYPE::Invoke:
             rtn = visit_invoke((BST_Invoke*)node);
             break;
-        default:
-            RELEASE_ASSERT(0, "not implemented");
+        default: {
+            Value v;
+            switch (node->type) {
+                case BST_TYPE::Dict:
+                    v = visit_dict((BST_Dict*)node);
+                    break;
+                case BST_TYPE::List:
+                    v = visit_list((BST_List*)node);
+                    break;
+                case BST_TYPE::Repr:
+                    v = visit_repr((BST_Repr*)node);
+                    break;
+                case BST_TYPE::Set:
+                    v = visit_set((BST_Set*)node);
+                    break;
+                case BST_TYPE::UnaryOp:
+                    v = visit_unaryop((BST_UnaryOp*)node);
+                    break;
+                case BST_TYPE::Yield:
+                    v = visit_yield((BST_Yield*)node);
+                    break;
+                case BST_TYPE::Locals:
+                    v = visit_locals((BST_Locals*)node);
+                    break;
+                case BST_TYPE::GetIter:
+                    v = visit_getiter((BST_GetIter*)node);
+                    break;
+                case BST_TYPE::ImportFrom:
+                    v = visit_importfrom((BST_ImportFrom*)node);
+                    break;
+                case BST_TYPE::ImportName:
+                    v = visit_importname((BST_ImportName*)node);
+                    break;
+                case BST_TYPE::ImportStar:
+                    v = visit_importstar((BST_ImportStar*)node);
+                    break;
+                case BST_TYPE::Nonzero:
+                    v = visit_nonzero((BST_Nonzero*)node);
+                    break;
+                case BST_TYPE::CheckExcMatch:
+                    v = visit_checkexcmatch((BST_CheckExcMatch*)node);
+                    break;
+                case BST_TYPE::HasNext:
+                    v = visit_hasnext((BST_HasNext*)node);
+                    break;
+                default:
+                    RELEASE_ASSERT(0, "not implemented");
+            };
+            doStore(((BST_ass*)node)->vreg_dst, v);
+            rtn = Value();
+            break;
+        }
     };
 
     // This assertion tries to make sure that we are refcount-safe if an exception
@@ -1593,28 +1643,17 @@ Value ASTInterpreter::visit_expr(BST_expr* node) {
     switch (node->type) {
         case BST_TYPE::Attribute:
             return visit_attribute((BST_Attribute*)node);
-        case BST_TYPE::Dict:
-            return visit_dict((BST_Dict*)node);
-        case BST_TYPE::List:
-            return visit_list((BST_List*)node);
         case BST_TYPE::Name:
             return visit_name((BST_Name*)node);
         case BST_TYPE::Num:
             return visit_num((BST_Num*)node);
-        case BST_TYPE::Repr:
-            return visit_repr((BST_Repr*)node);
-        case BST_TYPE::Set:
-            return visit_set((BST_Set*)node);
         case BST_TYPE::Str:
             return visit_str((BST_Str*)node);
         case BST_TYPE::Subscript:
             return visit_subscript((BST_Subscript*)node);
         case BST_TYPE::Tuple:
             return visit_tuple((BST_Tuple*)node);
-        case BST_TYPE::UnaryOp:
-            return visit_unaryop((BST_UnaryOp*)node);
-        case BST_TYPE::Yield:
-            return visit_yield((BST_Yield*)node);
+
 
         // pseudo
         case BST_TYPE::ClsAttribute:
@@ -1627,28 +1666,13 @@ Value ASTInterpreter::visit_expr(BST_expr* node) {
 
         case BST_TYPE::Landingpad:
             return visit_landingpad((BST_Landingpad*)node);
-        case BST_TYPE::Locals:
-            return visit_locals((BST_Locals*)node);
-        case BST_TYPE::GetIter:
-            return visit_getiter((BST_GetIter*)node);
-        case BST_TYPE::ImportFrom:
-            return visit_importfrom((BST_ImportFrom*)node);
-        case BST_TYPE::ImportName:
-            return visit_importname((BST_ImportName*)node);
-        case BST_TYPE::ImportStar:
-            return visit_importstar((BST_ImportStar*)node);
+
         case BST_TYPE::None:
             return visit_none((BST_None*)node);
-        case BST_TYPE::Nonzero:
-            return visit_nonzero((BST_Nonzero*)node);
-        case BST_TYPE::CheckExcMatch:
-            return visit_checkexcmatch((BST_CheckExcMatch*)node);
         case BST_TYPE::SetExcInfo:
             return visit_setexcinfo((BST_SetExcInfo*)node);
         case BST_TYPE::UncacheExcInfo:
             return visit_uncacheexcinfo((BST_UncacheExcInfo*)node);
-        case BST_TYPE::HasNext:
-            return visit_hasnext((BST_HasNext*)node);
         case BST_TYPE::PrintExpr:
             return visit_printexpr((BST_PrintExpr*)node);
 

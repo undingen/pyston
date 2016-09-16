@@ -1759,6 +1759,8 @@ private:
         return evalSliceExprPost(node, unw_info, rtn);
     }
 
+
+
     CompilerVariable* evalExpr(BST_expr* node, const UnwindInfo& unw_info) {
         // printf("%d expr: %d\n", node->type, node->lineno);
         if (node->lineno) {
@@ -1771,23 +1773,12 @@ private:
             case BST_TYPE::Attribute:
                 rtn = evalAttribute(bst_cast<BST_Attribute>(node), unw_info);
                 break;
-            case BST_TYPE::Dict:
-                rtn = evalDict(bst_cast<BST_Dict>(node), unw_info);
-                break;
-            case BST_TYPE::List:
-                rtn = evalList(bst_cast<BST_List>(node), unw_info);
-                break;
+
             case BST_TYPE::Name:
                 rtn = evalName(bst_cast<BST_Name>(node), unw_info);
                 break;
             case BST_TYPE::Num:
                 rtn = evalNum(bst_cast<BST_Num>(node), unw_info);
-                break;
-            case BST_TYPE::Repr:
-                rtn = evalRepr(bst_cast<BST_Repr>(node), unw_info);
-                break;
-            case BST_TYPE::Set:
-                rtn = evalSet(bst_cast<BST_Set>(node), unw_info);
                 break;
             case BST_TYPE::Str:
                 rtn = evalStr(bst_cast<BST_Str>(node), unw_info);
@@ -1798,12 +1789,7 @@ private:
             case BST_TYPE::Tuple:
                 rtn = evalTuple(bst_cast<BST_Tuple>(node), unw_info);
                 break;
-            case BST_TYPE::UnaryOp:
-                rtn = evalUnaryOp(bst_cast<BST_UnaryOp>(node), unw_info);
-                break;
-            case BST_TYPE::Yield:
-                rtn = evalYield(bst_cast<BST_Yield>(node), unw_info);
-                break;
+
 
             // pseudo-nodes
             case BST_TYPE::ClsAttribute:
@@ -1819,38 +1805,14 @@ private:
             case BST_TYPE::Landingpad:
                 rtn = evalLandingpad((BST_Landingpad*)node, unw_info);
                 break;
-            case BST_TYPE::Locals:
-                rtn = evalLocals((BST_Locals*)node, unw_info);
-                break;
-            case BST_TYPE::GetIter:
-                rtn = evalGetIter((BST_GetIter*)node, unw_info);
-                break;
-            case BST_TYPE::ImportFrom:
-                rtn = evalImportFrom((BST_ImportFrom*)node, unw_info);
-                break;
-            case BST_TYPE::ImportName:
-                rtn = evalImportName((BST_ImportName*)node, unw_info);
-                break;
-            case BST_TYPE::ImportStar:
-                rtn = evalImportStar((BST_ImportStar*)node, unw_info);
-                break;
             case BST_TYPE::None:
                 rtn = evalNone((BST_None*)node, unw_info);
-                break;
-            case BST_TYPE::Nonzero:
-                rtn = evalNonzero((BST_Nonzero*)node, unw_info);
-                break;
-            case BST_TYPE::CheckExcMatch:
-                rtn = evalCheckExcMatch((BST_CheckExcMatch*)node, unw_info);
                 break;
             case BST_TYPE::SetExcInfo:
                 rtn = evalSetExcInfo((BST_SetExcInfo*)node, unw_info);
                 break;
             case BST_TYPE::UncacheExcInfo:
                 rtn = evalUncacheExcInfo((BST_UncacheExcInfo*)node, unw_info);
-                break;
-            case BST_TYPE::HasNext:
-                rtn = evalHasNext((BST_HasNext*)node, unw_info);
                 break;
             case BST_TYPE::PrintExpr:
                 rtn = evalPrintExpr((BST_PrintExpr*)node, unw_info);
@@ -2631,9 +2593,57 @@ private:
             case BST_TYPE::Raise:
                 doRaise(bst_cast<BST_Raise>(node), unw_info);
                 break;
-            default:
-                printf("Unhandled stmt type at " __FILE__ ":" STRINGIFY(__LINE__) ": %d\n", node->type);
-                exit(1);
+            default: {
+                CompilerVariable* rtn = NULL;
+                switch (node->type) {
+                    case BST_TYPE::Dict:
+                        rtn = evalDict(bst_cast<BST_Dict>(node), unw_info);
+                        break;
+                    case BST_TYPE::List:
+                        rtn = evalList(bst_cast<BST_List>(node), unw_info);
+                        break;
+                    case BST_TYPE::Repr:
+                        rtn = evalRepr(bst_cast<BST_Repr>(node), unw_info);
+                        break;
+                    case BST_TYPE::Set:
+                        rtn = evalSet(bst_cast<BST_Set>(node), unw_info);
+                        break;
+                    case BST_TYPE::UnaryOp:
+                        rtn = evalUnaryOp(bst_cast<BST_UnaryOp>(node), unw_info);
+                        break;
+                    case BST_TYPE::Yield:
+                        rtn = evalYield(bst_cast<BST_Yield>(node), unw_info);
+                        break;
+                    case BST_TYPE::Locals:
+                        rtn = evalLocals((BST_Locals*)node, unw_info);
+                        break;
+                    case BST_TYPE::GetIter:
+                        rtn = evalGetIter((BST_GetIter*)node, unw_info);
+                        break;
+                    case BST_TYPE::ImportFrom:
+                        rtn = evalImportFrom((BST_ImportFrom*)node, unw_info);
+                        break;
+                    case BST_TYPE::ImportName:
+                        rtn = evalImportName((BST_ImportName*)node, unw_info);
+                        break;
+                    case BST_TYPE::ImportStar:
+                        rtn = evalImportStar((BST_ImportStar*)node, unw_info);
+                        break;
+                    case BST_TYPE::Nonzero:
+                        rtn = evalNonzero((BST_Nonzero*)node, unw_info);
+                        break;
+                    case BST_TYPE::CheckExcMatch:
+                        rtn = evalCheckExcMatch((BST_CheckExcMatch*)node, unw_info);
+                        break;
+                    case BST_TYPE::HasNext:
+                        rtn = evalHasNext((BST_HasNext*)node, unw_info);
+                        break;
+                    default:
+                        printf("Unhandled stmt type at " __FILE__ ":" STRINGIFY(__LINE__) ": %d\n", node->type);
+                        exit(1);
+                }
+                _doSet(((BST_ass*)node)->vreg_dst, rtn, unw_info);
+            }
         }
     }
 
