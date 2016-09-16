@@ -877,11 +877,11 @@ private:
 
     void pushAssign(InternedString id, BST_expr* val) {
         if (id.isCompilerCreatedName()) {
-            if (val->type == BST_TYPE::Name && bst_cast<BST_Name>(val)->id.isCompilerCreatedName()
-                && bst_cast<BST_Name>(val)->is_kill) {
+            if (val->type == BST_TYPE::Name && bst_cast<BST_Name>(val)->id.isCompilerCreatedName()) {
                 BST_AssignVRegVReg* assign = new BST_AssignVRegVReg;
                 assign->lineno = val->lineno;
-                unmapExpr(val, &assign->vreg_src);
+                assign->kill_src = bst_cast<BST_Name>(val)->is_kill;
+                unmapExprDst(val, &assign->vreg_src); // we don't need a kill so use unmapExprDst
                 unmapDst(id, &assign->vreg_target);
                 push_back(assign);
                 return;
@@ -913,11 +913,11 @@ private:
 
     BST_stmt* makeAssign(BST_expr* expr) {
         InternedString id = nodeName();
-        if (expr->type == BST_TYPE::Name && bst_cast<BST_Name>(expr)->id.isCompilerCreatedName()
-            && bst_cast<BST_Name>(expr)->is_kill) {
+        if (expr->type == BST_TYPE::Name && bst_cast<BST_Name>(expr)->id.isCompilerCreatedName()) {
             BST_AssignVRegVReg* assign = new BST_AssignVRegVReg;
             assign->lineno = expr->lineno;
-            unmapExpr(expr, &assign->vreg_src);
+            assign->kill_src = bst_cast<BST_Name>(expr)->is_kill;
+            unmapExprDst(expr, &assign->vreg_src); // we don't need a kill so use unmapExprDst
             unmapDst(id, &assign->vreg_target);
             return assign;
         } else if (expr->type == BST_TYPE::Num || expr->type == BST_TYPE::Str) {

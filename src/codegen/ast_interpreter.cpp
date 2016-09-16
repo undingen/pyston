@@ -82,7 +82,7 @@ private:
     Box* doOSR(BST_Jump* node);
     Value getNone();
 
-    Value getVReg(int vreg);
+    Value getVReg(int vreg, bool kill = true);
 
     Value visit_assert(BST_Assert* node);
     Value visit_assign(BST_Assign* node);
@@ -1521,7 +1521,7 @@ Value ASTInterpreter::visit_assign(BST_Assign* node) {
 }
 
 Value ASTInterpreter::visit_assignvregvreg(BST_AssignVRegVReg* node) {
-    Value v = getVReg(node->vreg_src);
+    Value v = getVReg(node->vreg_src, node->kill_src);
     doStore(node->vreg_target, v);
     return Value();
 }
@@ -1798,7 +1798,7 @@ Value ASTInterpreter::visit_str(BST_Str* node) {
     return Value(o, jit ? jit->imm(o)->setType(RefType::BORROWED) : NULL);
 }
 
-Value ASTInterpreter::getVReg(int vreg) {
+Value ASTInterpreter::getVReg(int vreg, bool is_kill) {
     if (vreg < 0) {
         Box* o = parent_module->constants[-vreg - 1];
         return Value(incref(o), jit ? jit->imm(o)->setType(RefType::BORROWED) : NULL);
@@ -1806,10 +1806,25 @@ Value ASTInterpreter::getVReg(int vreg) {
     assert(vreg >= 0);
     assert(vreg != VREG_UNDEFINED);
 
+
+
     Value v;
     if (jit) {
-        v.var = jit->emitGetBlockLocalMustExist(vreg);
-        jit->emitKillTemporary(vreg);
+        bool is_live = true;
+        if (is_kill) {
+            is_live = false;
+        } else {
+            is_live = source_info->getLiveness()->isLiveAtEnd(vreg, current_block);
+        }
+
+        if (is_live) {
+            assert(!is_kill);
+            v.var = jit->emitGetLocalMustExist(vreg);
+        } else {
+            v.var = jit->emitGetBlockLocalMustExist(vreg);
+            if (is_kill)
+                jit->emitKillTemporary(vreg);
+        }
     }
 
     frame_info.num_vregs = std::max(frame_info.num_vregs, vreg + 1);
@@ -1817,9 +1832,13 @@ Value ASTInterpreter::getVReg(int vreg) {
 
     if (val) {
         v.o = val;
-        vregs[vreg] = NULL;
+        if (is_kill)
+            vregs[vreg] = NULL;
+        else
+            Py_INCREF(val);
         return v;
     }
+
 
     current_block->print();
     printf("vreg: %d num cross: %d\n", vreg, getVRegInfo().getNumOfCrossBlockVRegs());

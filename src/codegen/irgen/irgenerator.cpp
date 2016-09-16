@@ -1273,7 +1273,7 @@ private:
         }
     }
 
-    CompilerVariable* evalVReg(int vreg) {
+    CompilerVariable* evalVReg(int vreg, bool is_kill = true) {
         assert(vreg != VREG_UNDEFINED);
         if (vreg < 0) {
             Box* o = irstate->getSourceInfo()->parent_module->constants[-vreg - 1];
@@ -1298,7 +1298,8 @@ private:
             }
         }
         CompilerVariable* rtn = symbol_table[vreg];
-        symbol_table[vreg] = NULL;
+        if (is_kill)
+            symbol_table[vreg] = NULL;
         return rtn;
     }
 
@@ -2134,7 +2135,7 @@ private:
     }
 
     void doAssign(BST_AssignVRegVReg* node, const UnwindInfo& unw_info) {
-        CompilerVariable* val = evalVReg(node->vreg_src);
+        CompilerVariable* val = evalVReg(node->vreg_src, node->kill_src);
 
         _doSet(node->vreg_target, val, unw_info);
     }

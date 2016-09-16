@@ -290,6 +290,7 @@ public:
     RewriterVar* emitGetGlobal(BoxedString* s);
     RewriterVar* emitGetItem(BST_expr* node, RewriterVar* value, RewriterVar* slice);
     RewriterVar* emitGetLocal(BST_Name* name);
+    RewriterVar* emitGetLocalMustExist(int vreg);
     RewriterVar* emitGetPystonIter(RewriterVar* v);
     RewriterVar* emitHasnext(RewriterVar* v);
     RewriterVar* emitImportFrom(RewriterVar* module, RewriterVar* name);

@@ -466,6 +466,16 @@ RewriterVar* JitFragmentWriter::emitGetLocal(BST_Name* name) {
     return val_var;
 }
 
+RewriterVar* JitFragmentWriter::emitGetLocalMustExist(int vreg) {
+    assert(vreg >= 0);
+    // TODO Can we use BORROWED here? Not sure if there are cases when we can't rely on borrowing the ref
+    // from the vregs array.  Safer like this.
+    RewriterVar* val_var = vregs_array->getAttr(vreg * 8);
+    val_var->incref();
+    val_var->setType(RefType::OWNED);
+    return val_var;
+}
+
 RewriterVar* JitFragmentWriter::emitGetPystonIter(RewriterVar* v) {
     return call(false, (void*)getPystonIter, v)->setType(RefType::OWNED);
 }

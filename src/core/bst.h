@@ -277,6 +277,7 @@ class BST_AssignVRegVReg : public BST_stmt {
 public:
     int vreg_target = VREG_UNDEFINED;
     int vreg_src = VREG_UNDEFINED;
+    bool kill_src = false;
 
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
