@@ -881,7 +881,7 @@ private:
                 && bst_cast<BST_Name>(val)->is_kill) {
                 BST_AssignVRegVReg* assign = new BST_AssignVRegVReg;
                 assign->lineno = val->lineno;
-                unmapExprDst(val, &assign->vreg_src);
+                unmapExpr(val, &assign->vreg_src);
                 unmapDst(id, &assign->vreg_target);
                 push_back(assign);
                 return;
@@ -906,6 +906,14 @@ private:
 
     BST_stmt* makeAssign(BST_expr* expr) {
         InternedString id = nodeName();
+        if (expr->type == BST_TYPE::Name && bst_cast<BST_Name>(expr)->id.isCompilerCreatedName()
+            && bst_cast<BST_Name>(expr)->is_kill) {
+            BST_AssignVRegVReg* assign = new BST_AssignVRegVReg;
+            assign->lineno = expr->lineno;
+            unmapExpr(expr, &assign->vreg_src);
+            unmapDst(id, &assign->vreg_target);
+            return assign;
+        }
         BST_Assign* stmt = new BST_Assign();
         stmt->value = expr;
         stmt->lineno = expr->lineno;
@@ -1901,6 +1909,11 @@ public:
                 curblock->push_back(node);
                 return;
             }
+        }
+
+        if (node->type == BST_TYPE::AssignVRegVReg) {
+            curblock->push_back(node);
+            return;
         }
 
         // Deleting temporary names is safe, since we only use it to represent kills.
