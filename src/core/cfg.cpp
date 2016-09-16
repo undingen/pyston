@@ -885,6 +885,13 @@ private:
                 unmapDst(id, &assign->vreg_target);
                 push_back(assign);
                 return;
+            } else if (val->type == BST_TYPE::Num || val->type == BST_TYPE::Str) {
+                BST_AssignVRegVReg* assign = new BST_AssignVRegVReg;
+                assign->lineno = val->lineno;
+                unmapExpr(val, &assign->vreg_src);
+                unmapDst(id, &assign->vreg_target);
+                push_back(assign);
+                return;
             }
         }
 
@@ -908,6 +915,12 @@ private:
         InternedString id = nodeName();
         if (expr->type == BST_TYPE::Name && bst_cast<BST_Name>(expr)->id.isCompilerCreatedName()
             && bst_cast<BST_Name>(expr)->is_kill) {
+            BST_AssignVRegVReg* assign = new BST_AssignVRegVReg;
+            assign->lineno = expr->lineno;
+            unmapExpr(expr, &assign->vreg_src);
+            unmapDst(id, &assign->vreg_target);
+            return assign;
+        } else if (expr->type == BST_TYPE::Num || expr->type == BST_TYPE::Str) {
             BST_AssignVRegVReg* assign = new BST_AssignVRegVReg;
             assign->lineno = expr->lineno;
             unmapExpr(expr, &assign->vreg_src);
