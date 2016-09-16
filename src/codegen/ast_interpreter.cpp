@@ -75,7 +75,7 @@ public:
 
 private:
     Value createFunction(BST_FunctionDef* node, BST_arguments* args);
-    Value doBinOp(BST_expr* node, Value left, Value right, int op, BinExpType exp_type);
+    Value doBinOp(BST* node, Value left, Value right, int op, BinExpType exp_type);
     void doStore(BST_expr* node, STOLEN(Value) value);
     void doStore(BST_Name* name, STOLEN(Value) value);
     void doStore(int vreg, STOLEN(Value) value);
@@ -475,7 +475,7 @@ Box* ASTInterpreter::execute(ASTInterpreter& interpreter, CFGBlock* start_block,
     return executeInnerAndSetupFrame(interpreter, start_block, start_at);
 }
 
-Value ASTInterpreter::doBinOp(BST_expr* node, Value left, Value right, int op, BinExpType exp_type) {
+Value ASTInterpreter::doBinOp(BST* node, Value left, Value right, int op, BinExpType exp_type) {
     switch (exp_type) {
         case BinExpType::AugBinOp:
             return Value(augbinop(left.o, right.o, op), jit ? jit->emitAugbinop(node, left, right, op) : NULL);
@@ -658,7 +658,9 @@ Value ASTInterpreter::visit_binop(BST_BinOp* node) {
     AUTO_DECREF(left.o);
     Value right = getVReg(node->vreg_right);
     AUTO_DECREF(right.o);
-    return doBinOp(node, left, right, node->op_type, BinExpType::BinOp);
+    Value v = doBinOp(node, left, right, node->op_type, BinExpType::BinOp);
+    doStore(node->vreg_dst, v);
+    return Value();
 }
 
 Value ASTInterpreter::visit_slice(BST_slice* node) {
@@ -1166,6 +1168,10 @@ Value ASTInterpreter::visit_stmt(BST_stmt* node) {
             rtn = visit_assignvregvreg((BST_AssignVRegVReg*)node);
             ASTInterpreterJitInterface::pendingCallsCheckHelper();
             break;
+        case BST_TYPE::BinOp:
+            rtn = visit_binop((BST_BinOp*)node);
+            ASTInterpreterJitInterface::pendingCallsCheckHelper();
+            break;
         case BST_TYPE::DeleteAttr:
             rtn = visit_deleteattr((BST_DeleteAttr*)node);
             ASTInterpreterJitInterface::pendingCallsCheckHelper();
@@ -1569,8 +1575,6 @@ Value ASTInterpreter::visit_expr(BST_expr* node) {
     switch (node->type) {
         case BST_TYPE::Attribute:
             return visit_attribute((BST_Attribute*)node);
-        case BST_TYPE::BinOp:
-            return visit_binop((BST_BinOp*)node);
         case BST_TYPE::CallFunc:
         case BST_TYPE::CallAttr:
         case BST_TYPE::CallClsAttr:

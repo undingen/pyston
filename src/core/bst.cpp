@@ -126,11 +126,12 @@ void BST_BinOp::accept(BSTVisitor* v) {
     if (skip)
         return;
 
+    v->visit_vreg(&vreg_dst, true);
     v->visit_vreg(&vreg_left);
     v->visit_vreg(&vreg_right);
 }
 
-void* BST_BinOp::accept_expr(ExprVisitor* v) {
+void BST_BinOp::accept_stmt(StmtVisitor* v) {
     return v->visit_binop(this);
 }
 

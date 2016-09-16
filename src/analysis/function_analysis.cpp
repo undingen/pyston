@@ -306,6 +306,11 @@ public:
     virtual bool visit_deleteattr(BST_DeleteAttr* node) { return true; }
     virtual bool visit_deletesub(BST_DeleteSub* node) { return true; }
 
+    virtual bool visit_binop(BST_BinOp* node) {
+        _doSet(node->vreg_dst);
+        return true;
+    }
+
 
     virtual bool visit_classdef(BST_ClassDef* node) {
         assert(0 && "I think this isn't needed");

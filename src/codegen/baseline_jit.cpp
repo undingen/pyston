@@ -226,7 +226,7 @@ RewriterVar* JitFragmentWriter::imm(void* val) {
     return loadConst((uint64_t)val);
 }
 
-RewriterVar* JitFragmentWriter::emitAugbinop(BST_expr* node, RewriterVar* lhs, RewriterVar* rhs, int op_type) {
+RewriterVar* JitFragmentWriter::emitAugbinop(BST* node, RewriterVar* lhs, RewriterVar* rhs, int op_type) {
     return emitPPCall((void*)augbinop, { lhs, rhs, imm(op_type) }, 2 * 320, true /* record type */, node)
         .first->setType(RefType::OWNED);
 }
@@ -239,7 +239,7 @@ RewriterVar* JitFragmentWriter::emitApplySlice(RewriterVar* target, RewriterVar*
     return emitPPCall((void*)applySlice, { target, lower, upper }, 256).first->setType(RefType::OWNED);
 }
 
-RewriterVar* JitFragmentWriter::emitBinop(BST_expr* node, RewriterVar* lhs, RewriterVar* rhs, int op_type) {
+RewriterVar* JitFragmentWriter::emitBinop(BST* node, RewriterVar* lhs, RewriterVar* rhs, int op_type) {
     return emitPPCall((void*)binop, { lhs, rhs, imm(op_type) }, 2 * 240, true /* record type */, node)
         .first->setType(RefType::OWNED);
 }
@@ -298,7 +298,7 @@ RewriterVar* JitFragmentWriter::emitCallattr(BST_expr* node, RewriterVar* obj, B
 #endif
 }
 
-RewriterVar* JitFragmentWriter::emitCompare(BST_expr* node, RewriterVar* lhs, RewriterVar* rhs, int op_type) {
+RewriterVar* JitFragmentWriter::emitCompare(BST* node, RewriterVar* lhs, RewriterVar* rhs, int op_type) {
     if (op_type == AST_TYPE::Is || op_type == AST_TYPE::IsNot) {
         RewriterVar* cmp_result = lhs->cmp(op_type == AST_TYPE::IsNot ? AST_TYPE::NotEq : AST_TYPE::Eq, rhs);
         return call(false, (void*)boxBool, cmp_result)->setType(RefType::OWNED);

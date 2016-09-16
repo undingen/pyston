@@ -266,12 +266,12 @@ public:
     RewriterVar* imm(uint64_t val);
     RewriterVar* imm(void* val);
 
-    RewriterVar* emitAugbinop(BST_expr* node, RewriterVar* lhs, RewriterVar* rhs, int op_type);
+    RewriterVar* emitAugbinop(BST* node, RewriterVar* lhs, RewriterVar* rhs, int op_type);
     RewriterVar* emitApplySlice(RewriterVar* target, RewriterVar* lower, RewriterVar* upper);
-    RewriterVar* emitBinop(BST_expr* node, RewriterVar* lhs, RewriterVar* rhs, int op_type);
+    RewriterVar* emitBinop(BST* node, RewriterVar* lhs, RewriterVar* rhs, int op_type);
     RewriterVar* emitCallattr(BST_expr* node, RewriterVar* obj, BoxedString* attr, CallattrFlags flags,
                               const llvm::ArrayRef<RewriterVar*> args, std::vector<BoxedString*>* keyword_names);
-    RewriterVar* emitCompare(BST_expr* node, RewriterVar* lhs, RewriterVar* rhs, int op_type);
+    RewriterVar* emitCompare(BST* node, RewriterVar* lhs, RewriterVar* rhs, int op_type);
     RewriterVar* emitCreateDict();
     void emitDictSet(RewriterVar* dict, RewriterVar* k, RewriterVar* v);
     RewriterVar* emitCreateList(const llvm::ArrayRef<STOLEN(RewriterVar*)> values);

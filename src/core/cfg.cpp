@@ -966,6 +966,7 @@ private:
 
     llvm::DenseMap<int*, BST_Name*> name_vreg;
     llvm::DenseMap<int*, InternedString> id_vreg;
+    llvm::DenseMap<InternedString, int*> reverse_id_vreg;
 
     void unmapExpr(BST_expr* node, int* vreg) {
         if (!node) {
@@ -1060,16 +1061,19 @@ private:
         assert(id.isCompilerCreatedName());
         assert(!id_vreg.count(vreg));
         id_vreg[vreg] = id;
+        // assert(!reverse_id_vreg.count(id));
+        reverse_id_vreg[id] = vreg;
     }
 
-    BST_expr* remapBinOp(AST_BinOp* node) {
+    std::pair<BST_stmt*, InternedString> remapBinOp(AST_BinOp* node) {
         BST_BinOp* rtn = new BST_BinOp();
         rtn->lineno = node->lineno;
         rtn->op_type = remapBinOpType(node->op_type);
         unmapExpr(remapExpr(node->left), &rtn->vreg_left);
         unmapExpr(remapExpr(node->right), &rtn->vreg_right);
-
-        return rtn;
+        InternedString name = nodeName();
+        unmapDst(name, &rtn->vreg_dst);
+        return std::make_pair(rtn, name);
     }
 
     BST_slice* _dup(BST_slice* val) {
@@ -1728,9 +1732,15 @@ private:
             case AST_TYPE::Attribute:
                 rtn = remapAttribute(ast_cast<AST_Attribute>(node));
                 break;
-            case AST_TYPE::BinOp:
-                rtn = remapBinOp(ast_cast<AST_BinOp>(node));
+            case AST_TYPE::BinOp: {
+                assert(wrap_with_assign);
+                BST_stmt* stmt;
+                InternedString name;
+                std::tie(stmt, name) = remapBinOp(ast_cast<AST_BinOp>(node));
+                push_back(stmt);
+                return makeLoad(name, node, true);
                 break;
+            }
             case AST_TYPE::BoolOp:
                 rtn = remapBoolOp(ast_cast<AST_BoolOp>(node));
                 break;

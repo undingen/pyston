@@ -1101,14 +1101,14 @@ private:
         return left->binexp(emitter, getOpInfoForNode(node, unw_info), right, type, exp_type);
     }
 
-    CompilerVariable* evalBinOp(BST_BinOp* node, const UnwindInfo& unw_info) {
+    void doBinOp(BST_BinOp* node, const UnwindInfo& unw_info) {
         CompilerVariable* left = evalVReg(node->vreg_left);
         CompilerVariable* right = evalVReg(node->vreg_right);
 
         assert(node->op_type != AST_TYPE::Is && node->op_type != AST_TYPE::IsNot && "not tested yet");
 
         CompilerVariable* rtn = this->_evalBinExp(node, left, right, node->op_type, BinOp, unw_info);
-        return rtn;
+        _doSet(node->vreg_dst, rtn, unw_info);
     }
 
     CompilerVariable* evalAugBinOp(BST_AugBinOp* node, const UnwindInfo& unw_info) {
@@ -1772,9 +1772,6 @@ private:
                 break;
             case BST_TYPE::AugBinOp:
                 rtn = evalAugBinOp(bst_cast<BST_AugBinOp>(node), unw_info);
-                break;
-            case BST_TYPE::BinOp:
-                rtn = evalBinOp(bst_cast<BST_BinOp>(node), unw_info);
                 break;
             case BST_TYPE::CallFunc:
             case BST_TYPE::CallAttr:
@@ -2582,6 +2579,9 @@ private:
                 break;
             case BST_TYPE::AssignVRegVReg:
                 doAssign(bst_cast<BST_AssignVRegVReg>(node), unw_info);
+                break;
+            case BST_TYPE::BinOp:
+                doBinOp(bst_cast<BST_BinOp>(node), unw_info);
                 break;
             case BST_TYPE::DeleteAttr:
                 _doDelAttr(bst_cast<BST_DeleteAttr>(node), unw_info);

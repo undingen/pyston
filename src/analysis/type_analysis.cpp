@@ -306,7 +306,7 @@ private:
         return rtn;
     }
 
-    void* visit_binop(BST_BinOp* node) override {
+    CompilerType* visit_binopHelper(BST_BinOp* node) {
         CompilerType* left = getType(node->vreg_left);
         CompilerType* right = getType(node->vreg_right);
         if (!hasFixedOps(left) || !hasFixedOps(right))
@@ -327,6 +327,10 @@ private:
                name->c_str());
 
         return rtn;
+    }
+    void visit_binop(BST_BinOp* node) override {
+        CompilerType* t = visit_binopHelper(node);
+        _doSet(node->vreg_dst, t);
     }
 
     CompilerType* handleCall(CompilerType* func, BST_Call* node) {
