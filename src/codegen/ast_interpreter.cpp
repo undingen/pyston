@@ -927,7 +927,9 @@ Value ASTInterpreter::visit_augBinOp(BST_AugBinOp* node) {
     AUTO_DECREF(left.o);
     Value right = getVReg(node->vreg_right);
     AUTO_DECREF(right.o);
-    return doBinOp(node, left, right, node->op_type, BinExpType::AugBinOp);
+    Value v = doBinOp(node, left, right, node->op_type, BinExpType::AugBinOp);
+    doStore(node->vreg_dst, v);
+    return Value();
 }
 
 Value ASTInterpreter::visit_landingpad(BST_Landingpad* node) {
@@ -1166,6 +1168,14 @@ Value ASTInterpreter::visit_stmt(BST_stmt* node) {
             break;
         case BST_TYPE::AssignVRegVReg:
             rtn = visit_assignvregvreg((BST_AssignVRegVReg*)node);
+            ASTInterpreterJitInterface::pendingCallsCheckHelper();
+            break;
+        case BST_TYPE::AugBinOp:
+            rtn = visit_augBinOp((BST_AugBinOp*)node);
+            ASTInterpreterJitInterface::pendingCallsCheckHelper();
+            break;
+        case BST_TYPE::Compare:
+            rtn = visit_compare((BST_Compare*)node);
             ASTInterpreterJitInterface::pendingCallsCheckHelper();
             break;
         case BST_TYPE::BinOp:
@@ -1568,7 +1578,9 @@ Value ASTInterpreter::visit_compare(BST_Compare* node) {
     AUTO_DECREF(left.o);
     Value right = getVReg(node->vreg_comparator);
     AUTO_DECREF(right.o);
-    return doBinOp(node, left, right, node->op, BinExpType::Compare);
+    Value v = doBinOp(node, left, right, node->op, BinExpType::Compare);
+    doStore(node->vreg_dst, v);
+    return Value();
 }
 
 Value ASTInterpreter::visit_expr(BST_expr* node) {
@@ -1579,8 +1591,6 @@ Value ASTInterpreter::visit_expr(BST_expr* node) {
         case BST_TYPE::CallAttr:
         case BST_TYPE::CallClsAttr:
             return visit_call((BST_Call*)node);
-        case BST_TYPE::Compare:
-            return visit_compare((BST_Compare*)node);
         case BST_TYPE::Dict:
             return visit_dict((BST_Dict*)node);
         case BST_TYPE::List:
@@ -1605,8 +1615,6 @@ Value ASTInterpreter::visit_expr(BST_expr* node) {
             return visit_yield((BST_Yield*)node);
 
         // pseudo
-        case BST_TYPE::AugBinOp:
-            return visit_augBinOp((BST_AugBinOp*)node);
         case BST_TYPE::ClsAttribute:
             return visit_clsAttribute((BST_ClsAttribute*)node);
         case BST_TYPE::MakeClass:

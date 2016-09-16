@@ -316,15 +316,22 @@ public:
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Assign;
 };
 */
-class BST_AugBinOp : public BST_expr {
+
+class BST_ass : public BST_stmt {
+public:
+    int vreg_dst = VREG_UNDEFINED;
+    BST_ass(BST_TYPE::BST_TYPE type) : BST_stmt(type) {}
+};
+
+class BST_AugBinOp : public BST_ass {
 public:
     AST_TYPE::AST_TYPE op_type;
     int vreg_left = VREG_UNDEFINED, vreg_right = VREG_UNDEFINED;
 
     virtual void accept(BSTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    virtual void accept_stmt(StmtVisitor* v);
 
-    BST_AugBinOp() : BST_expr(BST_TYPE::AugBinOp) {}
+    BST_AugBinOp() : BST_ass(BST_TYPE::AugBinOp) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::AugBinOp;
 };
@@ -346,11 +353,7 @@ public:
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Attribute;
 };
 
-class BST_ass : public BST_stmt {
-public:
-    int vreg_dst = VREG_UNDEFINED;
-    BST_ass(BST_TYPE::BST_TYPE type) : BST_stmt(type) {}
-};
+
 
 class BST_BinOp : public BST_ass {
 public:
@@ -416,16 +419,16 @@ public:
 };
 
 
-class BST_Compare : public BST_expr {
+class BST_Compare : public BST_ass {
 public:
     AST_TYPE::AST_TYPE op;
     int vreg_comparator = VREG_UNDEFINED;
     int vreg_left = VREG_UNDEFINED;
 
     virtual void accept(BSTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    virtual void accept_stmt(StmtVisitor* v);
 
-    BST_Compare() : BST_expr(BST_TYPE::Compare) {}
+    BST_Compare() : BST_ass(BST_TYPE::Compare) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Compare;
 };
@@ -1217,13 +1220,12 @@ protected:
 public:
     virtual ~ExprVisitor() {}
 
-    virtual void* visit_augbinop(BST_AugBinOp* node) { RELEASE_ASSERT(0, ""); }
+
     virtual void* visit_attribute(BST_Attribute* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_callfunc(BST_CallFunc* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_callattr(BST_CallAttr* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_callclsattr(BST_CallClsAttr* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_clsattribute(BST_ClsAttribute* node) { RELEASE_ASSERT(0, ""); }
-    virtual void* visit_compare(BST_Compare* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_dict(BST_Dict* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_list(BST_List* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_name(BST_Name* node) { RELEASE_ASSERT(0, ""); }
@@ -1261,8 +1263,10 @@ public:
     virtual void visit_assert(BST_Assert* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_assign(BST_Assign* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_assignvregvreg(BST_AssignVRegVReg* node) { RELEASE_ASSERT(0, ""); }
+    virtual void visit_augbinop(BST_AugBinOp* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_binop(BST_BinOp* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_classdef(BST_ClassDef* node) { RELEASE_ASSERT(0, ""); }
+    virtual void visit_compare(BST_Compare* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_deletesub(BST_DeleteSub* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_deleteattr(BST_DeleteAttr* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_deletename(BST_DeleteName* node) { RELEASE_ASSERT(0, ""); }

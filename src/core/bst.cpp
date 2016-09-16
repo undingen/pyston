@@ -101,11 +101,12 @@ void BST_AugBinOp::accept(BSTVisitor* v) {
     if (skip)
         return;
 
+    v->visit_vreg(&vreg_dst, true);
     v->visit_vreg(&vreg_left);
     v->visit_vreg(&vreg_right);
 }
 
-void* BST_AugBinOp::accept_expr(ExprVisitor* v) {
+void BST_AugBinOp::accept_stmt(StmtVisitor* v) {
     return v->visit_augbinop(this);
 }
 
@@ -188,11 +189,12 @@ void BST_Compare::accept(BSTVisitor* v) {
     if (skip)
         return;
 
+    v->visit_vreg(&vreg_dst, true);
     v->visit_vreg(&vreg_left);
     v->visit_vreg(&vreg_comparator);
 }
 
-void* BST_Compare::accept_expr(ExprVisitor* v) {
+void BST_Compare::accept_stmt(StmtVisitor* v) {
     return v->visit_compare(this);
 }
 

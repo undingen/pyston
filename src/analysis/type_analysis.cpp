@@ -276,7 +276,7 @@ private:
         return type == STR || type == INT || type == FLOAT || type == LIST || type == DICT;
     }
 
-    void* visit_augbinop(BST_AugBinOp* node) override {
+    CompilerType* visit_augbinopHelper(BST_AugBinOp* node) {
         CompilerType* left = getType(node->vreg_left);
         CompilerType* right = getType(node->vreg_right);
         if (!hasFixedOps(left) || !hasFixedOps(right))
@@ -304,6 +304,10 @@ private:
                name->c_str());
 
         return rtn;
+    }
+    void visit_augbinop(BST_AugBinOp* node) override {
+        CompilerType* t = visit_augbinopHelper(node);
+        _doSet(node->vreg_dst, t);
     }
 
     CompilerType* visit_binopHelper(BST_BinOp* node) {
@@ -404,7 +408,7 @@ private:
         return handleCall(func, node);
     }
 
-    void* visit_compare(BST_Compare* node) override {
+    CompilerType* visit_compareHelper(BST_Compare* node) {
         CompilerType* left = getType(node->vreg_left);
         CompilerType* right = getType(node->vreg_comparator);
 
@@ -423,6 +427,10 @@ private:
         std::vector<CompilerType*> arg_types;
         arg_types.push_back(right);
         return attr_type->callType(ArgPassSpec(2), arg_types, NULL);
+    }
+    void visit_compare(BST_Compare* node) override {
+        CompilerType* t = visit_compareHelper(node);
+        _doSet(node->vreg_dst, t);
     }
 
     void* visit_dict(BST_Dict* node) override { return DICT; }

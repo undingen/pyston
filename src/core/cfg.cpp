@@ -776,12 +776,15 @@ private:
         return rtn;
     }
 
-    BST_Compare* makeCompare(AST_TYPE::AST_TYPE oper, BST_expr* left, BST_expr* right) {
+    BST_expr* makeCompare(AST_TYPE::AST_TYPE oper, BST_expr* left, BST_expr* right) {
         auto compare = new BST_Compare();
         compare->op = oper;
         unmapExpr(left, &compare->vreg_left);
         unmapExpr(right, &compare->vreg_comparator);
-        return compare;
+        InternedString name = nodeName();
+        unmapDst(name, &compare->vreg_dst);
+        push_back(compare);
+        return makeLoad(name, compare->lineno, true);
     }
 
     BST_Index* makeIndex(BST_expr* value) {
@@ -1290,7 +1293,10 @@ private:
             unmapExpr(remapExpr(node->left), &rtn->vreg_left);
             assert(node->comparators.size() == 1);
             unmapExpr(remapExpr(node->comparators[0]), &rtn->vreg_comparator);
-            return rtn;
+            InternedString name = nodeName();
+            unmapDst(name, &rtn->vreg_dst);
+            push_back(rtn);
+            return makeLoad(name, node, true);
         } else {
             InternedString name = nodeName();
 
@@ -1312,8 +1318,9 @@ private:
                 else
                     unmapExpr(right, &val->vreg_comparator);
                 val->op = node->ops[i];
-
-                pushAssign(name, val);
+                unmapDst(name, &val->vreg_dst);
+                push_back(val);
+                // pushAssign(name, val);
 
                 if (i == node->ops.size() - 1) {
                     continue;
@@ -2291,7 +2298,8 @@ public:
         binop->lineno = node->lineno;
 
         InternedString node_name(nodeName());
-        pushAssign(node_name, binop);
+        unmapDst(node_name, &binop->vreg_dst);
+        push_back(binop);
         pushAssign(remapped_target, makeLoad(node_name, node, true));
         return true;
     }

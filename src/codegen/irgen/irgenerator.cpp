@@ -1111,28 +1111,29 @@ private:
         _doSet(node->vreg_dst, rtn, unw_info);
     }
 
-    CompilerVariable* evalAugBinOp(BST_AugBinOp* node, const UnwindInfo& unw_info) {
+    void doAugBinOp(BST_AugBinOp* node, const UnwindInfo& unw_info) {
         CompilerVariable* left = evalVReg(node->vreg_left);
         CompilerVariable* right = evalVReg(node->vreg_right);
 
         assert(node->op_type != AST_TYPE::Is && node->op_type != AST_TYPE::IsNot && "not tested yet");
 
         CompilerVariable* rtn = this->_evalBinExp(node, left, right, node->op_type, AugBinOp, unw_info);
-        return rtn;
+        _doSet(node->vreg_dst, rtn, unw_info);
     }
 
-    CompilerVariable* evalCompare(BST_Compare* node, const UnwindInfo& unw_info) {
+    void doCompare(BST_Compare* node, const UnwindInfo& unw_info) {
         CompilerVariable* left = evalVReg(node->vreg_left);
         CompilerVariable* right = evalVReg(node->vreg_comparator);
 
         assert(left);
         assert(right);
 
+        CompilerVariable* rtn = NULL;
         if (node->op == AST_TYPE::Is || node->op == AST_TYPE::IsNot)
-            return doIs(emitter, left, right, node->op == AST_TYPE::IsNot);
-
-        CompilerVariable* rtn = _evalBinExp(node, left, right, node->op, Compare, unw_info);
-        return rtn;
+            rtn = doIs(emitter, left, right, node->op == AST_TYPE::IsNot);
+        else
+            rtn = _evalBinExp(node, left, right, node->op, Compare, unw_info);
+        _doSet(node->vreg_dst, rtn, unw_info);
     }
 
     CompilerVariable* evalCall(BST_Call* node, const UnwindInfo& unw_info) {
@@ -1770,16 +1771,10 @@ private:
             case BST_TYPE::Attribute:
                 rtn = evalAttribute(bst_cast<BST_Attribute>(node), unw_info);
                 break;
-            case BST_TYPE::AugBinOp:
-                rtn = evalAugBinOp(bst_cast<BST_AugBinOp>(node), unw_info);
-                break;
             case BST_TYPE::CallFunc:
             case BST_TYPE::CallAttr:
             case BST_TYPE::CallClsAttr:
                 rtn = evalCall((BST_Call*)node, unw_info);
-                break;
-            case BST_TYPE::Compare:
-                rtn = evalCompare(bst_cast<BST_Compare>(node), unw_info);
                 break;
             case BST_TYPE::Dict:
                 rtn = evalDict(bst_cast<BST_Dict>(node), unw_info);
@@ -2582,6 +2577,12 @@ private:
                 break;
             case BST_TYPE::BinOp:
                 doBinOp(bst_cast<BST_BinOp>(node), unw_info);
+                break;
+            case BST_TYPE::AugBinOp:
+                doAugBinOp(bst_cast<BST_AugBinOp>(node), unw_info);
+                break;
+            case BST_TYPE::Compare:
+                doCompare(bst_cast<BST_Compare>(node), unw_info);
                 break;
             case BST_TYPE::DeleteAttr:
                 _doDelAttr(bst_cast<BST_DeleteAttr>(node), unw_info);

@@ -310,6 +310,14 @@ public:
         _doSet(node->vreg_dst);
         return true;
     }
+    virtual bool visit_augbinop(BST_AugBinOp* node) {
+        _doSet(node->vreg_dst);
+        return true;
+    }
+    virtual bool visit_compare(BST_Compare* node) {
+        _doSet(node->vreg_dst);
+        return true;
+    }
 
 
     virtual bool visit_classdef(BST_ClassDef* node) {
