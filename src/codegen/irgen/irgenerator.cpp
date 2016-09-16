@@ -1136,7 +1136,7 @@ private:
         _doSet(node->vreg_dst, rtn, unw_info);
     }
 
-    CompilerVariable* evalCall(BST_Call* node, const UnwindInfo& unw_info) {
+    void doCall(BST_Call* node, const UnwindInfo& unw_info) {
         bool is_callattr;
         bool callattr_clsonly = false;
         InternedString attr;
@@ -1194,7 +1194,7 @@ private:
             rtn = func->call(emitter, getOpInfoForNode(node, unw_info), argspec, args, keyword_names);
         }
 
-        return rtn;
+        _doSet(node->vreg_dst, rtn, unw_info);
     }
 
     CompilerVariable* evalDict(BST_Dict* node, const UnwindInfo& unw_info) {
@@ -1770,11 +1770,6 @@ private:
         switch (node->type) {
             case BST_TYPE::Attribute:
                 rtn = evalAttribute(bst_cast<BST_Attribute>(node), unw_info);
-                break;
-            case BST_TYPE::CallFunc:
-            case BST_TYPE::CallAttr:
-            case BST_TYPE::CallClsAttr:
-                rtn = evalCall((BST_Call*)node, unw_info);
                 break;
             case BST_TYPE::Dict:
                 rtn = evalDict(bst_cast<BST_Dict>(node), unw_info);
@@ -2580,6 +2575,11 @@ private:
                 break;
             case BST_TYPE::AugBinOp:
                 doAugBinOp(bst_cast<BST_AugBinOp>(node), unw_info);
+                break;
+            case BST_TYPE::CallFunc:
+            case BST_TYPE::CallAttr:
+            case BST_TYPE::CallClsAttr:
+                doCall((BST_Call*)node, unw_info);
                 break;
             case BST_TYPE::Compare:
                 doCompare(bst_cast<BST_Compare>(node), unw_info);

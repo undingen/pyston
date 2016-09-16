@@ -141,6 +141,7 @@ void BST_CallFunc::accept(BSTVisitor* v) {
     if (skip)
         return;
 
+    v->visit_vreg(&vreg_dst, true);
     v->visit_vreg(&vreg_func);
     visitVector(args, v);
     visitVector(keywords, v);
@@ -148,7 +149,7 @@ void BST_CallFunc::accept(BSTVisitor* v) {
     v->visit_vreg(&vreg_kwargs);
 }
 
-void* BST_CallFunc::accept_expr(ExprVisitor* v) {
+void BST_CallFunc::accept_stmt(StmtVisitor* v) {
     return v->visit_callfunc(this);
 }
 
@@ -157,6 +158,7 @@ void BST_CallAttr::accept(BSTVisitor* v) {
     if (skip)
         return;
 
+    v->visit_vreg(&vreg_dst, true);
     v->visit_vreg(&vreg_value);
     visitVector(args, v);
     visitVector(keywords, v);
@@ -164,7 +166,7 @@ void BST_CallAttr::accept(BSTVisitor* v) {
     v->visit_vreg(&vreg_kwargs);
 }
 
-void* BST_CallAttr::accept_expr(ExprVisitor* v) {
+void BST_CallAttr::accept_stmt(StmtVisitor* v) {
     return v->visit_callattr(this);
 }
 
@@ -173,6 +175,7 @@ void BST_CallClsAttr::accept(BSTVisitor* v) {
     if (skip)
         return;
 
+    v->visit_vreg(&vreg_dst, true);
     v->visit_vreg(&vreg_value);
     visitVector(args, v);
     visitVector(keywords, v);
@@ -180,7 +183,7 @@ void BST_CallClsAttr::accept(BSTVisitor* v) {
     v->visit_vreg(&vreg_kwargs);
 }
 
-void* BST_CallClsAttr::accept_expr(ExprVisitor* v) {
+void BST_CallClsAttr::accept_stmt(StmtVisitor* v) {
     return v->visit_callclsattr(this);
 }
 

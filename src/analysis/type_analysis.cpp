@@ -108,7 +108,7 @@ private:
         }
     }
 
-    CompilerType* processSpeculation(BoxedClass* speculated_cls, BST_expr* node, CompilerType* old_type) {
+    CompilerType* processSpeculation(BoxedClass* speculated_cls, BST* node, CompilerType* old_type) {
         assert(old_type);
         assert(speculation != TypeAnalysis::NONE);
 
@@ -371,12 +371,12 @@ private:
         return rtn_type;
     }
 
-    void* visit_callfunc(BST_CallFunc* node) override {
+    void visit_callfunc(BST_CallFunc* node) override {
         CompilerType* func = getType(node->vreg_func);
-        return handleCall(func, node);
+        _doSet(node->vreg_dst, handleCall(func, node));
     }
 
-    void* visit_callattr(BST_CallAttr* node) override {
+    void visit_callattr(BST_CallAttr* node) override {
         CompilerType* t = getType(node->vreg_value);
         CompilerType* func = t->getattrType(node->attr, false);
 
@@ -393,10 +393,10 @@ private:
             printf("\n");
         }
 
-        return handleCall(func, node);
+        _doSet(node->vreg_dst, handleCall(func, node));
     }
 
-    void* visit_callclsattr(BST_CallClsAttr* node) override {
+    void visit_callclsattr(BST_CallClsAttr* node) override {
         CompilerType* t = getType(node->vreg_value);
         CompilerType* func = t->getattrType(node->attr, true);
         if (VERBOSITY() >= 2 && func == UNDEF) {
@@ -405,7 +405,7 @@ private:
             printf("\n");
         }
 
-        return handleCall(func, node);
+        _doSet(node->vreg_dst, handleCall(func, node));
     }
 
     CompilerType* visit_compareHelper(BST_Compare* node) {

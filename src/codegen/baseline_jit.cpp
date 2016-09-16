@@ -244,7 +244,7 @@ RewriterVar* JitFragmentWriter::emitBinop(BST* node, RewriterVar* lhs, RewriterV
         .first->setType(RefType::OWNED);
 }
 
-RewriterVar* JitFragmentWriter::emitCallattr(BST_expr* node, RewriterVar* obj, BoxedString* attr, CallattrFlags flags,
+RewriterVar* JitFragmentWriter::emitCallattr(BST* node, RewriterVar* obj, BoxedString* attr, CallattrFlags flags,
                                              const llvm::ArrayRef<RewriterVar*> args,
                                              std::vector<BoxedString*>* keyword_names) {
 #if ENABLE_BASELINEJIT_ICS
@@ -522,7 +522,7 @@ RewriterVar* JitFragmentWriter::emitRepr(RewriterVar* v) {
     return call(false, (void*)repr, v)->setType(RefType::OWNED);
 }
 
-RewriterVar* JitFragmentWriter::emitRuntimeCall(BST_expr* node, RewriterVar* obj, ArgPassSpec argspec,
+RewriterVar* JitFragmentWriter::emitRuntimeCall(BST* node, RewriterVar* obj, ArgPassSpec argspec,
                                                 const llvm::ArrayRef<RewriterVar*> args,
                                                 std::vector<BoxedString*>* keyword_names) {
 #if ENABLE_BASELINEJIT_ICS

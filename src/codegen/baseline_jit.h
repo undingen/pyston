@@ -269,7 +269,7 @@ public:
     RewriterVar* emitAugbinop(BST* node, RewriterVar* lhs, RewriterVar* rhs, int op_type);
     RewriterVar* emitApplySlice(RewriterVar* target, RewriterVar* lower, RewriterVar* upper);
     RewriterVar* emitBinop(BST* node, RewriterVar* lhs, RewriterVar* rhs, int op_type);
-    RewriterVar* emitCallattr(BST_expr* node, RewriterVar* obj, BoxedString* attr, CallattrFlags flags,
+    RewriterVar* emitCallattr(BST* node, RewriterVar* obj, BoxedString* attr, CallattrFlags flags,
                               const llvm::ArrayRef<RewriterVar*> args, std::vector<BoxedString*>* keyword_names);
     RewriterVar* emitCompare(BST* node, RewriterVar* lhs, RewriterVar* rhs, int op_type);
     RewriterVar* emitCreateDict();
@@ -300,7 +300,7 @@ public:
     RewriterVar* emitNonzero(RewriterVar* v);
     RewriterVar* emitNotNonzero(RewriterVar* v);
     RewriterVar* emitRepr(RewriterVar* v);
-    RewriterVar* emitRuntimeCall(BST_expr* node, RewriterVar* obj, ArgPassSpec argspec,
+    RewriterVar* emitRuntimeCall(BST* node, RewriterVar* obj, ArgPassSpec argspec,
                                  const llvm::ArrayRef<RewriterVar*> args, std::vector<BoxedString*>* keyword_names);
     RewriterVar* emitUnaryop(RewriterVar* v, int op_type);
     std::vector<RewriterVar*> emitUnpackIntoArray(RewriterVar* v, uint64_t num);

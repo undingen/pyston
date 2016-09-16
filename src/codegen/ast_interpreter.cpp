@@ -1174,6 +1174,12 @@ Value ASTInterpreter::visit_stmt(BST_stmt* node) {
             rtn = visit_augBinOp((BST_AugBinOp*)node);
             ASTInterpreterJitInterface::pendingCallsCheckHelper();
             break;
+        case BST_TYPE::CallFunc:
+        case BST_TYPE::CallAttr:
+        case BST_TYPE::CallClsAttr:
+            rtn = visit_call((BST_Call*)node);
+            ASTInterpreterJitInterface::pendingCallsCheckHelper();
+            break;
         case BST_TYPE::Compare:
             rtn = visit_compare((BST_Compare*)node);
             ASTInterpreterJitInterface::pendingCallsCheckHelper();
@@ -1587,10 +1593,6 @@ Value ASTInterpreter::visit_expr(BST_expr* node) {
     switch (node->type) {
         case BST_TYPE::Attribute:
             return visit_attribute((BST_Attribute*)node);
-        case BST_TYPE::CallFunc:
-        case BST_TYPE::CallAttr:
-        case BST_TYPE::CallClsAttr:
-            return visit_call((BST_Call*)node);
         case BST_TYPE::Dict:
             return visit_dict((BST_Dict*)node);
         case BST_TYPE::List:
@@ -1739,7 +1741,8 @@ Value ASTInterpreter::visit_call(BST_Call* node) {
                           args.size() > 2 ? args[2] : 0, args.size() > 3 ? &args[3] : 0, keyword_names);
     }
 
-    return v;
+    doStore(node->vreg_dst, v);
+    return Value();
 }
 
 

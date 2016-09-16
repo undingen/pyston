@@ -773,7 +773,10 @@ private:
         }
         rtn->lineno = func->lineno;
         rtn->args = args;
-        return rtn;
+        InternedString name = nodeName();
+        unmapDst(name, &rtn->vreg_dst);
+        push_back(rtn);
+        return makeLoad(name, rtn->lineno, true);
     }
 
     BST_expr* makeCompare(AST_TYPE::AST_TYPE oper, BST_expr* left, BST_expr* right) {
@@ -1236,7 +1239,7 @@ private:
         return makeLoad(name, node, true);
     }
 
-    BST_Call* remapCall(AST_Call* node) {
+    std::pair<BST_Call*, InternedString> remapCall(AST_Call* node) {
         BST_Call* rtn_shared = NULL;
         if (node->func->type == AST_TYPE::Attribute) {
             BST_CallAttr* rtn = new BST_CallAttr();
@@ -1268,7 +1271,9 @@ private:
         }
         unmapExpr(remapExpr(node->starargs), &rtn_shared->vreg_starargs);
         unmapExpr(remapExpr(node->kwargs), &rtn_shared->vreg_kwargs);
-        return rtn_shared;
+        InternedString name = nodeName();
+        unmapDst(name, &rtn_shared->vreg_dst);
+        return std::make_pair(rtn_shared, name);
     }
 
     BST_ClsAttribute* remapClsAttribute(AST_ClsAttribute* node) {
@@ -1751,9 +1756,15 @@ private:
             case AST_TYPE::BoolOp:
                 rtn = remapBoolOp(ast_cast<AST_BoolOp>(node));
                 break;
-            case AST_TYPE::Call:
-                rtn = remapCall(ast_cast<AST_Call>(node));
+            case AST_TYPE::Call: {
+                assert(wrap_with_assign);
+                BST_stmt* stmt;
+                InternedString name;
+                std::tie(stmt, name) = remapCall(ast_cast<AST_Call>(node));
+                push_back(stmt);
+                return makeLoad(name, node, true);
                 break;
+            }
             case AST_TYPE::ClsAttribute:
                 rtn = remapClsAttribute(ast_cast<AST_ClsAttribute>(node));
                 break;
@@ -2390,7 +2401,7 @@ public:
 
     bool visit_expr(AST_Expr* node) override {
         InternedString name = nodeName();
-        pushAssign(name, remapExpr(node->value, false));
+        pushAssign(name, remapExpr(node->value));
         return true;
     }
 

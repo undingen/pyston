@@ -368,7 +368,7 @@ public:
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::BinOp;
 };
 
-class BST_Call : public BST_expr {
+class BST_Call : public BST_ass {
 public:
     int vreg_starargs = VREG_UNDEFINED, vreg_kwargs = VREG_UNDEFINED;
     std::vector<BST_expr*> args;
@@ -377,7 +377,7 @@ public:
     // used during execution stores all keyword names
     std::unique_ptr<std::vector<BoxedString*>> keywords_names;
 
-    BST_Call(BST_TYPE::BST_TYPE type) : BST_expr(type) {}
+    BST_Call(BST_TYPE::BST_TYPE type) : BST_ass(type) {}
 };
 
 class BST_CallFunc : public BST_Call {
@@ -385,7 +385,7 @@ public:
     int vreg_func = VREG_UNDEFINED;
 
     virtual void accept(BSTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    virtual void accept_stmt(StmtVisitor* v);
 
     BST_CallFunc() : BST_Call(BST_TYPE::CallFunc) {}
 
@@ -398,7 +398,7 @@ public:
     InternedString attr;
 
     virtual void accept(BSTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    virtual void accept_stmt(StmtVisitor* v);
 
     BST_CallAttr() : BST_Call(BST_TYPE::CallAttr) {}
 
@@ -411,7 +411,7 @@ public:
     InternedString attr;
 
     virtual void accept(BSTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    virtual void accept_stmt(StmtVisitor* v);
 
     BST_CallClsAttr() : BST_Call(BST_TYPE::CallClsAttr) {}
 
@@ -1222,9 +1222,6 @@ public:
 
 
     virtual void* visit_attribute(BST_Attribute* node) { RELEASE_ASSERT(0, ""); }
-    virtual void* visit_callfunc(BST_CallFunc* node) { RELEASE_ASSERT(0, ""); }
-    virtual void* visit_callattr(BST_CallAttr* node) { RELEASE_ASSERT(0, ""); }
-    virtual void* visit_callclsattr(BST_CallClsAttr* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_clsattribute(BST_ClsAttribute* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_dict(BST_Dict* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_list(BST_List* node) { RELEASE_ASSERT(0, ""); }
@@ -1265,6 +1262,9 @@ public:
     virtual void visit_assignvregvreg(BST_AssignVRegVReg* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_augbinop(BST_AugBinOp* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_binop(BST_BinOp* node) { RELEASE_ASSERT(0, ""); }
+    virtual void visit_callfunc(BST_CallFunc* node) { RELEASE_ASSERT(0, ""); }
+    virtual void visit_callattr(BST_CallAttr* node) { RELEASE_ASSERT(0, ""); }
+    virtual void visit_callclsattr(BST_CallClsAttr* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_classdef(BST_ClassDef* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_compare(BST_Compare* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_deletesub(BST_DeleteSub* node) { RELEASE_ASSERT(0, ""); }
