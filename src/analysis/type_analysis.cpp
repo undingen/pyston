@@ -45,6 +45,7 @@ public:
 
     BoxedClass* speculatedExprClass(BST_expr*) override { return NULL; }
     BoxedClass* speculatedExprClass(BST_slice*) override { return NULL; }
+    BoxedClass* speculatedExprClass(BST_ass*) override { return NULL; }
 };
 
 ConcreteCompilerType* NullTypeAnalysis::getTypeAtBlockStart(int vreg, CFGBlock* block) {
@@ -112,6 +113,7 @@ private:
         assert(old_type);
         assert(speculation != TypeAnalysis::NONE);
 
+        return old_type;
         if (speculated_cls != NULL && speculated_cls->is_constant) {
             CompilerType* speculated_type = unboxedType(typeFromClass(speculated_cls));
             if (!old_type->canConvertTo(speculated_type)) {
@@ -534,10 +536,7 @@ private:
 
     void visit_repr(BST_Repr* node) override { _doSet(node->vreg_dst, STR); }
 
-    void visit_set(BST_Set* node) override {
-        _doSet(node->vreg_dst, SET);
-        ;
-    }
+    void visit_set(BST_Set* node) override { _doSet(node->vreg_dst, SET); }
 
     void* visit_slice(BST_Slice* node) override { return SLICE; }
 
@@ -732,6 +731,7 @@ public:
 
     BoxedClass* speculatedExprClass(BST_slice* call) override { return type_speculations[call]; }
     BoxedClass* speculatedExprClass(BST_expr* call) override { return type_speculations[call]; }
+    BoxedClass* speculatedExprClass(BST_ass* call) override { return type_speculations[call]; }
 
     static bool merge(CompilerType* lhs, CompilerType*& rhs) {
         if (!lhs)

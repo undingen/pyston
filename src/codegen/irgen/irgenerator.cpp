@@ -2642,6 +2642,7 @@ private:
                         printf("Unhandled stmt type at " __FILE__ ":" STRINGIFY(__LINE__) ": %d\n", node->type);
                         exit(1);
                 }
+                rtn = evalSliceExprPost((BST_ass*)node, unw_info, rtn);
                 _doSet(((BST_ass*)node)->vreg_dst, rtn, unw_info);
             }
         }
