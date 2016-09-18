@@ -1035,6 +1035,10 @@ private:
             *vreg = -source->parent_module->constants.size();
             // delete node;
             return;
+        } else if (node->type == BST_TYPE::None) {
+            source->parent_module->constants.push_back(Py_None);
+            *vreg = -source->parent_module->constants.size();
+            return;
         }
 
         assert(0);
@@ -1192,6 +1196,8 @@ private:
         } else if (val->type == BST_TYPE::Num) {
             return val;
         } else if (val->type == BST_TYPE::Str) {
+            return val;
+        } else if (val->type == BST_TYPE::None) {
             return val;
         } else {
             RELEASE_ASSERT(0, "%d", val->type);
@@ -2142,7 +2148,7 @@ public:
                 level = 0;
             import->level = level;
 
-            unmapExpr(wrap(new BST_None), &import->vreg_from);
+            unmapExpr(new BST_None, &import->vreg_from);
             unmapExpr(new BST_Str(a->name.s()), &import->vreg_name);
 
             InternedString tmpname = nodeName();
