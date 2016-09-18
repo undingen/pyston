@@ -1471,8 +1471,7 @@ private:
         // cur_code->co_consts.push_back(def->code)
         constants.push_back(code);
 
-        BST_FunctionDef* func = new BST_FunctionDef();
-        func->args = new BST_arguments(); // hacky, but we don't have to fill this in except for the defaults
+        BST_FunctionDef* func = BST_FunctionDef::create(0, 0);
         func->code = code;
         BST_MakeFunction* mkfunc = new BST_MakeFunction(func);
         InternedString func_var_name = nodeName();
@@ -1537,8 +1536,7 @@ private:
         // cur_code->co_consts.push_back(def->code)
         constants.push_back(code);
 
-        BST_FunctionDef* func = new BST_FunctionDef();
-        func->args = new BST_arguments(); // hacky, but we don't have to fill this in except for the defaults
+        BST_FunctionDef* func = BST_FunctionDef::create(0, 0);
         func->code = code;
         BST_MakeFunction* mkfunc = new BST_MakeFunction(func);
         InternedString func_var_name = nodeName();
@@ -1600,10 +1598,12 @@ private:
 
         stmt->value = node->body; // don't remap now; will be CFG'ed later
 
-        auto bdef = new BST_FunctionDef();
+        auto bdef = BST_FunctionDef::create(0 /* decorators */, node->args->defaults.size());
         bdef->lineno = node->lineno;
 
-        bdef->args = remapArguments(node->args);
+        for (int i = 0; i < node->args->defaults.size(); ++i) {
+            unmapExpr(remapExpr(node->args->defaults[i]), &bdef->elts[i]);
+        }
 
         auto name = getStaticString("<lambda>");
         bdef->code = cfgizer->runRecursively({ stmt }, name, node->lineno, node->args, node);
@@ -2097,15 +2097,18 @@ public:
     }
 
     bool visit_functiondef(AST_FunctionDef* node) override {
-        auto def = new BST_FunctionDef();
+        auto def = BST_FunctionDef::create(node->decorator_list.size(), node->args->defaults.size());
         def->lineno = node->lineno;
         def->name = node->name;
 
         // Decorators are evaluated before the defaults, so this *must* go before remapArguments().
         // TODO(rntz): do we have a test for this
-        for (auto expr : node->decorator_list)
-            def->decorator_list.push_back(remapExpr(expr));
-        def->args = remapArguments(node->args);
+        for (int i = 0; i < node->decorator_list.size(); ++i) {
+            unmapExpr(remapExpr(node->decorator_list[i]), &def->elts[i]);
+        }
+        for (int i = 0; i < node->args->defaults.size(); ++i) {
+            unmapExpr(remapExpr(node->args->defaults[i]), &def->elts[node->decorator_list.size() + i]);
+        }
 
         def->code = cfgizer->runRecursively(node->body, node->name.getBox(), node->lineno, node->args, node);
         // XXX bad!  this should be tracked ex through co_consts
@@ -3175,18 +3178,17 @@ public:
         return true;
     }
 
+    bool visit_functiondef(BST_FunctionDef* node) override {
+        for (int i = 0; i < node->num_decorator + node->num_defaults; ++i)
+            visit_vreg(&node->elts[i]);
+        return true;
+    }
+
     bool visit_classdef(BST_ClassDef* node) override {
         for (auto e : node->bases)
             e->accept(this);
         for (auto e : node->decorator_list)
             e->accept(this);
-        return true;
-    }
-
-    bool visit_functiondef(BST_FunctionDef* node) override {
-        for (auto* d : node->decorator_list)
-            d->accept(this);
-        node->args->accept(this);
         return true;
     }
 

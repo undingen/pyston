@@ -74,7 +74,7 @@ public:
     static Box* executeInner(ASTInterpreter& interpreter, CFGBlock* start_block, BST_stmt* start_at);
 
 private:
-    Value createFunction(BST_FunctionDef* node, BST_arguments* args);
+    Value createFunction(BST_FunctionDef* node);
     Value doBinOp(BST* node, Value left, Value right, int op, BinExpType exp_type);
     void doStore(BST_expr* node, STOLEN(Value) value);
     void doStore(BST_Name* name, STOLEN(Value) value);
@@ -1324,26 +1324,25 @@ Value ASTInterpreter::visit_return(BST_Return* node) {
     return s;
 }
 
-Value ASTInterpreter::createFunction(BST_FunctionDef* node, BST_arguments* args) {
+Value ASTInterpreter::createFunction(BST_FunctionDef* node) {
     BoxedCode* code = node->code;
     assert(code);
 
     std::vector<Box*> defaults;
     llvm::SmallVector<RewriterVar*, 4> defaults_vars;
-    defaults.reserve(args->defaults.size());
+    defaults.reserve(node->num_defaults);
 
     RewriterVar* defaults_var = NULL;
     if (jit) {
-        defaults_var = args->defaults.size() ? jit->allocate(args->defaults.size()) : jit->imm(0ul);
-        defaults_vars.reserve(args->defaults.size());
+        defaults_var = node->num_defaults ? jit->allocate(node->num_defaults) : jit->imm(0ul);
+        defaults_vars.reserve(node->num_defaults);
     }
 
-    int i = 0;
-    for (BST_expr* d : args->defaults) {
-        Value v = visit_expr(d);
+    for (int i = 0; i < node->num_defaults; ++i) {
+        Value v = getVReg(node->elts[node->num_decorator + i]);
         defaults.push_back(v.o);
         if (jit) {
-            defaults_var->setAttr(i++ * sizeof(void*), v, RewriterVar::SetattrType::REF_USED);
+            defaults_var->setAttr(i * sizeof(void*), v, RewriterVar::SetattrType::REF_USED);
             defaults_vars.push_back(v.var);
         }
     }
@@ -1396,7 +1395,7 @@ Value ASTInterpreter::createFunction(BST_FunctionDef* node, BST_arguments* args)
             passed_globals_var = jit->imm(0ul);
         // TODO: have to track this GC ref
         rtn.var = jit->call(false, (void*)createFunctionFromMetadata, { jit->imm(code), closure_var, passed_globals_var,
-                                                                        defaults_var, jit->imm(args->defaults.size()) },
+                                                                        defaults_var, jit->imm(node->num_defaults) },
                             {}, defaults_vars)->setType(RefType::OWNED);
     }
 
@@ -1407,14 +1406,13 @@ Value ASTInterpreter::createFunction(BST_FunctionDef* node, BST_arguments* args)
 
 Value ASTInterpreter::visit_makeFunction(BST_MakeFunction* mkfn) {
     BST_FunctionDef* node = mkfn->function_def;
-    BST_arguments* args = node->args;
 
     std::vector<Value> decorators;
-    decorators.reserve(node->decorator_list.size());
-    for (BST_expr* d : node->decorator_list)
-        decorators.push_back(visit_expr(d));
+    decorators.reserve(node->num_decorator);
+    for (int i = 0; i < node->num_decorator; ++i)
+        decorators.push_back(getVReg(node->elts[i]));
 
-    Value func = createFunction(node, args);
+    Value func = createFunction(node);
 
     for (int i = decorators.size() - 1; i >= 0; i--) {
         func.o = runtimeCall(autoDecref(decorators[i].o), ArgPassSpec(1), autoDecref(func.o), 0, 0, 0, 0);

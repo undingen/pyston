@@ -1624,13 +1624,13 @@ private:
         return cls;
     }
 
-    CompilerVariable* _createFunction(BST_FunctionDef* node, const UnwindInfo& unw_info, BST_arguments* args) {
+    CompilerVariable* _createFunction(BST_FunctionDef* node, const UnwindInfo& unw_info) {
         BoxedCode* code = node->code;
         assert(code);
 
         std::vector<ConcreteCompilerVariable*> defaults;
-        for (auto d : args->defaults) {
-            CompilerVariable* e = evalExpr(d, unw_info);
+        for (int i = 0; i < node->num_defaults; ++i) {
+            CompilerVariable* e = evalVReg(node->elts[node->num_decorator + i]);
             ConcreteCompilerVariable* converted = e->makeConverted(emitter, e->getBoxType());
             defaults.push_back(converted);
         }
@@ -1656,11 +1656,11 @@ private:
     CompilerVariable* evalMakeFunction(BST_MakeFunction* mkfn, const UnwindInfo& unw_info) {
         BST_FunctionDef* node = mkfn->function_def;
         std::vector<CompilerVariable*> decorators;
-        for (auto d : node->decorator_list) {
-            decorators.push_back(evalExpr(d, unw_info));
+        for (int i = 0; i < node->num_decorator; ++i) {
+            decorators.push_back(evalVReg(node->elts[i]));
         }
 
-        CompilerVariable* func = _createFunction(node, unw_info, node->args);
+        CompilerVariable* func = _createFunction(node, unw_info);
 
         for (int i = decorators.size() - 1; i >= 0; i--) {
             func = decorators[i]->call(emitter, getOpInfoForNode(node, unw_info), ArgPassSpec(1), { func }, NULL);

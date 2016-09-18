@@ -88,10 +88,8 @@ public:
     }
 
     bool visit_functiondef(BST_FunctionDef* node) {
-        for (auto* d : node->decorator_list)
-            d->accept(this);
-        for (auto* d : node->args->defaults)
-            d->accept(this);
+        for (int i = 0; i < node->num_decorator + node->num_defaults; ++i)
+            visit_vreg(&node->elts[i], false);
 
         return true;
     }

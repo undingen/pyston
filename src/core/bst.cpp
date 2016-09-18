@@ -303,8 +303,9 @@ void BST_FunctionDef::accept(BSTVisitor* v) {
     if (skip)
         return;
 
-    visitVector(decorator_list, v);
-    args->accept(v);
+    for (int i = 0; i < num_decorator + num_defaults; ++i) {
+        v->visit_vreg(&elts[i]);
+    }
     visitCFG(code->source->cfg, v);
 }
 
@@ -1050,9 +1051,9 @@ bool PrintVisitor::visit_extslice(BST_ExtSlice* node) {
 }
 
 bool PrintVisitor::visit_functiondef(BST_FunctionDef* node) {
-    for (auto d : node->decorator_list) {
+    for (int i = 0; i < node->num_decorator; ++i) {
         stream << "@";
-        d->accept(this);
+        visit_vreg(&node->elts[i]);
         stream << "\n";
         printIndent();
     }
@@ -1063,7 +1064,15 @@ bool PrintVisitor::visit_functiondef(BST_FunctionDef* node) {
     else
         stream << "<lambda>";
     stream << "(";
-    node->args->accept(this);
+
+    for (int i = 0; i < node->num_defaults; ++i) {
+        if (i > 0)
+            stream << ", ";
+
+        stream << "<default " << i << ">=";
+        visit_vreg(&node->elts[node->num_decorator + i]);
+    }
+
     stream << ")";
 
     indent += 4;

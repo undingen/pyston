@@ -645,16 +645,12 @@ private:
     void visit_makefunction(BST_MakeFunction* mkfn) override {
         BST_FunctionDef* node = mkfn->function_def;
 
-        for (auto d : node->decorator_list) {
-            getType(d);
-        }
-
-        for (auto d : node->args->defaults) {
-            getType(d);
+        for (int i = 0; i < node->num_defaults + node->num_decorator; ++i) {
+            getType(node->elts[i]);
         }
 
         CompilerType* t = UNKNOWN;
-        if (node->decorator_list.empty())
+        if (node->num_decorator == 0)
             t = typeFromClass(function_cls);
         _doSet(mkfn->vreg_dst, t);
     }

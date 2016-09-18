@@ -548,18 +548,34 @@ public:
 
 class BST_FunctionDef : public BST_stmt {
 public:
-    std::vector<BST_expr*> decorator_list;
     InternedString name; // if the name is not set this is a lambda
-    BST_arguments* args;
 
     BoxedCode* code;
+
+    const int num_decorator;
+    const int num_defaults;
+
+    int elts[1]; // decorators followed by defaults
 
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
 
-    BST_FunctionDef() : BST_stmt(BST_TYPE::FunctionDef) {}
+    static BST_FunctionDef* create(int num_decorator, int num_defaults) {
+        BST_FunctionDef* o = (BST_FunctionDef*)new char[offsetof(BST_FunctionDef, elts)
+                                                        + (num_decorator + num_defaults) * sizeof(int)];
+        new (o) BST_FunctionDef(num_decorator, num_defaults);
+        return o;
+    }
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::FunctionDef;
+
+private:
+    BST_FunctionDef(int num_decorator, int num_defaults)
+        : BST_stmt(BST_TYPE::FunctionDef), num_decorator(num_decorator), num_defaults(num_defaults) {
+        for (int i = 0; i < num_decorator + num_defaults; ++i) {
+            elts[i] = VREG_UNDEFINED;
+        }
+    }
 };
 
 class BST_Index : public BST_slice {
