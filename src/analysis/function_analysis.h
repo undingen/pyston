@@ -26,7 +26,6 @@
 
 namespace pyston {
 
-class BST_arguments;
 class BST_Jump;
 class BST_Name;
 class CFG;

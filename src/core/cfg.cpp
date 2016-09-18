@@ -1584,13 +1584,6 @@ private:
         return rtn;
     }
 
-    BST_arguments* remapArguments(AST_arguments* args) {
-        auto rtn = new BST_arguments();
-        for (auto expr : args->defaults)
-            rtn->defaults.push_back(remapExpr(expr));
-        return rtn;
-    }
-
     BST_expr* remapLambda(AST_Lambda* node) {
         ASTAllocator allocator;
         auto stmt = new (allocator) AST_Return;
@@ -3171,12 +3164,6 @@ public:
 
     AssignVRegsVisitor(llvm::DenseMap<int*, BST_Name*>& name_vreg, llvm::DenseMap<int*, InternedString>& id_vreg)
         : current_block(0), next_vreg(0), name_vreg(name_vreg), id_vreg(id_vreg) {}
-
-    bool visit_arguments(BST_arguments* node) override {
-        for (BST_expr* d : node->defaults)
-            d->accept(this);
-        return true;
-    }
 
     bool visit_functiondef(BST_FunctionDef* node) override {
         for (int i = 0; i < node->num_decorator + node->num_defaults; ++i)

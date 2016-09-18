@@ -412,8 +412,6 @@ public:
         return true;
     }
 
-    virtual bool visit_arguments(BST_arguments* node) { RELEASE_ASSERT(0, "this shouldn't get hit"); }
-
     virtual bool visit_exec(BST_Exec* node) { return true; }
 
     friend class DefinednessBBAnalyzer;

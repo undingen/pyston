@@ -49,14 +49,6 @@ static void visitCFG(CFG* cfg, BSTVisitor* v) {
             e->accept(v);
 }
 
-void BST_arguments::accept(BSTVisitor* v) {
-    bool skip = v->visit_arguments(this);
-    if (skip)
-        return;
-
-    visitVector(defaults, v);
-}
-
 void BST_Assert::accept(BSTVisitor* v) {
     bool skip = v->visit_assert(this);
     if (skip)
@@ -753,18 +745,6 @@ bool PrintVisitor::visit_vreg(int* vreg, bool is_dst) {
     if (mod && *vreg < 0 && *vreg != VREG_UNDEFINED)
         stream << "(" << autoDecref(repr(mod->constants[-*vreg - 1]))->s() << ")";
 
-    return true;
-}
-
-bool PrintVisitor::visit_arguments(BST_arguments* node) {
-    int ndefault = node->defaults.size();
-    for (int i = 0; i < ndefault; i++) {
-        if (i > 0)
-            stream << ", ";
-
-        stream << "<default " << i << ">=";
-        node->defaults[i]->accept(this);
-    }
     return true;
 }
 
@@ -1487,10 +1467,6 @@ public:
     virtual bool visit_vreg(int* vreg, bool is_dst = false) { return false; }
 
 
-    virtual bool visit_arguments(BST_arguments* node) {
-        output->push_back(node);
-        return false;
-    }
     virtual bool visit_assert(BST_Assert* node) {
         output->push_back(node);
         return false;

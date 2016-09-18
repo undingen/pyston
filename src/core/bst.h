@@ -237,18 +237,6 @@ public:
 
 class BST_Name;
 
-class BST_arguments : public BST {
-public:
-    // no lineno attributes
-    std::vector<BST_expr*> defaults;
-
-    virtual void accept(BSTVisitor* v);
-
-    BST_arguments() : BST(BST_TYPE::arguments) {}
-
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::arguments;
-};
-
 class BST_Assert : public BST_stmt {
 public:
     int vreg_msg = VREG_UNDEFINED;
@@ -1109,7 +1097,6 @@ public:
     // prseudo
     virtual bool visit_vreg(int* vreg, bool is_dst = false) { RELEASE_ASSERT(0, ""); }
 
-    virtual bool visit_arguments(BST_arguments* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_assert(BST_Assert* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_assign(BST_Assign* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_assignvregvreg(BST_AssignVRegVReg* node) { RELEASE_ASSERT(0, ""); }
@@ -1174,7 +1161,6 @@ protected:
 public:
     virtual ~NoopBSTVisitor() {}
 
-    virtual bool visit_arguments(BST_arguments* node) { return false; }
     virtual bool visit_assert(BST_Assert* node) { return false; }
     virtual bool visit_assign(BST_Assign* node) { return false; }
     virtual bool visit_assignvregvreg(BST_AssignVRegVReg* node) { return false; }
@@ -1326,7 +1312,6 @@ public:
 
     virtual bool visit_vreg(int* vreg, bool is_dst = false);
 
-    virtual bool visit_arguments(BST_arguments* node);
     virtual bool visit_assert(BST_Assert* node);
     virtual bool visit_assign(BST_Assign* node);
     virtual bool visit_assignvregvreg(BST_AssignVRegVReg* node);
