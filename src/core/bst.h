@@ -225,6 +225,7 @@ public:
     int cxx_exception_count = 0;
 
     BST_stmt(BST_TYPE::BST_TYPE type) : BST(type) {}
+    BST_stmt(BST_TYPE::BST_TYPE type, uint32_t lineno) : BST(type, lineno) {}
 };
 
 class BST_slice : public BST {
@@ -321,6 +322,7 @@ class BST_ass : public BST_stmt {
 public:
     int vreg_dst = VREG_UNDEFINED;
     BST_ass(BST_TYPE::BST_TYPE type) : BST_stmt(type) {}
+    BST_ass(BST_TYPE::BST_TYPE type, int lineno) : BST_stmt(type, lineno) {}
 };
 
 class BST_AugBinOp : public BST_ass {
@@ -835,26 +837,26 @@ public:
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Yield;
 };
 
-class BST_MakeFunction : public BST_expr {
+class BST_MakeFunction : public BST_ass {
 public:
     BST_FunctionDef* function_def;
 
     virtual void accept(BSTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    virtual void accept_stmt(StmtVisitor* v);
 
-    BST_MakeFunction(BST_FunctionDef* fd) : BST_expr(BST_TYPE::MakeFunction, fd->lineno), function_def(fd) {}
+    BST_MakeFunction(BST_FunctionDef* fd) : BST_ass(BST_TYPE::MakeFunction, fd->lineno), function_def(fd) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::MakeFunction;
 };
 
-class BST_MakeClass : public BST_expr {
+class BST_MakeClass : public BST_ass {
 public:
     BST_ClassDef* class_def;
 
     virtual void accept(BSTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    virtual void accept_stmt(StmtVisitor* v);
 
-    BST_MakeClass(BST_ClassDef* cd) : BST_expr(BST_TYPE::MakeClass, cd->lineno), class_def(cd) {}
+    BST_MakeClass(BST_ClassDef* cd) : BST_ass(BST_TYPE::MakeClass, cd->lineno), class_def(cd) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::MakeClass;
 };
@@ -1229,8 +1231,6 @@ public:
     virtual void* visit_tuple(BST_Tuple* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_str(BST_Str* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_subscript(BST_Subscript* node) { RELEASE_ASSERT(0, ""); }
-    virtual void* visit_makeclass(BST_MakeClass* node) { RELEASE_ASSERT(0, ""); }
-    virtual void* visit_makefunction(BST_MakeFunction* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_landingpad(BST_Landingpad* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_none(BST_None* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_setexcinfo(BST_SetExcInfo* node) { RELEASE_ASSERT(0, ""); }
@@ -1277,6 +1277,9 @@ public:
     virtual void visit_nonzero(BST_Nonzero* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_checkexcmatch(BST_CheckExcMatch* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_hasnext(BST_HasNext* node) { RELEASE_ASSERT(0, ""); }
+
+    virtual void visit_makeclass(BST_MakeClass* node) { RELEASE_ASSERT(0, ""); }
+    virtual void visit_makefunction(BST_MakeFunction* node) { RELEASE_ASSERT(0, ""); }
 
     virtual void visit_branch(BST_Branch* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_jump(BST_Jump* node) { RELEASE_ASSERT(0, ""); }

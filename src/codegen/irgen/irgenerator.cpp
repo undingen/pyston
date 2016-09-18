@@ -1795,12 +1795,6 @@ private:
             case BST_TYPE::ClsAttribute:
                 rtn = evalClsAttribute(bst_cast<BST_ClsAttribute>(node), unw_info);
                 break;
-            case BST_TYPE::MakeClass:
-                rtn = evalMakeClass(bst_cast<BST_MakeClass>(node), unw_info);
-                break;
-            case BST_TYPE::MakeFunction:
-                rtn = evalMakeFunction(bst_cast<BST_MakeFunction>(node), unw_info);
-                break;
 
             case BST_TYPE::Landingpad:
                 rtn = evalLandingpad((BST_Landingpad*)node, unw_info);
@@ -2637,6 +2631,12 @@ private:
                         break;
                     case BST_TYPE::HasNext:
                         rtn = evalHasNext((BST_HasNext*)node, unw_info);
+                        break;
+                    case BST_TYPE::MakeClass:
+                        rtn = evalMakeClass(bst_cast<BST_MakeClass>(node), unw_info);
+                        break;
+                    case BST_TYPE::MakeFunction:
+                        rtn = evalMakeFunction(bst_cast<BST_MakeFunction>(node), unw_info);
                         break;
                     default:
                         printf("Unhandled stmt type at " __FILE__ ":" STRINGIFY(__LINE__) ": %d\n", node->type);

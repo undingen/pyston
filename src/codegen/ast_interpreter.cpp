@@ -1269,6 +1269,12 @@ Value ASTInterpreter::visit_stmt(BST_stmt* node) {
                 case BST_TYPE::HasNext:
                     v = visit_hasnext((BST_HasNext*)node);
                     break;
+                case BST_TYPE::MakeClass:
+                    v = visit_makeClass((BST_MakeClass*)node);
+                    break;
+                case BST_TYPE::MakeFunction:
+                    v = visit_makeFunction((BST_MakeFunction*)node);
+                    break;
                 default:
                     RELEASE_ASSERT(0, "not implemented");
             };
@@ -1651,10 +1657,6 @@ Value ASTInterpreter::visit_expr(BST_expr* node) {
         // pseudo
         case BST_TYPE::ClsAttribute:
             return visit_clsAttribute((BST_ClsAttribute*)node);
-        case BST_TYPE::MakeClass:
-            return visit_makeClass((BST_MakeClass*)node);
-        case BST_TYPE::MakeFunction:
-            return visit_makeFunction((BST_MakeFunction*)node);
 
 
         case BST_TYPE::Landingpad:

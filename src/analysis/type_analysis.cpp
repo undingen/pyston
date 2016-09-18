@@ -615,7 +615,7 @@ private:
         }
     }
 
-    void* visit_makeclass(BST_MakeClass* mkclass) override {
+    void visit_makeclass(BST_MakeClass* mkclass) override {
         BST_ClassDef* node = mkclass->class_def;
 
         for (auto d : node->decorator_list) {
@@ -628,7 +628,7 @@ private:
 
         // TODO should we speculate that classdefs will generally return a class?
         // return typeFromClass(type_cls);
-        return UNKNOWN;
+        _doSet(mkclass->vreg_dst, UNKNOWN);
     }
 
     void visit_deletesub(BST_DeleteSub* node) { getType(node->vreg_value); }
@@ -642,7 +642,7 @@ private:
             assert(node->vreg == VREG_UNDEFINED);
     }
 
-    void* visit_makefunction(BST_MakeFunction* mkfn) override {
+    void visit_makefunction(BST_MakeFunction* mkfn) override {
         BST_FunctionDef* node = mkfn->function_def;
 
         for (auto d : node->decorator_list) {
@@ -656,7 +656,7 @@ private:
         CompilerType* t = UNKNOWN;
         if (node->decorator_list.empty())
             t = typeFromClass(function_cls);
-        return t;
+        _doSet(mkfn->vreg_dst, t);
     }
 
     void visit_exec(BST_Exec* node) override {

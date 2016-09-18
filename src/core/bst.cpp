@@ -710,10 +710,11 @@ void BST_MakeFunction::accept(BSTVisitor* v) {
     if (skip)
         return;
 
+    v->visit_vreg(&vreg_dst, true);
     function_def->accept(v);
 }
 
-void* BST_MakeFunction::accept_expr(ExprVisitor* v) {
+void BST_MakeFunction::accept_stmt(StmtVisitor* v) {
     return v->visit_makefunction(this);
 }
 
@@ -722,10 +723,11 @@ void BST_MakeClass::accept(BSTVisitor* v) {
     if (skip)
         return;
 
+    v->visit_vreg(&vreg_dst, true);
     class_def->accept(v);
 }
 
-void* BST_MakeClass::accept_expr(ExprVisitor* v) {
+void BST_MakeClass::accept_stmt(StmtVisitor* v) {
     return v->visit_makeclass(this);
 }
 

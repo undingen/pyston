@@ -1468,7 +1468,8 @@ private:
         func->code = code;
         BST_MakeFunction* mkfunc = new BST_MakeFunction(func);
         InternedString func_var_name = nodeName();
-        pushAssign(func_var_name, mkfunc);
+        unmapDst(func_var_name, &mkfunc->vreg_dst);
+        push_back(mkfunc);
 
         return makeCall(makeLoad(func_var_name, node, true), { first });
     }
@@ -1533,7 +1534,8 @@ private:
         func->code = code;
         BST_MakeFunction* mkfunc = new BST_MakeFunction(func);
         InternedString func_var_name = nodeName();
-        pushAssign(func_var_name, mkfunc);
+        unmapDst(func_var_name, &mkfunc->vreg_dst);
+        push_back(mkfunc);
 
         return makeCall(makeLoad(func_var_name, node, true), { first });
     }
@@ -1601,7 +1603,11 @@ private:
         // cur_code->co_consts.push_back(def->code)
         constants.push_back(bdef->code);
 
-        return new BST_MakeFunction(bdef);
+        auto mkfn = new BST_MakeFunction(bdef);
+        InternedString tmp_name = nodeName();
+        unmapDst(tmp_name, &mkfn->vreg_dst);
+        push_back(mkfn);
+        return makeLoad(tmp_name, node->lineno, true);
     }
 
     BST_expr* remapLangPrimitive(AST_LangPrimitive* node) {
@@ -2074,7 +2080,9 @@ public:
         constants.push_back(def->code);
 
         auto tmp = nodeName();
-        pushAssign(tmp, new BST_MakeClass(def));
+        auto mkclass = new BST_MakeClass(def);
+        unmapDst(tmp, &mkclass->vreg_dst);
+        push_back(mkclass);
         pushAssign(scoping->mangleName(def->name), makeName(tmp, AST_TYPE::Load, node->lineno, true));
 
         return true;
@@ -2097,7 +2105,9 @@ public:
         constants.push_back(def->code);
 
         auto tmp = nodeName();
-        pushAssign(tmp, new BST_MakeFunction(def));
+        auto mkfunc = new BST_MakeFunction(def);
+        unmapDst(tmp, &mkfunc->vreg_dst);
+        push_back(mkfunc);
         pushAssign(scoping->mangleName(def->name), makeName(tmp, AST_TYPE::Load, node->lineno, true));
 
         return true;
