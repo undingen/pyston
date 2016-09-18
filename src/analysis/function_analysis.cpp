@@ -383,6 +383,14 @@ public:
         _doSet(node->vreg_dst);
         return true;
     }
+    virtual bool visit_makeclass(BST_MakeClass* node) {
+        _doSet(node->vreg_dst);
+        return true;
+    }
+    virtual bool visit_makefunction(BST_MakeFunction* node) {
+        _doSet(node->vreg_dst);
+        return true;
+    }
 
     virtual bool visit_classdef(BST_ClassDef* node) {
         assert(0 && "I think this isn't needed");
