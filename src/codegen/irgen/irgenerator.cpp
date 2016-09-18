@@ -1566,19 +1566,12 @@ private:
         assert(mkclass->type == BST_TYPE::MakeClass && mkclass->class_def->type == BST_TYPE::ClassDef);
         BST_ClassDef* node = mkclass->class_def;
 
-
-        std::vector<CompilerVariable*> bases;
-        for (auto b : node->bases) {
-            CompilerVariable* base = evalExpr(b, unw_info);
-            bases.push_back(base);
-        }
-
-        CompilerVariable* _bases_tuple = makeTuple(bases);
+        CompilerVariable* _bases_tuple = evalVReg(node->vreg_bases_tuple);
         ConcreteCompilerVariable* bases_tuple = _bases_tuple->makeConverted(emitter, _bases_tuple->getBoxType());
 
         std::vector<CompilerVariable*> decorators;
-        for (auto d : node->decorator_list) {
-            decorators.push_back(evalExpr(d, unw_info));
+        for (int i = 0; i < node->num_decorator; ++i) {
+            decorators.push_back(evalVReg(node->decorator[i]));
         }
 
         BoxedCode* code = node->code;

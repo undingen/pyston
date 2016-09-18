@@ -198,8 +198,10 @@ void BST_ClassDef::accept(BSTVisitor* v) {
     if (skip)
         return;
 
-    visitVector(this->bases, v);
-    visitVector(this->decorator_list, v);
+    v->visit_vreg(&vreg_bases_tuple);
+    for (int i = 0; i < num_decorator; ++i) {
+        v->visit_vreg(&decorator[i]);
+    }
     visitCFG(this->code->source->cfg, v);
 }
 
@@ -942,18 +944,14 @@ bool PrintVisitor::visit_compare(BST_Compare* node) {
 }
 
 bool PrintVisitor::visit_classdef(BST_ClassDef* node) {
-    for (int i = 0, n = node->decorator_list.size(); i < n; i++) {
+    for (int i = 0, n = node->num_decorator; i < n; i++) {
         stream << "@";
-        node->decorator_list[i]->accept(this);
+        visit_vreg(&node->decorator[i]);
         stream << "\n";
         printIndent();
     }
     stream << "class " << node->name.s() << "(";
-    for (int i = 0, n = node->bases.size(); i < n; i++) {
-        if (i)
-            stream << ", ";
-        node->bases[i]->accept(this);
-    }
+    visit_vreg(&node->vreg_bases_tuple);
     stream << ")";
 
     indent += 4;

@@ -1430,17 +1430,15 @@ Value ASTInterpreter::visit_makeClass(BST_MakeClass* mkclass) {
     BST_ClassDef* node = mkclass->class_def;
 
 
-    BoxedTuple* basesTuple = BoxedTuple::create(node->bases.size());
-    AUTO_DECREF(basesTuple);
-    int base_idx = 0;
-    for (BST_expr* b : node->bases) {
-        basesTuple->elts[base_idx++] = visit_expr(b).o;
-    }
+    BoxedTuple* bases_tuple = (BoxedTuple*)getVReg(node->vreg_bases_tuple).o;
+    assert(bases_tuple->cls == tuple_cls);
+    AUTO_DECREF(bases_tuple);
 
     std::vector<Box*> decorators;
-    decorators.reserve(node->decorator_list.size());
-    for (BST_expr* d : node->decorator_list)
-        decorators.push_back(visit_expr(d).o);
+    decorators.reserve(node->num_decorator);
+    for (int i = 0; i < node->num_decorator; ++i) {
+        decorators.push_back(getVReg(node->decorator[i]).o);
+    }
 
     BoxedCode* code = node->code;
     assert(code);
@@ -1463,7 +1461,7 @@ Value ASTInterpreter::visit_makeClass(BST_MakeClass* mkclass) {
                                 ArgPassSpec(0), 0, 0, 0, 0, 0);
     AUTO_DECREF(attrDict);
 
-    Box* classobj = createUserClass(node->name.getBox(), basesTuple, attrDict);
+    Box* classobj = createUserClass(node->name.getBox(), bases_tuple, attrDict);
 
     for (int i = decorators.size() - 1; i >= 0; i--) {
         classobj = runtimeCall(autoDecref(decorators[i]), ArgPassSpec(1), autoDecref(classobj), 0, 0, 0, 0);

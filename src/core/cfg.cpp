@@ -2063,15 +2063,20 @@ public:
     }
 
     bool visit_classdef(AST_ClassDef* node) override {
-        auto def = new BST_ClassDef();
+        auto def = BST_ClassDef::create(node->decorator_list.size());
         def->lineno = node->lineno;
         def->name = node->name;
 
         // Decorators are evaluated before bases:
-        for (auto expr : node->decorator_list)
-            def->decorator_list.push_back(remapExpr(expr));
-        for (auto expr : node->bases)
-            def->bases.push_back(remapExpr(expr));
+        for (int i = 0; i < node->decorator_list.size(); ++i) {
+            unmapExpr(remapExpr(node->decorator_list[i]), &def->decorator[i]);
+        }
+
+        auto* bases = BST_Tuple::create(node->bases.size());
+        for (int i = 0; i < node->bases.size(); ++i) {
+            unmapExpr(remapExpr(node->bases[i]), &bases->elts[i]);
+        }
+        unmapExpr(wrap(bases), &def->vreg_bases_tuple);
 
         def->code = cfgizer->runRecursively(node->body, node->name.getBox(), node->lineno, NULL, node);
         // XXX bad!  this should be tracked ex through co_consts
@@ -3164,16 +3169,17 @@ public:
         : current_block(0), next_vreg(0), name_vreg(name_vreg), id_vreg(id_vreg) {}
 
     bool visit_functiondef(BST_FunctionDef* node) override {
-        for (int i = 0; i < node->num_decorator + node->num_defaults; ++i)
+        for (int i = 0; i < node->num_decorator + node->num_defaults; ++i) {
             visit_vreg(&node->elts[i]);
+        }
         return true;
     }
 
     bool visit_classdef(BST_ClassDef* node) override {
-        for (auto e : node->bases)
-            e->accept(this);
-        for (auto e : node->decorator_list)
-            e->accept(this);
+        for (int i = 0; i < node->num_decorator; ++i) {
+            visit_vreg(&node->decorator[i]);
+        }
+        visit_vreg(&node->vreg_bases_tuple);
         return true;
     }
 

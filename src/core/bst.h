@@ -428,14 +428,30 @@ public:
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
 
-    std::vector<BST_expr*> bases, decorator_list;
-    InternedString name;
-
     BoxedCode* code;
 
-    BST_ClassDef() : BST_stmt(BST_TYPE::ClassDef) {}
+    InternedString name;
+    int vreg_bases_tuple;
+    const int num_decorator;
+    int decorator[1];
+
+
+
+    static BST_ClassDef* create(int num_decorator) {
+        BST_ClassDef* o = (BST_ClassDef*)new char[offsetof(BST_ClassDef, decorator) + (num_decorator) * sizeof(int)];
+        new (o) BST_ClassDef(num_decorator);
+        return o;
+    }
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::ClassDef;
+
+
+private:
+    BST_ClassDef(int num_decorator) : BST_stmt(BST_TYPE::ClassDef), num_decorator(num_decorator) {
+        for (int i = 0; i < num_decorator; ++i) {
+            decorator[i] = VREG_UNDEFINED;
+        }
+    }
 };
 
 class BST_Dict : public BST_ass {

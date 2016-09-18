@@ -618,13 +618,11 @@ private:
     void visit_makeclass(BST_MakeClass* mkclass) override {
         BST_ClassDef* node = mkclass->class_def;
 
-        for (auto d : node->decorator_list) {
-            getType(d);
+        for (int i = 0; i < node->num_decorator; ++i) {
+            getType(node->decorator[i]);
         }
 
-        for (auto b : node->bases) {
-            getType(b);
-        }
+        getType(node->vreg_bases_tuple);
 
         // TODO should we speculate that classdefs will generally return a class?
         // return typeFromClass(type_cls);

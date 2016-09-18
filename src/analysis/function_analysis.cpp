@@ -79,10 +79,10 @@ public:
     bool isKilledAt(BST_Name* node, bool is_live_at_end) { return node->is_kill; }
 
     bool visit_classdef(BST_ClassDef* node) {
-        for (auto e : node->bases)
-            e->accept(this);
-        for (auto e : node->decorator_list)
-            e->accept(this);
+        visit_vreg(&node->vreg_bases_tuple, false);
+
+        for (int i = 0; i < node->num_decorator; ++i)
+            visit_vreg(&node->decorator[i], false);
 
         return true;
     }
