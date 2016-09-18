@@ -1177,6 +1177,8 @@ private:
             return val;
         } else if (val->type == BST_TYPE::Str) {
             return val;
+        } else if (val->type == BST_TYPE::None) {
+            return val;
         } else {
             RELEASE_ASSERT(0, "%d", val->type);
         }
