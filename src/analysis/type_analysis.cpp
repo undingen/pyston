@@ -611,7 +611,7 @@ private:
 
     void visit_branch(BST_Branch* node) override {
         if (EXPAND_UNNEEDED) {
-            getType(node->test);
+            getType(node->vreg_test);
         }
     }
 

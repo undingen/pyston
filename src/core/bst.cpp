@@ -669,7 +669,7 @@ void BST_Branch::accept(BSTVisitor* v) {
     if (skip)
         return;
 
-    test->accept(v);
+    v->visit_vreg(&vreg_test);
 }
 
 void BST_Branch::accept_stmt(StmtVisitor* v) {
@@ -1424,7 +1424,7 @@ bool PrintVisitor::visit_yield(BST_Yield* node) {
 
 bool PrintVisitor::visit_branch(BST_Branch* node) {
     stream << "if ";
-    node->test->accept(this);
+    visit_vreg(&node->vreg_test);
     stream << " goto " << node->iftrue->idx << " else goto " << node->iffalse->idx;
     return true;
 }

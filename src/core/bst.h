@@ -873,7 +873,7 @@ class CFGBlock;
 
 class BST_Branch : public BST_stmt {
 public:
-    BST_expr* test;
+    int vreg_test;
     CFGBlock* iftrue, *iffalse;
 
     virtual void accept(BSTVisitor* v);

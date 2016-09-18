@@ -579,7 +579,7 @@ private:
 
             BST_Branch* br = new BST_Branch();
             br->lineno = node->lineno;
-            br->test = test;
+            unmapExpr(test, &br->vreg_test);
             br->iftrue = body_block;
             br->iffalse = exit_block;
             curblock->connectTo(body_block);
@@ -594,7 +594,7 @@ private:
             for (AST_expr* if_condition : c->ifs) {
                 BST_expr* remapped = callNonzero(remapExpr(if_condition));
                 BST_Branch* br = new BST_Branch();
-                br->test = remapped;
+                unmapExpr(remapped, &br->vreg_test);
                 push_back(br);
 
                 // Put this below the entire body?
@@ -670,7 +670,7 @@ private:
     // NB. can generate blocks, because callNonzero can
     BST_Branch* makeBranch(BST_expr* test) {
         BST_Branch* rtn = new BST_Branch();
-        rtn->test = callNonzero(test);
+        unmapExpr(callNonzero(test), &rtn->vreg_test);
         rtn->lineno = test->lineno;
         return rtn;
     }
@@ -1219,7 +1219,7 @@ private:
             pushAssign(name, _dup(val));
 
             BST_Branch* br = new BST_Branch();
-            br->test = callNonzero(val);
+            unmapExpr(callNonzero(val), &br->vreg_test);
             br->lineno = val->lineno;
             push_back(br);
 
@@ -1348,7 +1348,7 @@ private:
                 }
 
                 BST_Branch* br = new BST_Branch();
-                br->test = callNonzero(makeLoad(name, node));
+                unmapExpr(callNonzero(makeLoad(name, node)), &br->vreg_test);
                 push_back(br);
 
                 CFGBlock* was_block = curblock;
@@ -1953,8 +1953,6 @@ public:
         }
 
         if (type == BST_TYPE::Branch) {
-            BST_TYPE::BST_TYPE test_type = bst_cast<BST_Branch>(node)->test->type;
-            ASSERT(test_type == BST_TYPE::Name || test_type == BST_TYPE::Num, "%d", test_type);
             curblock->push_back(node);
             return;
         }
@@ -2244,7 +2242,7 @@ public:
         assert(curblock);
 
         BST_Branch* br = new BST_Branch();
-        br->test = callNonzero(remapExpr(node->test));
+        unmapExpr(callNonzero(remapExpr(node->test)), &br->vreg_test);
         push_back(br);
 
         CFGBlock* iffalse = cfg->addBlock();
@@ -2521,7 +2519,7 @@ public:
 
         BST_Branch* br = new BST_Branch();
         br->lineno = node->lineno;
-        br->test = callNonzero(remapExpr(node->test));
+        unmapExpr(callNonzero(remapExpr(node->test)), &br->vreg_test);
         push_back(br);
 
         CFGBlock* starting_block = curblock;
@@ -2855,7 +2853,7 @@ public:
                     push_back(is_caught_here);
 
                     BST_Branch* br = new BST_Branch();
-                    br->test = callNonzero(makeLoad(name_is_caught_here, exc_handler->lineno, true));
+                    unmapExpr(callNonzero(makeLoad(name_is_caught_here, exc_handler->lineno, true)), &br->vreg_test);
                     br->lineno = exc_handler->lineno;
 
                     CFGBlock* exc_handle = cfg->addBlock();

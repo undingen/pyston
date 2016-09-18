@@ -2263,7 +2263,7 @@ private:
         assert(node->iftrue->idx > myblock->idx);
         assert(node->iffalse->idx > myblock->idx);
 
-        CompilerVariable* val = evalExpr(node->test, unw_info);
+        CompilerVariable* val = evalVReg(node->vreg_test);
         assert(val);
 
         // We could call nonzero here if there is no try-catch block?

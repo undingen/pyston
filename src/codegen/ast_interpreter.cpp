@@ -706,7 +706,7 @@ Value ASTInterpreter::visit_extslice(BST_ExtSlice* node) {
 }
 
 Value ASTInterpreter::visit_branch(BST_Branch* node) {
-    Value v = visit_expr(node->test);
+    Value v = getVReg(node->vreg_test);
     ASSERT(v.o == Py_True || v.o == Py_False, "Should have called NONZERO before this branch");
 
     // TODO could potentially avoid doing this if we skip the incref in NONZERO
