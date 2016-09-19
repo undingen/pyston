@@ -841,7 +841,7 @@ private:
                 auto* s_target = new BST_StoreSub();
                 s_target->lineno = val->lineno;
                 unmapExpr(val, &s_target->vreg_value);
-                remapSlice(s->slice, &s_target->vreg_slice);
+                unmapExpr(remapSlice(s->slice), &s_target->vreg_slice);
                 unmapExpr(remapExpr(s->value), &s_target->vreg_target);
                 push_back(s_target);
             }
@@ -1395,7 +1395,7 @@ private:
         rtn->lineno = node->lineno;
 
         for (int i = 0; i < node->dims.size(); ++i) {
-            remapSlice(node->dims[i], &rtn->elts[i]);
+            unmapExpr(remapSlice(node->dims[i]), &rtn->elts[i]);
         }
         return wrap(rtn);
     }
@@ -1659,7 +1659,7 @@ private:
         return makeLoad(name, node->lineno, true);
     }
 
-    void remapSlice(AST_slice* node, int* vreg) {
+    BST_expr* remapSlice(AST_slice* node) {
         BST_expr* rtn = nullptr;
         switch (node->type) {
             case AST_TYPE::Ellipsis:
@@ -1677,7 +1677,7 @@ private:
             default:
                 RELEASE_ASSERT(0, "%d", node->type);
         }
-        unmapExpr(rtn, vreg);
+        return rtn;
     }
 
 
@@ -1702,7 +1702,7 @@ private:
             BST_LoadSub* rtn = new BST_LoadSub;
             rtn->lineno = node->lineno;
             unmapExpr(remapExpr(node->value), &rtn->vreg_value);
-            remapSlice(node->slice, &rtn->vreg_slice);
+            unmapExpr(remapSlice(node->slice), &rtn->vreg_slice);
             unmapDst(name, &rtn->vreg_dst);
             push_back(rtn);
         } else {
@@ -1960,6 +1960,11 @@ public:
         }
 
         if (type == BST_TYPE::Return) {
+            curblock->push_back(node);
+            return;
+        }
+
+        if (type == BST_TYPE::ImportFrom) {
             curblock->push_back(node);
             return;
         }
@@ -2357,11 +2362,13 @@ public:
                     push_back(s_target);
                 } else {
                     BST_LoadSub* s_lhs = new BST_LoadSub();
+                    auto* slice_remapped = remapSlice(s->slice);
                     unmapExpr(_dup2(value_remapped) /* we have to duplicate*/, &s_lhs->vreg_value);
-                    remapSlice(s->slice, &s_lhs->vreg_slice);
+                    unmapExpr(_dup2(slice_remapped) /* we have to duplicate*/, &s_lhs->vreg_slice);
                     s_lhs->lineno = s->lineno;
                     InternedString name_lhs = nodeName();
                     unmapDst(name_lhs, &s_lhs->vreg_dst);
+
                     push_back(s_lhs);
 
                     BST_AugBinOp* binop = new BST_AugBinOp();
@@ -2377,7 +2384,7 @@ public:
                     s_target->lineno = s->lineno;
                     unmapExpr(makeLoad(node_name, s->lineno, true), &s_target->vreg_value);
                     unmapExpr(value_remapped, &s_target->vreg_target);
-                    unmapExprFromUnmapped(&s_lhs->vreg_slice, &s_target->vreg_slice);
+                    unmapExpr(slice_remapped, &s_target->vreg_slice);
                     push_back(s_target);
                 }
 
@@ -2446,7 +2453,7 @@ public:
                         auto* del = new BST_DeleteSub;
                         del->lineno = node->lineno;
                         unmapExpr(remapExpr(s->value), &del->vreg_value);
-                        remapSlice(s->slice, &del->vreg_slice);
+                        unmapExpr(remapSlice(s->slice), &del->vreg_slice);
                         del->ctx_type = AST_TYPE::Del;
                         push_back(del);
                     }
