@@ -543,16 +543,14 @@ private:
     }
 
     void visit_loadsubslice(BST_LoadSubSlice* node) override {
-        // this is not correct
-        /*
-        CompilerType* val = getType(node->value);
-        CompilerType* slice = getType(node->slice);
+        // TODO this is not 100% correct, it should call into __getslice__ but I think for a all static types we
+        // shupport it does not make a difference
+        CompilerType* val = getType(node->vreg_value);
         static BoxedString* name = getStaticString("__getitem__");
         CompilerType* getitem_type = val->getattrType(name, true);
         std::vector<CompilerType*> args;
-        args.push_back(slice);
-        return getitem_type->callType(ArgPassSpec(1), args, NULL);
-        */
+        args.push_back(SLICE);
+        _doSet(node->vreg_dst, getitem_type->callType(ArgPassSpec(1), args, NULL));
     }
 
     void* visit_tuple(BST_Tuple* node) override {
