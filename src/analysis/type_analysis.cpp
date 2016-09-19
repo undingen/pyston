@@ -44,7 +44,6 @@ public:
     ConcreteCompilerType* getTypeAtBlockEnd(int vreg, CFGBlock* block) override;
 
     BoxedClass* speculatedExprClass(BST_expr*) override { return NULL; }
-    BoxedClass* speculatedExprClass(BST_slice*) override { return NULL; }
     BoxedClass* speculatedExprClass(BST_ass*) override { return NULL; }
 };
 
@@ -82,7 +81,7 @@ typedef VRegMap<CompilerType*> TypeMap;
 typedef llvm::DenseMap<CFGBlock*, TypeMap> AllTypeMap;
 typedef llvm::DenseMap<BST*, CompilerType*> ExprTypeMap;
 typedef llvm::DenseMap<BST*, BoxedClass*> TypeSpeculations;
-class BasicBlockTypePropagator : public ExprVisitor, public StmtVisitor, public SliceVisitor {
+class BasicBlockTypePropagator : public ExprVisitor, public StmtVisitor {
 private:
     static const bool EXPAND_UNNEEDED = true;
 
@@ -131,22 +130,6 @@ private:
             }
         }
         return old_type;
-    }
-
-    CompilerType* getType(BST_slice* node) {
-        type_speculations.erase(node);
-
-        void* raw_rtn = node->accept_slice(this);
-        CompilerType* rtn = static_cast<CompilerType*>(raw_rtn);
-
-        if (VERBOSITY() >= 3) {
-            print_bst(node);
-            printf(" %s\n", rtn->debugName().c_str());
-        }
-
-        expr_types[node] = rtn;
-        assert(rtn->isUsable());
-        return rtn;
     }
 
     CompilerType* getConstantType(int vreg) {
@@ -239,7 +222,7 @@ private:
         }
     }
 
-    void* visit_ellipsis(BST_Ellipsis* node) override { return typeFromClass(ellipsis_cls); }
+    void visit_ellipsis(BST_Ellipsis* node) override { _doSet(node->vreg_dst, typeFromClass(ellipsis_cls)); }
 
     void* visit_attribute(BST_Attribute* node) override {
         CompilerType* t = getType(node->value);
@@ -436,7 +419,6 @@ private:
 
     void visit_dict(BST_Dict* node) override { _doSet(node->vreg_dst, DICT); }
 
-    void* visit_index(BST_Index* node) override { return getType(node->vreg_value); }
 
     /*
     void* visit_langprimitive(BST_LangPrimitive* node) override {
@@ -537,15 +519,7 @@ private:
 
     void visit_set(BST_Set* node) override { _doSet(node->vreg_dst, SET); }
 
-    void* visit_slice(BST_Slice* node) override { return SLICE; }
-
-    void* visit_extslice(BST_ExtSlice* node) override {
-        std::vector<CompilerType*> elt_types;
-        for (auto* e : node->dims) {
-            elt_types.push_back(getType(e));
-        }
-        return makeTupleType(elt_types);
-    }
+    void visit_makeslice(BST_MakeSlice* node) override { _doSet(node->vreg_dst, SLICE); }
 
     void* visit_str(BST_Str* node) override {
         if (node->str_type == AST_Str::STR)
@@ -555,7 +529,22 @@ private:
         RELEASE_ASSERT(0, "Unknown string type %d", (int)node->str_type);
     }
 
-    void* visit_subscript(BST_Subscript* node) override {
+    void visit_storesub(BST_StoreSub* node) override {}
+    void visit_storesubslice(BST_StoreSubSlice* node) override {}
+
+    void visit_loadsub(BST_LoadSub* node) override {
+        CompilerType* val = getType(node->vreg_value);
+        CompilerType* slice = getType(node->vreg_slice);
+        static BoxedString* name = getStaticString("__getitem__");
+        CompilerType* getitem_type = val->getattrType(name, true);
+        std::vector<CompilerType*> args;
+        args.push_back(slice);
+        _doSet(node->vreg_dst, getitem_type->callType(ArgPassSpec(1), args, NULL));
+    }
+
+    void visit_loadsubslice(BST_LoadSubSlice* node) override {
+        // this is not correct
+        /*
         CompilerType* val = getType(node->value);
         CompilerType* slice = getType(node->slice);
         static BoxedString* name = getStaticString("__getitem__");
@@ -563,6 +552,7 @@ private:
         std::vector<CompilerType*> args;
         args.push_back(slice);
         return getitem_type->callType(ArgPassSpec(1), args, NULL);
+        */
     }
 
     void* visit_tuple(BST_Tuple* node) override {
@@ -629,6 +619,7 @@ private:
     }
 
     void visit_deletesub(BST_DeleteSub* node) { getType(node->vreg_value); }
+    void visit_deletesub(BST_DeleteSubSlice* node) { getType(node->vreg_value); }
     void visit_deleteattr(BST_DeleteAttr* node) { getType(node->vreg_value); }
     void visit_deletename(BST_DeleteName* node) {
         assert(node->lookup_type != ScopeInfo::VarScopeType::UNKNOWN);
@@ -722,7 +713,6 @@ public:
         return rtn;
     }
 
-    BoxedClass* speculatedExprClass(BST_slice* call) override { return type_speculations[call]; }
     BoxedClass* speculatedExprClass(BST_expr* call) override { return type_speculations[call]; }
     BoxedClass* speculatedExprClass(BST_ass* call) override { return type_speculations[call]; }
 

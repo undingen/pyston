@@ -1199,9 +1199,6 @@ private:
         inst->setMetadata(message, mdnode);
     }
 
-    CompilerVariable* evalIndex(BST_Index* node, const UnwindInfo& unw_info) { return evalVReg(node->vreg_value); }
-
-
     CompilerVariable* evalList(BST_List* node, const UnwindInfo& unw_info) {
         std::vector<CompilerVariable*> elts;
         for (int i = 0; i < node->num_elts; i++) {
@@ -1451,23 +1448,13 @@ private:
         return rtn;
     }
 
-    CompilerVariable* evalSlice(BST_Slice* node, const UnwindInfo& unw_info) {
+    CompilerVariable* evalMakeSlice(BST_MakeSlice* node, const UnwindInfo& unw_info) {
         CompilerVariable* start, *stop, *step;
-        start = node->lower ? evalExpr(node->lower, unw_info) : NULL;
-        stop = node->upper ? evalExpr(node->upper, unw_info) : NULL;
-        step = node->step ? evalExpr(node->step, unw_info) : NULL;
+        start = node->vreg_lower != VREG_UNDEFINED ? evalVReg(node->vreg_lower) : NULL;
+        stop = node->vreg_upper != VREG_UNDEFINED ? evalVReg(node->vreg_upper) : NULL;
+        step = node->vreg_step != VREG_UNDEFINED ? evalVReg(node->vreg_step) : NULL;
 
         return makeSlice(start, stop, step);
-    }
-
-    CompilerVariable* evalExtSlice(BST_ExtSlice* node, const UnwindInfo& unw_info) {
-        std::vector<CompilerVariable*> elts;
-        for (auto* e : node->dims) {
-            elts.push_back(evalSlice(e, unw_info));
-        }
-
-        CompilerVariable* rtn = makeTuple(elts);
-        return rtn;
     }
 
     CompilerVariable* evalStr(BST_Str* node, const UnwindInfo& unw_info) {
@@ -1489,9 +1476,17 @@ private:
         }
     }
 
-    CompilerVariable* evalSubscript(BST_Subscript* node, const UnwindInfo& unw_info) {
-        CompilerVariable* value = evalExpr(node->value, unw_info);
-        CompilerVariable* slice = evalSlice(node->slice, unw_info);
+    CompilerVariable* evalLoadSub(BST_LoadSub* node, const UnwindInfo& unw_info) {
+        CompilerVariable* value = evalVReg(node->vreg_value);
+        CompilerVariable* slice = evalVReg(node->vreg_slice);
+        CompilerVariable* rtn = value->getitem(emitter, getOpInfoForNode(node, unw_info), slice);
+        return rtn;
+    }
+    CompilerVariable* evalLoadSubSlice(BST_LoadSubSlice* node, const UnwindInfo& unw_info) {
+        CompilerVariable* value = evalVReg(node->vreg_value);
+        CompilerVariable* lower = evalVReg(node->vreg_lower);
+        CompilerVariable* upper = evalVReg(node->vreg_upper);
+        CompilerVariable* slice = makeSlice(lower, upper, NULL);
         CompilerVariable* rtn = value->getitem(emitter, getOpInfoForNode(node, unw_info), slice);
         return rtn;
     }
@@ -1712,6 +1707,7 @@ private:
         return rtn;
     }
 
+    /*
     CompilerVariable* evalSlice(BST_slice* node, const UnwindInfo& unw_info) {
         // printf("%d expr: %d\n", node->type, node->lineno);
         if (node->lineno) {
@@ -1721,9 +1717,6 @@ private:
 
         CompilerVariable* rtn = NULL;
         switch (node->type) {
-            case BST_TYPE::ExtSlice:
-                rtn = evalExtSlice(bst_cast<BST_ExtSlice>(node), unw_info);
-                break;
             case BST_TYPE::Ellipsis:
                 rtn = getEllipsis();
                 break;
@@ -1739,7 +1732,7 @@ private:
         }
         return evalSliceExprPost(node, unw_info, rtn);
     }
-
+    */
 
 
     CompilerVariable* evalExpr(BST_expr* node, const UnwindInfo& unw_info) {
@@ -1763,9 +1756,6 @@ private:
                 break;
             case BST_TYPE::Str:
                 rtn = evalStr(bst_cast<BST_Str>(node), unw_info);
-                break;
-            case BST_TYPE::Subscript:
-                rtn = evalSubscript(bst_cast<BST_Subscript>(node), unw_info);
                 break;
             case BST_TYPE::Tuple:
                 rtn = evalTuple(bst_cast<BST_Tuple>(node), unw_info);
@@ -1951,36 +1941,47 @@ private:
         }
     }
 
-    void _doSetitem(BST_Subscript* target, CompilerVariable* val, const UnwindInfo& unw_info) {
-        CompilerVariable* tget = evalExpr(target->value, unw_info);
+    void doStoreSub(BST_StoreSub* target, const UnwindInfo& unw_info) {
+        CompilerVariable* val = evalVReg(target->vreg_value);
+        CompilerVariable* tget = evalVReg(target->vreg_target);
 
-        CompilerVariable* slice = evalSlice(target->slice, unw_info);
+        CompilerVariable* slice = evalVReg(target->vreg_slice);
         ConcreteCompilerVariable* converted_target = tget->makeConverted(emitter, tget->getBoxType());
         ConcreteCompilerVariable* converted_val = val->makeConverted(emitter, val->getBoxType());
 
-        if (slice->getType() == UNBOXED_SLICE && !extractSlice(slice).step) {
-            _assignSlice(converted_target->getValue(), converted_val->getValue(), extractSlice(slice), unw_info);
+        assert(!(slice->getType() == UNBOXED_SLICE && !extractSlice(slice).step));
+        ConcreteCompilerVariable* converted_slice = slice->makeConverted(emitter, slice->getBoxType());
+
+        // TODO add a CompilerVariable::setattr, which can (similar to getitem)
+        // statically-resolve the function if possible, and only fall back to
+        // patchpoints if it couldn't.
+        bool do_patchpoint = ENABLE_ICSETITEMS;
+        if (do_patchpoint) {
+            auto pp = createSetitemIC();
+
+            std::vector<llvm::Value*> llvm_args;
+            llvm_args.push_back(converted_target->getValue());
+            llvm_args.push_back(converted_slice->getValue());
+            llvm_args.push_back(converted_val->getValue());
+
+            emitter.createIC(std::move(pp), (void*)pyston::setitem, llvm_args, unw_info);
         } else {
-            ConcreteCompilerVariable* converted_slice = slice->makeConverted(emitter, slice->getBoxType());
-
-            // TODO add a CompilerVariable::setattr, which can (similar to getitem)
-            // statically-resolve the function if possible, and only fall back to
-            // patchpoints if it couldn't.
-            bool do_patchpoint = ENABLE_ICSETITEMS;
-            if (do_patchpoint) {
-                auto pp = createSetitemIC();
-
-                std::vector<llvm::Value*> llvm_args;
-                llvm_args.push_back(converted_target->getValue());
-                llvm_args.push_back(converted_slice->getValue());
-                llvm_args.push_back(converted_val->getValue());
-
-                emitter.createIC(std::move(pp), (void*)pyston::setitem, llvm_args, unw_info);
-            } else {
-                emitter.createCall3(unw_info, g.funcs.setitem, converted_target->getValue(),
-                                    converted_slice->getValue(), converted_val->getValue());
-            }
+            emitter.createCall3(unw_info, g.funcs.setitem, converted_target->getValue(), converted_slice->getValue(),
+                                converted_val->getValue());
         }
+    }
+
+    void doStoreSubSlice(BST_StoreSubSlice* target, const UnwindInfo& unw_info) {
+        CompilerVariable* val = evalVReg(target->vreg_value);
+        CompilerVariable* tget = evalVReg(target->vreg_target);
+
+        CompilerVariable* lower = evalVReg(target->vreg_lower);
+        CompilerVariable* upper = evalVReg(target->vreg_upper);
+        CompilerVariable* slice = makeSlice(lower, upper, NULL);
+        ConcreteCompilerVariable* converted_target = tget->makeConverted(emitter, tget->getBoxType());
+        ConcreteCompilerVariable* converted_val = val->makeConverted(emitter, val->getBoxType());
+
+        _assignSlice(converted_target->getValue(), converted_val->getValue(), extractSlice(slice), unw_info);
     }
 
     void _doUnpackTuple(BST_Tuple* target, CompilerVariable* val, const UnwindInfo& unw_info) {
@@ -2012,9 +2013,6 @@ private:
                 break;
             case BST_TYPE::Name:
                 _doSet(bst_cast<BST_Name>(target), val, unw_info);
-                break;
-            case BST_TYPE::Subscript:
-                _doSetitem(bst_cast<BST_Subscript>(target), val, unw_info);
                 break;
             case BST_TYPE::Tuple:
                 _doUnpackTuple(bst_cast<BST_Tuple>(target), val, unw_info);
@@ -2065,33 +2063,39 @@ private:
     }
 
     // invoke delitem in objmodel.cpp, which will invoke the listDelitem of list
-    void _doDelitem(BST_DeleteSub* target, const UnwindInfo& unw_info) {
+    void doDeleteSub(BST_DeleteSub* target, const UnwindInfo& unw_info) {
         CompilerVariable* tget = evalVReg(target->vreg_value);
-        CompilerVariable* slice = evalSlice(target->slice, unw_info);
+        CompilerVariable* slice = evalVReg(target->vreg_slice);
 
         ConcreteCompilerVariable* converted_target = tget->makeConverted(emitter, tget->getBoxType());
 
-        if (slice->getType() == UNBOXED_SLICE && !extractSlice(slice).step) {
-            _assignSlice(converted_target->getValue(),
-                         emitter.setType(getNullPtr(g.llvm_value_type_ptr), RefType::BORROWED), extractSlice(slice),
-                         unw_info);
+        assert(!(slice->getType() == UNBOXED_SLICE && !extractSlice(slice).step));
+        ConcreteCompilerVariable* converted_slice = slice->makeConverted(emitter, slice->getBoxType());
+
+        bool do_patchpoint = ENABLE_ICDELITEMS;
+        if (do_patchpoint) {
+            auto pp = createDelitemIC();
+
+            std::vector<llvm::Value*> llvm_args;
+            llvm_args.push_back(converted_target->getValue());
+            llvm_args.push_back(converted_slice->getValue());
+
+            emitter.createIC(std::move(pp), (void*)pyston::delitem, llvm_args, unw_info);
         } else {
-            ConcreteCompilerVariable* converted_slice = slice->makeConverted(emitter, slice->getBoxType());
-
-            bool do_patchpoint = ENABLE_ICDELITEMS;
-            if (do_patchpoint) {
-                auto pp = createDelitemIC();
-
-                std::vector<llvm::Value*> llvm_args;
-                llvm_args.push_back(converted_target->getValue());
-                llvm_args.push_back(converted_slice->getValue());
-
-                emitter.createIC(std::move(pp), (void*)pyston::delitem, llvm_args, unw_info);
-            } else {
-                emitter.createCall2(unw_info, g.funcs.delitem, converted_target->getValue(),
-                                    converted_slice->getValue());
-            }
+            emitter.createCall2(unw_info, g.funcs.delitem, converted_target->getValue(), converted_slice->getValue());
         }
+    }
+    void doDeleteSubSlice(BST_DeleteSubSlice* target, const UnwindInfo& unw_info) {
+        CompilerVariable* tget = evalVReg(target->vreg_value);
+        CompilerVariable* lower = evalVReg(target->vreg_lower);
+        CompilerVariable* upper = evalVReg(target->vreg_upper);
+        CompilerVariable* slice = makeSlice(lower, upper, NULL);
+
+        ConcreteCompilerVariable* converted_target = tget->makeConverted(emitter, tget->getBoxType());
+
+        _assignSlice(converted_target->getValue(),
+                     emitter.setType(getNullPtr(g.llvm_value_type_ptr), RefType::BORROWED), extractSlice(slice),
+                     unw_info);
     }
 
     void _doDelAttr(BST_DeleteAttr* node, const UnwindInfo& unw_info) {
@@ -2525,7 +2529,10 @@ private:
                 _doDelAttr(bst_cast<BST_DeleteAttr>(node), unw_info);
                 break;
             case BST_TYPE::DeleteSub:
-                _doDelitem(bst_cast<BST_DeleteSub>(node), unw_info);
+                doDeleteSub(bst_cast<BST_DeleteSub>(node), unw_info);
+                break;
+            case BST_TYPE::DeleteSubSlice:
+                doDeleteSubSlice(bst_cast<BST_DeleteSubSlice>(node), unw_info);
                 break;
             case BST_TYPE::DeleteName:
                 _doDelName(bst_cast<BST_DeleteName>(node), unw_info);
@@ -2542,6 +2549,12 @@ private:
             case BST_TYPE::Return:
                 assert(!unw_info.hasHandler());
                 doReturn(bst_cast<BST_Return>(node), unw_info);
+                break;
+            case BST_TYPE::StoreSub:
+                doStoreSub(bst_cast<BST_StoreSub>(node), unw_info);
+                break;
+            case BST_TYPE::StoreSubSlice:
+                doStoreSubSlice(bst_cast<BST_StoreSubSlice>(node), unw_info);
                 break;
             case BST_TYPE::Branch:
                 assert(!unw_info.hasHandler());
@@ -2592,6 +2605,12 @@ private:
                     case BST_TYPE::Locals:
                         rtn = evalLocals((BST_Locals*)node, unw_info);
                         break;
+                    case BST_TYPE::LoadSub:
+                        rtn = evalLoadSub((BST_LoadSub*)node, unw_info);
+                        break;
+                    case BST_TYPE::LoadSubSlice:
+                        rtn = evalLoadSubSlice((BST_LoadSubSlice*)node, unw_info);
+                        break;
                     case BST_TYPE::GetIter:
                         rtn = evalGetIter((BST_GetIter*)node, unw_info);
                         break;
@@ -2618,6 +2637,9 @@ private:
                         break;
                     case BST_TYPE::MakeFunction:
                         rtn = evalMakeFunction(bst_cast<BST_MakeFunction>(node), unw_info);
+                        break;
+                    case BST_TYPE::MakeSlice:
+                        rtn = evalMakeSlice(bst_cast<BST_MakeSlice>(node), unw_info);
                         break;
                     default:
                         printf("Unhandled stmt type at " __FILE__ ":" STRINGIFY(__LINE__) ": %d\n", node->type);

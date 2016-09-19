@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2016 Dropbox, Inc.
+﻿// Copyright (c) 2014-2016 Dropbox, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -806,22 +806,6 @@ private:
         return makeLoad(name, compare->lineno, true);
     }
 
-    BST_Index* makeIndex(BST_expr* value) {
-        auto index = new BST_Index();
-        unmapExpr(value, &index->vreg_value);
-        index->lineno = value->lineno;
-        return index;
-    }
-
-    BST_Subscript* makeSubscript(AST_TYPE::AST_TYPE ctx_type, BST_expr* value, BST_slice* slice) {
-        auto subscript = new BST_Subscript();
-        subscript->ctx_type = ctx_type;
-        subscript->value = value;
-        subscript->slice = slice;
-        subscript->lineno = slice->lineno;
-        return subscript;
-    }
-
     // We need this both on asts (ex assigning to the element name in a for loop), and
     // for bsts (desugaring an augassign)
     // TODO: we should get rid of this bst one, or at least not call it the same thing?
@@ -834,26 +818,38 @@ private:
     }
 
     void pushAssign(AST_expr* target, BST_expr* val) {
-        BST_Assign* assign = new BST_Assign();
-        assign->value = val;
-        assign->lineno = val->lineno;
-
         if (target->type == AST_TYPE::Name) {
+            BST_Assign* assign = new BST_Assign();
+            assign->value = val;
+            assign->lineno = val->lineno;
             assign->target = makeName(ast_cast<AST_Name>(target)->id, AST_TYPE::Store, val->lineno, 0);
             push_back(assign);
         } else if (target->type == AST_TYPE::Subscript) {
             AST_Subscript* s = ast_cast<AST_Subscript>(target);
             assert(s->ctx_type == AST_TYPE::Store);
 
-            BST_Subscript* s_target = new BST_Subscript();
-            s_target->value = remapExpr(s->value);
-            s_target->slice = remapSlice(s->slice);
-            s_target->ctx_type = AST_TYPE::Store;
-            s_target->lineno = s->lineno;
+            if (isSlice(s->slice)) {
+                auto* slice = ast_cast<AST_Slice>((AST_Slice*)s->slice);
+                auto* s_target = new BST_StoreSubSlice();
+                s_target->lineno = val->lineno;
+                unmapExpr(val, &s_target->vreg_value);
+                unmapExpr(remapExpr(slice->lower), &s_target->vreg_lower);
+                unmapExpr(remapExpr(slice->upper), &s_target->vreg_upper);
+                unmapExpr(remapExpr(s->value), &s_target->vreg_target);
+                push_back(s_target);
+            } else {
+                auto* s_target = new BST_StoreSub();
+                s_target->lineno = val->lineno;
+                unmapExpr(val, &s_target->vreg_value);
+                remapSlice(s->slice, &s_target->vreg_slice);
+                unmapExpr(remapExpr(s->value), &s_target->vreg_target);
+                push_back(s_target);
+            }
 
-            assign->target = s_target;
-            push_back(assign);
         } else if (target->type == AST_TYPE::Attribute) {
+            BST_Assign* assign = new BST_Assign();
+            assign->value = val;
+            assign->lineno = val->lineno;
             AST_Attribute* a = ast_cast<AST_Attribute>(target);
             assert(a->ctx_type == AST_TYPE::Store);
 
@@ -866,6 +862,9 @@ private:
             assign->target = a_target;
             push_back(assign);
         } else if (target->type == AST_TYPE::Tuple || target->type == AST_TYPE::List) {
+            BST_Assign* assign = new BST_Assign();
+            assign->value = val;
+            assign->lineno = val->lineno;
             std::vector<AST_expr*>* elts;
             if (target->type == AST_TYPE::Tuple) {
                 AST_Tuple* _t = ast_cast<AST_Tuple>(target);
@@ -1100,43 +1099,6 @@ private:
         InternedString name = nodeName();
         unmapDst(name, &rtn->vreg_dst);
         return std::make_pair(rtn, name);
-    }
-
-    BST_slice* _dup(BST_slice* val) {
-        if (val == nullptr) {
-            return nullptr;
-        } else if (val->type == BST_TYPE::Ellipsis) {
-            BST_Ellipsis* orig = bst_cast<BST_Ellipsis>(val);
-            BST_Ellipsis* made = new BST_Ellipsis();
-            made->lineno = orig->lineno;
-            return made;
-        } else if (val->type == BST_TYPE::ExtSlice) {
-            BST_ExtSlice* orig = bst_cast<BST_ExtSlice>(val);
-            BST_ExtSlice* made = new BST_ExtSlice();
-            made->lineno = orig->lineno;
-            made->dims.reserve(orig->dims.size());
-            for (BST_slice* item : orig->dims) {
-                made->dims.push_back(_dup(item));
-            }
-            return made;
-        } else if (val->type == BST_TYPE::Index) {
-            BST_Index* orig = bst_cast<BST_Index>(val);
-            BST_Index* made = new BST_Index();
-            unmapExprFromUnmapped(&orig->vreg_value, &made->vreg_value);
-            made->lineno = orig->lineno;
-            return made;
-        } else if (val->type == BST_TYPE::Slice) {
-            BST_Slice* orig = bst_cast<BST_Slice>(val);
-            BST_Slice* made = new BST_Slice();
-            made->lineno = orig->lineno;
-            made->lower = _dup(orig->lower);
-            made->upper = _dup(orig->upper);
-            made->step = _dup(orig->step);
-            return made;
-        } else {
-            RELEASE_ASSERT(0, "%d", val->type);
-        }
-        return nullptr;
     }
 
     // Sometimes we want to refer to the same object twice,
@@ -1410,27 +1372,33 @@ private:
         push_back(rtn);
 
         for (int i = 0; i < node->keys.size(); i++) {
-            BST_expr* value = remapExpr(node->values[i]);
-            BST_Index* index = makeIndex(remapExpr(node->keys[i]));
-            BST_Subscript* subscript = makeSubscript(AST_TYPE::Store, makeLoad(dict_name, node, false), index);
-            pushAssign(subscript, value);
+            BST_StoreSub* store = new BST_StoreSub;
+            store->lineno = node->values[i]->lineno;
+            unmapExpr(remapExpr(node->keys[i]), &store->vreg_slice);
+            unmapExpr(makeLoad(dict_name, node, false), &store->vreg_target);
+            unmapExpr(remapExpr(node->values[i]), &store->vreg_value);
+            push_back(store);
         }
 
         return makeLoad(dict_name, node, true);
     }
 
-    BST_slice* remapEllipsis(AST_Ellipsis* node) {
+    BST_expr* remapEllipsis(AST_Ellipsis* node) {
         auto r = new BST_Ellipsis();
         r->lineno = node->lineno;
-        return r;
+        InternedString name = nodeName();
+        unmapDst(name, &r->vreg_dst);
+        push_back(r);
+        return makeLoad(name, node, true);
     }
 
-    BST_slice* remapExtSlice(AST_ExtSlice* node) {
-        BST_ExtSlice* rtn = new BST_ExtSlice();
+    BST_expr* remapExtSlice(AST_ExtSlice* node) {
+        auto* rtn = BST_Tuple::create(node->dims.size());
         rtn->lineno = node->lineno;
 
-        for (auto* e : node->dims)
-            rtn->dims.push_back(remapSlice(e));
+        for (int i = 0; i < node->dims.size(); ++i) {
+            remapSlice(node->dims[i], &rtn->elts[i]);
+        }
         return rtn;
     }
 
@@ -1602,13 +1570,6 @@ private:
         return makeLoad(rtn_name, node, true);
     }
 
-    BST_slice* remapIndex(AST_Index* node) {
-        BST_Index* rtn = new BST_Index();
-        rtn->lineno = node->lineno;
-        unmapExpr(remapExpr(node->value), &rtn->vreg_value);
-        return rtn;
-    }
-
     BST_expr* remapLambda(AST_Lambda* node) {
         ASTAllocator allocator;
         auto stmt = new (allocator) AST_Return;
@@ -1684,16 +1645,42 @@ private:
         return std::make_pair(rtn, name);
     }
 
-    BST_slice* remapSlice(AST_Slice* node) {
-        BST_Slice* rtn = new BST_Slice();
+    bool isSlice(AST_slice* node) { return node->type == AST_TYPE::Slice && ast_cast<AST_Slice>(node)->step == NULL; }
+
+    BST_expr* remapSlice(AST_Slice* node) {
+        BST_MakeSlice* rtn = new BST_MakeSlice();
         rtn->lineno = node->lineno;
 
-        rtn->lower = remapExpr(node->lower);
-        rtn->upper = remapExpr(node->upper);
-        rtn->step = remapExpr(node->step);
+        unmapExpr(remapExpr(node->lower), &rtn->vreg_lower);
+        unmapExpr(remapExpr(node->upper), &rtn->vreg_upper);
+        unmapExpr(remapExpr(node->step), &rtn->vreg_step);
 
-        return rtn;
+        InternedString name = nodeName();
+        unmapDst(name, &rtn->vreg_dst);
+        return makeLoad(name, node->lineno, true);
     }
+
+    void remapSlice(AST_slice* node, int* vreg) {
+        BST_expr* rtn = nullptr;
+        switch (node->type) {
+            case AST_TYPE::Ellipsis:
+                rtn = remapEllipsis(ast_cast<AST_Ellipsis>(node));
+                break;
+            case AST_TYPE::ExtSlice:
+                rtn = remapExtSlice(ast_cast<AST_ExtSlice>(node));
+                break;
+            case AST_TYPE::Index:
+                rtn = remapExpr(ast_cast<AST_Index>(node)->value);
+                break;
+            case AST_TYPE::Slice:
+                rtn = remapSlice(ast_cast<AST_Slice>(node));
+                break;
+            default:
+                RELEASE_ASSERT(0, "%d", node->type);
+        }
+        unmapExpr(rtn, vreg);
+    }
+
 
     BST_expr* remapTuple(AST_Tuple* node) {
         assert(node->ctx_type == AST_TYPE::Load);
@@ -1708,13 +1695,28 @@ private:
         return rtn;
     }
 
+
     BST_expr* remapSubscript(AST_Subscript* node) {
-        BST_Subscript* rtn = new BST_Subscript();
-        rtn->lineno = node->lineno;
-        rtn->ctx_type = node->ctx_type;
-        rtn->value = remapExpr(node->value);
-        rtn->slice = remapSlice(node->slice);
-        return rtn;
+        assert(node->ctx_type == AST_TYPE::AST_TYPE::Load);
+        InternedString name = nodeName();
+        if (!isSlice(node->slice)) {
+            BST_LoadSub* rtn = new BST_LoadSub;
+            rtn->lineno = node->lineno;
+            unmapExpr(remapExpr(node->value), &rtn->vreg_value);
+            remapSlice(node->slice, &rtn->vreg_slice);
+            unmapDst(name, &rtn->vreg_dst);
+            push_back(rtn);
+        } else {
+            BST_LoadSubSlice* rtn = new BST_LoadSubSlice;
+            rtn->lineno = node->lineno;
+            assert(node->ctx_type == AST_TYPE::AST_TYPE::Load);
+            unmapExpr(remapExpr(node->value), &rtn->vreg_value);
+            unmapExpr(remapExpr(ast_cast<AST_Slice>(node->slice)->lower), &rtn->vreg_lower);
+            unmapExpr(remapExpr(ast_cast<AST_Slice>(node->slice)->upper), &rtn->vreg_upper);
+            unmapDst(name, &rtn->vreg_dst);
+            push_back(rtn);
+        }
+        return makeLoad(name, node->lineno, true);
     }
 
     std::pair<BST_stmt*, InternedString> remapUnaryOp(AST_UnaryOp* node) {
@@ -1742,30 +1744,6 @@ private:
             raiseExcHelper(SyntaxError, "'yield' outside function");
 
         return makeLoad(node_name, node, /* is_kill */ true);
-    }
-
-    BST_slice* remapSlice(AST_slice* node) {
-        if (node == nullptr)
-            return nullptr;
-
-        BST_slice* rtn = nullptr;
-        switch (node->type) {
-            case AST_TYPE::Ellipsis:
-                rtn = remapEllipsis(ast_cast<AST_Ellipsis>(node));
-                break;
-            case AST_TYPE::ExtSlice:
-                rtn = remapExtSlice(ast_cast<AST_ExtSlice>(node));
-                break;
-            case AST_TYPE::Index:
-                rtn = remapIndex(ast_cast<AST_Index>(node));
-                break;
-            case AST_TYPE::Slice:
-                rtn = remapSlice(ast_cast<AST_Slice>(node));
-                break;
-            default:
-                RELEASE_ASSERT(0, "%d", node->type);
-        }
-        return rtn;
     }
 
     BST_expr* wrap(BST_expr* node) {
@@ -2349,21 +2327,65 @@ public:
                 AST_Subscript* s = ast_cast<AST_Subscript>(node->target);
                 assert(s->ctx_type == AST_TYPE::Store);
 
-                BST_Subscript* s_target = new BST_Subscript();
-                s_target->value = remapExpr(s->value);
-                s_target->slice = remapSlice(s->slice);
-                s_target->ctx_type = AST_TYPE::Store;
-                s_target->lineno = s->lineno;
-                remapped_target = s_target;
+                if (isSlice(s->slice)) {
+                    auto* slice = ast_cast<AST_Slice>(s->slice);
+                    BST_LoadSubSlice* s_lhs = new BST_LoadSubSlice();
+                    unmapExpr(remapExpr(s->value), &s_lhs->vreg_value);
+                    unmapExpr(remapExpr(slice->lower), &s_lhs->vreg_lower);
+                    unmapExpr(remapExpr(slice->upper), &s_lhs->vreg_upper);
+                    s_lhs->lineno = s->lineno;
+                    InternedString name_lhs = nodeName();
+                    unmapDst(name_lhs, &s_lhs->vreg_dst);
+                    push_back(s_lhs);
 
-                BST_Subscript* s_lhs = new BST_Subscript();
-                s_lhs->value = _dup(s_target->value);
-                s_lhs->slice = _dup(s_target->slice);
-                s_lhs->lineno = s->lineno;
-                s_lhs->ctx_type = AST_TYPE::Load;
-                remapped_lhs = wrap(s_lhs);
+                    BST_AugBinOp* binop = new BST_AugBinOp();
+                    binop->op_type = remapBinOpType(node->op_type);
+                    unmapExpr(makeLoad(name_lhs, node->lineno, true), &binop->vreg_left);
+                    unmapExpr(remapExpr(node->value), &binop->vreg_right);
+                    binop->lineno = node->lineno;
+                    InternedString node_name(nodeName());
+                    unmapDst(node_name, &binop->vreg_dst);
+                    push_back(binop);
 
-                break;
+                    BST_StoreSubSlice* s_target = new BST_StoreSubSlice();
+                    s_target->lineno = s->lineno;
+                    unmapExpr(makeLoad(node_name, s->lineno, true), &s_target->vreg_value);
+                    // unmapExprFromUnmapped(&s_lhs->vreg_value, &s_target->vreg_target);
+                    // unmapExprFromUnmapped(&s_lhs->vreg_lower, &s_target->vreg_lower);
+                    // unmapExprFromUnmapped(&s_lhs->vreg_upper, &s_target->vreg_upper);
+                    unmapExpr(remapExpr(s->value), &s_target->vreg_target);
+                    unmapExpr(remapExpr(slice->lower), &s_target->vreg_lower);
+                    unmapExpr(remapExpr(slice->upper), &s_target->vreg_upper);
+                    push_back(s_target);
+                } else {
+                    BST_LoadSub* s_lhs = new BST_LoadSub();
+                    unmapExpr(remapExpr(s->value), &s_lhs->vreg_value);
+                    remapSlice(s->slice, &s_lhs->vreg_slice);
+                    s_lhs->lineno = s->lineno;
+                    InternedString name_lhs = nodeName();
+                    unmapDst(name_lhs, &s_lhs->vreg_dst);
+                    push_back(s_lhs);
+
+                    BST_AugBinOp* binop = new BST_AugBinOp();
+                    binop->op_type = remapBinOpType(node->op_type);
+                    unmapExpr(makeLoad(name_lhs, node->lineno, true), &binop->vreg_left);
+                    unmapExpr(remapExpr(node->value), &binop->vreg_right);
+                    binop->lineno = node->lineno;
+                    InternedString node_name(nodeName());
+                    unmapDst(node_name, &binop->vreg_dst);
+                    push_back(binop);
+
+                    BST_StoreSub* s_target = new BST_StoreSub();
+                    s_target->lineno = s->lineno;
+                    unmapExpr(makeLoad(node_name, s->lineno, true), &s_target->vreg_value);
+                    // unmapExprFromUnmapped(&s_lhs->vreg_value, &s_target->vreg_target);
+                    // unmapExprFromUnmapped(&s_lhs->vreg_slice, &s_target->vreg_slice);
+                    unmapExpr(remapExpr(s->value), &s_target->vreg_target);
+                    remapSlice(s->slice, &s_target->vreg_slice);
+                    push_back(s_target);
+                }
+
+                return true;
             }
             case AST_TYPE::Attribute: {
                 AST_Attribute* a = ast_cast<AST_Attribute>(node->target);
@@ -2415,12 +2437,23 @@ public:
             switch (t->type) {
                 case AST_TYPE::Subscript: {
                     AST_Subscript* s = static_cast<AST_Subscript*>(t);
-                    auto* del = new BST_DeleteSub;
-                    del->lineno = node->lineno;
-                    unmapExpr(remapExpr(s->value), &del->vreg_value);
-                    del->slice = remapSlice(s->slice);
-                    del->ctx_type = AST_TYPE::Del;
-                    push_back(del);
+                    if (isSlice(s->slice)) {
+                        auto* del = new BST_DeleteSubSlice;
+                        del->lineno = node->lineno;
+                        auto* slice = ast_cast<AST_Slice>(s->slice);
+                        unmapExpr(remapExpr(s->value), &del->vreg_value);
+                        unmapExpr(remapExpr(slice->lower), &del->vreg_lower);
+                        unmapExpr(remapExpr(slice->upper), &del->vreg_upper);
+                        del->ctx_type = AST_TYPE::Del;
+                        push_back(del);
+                    } else {
+                        auto* del = new BST_DeleteSub;
+                        del->lineno = node->lineno;
+                        unmapExpr(remapExpr(s->value), &del->vreg_value);
+                        remapSlice(s->slice, &del->vreg_slice);
+                        del->ctx_type = AST_TYPE::Del;
+                        push_back(del);
+                    }
                     break;
                 }
                 case AST_TYPE::Attribute: {

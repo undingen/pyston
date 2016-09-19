@@ -440,7 +440,7 @@ RewriterVar* JitFragmentWriter::emitGetGlobal(BoxedString* s) {
     return emitPPCall((void*)getGlobal, { globals, imm(s) }, 128).first->setType(RefType::OWNED);
 }
 
-RewriterVar* JitFragmentWriter::emitGetItem(BST_expr* node, RewriterVar* value, RewriterVar* slice) {
+RewriterVar* JitFragmentWriter::emitGetItem(BST* node, RewriterVar* value, RewriterVar* slice) {
     return emitPPCall((void*)getitem, { value, slice }, 256, true /* record type */, node)
         .first->setType(RefType::OWNED);
 }

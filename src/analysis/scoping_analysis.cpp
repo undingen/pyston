@@ -575,7 +575,6 @@ public:
     bool visit_ellipsis(AST_Ellipsis* node) override { return false; }
     bool visit_excepthandler(AST_ExceptHandler* node) override { return false; }
     bool visit_expr(AST_Expr* node) override { return false; }
-    bool visit_extslice(AST_ExtSlice* node) override { return false; }
     bool visit_for(AST_For* node) override { return false; }
     // bool visit_functiondef(AST_FunctionDef *node) override { return false; }
     // bool visit_global(AST_Global *node) override { return false; }

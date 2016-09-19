@@ -411,6 +411,16 @@ public:
         _doSet(node->vreg_target);
         return true;
     }
+    virtual bool visit_loadsub(BST_LoadSub* node) {
+        _doSet(node->vreg_dst);
+        return true;
+    }
+    virtual bool visit_loadsubslice(BST_LoadSubSlice* node) {
+        _doSet(node->vreg_dst);
+        return true;
+    }
+    virtual bool visit_storesub(BST_StoreSub* node) { return true; }
+    virtual bool visit_storesubslice(BST_StoreSubSlice* node) { return true; }
 
     virtual bool visit_exec(BST_Exec* node) { return true; }
 

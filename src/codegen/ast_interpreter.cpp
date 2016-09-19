@@ -92,6 +92,7 @@ private:
     Value visit_compare(BST_Compare* node);
     Value visit_deleteattr(BST_DeleteAttr* node);
     Value visit_deletesub(BST_DeleteSub* node);
+    Value visit_deletesubslice(BST_DeleteSubSlice* node);
     Value visit_deletename(BST_DeleteName* node);
     Value visit_exec(BST_Exec* node);
     Value visit_print(BST_Print* node);
@@ -100,21 +101,22 @@ private:
     Value visit_stmt(BST_stmt* node);
     Value visit_unaryop(BST_UnaryOp* node);
 
+    Value visit_loadsub(BST_LoadSub* node);
+    Value visit_loadsubslice(BST_LoadSubSlice* node);
+    Value visit_storesub(BST_StoreSub* node);
+    Value visit_storesubslice(BST_StoreSubSlice* node);
+
     Value visit_attribute(BST_Attribute* node);
     Value visit_dict(BST_Dict* node);
     Value visit_ellipsis(BST_Ellipsis* node);
     Value visit_expr(BST_expr* node);
-    Value visit_extslice(BST_ExtSlice* node);
-    Value visit_index(BST_Index* node);
     Value visit_list(BST_List* node);
     Value visit_name(BST_Name* node);
     Value visit_num(BST_Num* node);
     Value visit_repr(BST_Repr* node);
     Value visit_set(BST_Set* node);
     Value visit_str(BST_Str* node);
-    Value visit_subscript(BST_Subscript* node);
-    Value visit_slice(BST_Slice* node);
-    Value visit_slice(BST_slice* node);
+    Value visit_makeslice(BST_MakeSlice* node);
     Value visit_tuple(BST_Tuple* node);
     Value visit_yield(BST_Yield* node);
 
@@ -596,33 +598,7 @@ void ASTInterpreter::doStore(BST_expr* node, STOLEN(Value) value) {
             doStore(list->elts[i], Value(array[i], jit ? array_vars[i] : NULL));
         }
     } else if (node->type == BST_TYPE::Subscript) {
-        AUTO_DECREF(value.o);
-        BST_Subscript* subscript = (BST_Subscript*)node;
 
-        Value target = visit_expr(subscript->value);
-        AUTO_DECREF(target.o);
-
-        bool is_slice = (subscript->slice->type == BST_TYPE::Slice) && (((BST_Slice*)subscript->slice)->step == NULL);
-        if (is_slice) {
-            BST_Slice* slice = (BST_Slice*)subscript->slice;
-            Value lower = slice->lower ? visit_expr(slice->lower) : Value();
-            AUTO_XDECREF(lower.o);
-            Value upper = slice->upper ? visit_expr(slice->upper) : Value();
-            AUTO_XDECREF(upper.o);
-            assert(slice->step == NULL);
-
-            if (jit)
-                jit->emitAssignSlice(target, lower, upper, value);
-            assignSlice(target.o, lower.o, upper.o, value.o);
-        } else {
-            Value slice = visit_slice(subscript->slice);
-
-            AUTO_DECREF(slice.o);
-
-            if (jit)
-                jit->emitSetItem(target, slice, value);
-            setitem(target.o, slice.o, value.o);
-        }
     } else {
         RELEASE_ASSERT(0, "not implemented");
     }
@@ -655,33 +631,16 @@ Value ASTInterpreter::visit_binop(BST_BinOp* node) {
     return Value();
 }
 
-Value ASTInterpreter::visit_slice(BST_slice* node) {
-    switch (node->type) {
-        case BST_TYPE::ExtSlice:
-            return visit_extslice(static_cast<BST_ExtSlice*>(node));
-        case BST_TYPE::Ellipsis:
-            return visit_ellipsis(static_cast<BST_Ellipsis*>(node));
-            break;
-        case BST_TYPE::Index:
-            return visit_index(static_cast<BST_Index*>(node));
-        case BST_TYPE::Slice:
-            return visit_slice(static_cast<BST_Slice*>(node));
-        default:
-            RELEASE_ASSERT(0, "Attempt to handle invalid slice type");
-    }
-    return Value();
-}
-
 Value ASTInterpreter::visit_ellipsis(BST_Ellipsis* node) {
     return Value(incref(Ellipsis), jit ? jit->imm(Ellipsis) : NULL);
 }
 
-Value ASTInterpreter::visit_slice(BST_Slice* node) {
-    Value lower = node->lower ? visit_expr(node->lower) : getNone();
+Value ASTInterpreter::visit_makeslice(BST_MakeSlice* node) {
+    Value lower = node->vreg_lower != VREG_UNDEFINED ? getVReg(node->vreg_lower) : getNone();
     AUTO_DECREF(lower.o);
-    Value upper = node->upper ? visit_expr(node->upper) : getNone();
+    Value upper = node->vreg_upper != VREG_UNDEFINED ? getVReg(node->vreg_upper) : getNone();
     AUTO_DECREF(upper.o);
-    Value step = node->step ? visit_expr(node->step) : getNone();
+    Value step = node->vreg_step != VREG_UNDEFINED ? getVReg(node->vreg_step) : getNone();
     AUTO_DECREF(step.o);
 
     Value v;
@@ -689,20 +648,6 @@ Value ASTInterpreter::visit_slice(BST_Slice* node) {
         v.var = jit->emitCreateSlice(lower, upper, step);
     v.o = createSlice(lower.o, upper.o, step.o);
     return v;
-}
-
-Value ASTInterpreter::visit_extslice(BST_ExtSlice* node) {
-    llvm::SmallVector<RewriterVar*, 8> items;
-
-    int num_slices = node->dims.size();
-    BoxedTuple* rtn = BoxedTuple::create(num_slices);
-    for (int i = 0; i < num_slices; ++i) {
-        Value v = visit_slice(node->dims[i]);
-        rtn->elts[i] = v.o;
-        items.push_back(v);
-    }
-
-    return Value(rtn, jit ? jit->emitCreateTuple(items) : NULL);
 }
 
 Value ASTInterpreter::visit_branch(BST_Branch* node) {
@@ -1188,6 +1133,10 @@ Value ASTInterpreter::visit_stmt(BST_stmt* node) {
             rtn = visit_deletesub((BST_DeleteSub*)node);
             ASTInterpreterJitInterface::pendingCallsCheckHelper();
             break;
+        case BST_TYPE::DeleteSubSlice:
+            rtn = visit_deletesubslice((BST_DeleteSubSlice*)node);
+            ASTInterpreterJitInterface::pendingCallsCheckHelper();
+            break;
         case BST_TYPE::DeleteName:
             rtn = visit_deletename((BST_DeleteName*)node);
             ASTInterpreterJitInterface::pendingCallsCheckHelper();
@@ -1213,6 +1162,15 @@ Value ASTInterpreter::visit_stmt(BST_stmt* node) {
                 throw e;
             }
             return rtn;
+
+        case BST_TYPE::StoreSub:
+            rtn = visit_storesub((BST_StoreSub*)node);
+            ASTInterpreterJitInterface::pendingCallsCheckHelper();
+            break;
+        case BST_TYPE::StoreSubSlice:
+            rtn = visit_storesubslice((BST_StoreSubSlice*)node);
+            ASTInterpreterJitInterface::pendingCallsCheckHelper();
+            break;
 
         // pseudo
         case BST_TYPE::Branch:
@@ -1274,6 +1232,12 @@ Value ASTInterpreter::visit_stmt(BST_stmt* node) {
                     break;
                 case BST_TYPE::MakeFunction:
                     v = visit_makeFunction((BST_MakeFunction*)node);
+                    break;
+                case BST_TYPE::LoadSub:
+                    v = visit_loadsub((BST_LoadSub*)node);
+                    break;
+                case BST_TYPE::LoadSubSlice:
+                    v = visit_loadsubslice((BST_LoadSubSlice*)node);
                     break;
                 default:
                     RELEASE_ASSERT(0, "not implemented");
@@ -1522,26 +1486,25 @@ Value ASTInterpreter::visit_deleteattr(BST_DeleteAttr* node) {
 Value ASTInterpreter::visit_deletesub(BST_DeleteSub* node) {
     Value value = getVReg(node->vreg_value);
     AUTO_DECREF(value.o);
+    Value slice = getVReg(node->vreg_slice);
+    AUTO_DECREF(slice.o);
+    if (jit)
+        jit->emitDelItem(value, slice);
+    delitem(value.o, slice.o);
+    return Value();
+}
 
-    bool is_slice = (node->slice->type == BST_TYPE::Slice) && (((BST_Slice*)node->slice)->step == NULL);
-    if (is_slice) {
-        BST_Slice* slice = (BST_Slice*)node->slice;
-        Value lower = slice->lower ? visit_expr(slice->lower) : Value();
-        AUTO_XDECREF(lower.o);
-        Value upper = slice->upper ? visit_expr(slice->upper) : Value();
-        AUTO_XDECREF(upper.o);
-        assert(slice->step == NULL);
+Value ASTInterpreter::visit_deletesubslice(BST_DeleteSubSlice* node) {
+    Value value = getVReg(node->vreg_value);
+    AUTO_DECREF(value.o);
+    Value lower = node->vreg_lower != VREG_UNDEFINED ? getVReg(node->vreg_lower) : Value();
+    AUTO_XDECREF(lower.o);
+    Value upper = node->vreg_upper != VREG_UNDEFINED ? getVReg(node->vreg_upper) : Value();
+    AUTO_XDECREF(upper.o);
 
-        if (jit)
-            jit->emitAssignSlice(value, lower, upper, jit->imm(0ul));
-        assignSlice(value.o, lower.o, upper.o, NULL);
-    } else {
-        Value slice = visit_slice(node->slice);
-        AUTO_DECREF(slice.o);
-        if (jit)
-            jit->emitDelItem(value, slice);
-        delitem(value.o, slice.o);
-    }
+    if (jit)
+        jit->emitAssignSlice(value, lower, upper, jit->imm(0ul));
+    assignSlice(value.o, lower.o, upper.o, NULL);
     return Value();
 }
 
@@ -1644,8 +1607,6 @@ Value ASTInterpreter::visit_expr(BST_expr* node) {
             return visit_num((BST_Num*)node);
         case BST_TYPE::Str:
             return visit_str((BST_Str*)node);
-        case BST_TYPE::Subscript:
-            return visit_subscript((BST_Subscript*)node);
         case BST_TYPE::Tuple:
             return visit_tuple((BST_Tuple*)node);
 
@@ -1777,10 +1738,6 @@ Value ASTInterpreter::visit_num(BST_Num* node) {
         v = jit->imm(o)->setType(RefType::BORROWED);
     }
     return Value(o, v);
-}
-
-Value ASTInterpreter::visit_index(BST_Index* node) {
-    return getVReg(node->vreg_value);
 }
 
 Value ASTInterpreter::visit_repr(BST_Repr* node) {
@@ -1948,34 +1905,69 @@ Value ASTInterpreter::visit_name(BST_Name* node) {
     }
 }
 
-Value ASTInterpreter::visit_subscript(BST_Subscript* node) {
-    Value value = visit_expr(node->value);
+Value ASTInterpreter::visit_loadsub(BST_LoadSub* node) {
+    Value value = getVReg(node->vreg_value);
     AUTO_DECREF(value.o);
 
-    bool is_slice = (node->slice->type == BST_TYPE::Slice) && (((BST_Slice*)node->slice)->step == NULL);
-    if (is_slice) {
-        BST_Slice* slice = (BST_Slice*)node->slice;
-        Value lower = slice->lower ? visit_expr(slice->lower) : Value();
-        AUTO_XDECREF(lower.o);
-        Value upper = slice->upper ? visit_expr(slice->upper) : Value();
-        AUTO_XDECREF(upper.o);
-        assert(slice->step == NULL);
+    Value slice = getVReg(node->vreg_slice);
+    AUTO_DECREF(slice.o);
 
-        Value v;
-        if (jit)
-            v.var = jit->emitApplySlice(value, lower, upper);
-        v.o = applySlice(value.o, lower.o, upper.o);
-        return v;
-    } else {
-        Value slice = visit_slice(node->slice);
-        AUTO_DECREF(slice.o);
+    Value v;
+    if (jit)
+        v.var = jit->emitGetItem(node, value, slice);
+    v.o = getitem(value.o, slice.o);
+    return v;
+}
 
-        Value v;
-        if (jit)
-            v.var = jit->emitGetItem(node, value, slice);
-        v.o = getitem(value.o, slice.o);
-        return v;
-    }
+Value ASTInterpreter::visit_loadsubslice(BST_LoadSubSlice* node) {
+    Value value = getVReg(node->vreg_value);
+    AUTO_DECREF(value.o);
+    Value lower = node->vreg_lower != VREG_UNDEFINED ? getVReg(node->vreg_lower) : Value();
+    AUTO_XDECREF(lower.o);
+    Value upper = node->vreg_upper != VREG_UNDEFINED ? getVReg(node->vreg_upper) : Value();
+    AUTO_XDECREF(upper.o);
+
+    Value v;
+    if (jit)
+        v.var = jit->emitApplySlice(value, lower, upper);
+    v.o = applySlice(value.o, lower.o, upper.o);
+    return v;
+}
+
+
+Value ASTInterpreter::visit_storesub(BST_StoreSub* node) {
+    Value value = getVReg(node->vreg_value);
+    AUTO_DECREF(value.o);
+
+    Value target = getVReg(node->vreg_target);
+    AUTO_DECREF(target.o);
+
+    Value slice = getVReg(node->vreg_slice);
+
+    AUTO_DECREF(slice.o);
+
+    if (jit)
+        jit->emitSetItem(target, slice, value);
+    setitem(target.o, slice.o, value.o);
+    return Value();
+}
+
+Value ASTInterpreter::visit_storesubslice(BST_StoreSubSlice* node) {
+    Value value = getVReg(node->vreg_value);
+    AUTO_DECREF(value.o);
+
+    Value target = getVReg(node->vreg_target);
+    AUTO_DECREF(target.o);
+
+    Value lower = node->vreg_lower != VREG_UNDEFINED ? getVReg(node->vreg_lower) : Value();
+    AUTO_XDECREF(lower.o);
+    Value upper = node->vreg_upper != VREG_UNDEFINED ? getVReg(node->vreg_upper) : Value();
+    AUTO_XDECREF(upper.o);
+
+    if (jit)
+        jit->emitAssignSlice(target, lower, upper, value);
+    assignSlice(target.o, lower.o, upper.o, value.o);
+    return Value();
 }
 
 Value ASTInterpreter::visit_list(BST_List* node) {

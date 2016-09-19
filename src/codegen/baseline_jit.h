@@ -288,7 +288,7 @@ public:
     RewriterVar* emitGetBoxedLocals();
     RewriterVar* emitGetClsAttr(RewriterVar* obj, BoxedString* s);
     RewriterVar* emitGetGlobal(BoxedString* s);
-    RewriterVar* emitGetItem(BST_expr* node, RewriterVar* value, RewriterVar* slice);
+    RewriterVar* emitGetItem(BST* node, RewriterVar* value, RewriterVar* slice);
     RewriterVar* emitGetLocal(BST_Name* name);
     RewriterVar* emitGetLocalMustExist(int vreg);
     RewriterVar* emitGetPystonIter(RewriterVar* v);

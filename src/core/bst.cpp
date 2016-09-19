@@ -230,11 +230,25 @@ void BST_DeleteSub::accept(BSTVisitor* v) {
         return;
 
     v->visit_vreg(&vreg_value);
-    slice->accept(v);
+    v->visit_vreg(&vreg_slice);
 }
 
 void BST_DeleteSub::accept_stmt(StmtVisitor* v) {
     v->visit_deletesub(this);
+}
+
+void BST_DeleteSubSlice::accept(BSTVisitor* v) {
+    bool skip = v->visit_deletesubslice(this);
+    if (skip)
+        return;
+
+    v->visit_vreg(&vreg_value);
+    v->visit_vreg(&vreg_lower);
+    v->visit_vreg(&vreg_upper);
+}
+
+void BST_DeleteSubSlice::accept_stmt(StmtVisitor* v) {
+    v->visit_deletesubslice(this);
 }
 
 
@@ -264,9 +278,10 @@ void BST_Ellipsis::accept(BSTVisitor* v) {
     bool skip = v->visit_ellipsis(this);
     if (skip)
         return;
+    v->visit_vreg(&vreg_dst, true);
 }
 
-void* BST_Ellipsis::accept_slice(SliceVisitor* v) {
+void BST_Ellipsis::accept_stmt(StmtVisitor* v) {
     return v->visit_ellipsis(this);
 }
 
@@ -284,17 +299,6 @@ void BST_Exec::accept_stmt(StmtVisitor* v) {
     v->visit_exec(this);
 }
 
-void BST_ExtSlice::accept(BSTVisitor* v) {
-    bool skip = v->visit_extslice(this);
-    if (skip)
-        return;
-    visitVector(dims, v);
-}
-
-void* BST_ExtSlice::accept_slice(SliceVisitor* v) {
-    return v->visit_extslice(this);
-}
-
 void BST_FunctionDef::accept(BSTVisitor* v) {
     bool skip = v->visit_functiondef(this);
     if (skip)
@@ -308,18 +312,6 @@ void BST_FunctionDef::accept(BSTVisitor* v) {
 
 void BST_FunctionDef::accept_stmt(StmtVisitor* v) {
     v->visit_functiondef(this);
-}
-
-void BST_Index::accept(BSTVisitor* v) {
-    bool skip = v->visit_index(this);
-    if (skip)
-        return;
-
-    v->visit_vreg(&vreg_value);
-}
-
-void* BST_Index::accept_slice(SliceVisitor* v) {
-    return v->visit_index(this);
 }
 
 void BST_Invoke::accept(BSTVisitor* v) {
@@ -501,6 +493,64 @@ void BST_List::accept_stmt(StmtVisitor* v) {
     return v->visit_list(this);
 }
 
+void BST_LoadSub::accept(BSTVisitor* v) {
+    bool skip = v->visit_loadsub(this);
+    if (skip)
+        return;
+
+    v->visit_vreg(&vreg_dst, true);
+    v->visit_vreg(&vreg_value);
+    v->visit_vreg(&vreg_slice);
+}
+
+
+void BST_LoadSub::accept_stmt(StmtVisitor* v) {
+    v->visit_loadsub(this);
+}
+
+void BST_LoadSubSlice::accept(BSTVisitor* v) {
+    bool skip = v->visit_loadsubslice(this);
+    if (skip)
+        return;
+    v->visit_vreg(&vreg_dst, true);
+    v->visit_vreg(&vreg_value);
+    v->visit_vreg(&vreg_lower);
+    v->visit_vreg(&vreg_upper);
+}
+
+void BST_LoadSubSlice::accept_stmt(StmtVisitor* v) {
+    v->visit_loadsubslice(this);
+}
+
+void BST_StoreSub::accept(BSTVisitor* v) {
+    bool skip = v->visit_storesub(this);
+    if (skip)
+        return;
+
+    v->visit_vreg(&vreg_target);
+    v->visit_vreg(&vreg_slice);
+    v->visit_vreg(&vreg_value);
+}
+
+
+void BST_StoreSub::accept_stmt(StmtVisitor* v) {
+    v->visit_storesub(this);
+}
+
+void BST_StoreSubSlice::accept(BSTVisitor* v) {
+    bool skip = v->visit_storesubslice(this);
+    if (skip)
+        return;
+    v->visit_vreg(&vreg_target);
+    v->visit_vreg(&vreg_lower);
+    v->visit_vreg(&vreg_upper);
+    v->visit_vreg(&vreg_value);
+}
+
+void BST_StoreSubSlice::accept_stmt(StmtVisitor* v) {
+    v->visit_storesubslice(this);
+}
+
 void BST_Name::accept(BSTVisitor* v) {
     bool skip = v->visit_name(this);
 }
@@ -584,23 +634,6 @@ void BST_Set::accept_stmt(StmtVisitor* v) {
     return v->visit_set(this);
 }
 
-void BST_Slice::accept(BSTVisitor* v) {
-    bool skip = v->visit_slice(this);
-    if (skip)
-        return;
-
-    if (lower)
-        lower->accept(v);
-    if (upper)
-        upper->accept(v);
-    if (step)
-        step->accept(v);
-}
-
-void* BST_Slice::accept_slice(SliceVisitor* v) {
-    return v->visit_slice(this);
-}
-
 void BST_Str::accept(BSTVisitor* v) {
     bool skip = v->visit_str(this);
     if (skip)
@@ -609,19 +642,6 @@ void BST_Str::accept(BSTVisitor* v) {
 
 void* BST_Str::accept_expr(ExprVisitor* v) {
     return v->visit_str(this);
-}
-
-void BST_Subscript::accept(BSTVisitor* v) {
-    bool skip = v->visit_subscript(this);
-    if (skip)
-        return;
-
-    this->value->accept(v);
-    this->slice->accept(v);
-}
-
-void* BST_Subscript::accept_expr(ExprVisitor* v) {
-    return v->visit_subscript(this);
 }
 
 void BST_Tuple::accept(BSTVisitor* v) {
@@ -719,6 +739,21 @@ void BST_MakeClass::accept(BSTVisitor* v) {
 
 void BST_MakeClass::accept_stmt(StmtVisitor* v) {
     return v->visit_makeclass(this);
+}
+
+void BST_MakeSlice::accept(BSTVisitor* v) {
+    bool skip = v->visit_makeslice(this);
+    if (skip)
+        return;
+
+    v->visit_vreg(&vreg_dst, true);
+    v->visit_vreg(&vreg_lower);
+    v->visit_vreg(&vreg_upper);
+    v->visit_vreg(&vreg_step);
+}
+
+void BST_MakeSlice::accept_stmt(StmtVisitor* v) {
+    return v->visit_makeslice(this);
 }
 
 void print_bst(BST* bst) {
@@ -951,7 +986,17 @@ bool PrintVisitor::visit_deletesub(BST_DeleteSub* node) {
     stream << "del ";
     visit_vreg(&node->vreg_value);
     stream << "[";
-    node->slice->accept(this);
+    visit_vreg(&node->vreg_slice);
+    stream << "]";
+    return true;
+}
+bool PrintVisitor::visit_deletesubslice(BST_DeleteSubSlice* node) {
+    stream << "del ";
+    visit_vreg(&node->vreg_value);
+    stream << "[";
+    visit_vreg(&node->vreg_lower);
+    stream << ":";
+    visit_vreg(&node->vreg_upper);
     stream << "]";
     return true;
 }
@@ -996,15 +1041,6 @@ bool PrintVisitor::visit_exec(BST_Exec* node) {
     return true;
 }
 
-bool PrintVisitor::visit_extslice(BST_ExtSlice* node) {
-    for (int i = 0; i < node->dims.size(); ++i) {
-        if (i > 0)
-            stream << ", ";
-        node->dims[i]->accept(this);
-    }
-    return true;
-}
-
 bool PrintVisitor::visit_functiondef(BST_FunctionDef* node) {
     for (int i = 0; i < node->num_decorator; ++i) {
         stream << "@";
@@ -1043,10 +1079,6 @@ bool PrintVisitor::visit_functiondef(BST_FunctionDef* node) {
 #endif
     indent -= 4;
     return true;
-}
-
-bool PrintVisitor::visit_index(BST_Index* node) {
-    return false;
 }
 
 bool PrintVisitor::visit_invoke(BST_Invoke* node) {
@@ -1310,19 +1342,57 @@ bool PrintVisitor::visit_set(BST_Set* node) {
     return true;
 }
 
-bool PrintVisitor::visit_slice(BST_Slice* node) {
+bool PrintVisitor::visit_makeslice(BST_MakeSlice* node) {
     stream << "<slice>(";
-    if (node->lower)
-        node->lower->accept(this);
-    if (node->upper || node->step)
+    if (node->vreg_lower != VREG_UNDEFINED)
+        visit_vreg(&node->vreg_lower);
+    if (node->vreg_upper != VREG_UNDEFINED || node->vreg_step != VREG_UNDEFINED)
         stream << ':';
-    if (node->upper)
-        node->upper->accept(this);
-    if (node->step) {
+    if (node->vreg_upper != VREG_UNDEFINED)
+        visit_vreg(&node->vreg_upper);
+    if (node->vreg_step != VREG_UNDEFINED) {
         stream << ':';
-        node->step->accept(this);
+        visit_vreg(&node->vreg_step);
     }
     stream << ")";
+    return true;
+}
+
+bool PrintVisitor::visit_loadsub(BST_LoadSub* node) {
+    visit_vreg(&node->vreg_value);
+    stream << "[";
+    visit_vreg(&node->vreg_slice);
+    stream << "]";
+    return true;
+}
+
+bool PrintVisitor::visit_loadsubslice(BST_LoadSubSlice* node) {
+    visit_vreg(&node->vreg_value);
+    stream << "[";
+    // TODO improve this
+    visit_vreg(&node->vreg_lower);
+    visit_vreg(&node->vreg_upper);
+    stream << "]";
+    return true;
+}
+
+bool PrintVisitor::visit_storesub(BST_StoreSub* node) {
+    visit_vreg(&node->vreg_target);
+    stream << "[";
+    visit_vreg(&node->vreg_slice);
+    stream << "] =";
+    visit_vreg(&node->vreg_value);
+    return true;
+}
+
+bool PrintVisitor::visit_storesubslice(BST_StoreSubSlice* node) {
+    visit_vreg(&node->vreg_target);
+    stream << "[";
+    // TODO improve this
+    visit_vreg(&node->vreg_lower);
+    visit_vreg(&node->vreg_upper);
+    stream << "] =";
+    visit_vreg(&node->vreg_value);
     return true;
 }
 
@@ -1336,7 +1406,7 @@ bool PrintVisitor::visit_str(BST_Str* node) {
     }
     return false;
 }
-
+/*
 bool PrintVisitor::visit_subscript(BST_Subscript* node) {
     node->value->accept(this);
     stream << "[";
@@ -1344,7 +1414,7 @@ bool PrintVisitor::visit_subscript(BST_Subscript* node) {
     stream << "]";
     return true;
 }
-
+*/
 bool PrintVisitor::visit_tuple(BST_Tuple* node) {
     stream << "(";
     int n = node->num_elts;
@@ -1485,6 +1555,10 @@ public:
         output->push_back(node);
         return false;
     }
+    virtual bool visit_deletesubslice(BST_DeleteSubSlice* node) {
+        output->push_back(node);
+        return false;
+    }
     virtual bool visit_deleteattr(BST_DeleteAttr* node) {
         output->push_back(node);
         return false;
@@ -1505,17 +1579,9 @@ public:
         output->push_back(node);
         return false;
     }
-    virtual bool visit_extslice(BST_ExtSlice* node) {
-        output->push_back(node);
-        return false;
-    }
     virtual bool visit_functiondef(BST_FunctionDef* node) {
         output->push_back(node);
         return !expand_scopes;
-    }
-    virtual bool visit_index(BST_Index* node) {
-        output->push_back(node);
-        return false;
     }
     virtual bool visit_invoke(BST_Invoke* node) {
         output->push_back(node);
@@ -1553,15 +1619,7 @@ public:
         output->push_back(node);
         return false;
     }
-    virtual bool visit_slice(BST_Slice* node) {
-        output->push_back(node);
-        return false;
-    }
     virtual bool visit_str(BST_Str* node) {
-        output->push_back(node);
-        return false;
-    }
-    virtual bool visit_subscript(BST_Subscript* node) {
         output->push_back(node);
         return false;
     }
@@ -1599,7 +1657,10 @@ public:
         output->push_back(node);
         return false;
     }
-
+    virtual bool visit_makeslice(BST_MakeSlice* node) {
+        output->push_back(node);
+        return false;
+    }
 
     virtual bool visit_landingpad(BST_Landingpad* node) override {
         output->push_back(node);
@@ -1650,6 +1711,22 @@ public:
         return false;
     }
     virtual bool visit_printexpr(BST_PrintExpr* node) override {
+        output->push_back(node);
+        return false;
+    }
+    virtual bool visit_loadsub(BST_LoadSub* node) override {
+        output->push_back(node);
+        return false;
+    }
+    virtual bool visit_loadsubslice(BST_LoadSubSlice* node) override {
+        output->push_back(node);
+        return false;
+    }
+    virtual bool visit_storesub(BST_StoreSub* node) override {
+        output->push_back(node);
+        return false;
+    }
+    virtual bool visit_storesubslice(BST_StoreSubSlice* node) override {
         output->push_back(node);
         return false;
     }
