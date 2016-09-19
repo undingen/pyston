@@ -80,7 +80,7 @@ void BST_AssignVRegVReg::accept(BSTVisitor* v) {
     if (skip)
         return;
 
-    v->visit_vreg(&vreg_target, true);
+    v->visit_vreg(&vreg_dst, true);
     v->visit_vreg(&vreg_src);
 }
 
@@ -771,9 +771,9 @@ void PrintVisitor::printIndent() {
 extern "C" BoxedString* repr(Box* obj);
 bool PrintVisitor::visit_vreg(int* vreg, bool is_dst) {
     if (*vreg != VREG_UNDEFINED)
-        stream << "#" << *vreg;
+        stream << "@" << *vreg;
     else
-        stream << "#undef";
+        stream << "@undef";
     if (mod && *vreg < 0 && *vreg != VREG_UNDEFINED)
         stream << "(" << autoDecref(repr(mod->constants[-*vreg - 1]))->s() << ")";
 
@@ -800,8 +800,9 @@ bool PrintVisitor::visit_assign(BST_Assign* node) {
 }
 
 bool PrintVisitor::visit_assignvregvreg(BST_AssignVRegVReg* node) {
-    visit_vreg(&node->vreg_target, true);
-    stream << " = ";
+    visit_vreg(&node->vreg_dst, true);
+    if (!node->kill_src)
+        stream << "nokill ";
     visit_vreg(&node->vreg_src);
     return true;
 }
@@ -1254,7 +1255,7 @@ bool PrintVisitor::visit_list(BST_List* node) {
 
 bool PrintVisitor::visit_name(BST_Name* node) {
     stream << node->id.s();
-    stream << "(#" << node->vreg << ")";
+    stream << "(vreg" << node->vreg << ")";
 #if 0
     if (node->lookup_type == ScopeInfo::VarScopeType::UNKNOWN)
         stream << "<U>";
@@ -1382,7 +1383,7 @@ bool PrintVisitor::visit_makeslice(BST_MakeSlice* node) {
 bool PrintVisitor::visit_loadsub(BST_LoadSub* node) {
     visit_vreg(&node->vreg_dst, true);
     visit_vreg(&node->vreg_value);
-    stream << "[";
+    stream << "<sub[";
     visit_vreg(&node->vreg_slice);
     stream << "]";
     return true;
@@ -1391,7 +1392,7 @@ bool PrintVisitor::visit_loadsub(BST_LoadSub* node) {
 bool PrintVisitor::visit_loadsubslice(BST_LoadSubSlice* node) {
     visit_vreg(&node->vreg_dst, true);
     visit_vreg(&node->vreg_value);
-    stream << "[";
+    stream << "<subslice[[";
     // TODO improve this
     visit_vreg(&node->vreg_lower);
     visit_vreg(&node->vreg_upper);
@@ -1401,7 +1402,7 @@ bool PrintVisitor::visit_loadsubslice(BST_LoadSubSlice* node) {
 
 bool PrintVisitor::visit_storesub(BST_StoreSub* node) {
     visit_vreg(&node->vreg_target);
-    stream << "[";
+    stream << "<sub[";
     visit_vreg(&node->vreg_slice);
     stream << "] =";
     visit_vreg(&node->vreg_value);
@@ -1410,7 +1411,7 @@ bool PrintVisitor::visit_storesub(BST_StoreSub* node) {
 
 bool PrintVisitor::visit_storesubslice(BST_StoreSubSlice* node) {
     visit_vreg(&node->vreg_target);
-    stream << "[";
+    stream << "<subslice[";
     // TODO improve this
     visit_vreg(&node->vreg_lower);
     visit_vreg(&node->vreg_upper);

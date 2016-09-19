@@ -593,7 +593,7 @@ private:
 
     void visit_assignvregvreg(BST_AssignVRegVReg* node) override {
         CompilerType* t = getType(node->vreg_src);
-        _doSet(node->vreg_target, t);
+        _doSet(node->vreg_dst, t);
     }
 
     void visit_branch(BST_Branch* node) override {

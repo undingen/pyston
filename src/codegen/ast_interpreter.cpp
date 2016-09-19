@@ -1555,7 +1555,7 @@ Value ASTInterpreter::visit_assign(BST_Assign* node) {
 
 Value ASTInterpreter::visit_assignvregvreg(BST_AssignVRegVReg* node) {
     Value v = getVReg(node->vreg_src, node->kill_src);
-    doStore(node->vreg_target, v);
+    doStore(node->vreg_dst, v);
     return Value();
 }
 

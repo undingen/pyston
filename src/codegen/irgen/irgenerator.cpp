@@ -2061,7 +2061,7 @@ private:
     void doAssign(BST_AssignVRegVReg* node, const UnwindInfo& unw_info) {
         CompilerVariable* val = evalVReg(node->vreg_src, node->kill_src);
 
-        _doSet(node->vreg_target, val, unw_info);
+        _doSet(node->vreg_dst, val, unw_info);
     }
 
     // invoke delitem in objmodel.cpp, which will invoke the listDelitem of list

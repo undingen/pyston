@@ -413,7 +413,7 @@ public:
     }
 
     virtual bool visit_assignvregvreg(BST_AssignVRegVReg* node) {
-        _doSet(node->vreg_target);
+        _doSet(node->vreg_dst);
         return true;
     }
     virtual bool visit_loadsub(BST_LoadSub* node) {

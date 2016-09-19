@@ -260,16 +260,22 @@ public:
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Assign;
 };
 
-class BST_AssignVRegVReg : public BST_stmt {
+class BST_ass : public BST_stmt {
 public:
-    int vreg_target = VREG_UNDEFINED;
+    int vreg_dst = VREG_UNDEFINED;
+    BST_ass(BST_TYPE::BST_TYPE type) : BST_stmt(type) {}
+    BST_ass(BST_TYPE::BST_TYPE type, int lineno) : BST_stmt(type, lineno) {}
+};
+
+class BST_AssignVRegVReg : public BST_ass {
+public:
     int vreg_src = VREG_UNDEFINED;
     bool kill_src = false;
 
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
 
-    BST_AssignVRegVReg() : BST_stmt(BST_TYPE::AssignVRegVReg) {}
+    BST_AssignVRegVReg() : BST_ass(BST_TYPE::AssignVRegVReg) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::AssignVRegVReg;
 };
@@ -304,12 +310,7 @@ public:
 };
 */
 
-class BST_ass : public BST_stmt {
-public:
-    int vreg_dst = VREG_UNDEFINED;
-    BST_ass(BST_TYPE::BST_TYPE type) : BST_stmt(type) {}
-    BST_ass(BST_TYPE::BST_TYPE type, int lineno) : BST_stmt(type, lineno) {}
-};
+
 
 class BST_StoreSub : public BST_stmt {
 public:

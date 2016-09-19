@@ -903,14 +903,14 @@ private:
                 assign->lineno = val->lineno;
                 assign->kill_src = bst_cast<BST_Name>(val)->is_kill;
                 unmapExprDst(val, &assign->vreg_src); // we don't need a kill so use unmapExprDst
-                unmapDst(id, &assign->vreg_target);
+                unmapDst(id, &assign->vreg_dst);
                 push_back(assign);
                 return;
             } else if (val->type == BST_TYPE::Num || val->type == BST_TYPE::Str) {
                 BST_AssignVRegVReg* assign = new BST_AssignVRegVReg;
                 assign->lineno = val->lineno;
                 unmapExpr(val, &assign->vreg_src);
-                unmapDst(id, &assign->vreg_target);
+                unmapDst(id, &assign->vreg_dst);
                 push_back(assign);
                 return;
             }
@@ -939,13 +939,13 @@ private:
             assign->lineno = expr->lineno;
             assign->kill_src = bst_cast<BST_Name>(expr)->is_kill;
             unmapExprDst(expr, &assign->vreg_src); // we don't need a kill so use unmapExprDst
-            unmapDst(id, &assign->vreg_target);
+            unmapDst(id, &assign->vreg_dst);
             return assign;
         } else if (expr->type == BST_TYPE::Num || expr->type == BST_TYPE::Str) {
             BST_AssignVRegVReg* assign = new BST_AssignVRegVReg;
             assign->lineno = expr->lineno;
             unmapExpr(expr, &assign->vreg_src);
-            unmapDst(id, &assign->vreg_target);
+            unmapDst(id, &assign->vreg_dst);
             return assign;
         }
         BST_Assign* stmt = new BST_Assign();
@@ -998,9 +998,7 @@ private:
         // assertAssumption(node);
 
         if (node->type == BST_TYPE::Name) {
-            BST_Name* name = (BST_Name*)node;
-            if (!name->is_kill)
-                name = (BST_Name*)_dup2(name);
+            BST_Name* name = (BST_Name*)_assureKilled(node);
             assert(name->is_kill && name->lookup_type == ScopeInfo::VarScopeType::FAST
                    && name->id.isCompilerCreatedName());
             assert(!name_vreg.count(vreg));
@@ -1374,9 +1372,9 @@ private:
         for (int i = 0; i < node->keys.size(); i++) {
             BST_StoreSub* store = new BST_StoreSub;
             store->lineno = node->values[i]->lineno;
-            unmapExpr(remapExpr(node->keys[i]), &store->vreg_slice);
-            unmapExpr(makeLoad(dict_name, node, false), &store->vreg_target);
             unmapExpr(remapExpr(node->values[i]), &store->vreg_value);
+            unmapExpr(makeLoad(dict_name, node, false), &store->vreg_target);
+            unmapExpr(remapExpr(node->keys[i]), &store->vreg_slice);
             push_back(store);
         }
 
@@ -2328,10 +2326,12 @@ public:
                 AST_Subscript* s = ast_cast<AST_Subscript>(node->target);
                 assert(s->ctx_type == AST_TYPE::Store);
 
+                auto* value_remapped = remapExpr(s->value);
+
                 if (isSlice(s->slice)) {
                     auto* slice = ast_cast<AST_Slice>(s->slice);
                     BST_LoadSubSlice* s_lhs = new BST_LoadSubSlice();
-                    unmapExpr(remapExpr(s->value), &s_lhs->vreg_value);
+                    unmapExpr(_dup2(value_remapped), &s_lhs->vreg_value);
                     unmapExpr(remapExpr(slice->lower), &s_lhs->vreg_lower);
                     unmapExpr(remapExpr(slice->upper), &s_lhs->vreg_upper);
                     s_lhs->lineno = s->lineno;
@@ -2351,16 +2351,13 @@ public:
                     BST_StoreSubSlice* s_target = new BST_StoreSubSlice();
                     s_target->lineno = s->lineno;
                     unmapExpr(makeLoad(node_name, s->lineno, true), &s_target->vreg_value);
-                    // unmapExprFromUnmapped(&s_lhs->vreg_value, &s_target->vreg_target);
-                    // unmapExprFromUnmapped(&s_lhs->vreg_lower, &s_target->vreg_lower);
-                    // unmapExprFromUnmapped(&s_lhs->vreg_upper, &s_target->vreg_upper);
-                    unmapExpr(remapExpr(s->value), &s_target->vreg_target);
-                    unmapExpr(remapExpr(slice->lower), &s_target->vreg_lower);
-                    unmapExpr(remapExpr(slice->upper), &s_target->vreg_upper);
+                    unmapExprFromUnmapped(&s_lhs->vreg_value, &s_target->vreg_target);
+                    unmapExprFromUnmapped(&s_lhs->vreg_lower, &s_target->vreg_lower);
+                    unmapExprFromUnmapped(&s_lhs->vreg_upper, &s_target->vreg_upper);
                     push_back(s_target);
                 } else {
                     BST_LoadSub* s_lhs = new BST_LoadSub();
-                    unmapExpr(remapExpr(s->value), &s_lhs->vreg_value);
+                    unmapExpr(_dup2(value_remapped) /* we have to duplicate*/, &s_lhs->vreg_value);
                     remapSlice(s->slice, &s_lhs->vreg_slice);
                     s_lhs->lineno = s->lineno;
                     InternedString name_lhs = nodeName();
@@ -2379,10 +2376,8 @@ public:
                     BST_StoreSub* s_target = new BST_StoreSub();
                     s_target->lineno = s->lineno;
                     unmapExpr(makeLoad(node_name, s->lineno, true), &s_target->vreg_value);
-                    // unmapExprFromUnmapped(&s_lhs->vreg_value, &s_target->vreg_target);
-                    // unmapExprFromUnmapped(&s_lhs->vreg_slice, &s_target->vreg_slice);
-                    unmapExpr(remapExpr(s->value), &s_target->vreg_target);
-                    remapSlice(s->slice, &s_target->vreg_slice);
+                    unmapExpr(value_remapped, &s_target->vreg_target);
+                    unmapExprFromUnmapped(&s_lhs->vreg_slice, &s_target->vreg_slice);
                     push_back(s_target);
                 }
 
