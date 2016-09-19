@@ -1239,6 +1239,9 @@ Value ASTInterpreter::visit_stmt(BST_stmt* node) {
                 case BST_TYPE::LoadSubSlice:
                     v = visit_loadsubslice((BST_LoadSubSlice*)node);
                     break;
+                case BST_TYPE::MakeSlice:
+                    v = visit_makeslice((BST_MakeSlice*)node);
+                    break;
                 default:
                     RELEASE_ASSERT(0, "not implemented");
             };

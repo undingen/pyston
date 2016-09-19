@@ -1279,6 +1279,8 @@ private:
                 llvm::Value* rtn = embedRelocatablePtr(o, g.llvm_value_type_ptr);
                 emitter.setType(rtn, RefType::BORROWED);
                 return new ConcreteCompilerVariable(typeFromClass(unicode_cls), rtn);
+            } else if (o->cls == none_cls) {
+                return emitter.getNone();
             } else {
                 RELEASE_ASSERT(0, "");
             }
@@ -1484,8 +1486,8 @@ private:
     }
     CompilerVariable* evalLoadSubSlice(BST_LoadSubSlice* node, const UnwindInfo& unw_info) {
         CompilerVariable* value = evalVReg(node->vreg_value);
-        CompilerVariable* lower = evalVReg(node->vreg_lower);
-        CompilerVariable* upper = evalVReg(node->vreg_upper);
+        CompilerVariable* lower = node->vreg_lower != VREG_UNDEFINED ? evalVReg(node->vreg_lower) : NULL;
+        CompilerVariable* upper = node->vreg_upper != VREG_UNDEFINED ? evalVReg(node->vreg_upper) : NULL;
         CompilerVariable* slice = makeSlice(lower, upper, NULL);
         CompilerVariable* rtn = value->getitem(emitter, getOpInfoForNode(node, unw_info), slice);
         return rtn;
@@ -1975,8 +1977,8 @@ private:
         CompilerVariable* val = evalVReg(target->vreg_value);
         CompilerVariable* tget = evalVReg(target->vreg_target);
 
-        CompilerVariable* lower = evalVReg(target->vreg_lower);
-        CompilerVariable* upper = evalVReg(target->vreg_upper);
+        CompilerVariable* lower = target->vreg_lower != VREG_UNDEFINED ? evalVReg(target->vreg_lower) : NULL;
+        CompilerVariable* upper = target->vreg_upper != VREG_UNDEFINED ? evalVReg(target->vreg_upper) : NULL;
         CompilerVariable* slice = makeSlice(lower, upper, NULL);
         ConcreteCompilerVariable* converted_target = tget->makeConverted(emitter, tget->getBoxType());
         ConcreteCompilerVariable* converted_val = val->makeConverted(emitter, val->getBoxType());
@@ -2087,8 +2089,8 @@ private:
     }
     void doDeleteSubSlice(BST_DeleteSubSlice* target, const UnwindInfo& unw_info) {
         CompilerVariable* tget = evalVReg(target->vreg_value);
-        CompilerVariable* lower = evalVReg(target->vreg_lower);
-        CompilerVariable* upper = evalVReg(target->vreg_upper);
+        CompilerVariable* lower = target->vreg_lower != VREG_UNDEFINED ? evalVReg(target->vreg_lower) : NULL;
+        CompilerVariable* upper = target->vreg_upper != VREG_UNDEFINED ? evalVReg(target->vreg_upper) : NULL;
         CompilerVariable* slice = makeSlice(lower, upper, NULL);
 
         ConcreteCompilerVariable* converted_target = tget->makeConverted(emitter, tget->getBoxType());

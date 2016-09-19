@@ -777,6 +777,9 @@ bool PrintVisitor::visit_vreg(int* vreg, bool is_dst) {
     if (mod && *vreg < 0 && *vreg != VREG_UNDEFINED)
         stream << "(" << autoDecref(repr(mod->constants[-*vreg - 1]))->s() << ")";
 
+    if (is_dst)
+        stream << " =";
+
     return true;
 }
 
@@ -845,6 +848,7 @@ void PrintVisitor::printOp(AST_TYPE::AST_TYPE op_type) {
 }
 
 bool PrintVisitor::visit_augbinop(BST_AugBinOp* node) {
+    visit_vreg(&node->vreg_dst, true);
     visit_vreg(&node->vreg_left);
     stream << '=';
     printOp(node->op_type);
@@ -860,6 +864,7 @@ bool PrintVisitor::visit_attribute(BST_Attribute* node) {
 }
 
 bool PrintVisitor::visit_binop(BST_BinOp* node) {
+    visit_vreg(&node->vreg_dst, true);
     visit_vreg(&node->vreg_left);
     printOp(node->op_type);
     visit_vreg(&node->vreg_right);
@@ -867,6 +872,7 @@ bool PrintVisitor::visit_binop(BST_BinOp* node) {
 }
 
 bool PrintVisitor::visit_callfunc(BST_CallFunc* node) {
+    visit_vreg(&node->vreg_dst, true);
     visit_vreg(&node->vreg_func);
     stream << "(";
 
@@ -894,7 +900,7 @@ bool PrintVisitor::visit_callfunc(BST_CallFunc* node) {
 }
 
 bool PrintVisitor::visit_callattr(BST_CallAttr* node) {
-    // node->func->accept(this);
+    visit_vreg(&node->vreg_dst, true);
     stream << "(";
 
     bool prevarg = false;
@@ -921,7 +927,7 @@ bool PrintVisitor::visit_callattr(BST_CallAttr* node) {
 }
 
 bool PrintVisitor::visit_callclsattr(BST_CallClsAttr* node) {
-    // node->func->accept(this);
+    visit_vreg(&node->vreg_dst, true);
     stream << "(";
 
     bool prevarg = false;
@@ -948,6 +954,7 @@ bool PrintVisitor::visit_callclsattr(BST_CallClsAttr* node) {
 }
 
 bool PrintVisitor::visit_compare(BST_Compare* node) {
+    visit_vreg(&node->vreg_dst, true);
     visit_vreg(&node->vreg_left);
     stream << " " << getOpSymbol(node->op) << " ";
     visit_vreg(&node->vreg_comparator);
@@ -1015,11 +1022,13 @@ bool PrintVisitor::visit_deletename(BST_DeleteName* node) {
 }
 
 bool PrintVisitor::visit_dict(BST_Dict* node) {
+    visit_vreg(&node->vreg_dst, true);
     stream << "{}";
     return true;
 }
 
-bool PrintVisitor::visit_ellipsis(BST_Ellipsis*) {
+bool PrintVisitor::visit_ellipsis(BST_Ellipsis* node) {
+    visit_vreg(&node->vreg_dst, true);
     stream << "...";
     return true;
 }
@@ -1147,16 +1156,19 @@ bool PrintVisitor::visit_landingpad(BST_Landingpad* node) {
     return true;
 }
 bool PrintVisitor::visit_locals(BST_Locals* node) {
+    visit_vreg(&node->vreg_dst, true);
     stream << ":LOCALS()";
     return true;
 }
 bool PrintVisitor::visit_getiter(BST_GetIter* node) {
+    visit_vreg(&node->vreg_dst, true);
     stream << ":GET_ITER(";
     visit_vreg(&node->vreg_value);
     stream << ")";
     return true;
 }
 bool PrintVisitor::visit_importfrom(BST_ImportFrom* node) {
+    visit_vreg(&node->vreg_dst, true);
     stream << ":IMPORT_FROM(";
     visit_vreg(&node->vreg_module);
     stream << ", ";
@@ -1165,6 +1177,7 @@ bool PrintVisitor::visit_importfrom(BST_ImportFrom* node) {
     return true;
 }
 bool PrintVisitor::visit_importname(BST_ImportName* node) {
+    visit_vreg(&node->vreg_dst, true);
     stream << ":IMPORT_NAME(";
     visit_vreg(&node->vreg_from);
     stream << ", ";
@@ -1173,6 +1186,7 @@ bool PrintVisitor::visit_importname(BST_ImportName* node) {
     return true;
 }
 bool PrintVisitor::visit_importstar(BST_ImportStar* node) {
+    visit_vreg(&node->vreg_dst, true);
     stream << ":IMPORT_STAR(";
     visit_vreg(&node->vreg_name);
     stream << ")";
@@ -1183,12 +1197,14 @@ bool PrintVisitor::visit_none(BST_None* node) {
     return true;
 }
 bool PrintVisitor::visit_nonzero(BST_Nonzero* node) {
+    visit_vreg(&node->vreg_dst, true);
     stream << ":NONZERO(";
     visit_vreg(&node->vreg_value);
     stream << ")";
     return true;
 }
 bool PrintVisitor::visit_checkexcmatch(BST_CheckExcMatch* node) {
+    visit_vreg(&node->vreg_dst, true);
     stream << ":CHECK_EXC_MATCH(";
     visit_vreg(&node->vreg_value);
     stream << ", ";
@@ -1211,6 +1227,7 @@ bool PrintVisitor::visit_uncacheexcinfo(BST_UncacheExcInfo* node) {
     return true;
 }
 bool PrintVisitor::visit_hasnext(BST_HasNext* node) {
+    visit_vreg(&node->vreg_dst, true);
     stream << ":HAS_NEXT(";
     visit_vreg(&node->vreg_value);
     stream << ")";
@@ -1224,6 +1241,7 @@ bool PrintVisitor::visit_printexpr(BST_PrintExpr* node) {
 }
 
 bool PrintVisitor::visit_list(BST_List* node) {
+    visit_vreg(&node->vreg_dst, true);
     stream << "[";
     for (int i = 0, n = node->num_elts; i < n; ++i) {
         if (i > 0)
@@ -1307,6 +1325,7 @@ bool PrintVisitor::visit_raise(BST_Raise* node) {
 }
 
 bool PrintVisitor::visit_repr(BST_Repr* node) {
+    visit_vreg(&node->vreg_dst, true);
     stream << "`";
     visit_vreg(&node->vreg_value);
     stream << "`";
@@ -1321,6 +1340,7 @@ bool PrintVisitor::visit_return(BST_Return* node) {
 }
 
 bool PrintVisitor::visit_set(BST_Set* node) {
+    visit_vreg(&node->vreg_dst, true);
     // An empty set literal is not writeable in Python (it's a dictionary),
     // but we sometimes generate it (ex in set comprehension lowering).
     // Just to make it clear when printing, print empty set literals as "SET{}".
@@ -1343,6 +1363,7 @@ bool PrintVisitor::visit_set(BST_Set* node) {
 }
 
 bool PrintVisitor::visit_makeslice(BST_MakeSlice* node) {
+    visit_vreg(&node->vreg_dst, true);
     stream << "<slice>(";
     if (node->vreg_lower != VREG_UNDEFINED)
         visit_vreg(&node->vreg_lower);
@@ -1359,6 +1380,7 @@ bool PrintVisitor::visit_makeslice(BST_MakeSlice* node) {
 }
 
 bool PrintVisitor::visit_loadsub(BST_LoadSub* node) {
+    visit_vreg(&node->vreg_dst, true);
     visit_vreg(&node->vreg_value);
     stream << "[";
     visit_vreg(&node->vreg_slice);
@@ -1367,6 +1389,7 @@ bool PrintVisitor::visit_loadsub(BST_LoadSub* node) {
 }
 
 bool PrintVisitor::visit_loadsubslice(BST_LoadSubSlice* node) {
+    visit_vreg(&node->vreg_dst, true);
     visit_vreg(&node->vreg_value);
     stream << "[";
     // TODO improve this
@@ -1430,6 +1453,7 @@ bool PrintVisitor::visit_tuple(BST_Tuple* node) {
 }
 
 bool PrintVisitor::visit_unaryop(BST_UnaryOp* node) {
+    visit_vreg(&node->vreg_dst, true);
     switch (node->op_type) {
         case BST_TYPE::Invert:
             stream << "~";
@@ -1455,6 +1479,7 @@ bool PrintVisitor::visit_unaryop(BST_UnaryOp* node) {
 }
 
 bool PrintVisitor::visit_yield(BST_Yield* node) {
+    visit_vreg(&node->vreg_dst, true);
     stream << "yield ";
     if (node->vreg_value != VREG_UNDEFINED)
         visit_vreg(&node->vreg_value);
@@ -1483,11 +1508,13 @@ bool PrintVisitor::visit_clsattribute(BST_ClsAttribute* node) {
 }
 
 bool PrintVisitor::visit_makefunction(BST_MakeFunction* node) {
+    visit_vreg(&node->vreg_dst, true);
     stream << "make_";
     return false;
 }
 
 bool PrintVisitor::visit_makeclass(BST_MakeClass* node) {
+    visit_vreg(&node->vreg_dst, true);
     stream << "make_";
     return false;
 }

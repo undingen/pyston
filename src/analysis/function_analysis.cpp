@@ -303,6 +303,7 @@ public:
 
     virtual bool visit_deleteattr(BST_DeleteAttr* node) { return true; }
     virtual bool visit_deletesub(BST_DeleteSub* node) { return true; }
+    virtual bool visit_deletesubslice(BST_DeleteSubSlice* node) { return true; }
 
     virtual bool visit_binop(BST_BinOp* node) {
         _doSet(node->vreg_dst);
@@ -386,6 +387,10 @@ public:
         return true;
     }
     virtual bool visit_makefunction(BST_MakeFunction* node) {
+        _doSet(node->vreg_dst);
+        return true;
+    }
+    virtual bool visit_makeslice(BST_MakeSlice* node) {
         _doSet(node->vreg_dst);
         return true;
     }

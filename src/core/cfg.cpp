@@ -1399,7 +1399,7 @@ private:
         for (int i = 0; i < node->dims.size(); ++i) {
             remapSlice(node->dims[i], &rtn->elts[i]);
         }
-        return rtn;
+        return wrap(rtn);
     }
 
     // This is a helper function used for generator expressions and comprehensions.
@@ -1657,6 +1657,7 @@ private:
 
         InternedString name = nodeName();
         unmapDst(name, &rtn->vreg_dst);
+        push_back(rtn);
         return makeLoad(name, node->lineno, true);
     }
 

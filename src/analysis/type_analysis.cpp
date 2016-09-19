@@ -619,7 +619,7 @@ private:
     }
 
     void visit_deletesub(BST_DeleteSub* node) { getType(node->vreg_value); }
-    void visit_deletesub(BST_DeleteSubSlice* node) { getType(node->vreg_value); }
+    void visit_deletesubslice(BST_DeleteSubSlice* node) { getType(node->vreg_value); }
     void visit_deleteattr(BST_DeleteAttr* node) { getType(node->vreg_value); }
     void visit_deletename(BST_DeleteName* node) {
         assert(node->lookup_type != ScopeInfo::VarScopeType::UNKNOWN);
