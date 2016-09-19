@@ -1682,45 +1682,43 @@ Value ASTInterpreter::visit_call(BST_Call* node) {
 
     bool is_callattr = false;
     bool callattr_clsonly = false;
+    int* vreg_elts = NULL;
     if (node->type == BST_TYPE::CallAttr) {
         is_callattr = true;
         callattr_clsonly = false;
         auto* attr_ast = bst_cast<BST_CallAttr>(node);
         func = getVReg(attr_ast->vreg_value);
         attr = attr_ast->attr;
+        vreg_elts = bst_cast<BST_CallAttr>(node)->elts;
     } else if (node->type == BST_TYPE::CallClsAttr) {
         is_callattr = true;
         callattr_clsonly = true;
         auto* attr_ast = bst_cast<BST_CallClsAttr>(node);
         func = getVReg(attr_ast->vreg_value);
         attr = attr_ast->attr;
+        vreg_elts = bst_cast<BST_CallClsAttr>(node)->elts;
     } else {
         auto* attr_ast = bst_cast<BST_CallFunc>(node);
         func = getVReg(attr_ast->vreg_func);
+        vreg_elts = bst_cast<BST_CallFunc>(node)->elts;
     }
 
     AUTO_DECREF(func.o);
 
     llvm::SmallVector<Box*, 8> args;
     llvm::SmallVector<RewriterVar*, 8> args_vars;
-    args.reserve(node->args.size());
-    args_vars.reserve(node->args.size());
+    args.reserve(node->num_args + node->num_keywords);
+    args_vars.reserve(node->num_args + node->num_keywords);
 
-    for (BST_expr* e : node->args) {
-        Value v = visit_expr(e);
+    for (int i = 0; i < node->num_args + node->num_keywords; ++i) {
+        Value v = getVReg(vreg_elts[i]);
         args.push_back(v.o);
         args_vars.push_back(v);
     }
 
     std::vector<BoxedString*>* keyword_names = NULL;
-    if (node->keywords.size())
-        keyword_names = getKeywordNameStorage(node);
-
-    for (BST_keyword* k : node->keywords) {
-        Value v = visit_expr(k->value);
-        args.push_back(v.o);
-        args_vars.push_back(v);
-    }
+    if (node->num_keywords)
+        keyword_names = node->keywords_names.get();
 
     if (node->vreg_starargs != VREG_UNDEFINED) {
         Value v = getVReg(node->vreg_starargs);
@@ -1736,7 +1734,7 @@ Value ASTInterpreter::visit_call(BST_Call* node) {
 
     AUTO_DECREF_ARRAY(args.data(), args.size());
 
-    ArgPassSpec argspec(node->args.size(), node->keywords.size(), node->vreg_starargs != VREG_UNDEFINED,
+    ArgPassSpec argspec(node->num_args, node->num_keywords, node->vreg_starargs != VREG_UNDEFINED,
                         node->vreg_kwargs != VREG_UNDEFINED);
 
     if (is_callattr) {

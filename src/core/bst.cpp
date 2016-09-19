@@ -135,8 +135,9 @@ void BST_CallFunc::accept(BSTVisitor* v) {
 
     v->visit_vreg(&vreg_dst, true);
     v->visit_vreg(&vreg_func);
-    visitVector(args, v);
-    visitVector(keywords, v);
+    for (int i = 0; i < num_args + num_keywords; ++i) {
+        v->visit_vreg(&elts[i]);
+    }
     v->visit_vreg(&vreg_starargs);
     v->visit_vreg(&vreg_kwargs);
 }
@@ -152,8 +153,9 @@ void BST_CallAttr::accept(BSTVisitor* v) {
 
     v->visit_vreg(&vreg_dst, true);
     v->visit_vreg(&vreg_value);
-    visitVector(args, v);
-    visitVector(keywords, v);
+    for (int i = 0; i < num_args + num_keywords; ++i) {
+        v->visit_vreg(&elts[i]);
+    }
     v->visit_vreg(&vreg_starargs);
     v->visit_vreg(&vreg_kwargs);
 }
@@ -169,8 +171,9 @@ void BST_CallClsAttr::accept(BSTVisitor* v) {
 
     v->visit_vreg(&vreg_dst, true);
     v->visit_vreg(&vreg_value);
-    visitVector(args, v);
-    visitVector(keywords, v);
+    for (int i = 0; i < num_args + num_keywords; ++i) {
+        v->visit_vreg(&elts[i]);
+    }
     v->visit_vreg(&vreg_starargs);
     v->visit_vreg(&vreg_kwargs);
 }
@@ -329,14 +332,6 @@ void BST_Invoke::accept(BSTVisitor* v) {
 
 void BST_Invoke::accept_stmt(StmtVisitor* v) {
     return v->visit_invoke(this);
-}
-
-void BST_keyword::accept(BSTVisitor* v) {
-    bool skip = v->visit_keyword(this);
-    if (skip)
-        return;
-
-    value->accept(v);
 }
 
 void BST_Landingpad::accept(BSTVisitor* v) {
@@ -841,16 +836,10 @@ bool PrintVisitor::visit_callfunc(BST_CallFunc* node) {
     stream << "(";
 
     bool prevarg = false;
-    for (int i = 0; i < node->args.size(); i++) {
+    for (int i = 0; i < node->num_args + node->num_keywords; ++i) {
         if (prevarg)
             stream << ", ";
-        node->args[i]->accept(this);
-        prevarg = true;
-    }
-    for (int i = 0; i < node->keywords.size(); i++) {
-        if (prevarg)
-            stream << ", ";
-        node->keywords[i]->accept(this);
+        visit_vreg(&node->elts[i]);
         prevarg = true;
     }
     if (node->vreg_starargs != VREG_UNDEFINED) {
@@ -874,16 +863,10 @@ bool PrintVisitor::visit_callattr(BST_CallAttr* node) {
     stream << "(";
 
     bool prevarg = false;
-    for (int i = 0; i < node->args.size(); i++) {
+    for (int i = 0; i < node->num_args + node->num_keywords; ++i) {
         if (prevarg)
             stream << ", ";
-        node->args[i]->accept(this);
-        prevarg = true;
-    }
-    for (int i = 0; i < node->keywords.size(); i++) {
-        if (prevarg)
-            stream << ", ";
-        node->keywords[i]->accept(this);
+        visit_vreg(&node->elts[i]);
         prevarg = true;
     }
     if (node->vreg_starargs != VREG_UNDEFINED) {
@@ -907,16 +890,10 @@ bool PrintVisitor::visit_callclsattr(BST_CallClsAttr* node) {
     stream << "(";
 
     bool prevarg = false;
-    for (int i = 0; i < node->args.size(); i++) {
+    for (int i = 0; i < node->num_args + node->num_keywords; ++i) {
         if (prevarg)
             stream << ", ";
-        node->args[i]->accept(this);
-        prevarg = true;
-    }
-    for (int i = 0; i < node->keywords.size(); i++) {
-        if (prevarg)
-            stream << ", ";
-        node->keywords[i]->accept(this);
+        visit_vreg(&node->elts[i]);
         prevarg = true;
     }
     if (node->vreg_starargs != VREG_UNDEFINED) {
@@ -1222,12 +1199,6 @@ bool PrintVisitor::visit_list(BST_List* node) {
         visit_vreg(&node->elts[i]);
     }
     stream << "]";
-    return true;
-}
-
-bool PrintVisitor::visit_keyword(BST_keyword* node) {
-    stream << node->arg.s() << "=";
-    node->value->accept(this);
     return true;
 }
 
@@ -1547,10 +1518,6 @@ public:
         return false;
     }
     virtual bool visit_invoke(BST_Invoke* node) {
-        output->push_back(node);
-        return false;
-    }
-    virtual bool visit_keyword(BST_keyword* node) {
         output->push_back(node);
         return false;
     }

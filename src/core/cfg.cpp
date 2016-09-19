@@ -763,24 +763,32 @@ private:
     BST_expr* makeCall(BST_expr* func, llvm::ArrayRef<BST_expr*> args = {}) {
         BST_Call* rtn = NULL;
         if (func->type == BST_TYPE::Attribute) {
-            BST_CallAttr* call = new BST_CallAttr();
+            BST_CallAttr* call = BST_CallAttr::create(args.size(), 0 /* num keywords */);
             call->attr = bst_cast<BST_Attribute>(func)->attr;
             unmapExpr(bst_cast<BST_Attribute>(func)->value, &call->vreg_value);
+            for (int i = 0; i < args.size(); ++i) {
+                unmapExpr(args[i], &call->elts[i]);
+            }
             rtn = call;
         } else if (func->type == BST_TYPE::ClsAttribute) {
-            BST_CallClsAttr* call = new BST_CallClsAttr();
+            BST_CallClsAttr* call = BST_CallClsAttr::create(args.size(), 0 /* num keywords */);
             call->attr = bst_cast<BST_ClsAttribute>(func)->attr;
             unmapExpr(bst_cast<BST_ClsAttribute>(func)->value, &call->vreg_value);
+            for (int i = 0; i < args.size(); ++i) {
+                unmapExpr(args[i], &call->elts[i]);
+            }
             rtn = call;
         } else if (func->type == BST_TYPE::Name) {
-            BST_CallFunc* call = new BST_CallFunc();
+            BST_CallFunc* call = BST_CallFunc::create(args.size(), 0 /* num keywords */);
             unmapExpr(func, &call->vreg_func);
+            for (int i = 0; i < args.size(); ++i) {
+                unmapExpr(args[i], &call->elts[i]);
+            }
             rtn = call;
         } else {
             RELEASE_ASSERT(0, "");
         }
         rtn->lineno = func->lineno;
-        rtn->args = args;
         InternedString name = nodeName();
         unmapDst(name, &rtn->vreg_dst);
         push_back(rtn);
@@ -1258,33 +1266,50 @@ private:
     std::pair<BST_Call*, InternedString> remapCall(AST_Call* node) {
         BST_Call* rtn_shared = NULL;
         if (node->func->type == AST_TYPE::Attribute) {
-            BST_CallAttr* rtn = new BST_CallAttr();
+            BST_CallAttr* rtn = BST_CallAttr::create(node->args.size(), node->keywords.size());
             auto func = remapAttribute(ast_cast<AST_Attribute>(node->func));
             rtn->attr = func->attr;
             unmapExpr(func->value, &rtn->vreg_value);
+            for (int i = 0; i < node->args.size(); ++i) {
+                unmapExpr(remapExpr(node->args[i]), &rtn->elts[i]);
+            }
+            for (int i = 0; i < node->keywords.size(); ++i) {
+                unmapExpr(remapExpr(node->keywords[i]->value), &rtn->elts[node->args.size() + i]);
+            }
             rtn_shared = rtn;
         } else if (node->func->type == AST_TYPE::ClsAttribute) {
-            BST_CallClsAttr* rtn = new BST_CallClsAttr();
+            BST_CallClsAttr* rtn = BST_CallClsAttr::create(node->args.size(), node->keywords.size());
             auto func = remapClsAttribute(ast_cast<AST_ClsAttribute>(node->func));
             rtn->attr = func->attr;
             unmapExpr(func->value, &rtn->vreg_value);
+            for (int i = 0; i < node->args.size(); ++i) {
+                unmapExpr(remapExpr(node->args[i]), &rtn->elts[i]);
+            }
+            for (int i = 0; i < node->keywords.size(); ++i) {
+                unmapExpr(remapExpr(node->keywords[i]->value), &rtn->elts[node->args.size() + i]);
+            }
             rtn_shared = rtn;
         } else {
-            BST_CallFunc* rtn = new BST_CallFunc();
+            BST_CallFunc* rtn = BST_CallFunc::create(node->args.size(), node->keywords.size());
             unmapExpr(remapExpr(node->func), &rtn->vreg_func);
+            for (int i = 0; i < node->args.size(); ++i) {
+                unmapExpr(remapExpr(node->args[i]), &rtn->elts[i]);
+            }
+            for (int i = 0; i < node->keywords.size(); ++i) {
+                unmapExpr(remapExpr(node->keywords[i]->value), &rtn->elts[node->args.size() + i]);
+            }
             rtn_shared = rtn;
         }
 
         rtn_shared->lineno = node->lineno;
-        for (auto e : node->args) {
-            rtn_shared->args.push_back(remapExpr(e));
+
+        if (node->keywords.size()) {
+            rtn_shared->keywords_names = llvm::make_unique<std::vector<BoxedString*>>();
+            for (auto kw : node->keywords) {
+                rtn_shared->keywords_names->push_back(kw->arg.getBox());
+            }
         }
-        for (auto e : node->keywords) {
-            BST_keyword* kw = new BST_keyword();
-            kw->value = remapExpr(e->value);
-            kw->arg = e->arg;
-            rtn_shared->keywords.push_back(kw);
-        }
+
         unmapExpr(remapExpr(node->starargs), &rtn_shared->vreg_starargs);
         unmapExpr(remapExpr(node->kwargs), &rtn_shared->vreg_kwargs);
         InternedString name = nodeName();

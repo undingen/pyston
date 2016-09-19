@@ -757,17 +757,6 @@ IREmitter* createIREmitter(IRGenState* irstate, llvm::BasicBlock*& curblock, IRG
     return new IREmitterImpl(irstate, curblock, irgenerator);
 }
 
-std::vector<BoxedString*>* getKeywordNameStorage(BST_Call* node) {
-    if (!node->keywords_names) {
-        node->keywords_names = llvm::make_unique<std::vector<BoxedString*>>();
-        for (auto kw : node->keywords) {
-            node->keywords_names->push_back(kw->arg.getBox());
-        }
-    }
-
-    return node->keywords_names.get();
-}
-
 const std::string CREATED_CLOSURE_NAME = "#created_closure";
 const std::string PASSED_CLOSURE_NAME = "#passed_closure";
 const std::string PASSED_GENERATOR_NAME = "#passed_generator";
@@ -1141,36 +1130,35 @@ private:
         bool callattr_clsonly = false;
         InternedString attr;
         CompilerVariable* func;
+        int* vreg_elts = NULL;
         if (node->type == BST_TYPE::CallAttr) {
             is_callattr = true;
             callattr_clsonly = false;
             auto* attr_ast = bst_cast<BST_CallAttr>(node);
+            vreg_elts = bst_cast<BST_CallAttr>(node)->elts;
             func = evalVReg(attr_ast->vreg_value);
             attr = attr_ast->attr;
         } else if (node->type == BST_TYPE::CallClsAttr) {
             is_callattr = true;
             callattr_clsonly = true;
             auto* attr_ast = bst_cast<BST_CallClsAttr>(node);
+            vreg_elts = bst_cast<BST_CallClsAttr>(node)->elts;
             func = evalVReg(attr_ast->vreg_value);
             attr = attr_ast->attr;
         } else {
             is_callattr = false;
             auto* attr_ast = bst_cast<BST_CallFunc>(node);
+            vreg_elts = bst_cast<BST_CallFunc>(node)->elts;
             func = evalVReg(attr_ast->vreg_func);
         }
 
         std::vector<CompilerVariable*> args;
         std::vector<BoxedString*>* keyword_names = NULL;
-        if (node->keywords.size())
-            keyword_names = getKeywordNameStorage(node);
+        if (node->num_keywords)
+            keyword_names = node->keywords_names.get();
 
-        for (int i = 0; i < node->args.size(); i++) {
-            CompilerVariable* a = evalExpr(node->args[i], unw_info);
-            args.push_back(a);
-        }
-
-        for (int i = 0; i < node->keywords.size(); i++) {
-            CompilerVariable* a = evalExpr(node->keywords[i]->value, unw_info);
+        for (int i = 0; i < node->num_args + node->num_keywords; i++) {
+            CompilerVariable* a = evalVReg(vreg_elts[i]);
             args.push_back(a);
         }
 
@@ -1179,7 +1167,7 @@ private:
         if (node->vreg_kwargs != VREG_UNDEFINED)
             args.push_back(evalVReg(node->vreg_kwargs));
 
-        struct ArgPassSpec argspec(node->args.size(), node->keywords.size(), node->vreg_starargs != VREG_UNDEFINED,
+        struct ArgPassSpec argspec(node->num_args, node->num_keywords, node->vreg_starargs != VREG_UNDEFINED,
                                    node->vreg_kwargs != VREG_UNDEFINED);
 
 

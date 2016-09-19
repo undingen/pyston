@@ -182,7 +182,6 @@ class BSTVisitor;
 class ExprVisitor;
 class StmtVisitor;
 class SliceVisitor;
-class BST_keyword;
 
 static constexpr int VREG_UNDEFINED = std::numeric_limits<int>::min();
 
@@ -361,51 +360,93 @@ public:
 class BST_Call : public BST_ass {
 public:
     int vreg_starargs = VREG_UNDEFINED, vreg_kwargs = VREG_UNDEFINED;
-    std::vector<BST_expr*> args;
-    std::vector<BST_keyword*> keywords;
+    const int num_args;
+    const int num_keywords;
 
     // used during execution stores all keyword names
     std::unique_ptr<std::vector<BoxedString*>> keywords_names;
 
-    BST_Call(BST_TYPE::BST_TYPE type) : BST_ass(type) {}
+    BST_Call(BST_TYPE::BST_TYPE type, int num_args, int num_keywords)
+        : BST_ass(type), num_args(num_args), num_keywords(num_keywords) {}
 };
 
 class BST_CallFunc : public BST_Call {
 public:
     int vreg_func = VREG_UNDEFINED;
+    int elts[1];
 
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
 
-    BST_CallFunc() : BST_Call(BST_TYPE::CallFunc) {}
+
+
+    static BST_CallFunc* create(int num_args, int num_keywords) {
+        BST_CallFunc* o
+            = (BST_CallFunc*)new char[offsetof(BST_CallFunc, elts) + (num_args + num_keywords) * sizeof(int)];
+        new (o) BST_CallFunc(num_args, num_keywords);
+        return o;
+    }
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::CallFunc;
+
+private:
+    BST_CallFunc(int num_args, int num_keywords) : BST_Call(BST_TYPE::CallFunc, num_args, num_keywords) {
+        for (int i = 0; i < num_args + num_keywords; ++i) {
+            elts[i] = VREG_UNDEFINED;
+        }
+    }
 };
 
 class BST_CallAttr : public BST_Call {
 public:
     int vreg_value = VREG_UNDEFINED;
     InternedString attr;
+    int elts[1];
 
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
 
-    BST_CallAttr() : BST_Call(BST_TYPE::CallAttr) {}
+    static BST_CallAttr* create(int num_args, int num_keywords) {
+        BST_CallAttr* o
+            = (BST_CallAttr*)new char[offsetof(BST_CallAttr, elts) + (num_args + num_keywords) * sizeof(int)];
+        new (o) BST_CallAttr(num_args, num_keywords);
+        return o;
+    }
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::CallAttr;
+
+private:
+    BST_CallAttr(int num_args, int num_keywords) : BST_Call(BST_TYPE::CallAttr, num_args, num_keywords) {
+        for (int i = 0; i < num_args + num_keywords; ++i) {
+            elts[i] = VREG_UNDEFINED;
+        }
+    }
 };
 
 class BST_CallClsAttr : public BST_Call {
 public:
     int vreg_value = VREG_UNDEFINED;
     InternedString attr;
+    int elts[1];
 
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
 
-    BST_CallClsAttr() : BST_Call(BST_TYPE::CallClsAttr) {}
+    static BST_CallClsAttr* create(int num_args, int num_keywords) {
+        BST_CallClsAttr* o
+            = (BST_CallClsAttr*)new char[offsetof(BST_CallClsAttr, elts) + (num_args + num_keywords) * sizeof(int)];
+        new (o) BST_CallClsAttr(num_args, num_keywords);
+        return o;
+    }
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::CallClsAttr;
+
+private:
+    BST_CallClsAttr(int num_args, int num_keywords) : BST_Call(BST_TYPE::CallClsAttr, num_args, num_keywords) {
+        for (int i = 0; i < num_args + num_keywords; ++i) {
+            elts[i] = VREG_UNDEFINED;
+        }
+    }
 };
 
 
@@ -592,19 +633,6 @@ public:
     BST_Index() : BST_slice(BST_TYPE::Index) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Index;
-};
-
-class BST_keyword : public BST {
-public:
-    // no lineno attributes
-    BST_expr* value;
-    InternedString arg;
-
-    virtual void accept(BSTVisitor* v);
-
-    BST_keyword() : BST(BST_TYPE::keyword) {}
-
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::keyword;
 };
 
 class BST_List : public BST_ass {
@@ -1135,7 +1163,6 @@ public:
     virtual bool visit_functiondef(BST_FunctionDef* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_index(BST_Index* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_invoke(BST_Invoke* node) { RELEASE_ASSERT(0, ""); }
-    virtual bool visit_keyword(BST_keyword* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_list(BST_List* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_name(BST_Name* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_num(BST_Num* node) { RELEASE_ASSERT(0, ""); }
@@ -1199,7 +1226,6 @@ public:
     virtual bool visit_functiondef(BST_FunctionDef* node) { return false; }
     virtual bool visit_index(BST_Index* node) { return false; }
     virtual bool visit_invoke(BST_Invoke* node) { return false; }
-    virtual bool visit_keyword(BST_keyword* node) { return false; }
     virtual bool visit_list(BST_List* node) { return false; }
     virtual bool visit_name(BST_Name* node) { return false; }
     virtual bool visit_num(BST_Num* node) { return false; }
@@ -1350,7 +1376,6 @@ public:
     virtual bool visit_functiondef(BST_FunctionDef* node);
     virtual bool visit_index(BST_Index* node);
     virtual bool visit_invoke(BST_Invoke* node);
-    virtual bool visit_keyword(BST_keyword* node);
     virtual bool visit_list(BST_List* node);
     virtual bool visit_name(BST_Name* node);
     virtual bool visit_num(BST_Num* node);

@@ -339,21 +339,20 @@ private:
         _doSet(node->vreg_dst, t);
     }
 
-    CompilerType* handleCall(CompilerType* func, BST_Call* node) {
+    template <typename CallType> CompilerType* handleCall(CompilerType* func, CallType* node) {
         std::vector<CompilerType*> arg_types;
-        for (int i = 0; i < node->args.size(); i++) {
-            arg_types.push_back(getType(node->args[i]));
+        for (int i = 0; i < node->num_args; i++) {
+            arg_types.push_back(getType(node->elts[i]));
         }
 
-        std::vector<std::pair<InternedString, CompilerType*>> kw_types;
-        for (BST_keyword* kw : node->keywords) {
-            kw_types.push_back(std::make_pair(kw->arg, getType(kw->value)));
+        for (int i = 0; i < node->num_keywords; i++) {
+            getType(node->elts[node->num_args + i]);
         }
 
         CompilerType* starargs = node->vreg_starargs != VREG_UNDEFINED ? getType(node->vreg_starargs) : NULL;
         CompilerType* kwargs = node->vreg_kwargs != VREG_UNDEFINED ? getType(node->vreg_kwargs) : NULL;
 
-        if (starargs || kwargs || kw_types.size()) {
+        if (starargs || kwargs || node->num_keywords) {
             // Bail out for anything but simple calls, for now:
             return UNKNOWN;
         }
