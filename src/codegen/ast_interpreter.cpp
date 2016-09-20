@@ -1188,6 +1188,9 @@ Value ASTInterpreter::visit_stmt(BST_stmt* node) {
                 case BST_TYPE::Dict:
                     v = visit_dict((BST_Dict*)node);
                     break;
+                case BST_TYPE::Ellipsis:
+                    v = visit_ellipsis((BST_Ellipsis*)node);
+                    break;
                 case BST_TYPE::List:
                     v = visit_list((BST_List*)node);
                     break;

@@ -2589,6 +2589,9 @@ private:
                     case BST_TYPE::Dict:
                         rtn = evalDict(bst_cast<BST_Dict>(node), unw_info);
                         break;
+                    case BST_TYPE::Ellipsis:
+                        rtn = getEllipsis();
+                        break;
                     case BST_TYPE::List:
                         rtn = evalList(bst_cast<BST_List>(node), unw_info);
                         break;
@@ -2695,9 +2698,14 @@ private:
                     // want
                     // here, but this is just for debugging so I guess let it happen for now:
                     ConcreteCompilerType* ending_type = types->getTypeAtBlockEnd(vreg, myblock);
+                    /*if (!val->canConvertTo(ending_type)) {
+                        myblock->print();
+                        myblock->cfg->print();
+                    }
                     RELEASE_ASSERT(val->canConvertTo(ending_type), "%s is supposed to be %s, but somehow is %s",
                                    cfg->getVRegInfo().getName(vreg).c_str(), ending_type->debugName().c_str(),
                                    val->getType()->debugName().c_str());
+                    */
                 }
             }
         }
