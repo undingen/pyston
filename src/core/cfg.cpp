@@ -832,17 +832,17 @@ private:
                 auto* slice = ast_cast<AST_Slice>((AST_Slice*)s->slice);
                 auto* s_target = new BST_StoreSubSlice();
                 s_target->lineno = val->lineno;
-                unmapExpr(val, &s_target->vreg_value);
+                unmapExpr(remapExpr(s->value), &s_target->vreg_target);
                 unmapExpr(remapExpr(slice->lower), &s_target->vreg_lower);
                 unmapExpr(remapExpr(slice->upper), &s_target->vreg_upper);
-                unmapExpr(remapExpr(s->value), &s_target->vreg_target);
+                unmapExpr(val, &s_target->vreg_value);
                 push_back(s_target);
             } else {
                 auto* s_target = new BST_StoreSub();
                 s_target->lineno = val->lineno;
-                unmapExpr(val, &s_target->vreg_value);
-                unmapExpr(remapSlice(s->slice), &s_target->vreg_slice);
                 unmapExpr(remapExpr(s->value), &s_target->vreg_target);
+                unmapExpr(remapSlice(s->slice), &s_target->vreg_slice);
+                unmapExpr(val, &s_target->vreg_value);
                 push_back(s_target);
             }
 
