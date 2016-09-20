@@ -902,6 +902,7 @@ bool PrintVisitor::visit_callfunc(BST_CallFunc* node) {
 
 bool PrintVisitor::visit_callattr(BST_CallAttr* node) {
     visit_vreg(&node->vreg_dst, true);
+    stream << node->attr.s();
     stream << "(";
 
     bool prevarg = false;
@@ -929,6 +930,7 @@ bool PrintVisitor::visit_callattr(BST_CallAttr* node) {
 
 bool PrintVisitor::visit_callclsattr(BST_CallClsAttr* node) {
     visit_vreg(&node->vreg_dst, true);
+    stream << node->attr.s();
     stream << "(";
 
     bool prevarg = false;

@@ -347,6 +347,10 @@ public:
         _doSet(node->vreg_dst);
         return true;
     }
+    virtual bool visit_set(BST_Set* node) {
+        _doSet(node->vreg_dst);
+        return true;
+    }
     virtual bool visit_ellipsis(BST_Ellipsis* node) {
         _doSet(node->vreg_dst);
         return true;
