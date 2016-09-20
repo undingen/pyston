@@ -1964,11 +1964,6 @@ public:
             return;
         }
 
-        if (type == BST_TYPE::ImportFrom) {
-            curblock->push_back(node);
-            return;
-        }
-
         if (node->type == BST_TYPE::Assign) {
             BST_Assign* asgn = bst_cast<BST_Assign>(node);
             if (asgn->target->type == BST_TYPE::Name) {
@@ -2523,8 +2518,9 @@ public:
     }
 
     bool visit_expr(AST_Expr* node) override {
-        InternedString name = nodeName();
-        pushAssign(name, remapExpr(node->value));
+        // InternedString name = nodeName();
+        // pushAssign(name, remapExpr(node->value));
+        remapExpr(node->value, true);
         return true;
     }
 

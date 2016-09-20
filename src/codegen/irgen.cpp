@@ -718,12 +718,14 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
                 if (last_inst->type == BST_TYPE::Invoke && bst_cast<BST_Invoke>(last_inst)->exc_dest == block) {
                     BST_stmt* stmt = bst_cast<BST_Invoke>(last_inst)->stmt;
 
+                    /*
                     // The CFG pass translates away these statements, so we should never encounter them.
                     // If we did, we'd need to remove a name here.
                     assert(stmt->type != BST_TYPE::ClassDef);
                     assert(stmt->type != BST_TYPE::FunctionDef);
                     assert(stmt->type != BST_TYPE::Import);
                     assert(stmt->type != BST_TYPE::ImportFrom);
+                    */
 
                     if (stmt->type == BST_TYPE::Assign) {
                         auto asgn = bst_cast<BST_Assign>(stmt);
@@ -739,14 +741,60 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
                             // generates invoke-assigns to temporary variables. Just to be sure, we assert:
                             assert(asname->lookup_type != ScopeInfo::VarScopeType::GLOBAL);
 
-                            // TODO: inefficient
-                            sym_table = new SymbolTable(*sym_table);
-                            ASSERT((*sym_table)[vreg] != NULL, "%d %s\n", block->idx, name.c_str());
-                            (*sym_table)[vreg] = NULL;
-                            created_new_sym_table = true;
+                            if ((*sym_table)[vreg]) {
+                                // TODO: inefficient
+                                sym_table = new SymbolTable(*sym_table);
+                                ASSERT((*sym_table)[vreg] != NULL, "%d %s\n", block->idx, name.c_str());
+                                (*sym_table)[vreg] = NULL;
+                                created_new_sym_table = true;
+                            }
                         }
+                    } else {
+
+                        switch (stmt->type) {
+                            // HACK: remove this explicit list here
+                            case BST_TYPE::AssignVRegVReg:
+                            case BST_TYPE::LoadSub:
+                            case BST_TYPE::LoadSubSlice:
+                            case BST_TYPE::AugBinOp:
+                            case BST_TYPE::BinOp:
+                            case BST_TYPE::CallAttr:
+                            case BST_TYPE::CallClsAttr:
+                            case BST_TYPE::CallFunc:
+                            case BST_TYPE::Compare:
+                            case BST_TYPE::Dict:
+                            case BST_TYPE::Ellipsis:
+                            case BST_TYPE::List:
+                            case BST_TYPE::Repr:
+                            case BST_TYPE::Set:
+                            case BST_TYPE::MakeSlice:
+                            case BST_TYPE::UnaryOp:
+                            case BST_TYPE::Yield:
+                            case BST_TYPE::MakeFunction:
+                            case BST_TYPE::MakeClass:
+                            case BST_TYPE::Locals:
+                            case BST_TYPE::GetIter:
+                            case BST_TYPE::ImportFrom:
+                            case BST_TYPE::ImportName:
+                            case BST_TYPE::ImportStar:
+                            case BST_TYPE::Nonzero:
+                            case BST_TYPE::CheckExcMatch:
+                            case BST_TYPE::HasNext: {
+                                BST_ass* bst = (BST_ass*)stmt;
+                                if ((*sym_table)[bst->vreg_dst]) {
+                                    sym_table = new SymbolTable(*sym_table);
+                                    ASSERT((*sym_table)[bst->vreg_dst] != NULL, "%d\n", block->idx);
+                                    (*sym_table)[bst->vreg_dst] = NULL;
+                                    created_new_sym_table = true;
+                                }
+                                break;
+                            }
+                            default:
+                                break;
+                        };
                     }
                 }
+
 
                 generator->copySymbolsFrom(sym_table);
                 for (auto&& p : *definedness_tables[pred]) {
