@@ -1188,6 +1188,9 @@ Value ASTInterpreter::visit_stmt(BST_stmt* node) {
                 case BST_TYPE::Set:
                     v = visit_set((BST_Set*)node);
                     break;
+                case BST_TYPE::Tuple:
+                    v = visit_tuple((BST_Tuple*)node);
+                    break;
                 case BST_TYPE::UnaryOp:
                     v = visit_unaryop((BST_UnaryOp*)node);
                     break;
@@ -1601,8 +1604,6 @@ Value ASTInterpreter::visit_expr(BST_expr* node) {
             return visit_num((BST_Num*)node);
         case BST_TYPE::Str:
             return visit_str((BST_Str*)node);
-        case BST_TYPE::Tuple:
-            return visit_tuple((BST_Tuple*)node);
 
 
         // pseudo

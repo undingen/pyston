@@ -1759,9 +1759,6 @@ private:
             case BST_TYPE::Str:
                 rtn = evalStr(bst_cast<BST_Str>(node), unw_info);
                 break;
-            case BST_TYPE::Tuple:
-                rtn = evalTuple(bst_cast<BST_Tuple>(node), unw_info);
-                break;
 
 
             // pseudo-nodes
@@ -2601,6 +2598,9 @@ private:
                         break;
                     case BST_TYPE::Set:
                         rtn = evalSet(bst_cast<BST_Set>(node), unw_info);
+                        break;
+                    case BST_TYPE::Tuple:
+                        rtn = evalTuple(bst_cast<BST_Tuple>(node), unw_info);
                         break;
                     case BST_TYPE::UnaryOp:
                         rtn = evalUnaryOp(bst_cast<BST_UnaryOp>(node), unw_info);

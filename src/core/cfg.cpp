@@ -1389,11 +1389,13 @@ private:
     BST_expr* remapExtSlice(AST_ExtSlice* node) {
         auto* rtn = BST_Tuple::create(node->dims.size());
         rtn->lineno = node->lineno;
-
         for (int i = 0; i < node->dims.size(); ++i) {
             unmapExpr(remapSlice(node->dims[i]), &rtn->elts[i]);
         }
-        return wrap(rtn);
+        InternedString name = nodeName();
+        unmapDst(name, &rtn->vreg_dst);
+        push_back(rtn);
+        return makeLoad(name, node, true);
     }
 
     // This is a helper function used for generator expressions and comprehensions.
@@ -1687,7 +1689,11 @@ private:
         for (int i = 0; i < node->elts.size(); ++i) {
             unmapExpr(remapExpr(node->elts[i]), &rtn->elts[i]);
         }
-        return rtn;
+
+        InternedString name = nodeName();
+        unmapDst(name, &rtn->vreg_dst);
+        push_back(rtn);
+        return makeLoad(name, node, true);
     }
 
 
@@ -2073,7 +2079,10 @@ public:
         for (int i = 0; i < node->bases.size(); ++i) {
             unmapExpr(remapExpr(node->bases[i]), &bases->elts[i]);
         }
-        unmapExpr(wrap(bases), &def->vreg_bases_tuple);
+        InternedString bases_name = nodeName();
+        unmapDst(bases_name, &bases->vreg_dst);
+        push_back(bases);
+        unmapExpr(makeLoad(bases_name, node, true), &def->vreg_bases_tuple);
 
         def->code = cfgizer->runRecursively(node->body, node->name.getBox(), node->lineno, NULL, node);
         // XXX bad!  this should be tracked ex through co_consts
@@ -2202,7 +2211,10 @@ public:
         for (int i = 0; i < node->names.size(); i++) {
             unmapExpr(new BST_Str(node->names[i]->name.s()), &tuple->elts[i]);
         }
-        unmapExpr(wrap(tuple), &import->vreg_from);
+        InternedString tuple_name = nodeName();
+        unmapDst(tuple_name, &tuple->vreg_dst);
+        push_back(tuple);
+        unmapExpr(makeLoad(tuple_name, node, true), &import->vreg_from);
         unmapExpr(new BST_Str(node->module.s()), &import->vreg_name);
 
         InternedString tmp_module_name = nodeName();

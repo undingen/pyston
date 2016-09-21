@@ -895,15 +895,14 @@ public:
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Str;
 };
 
-class BST_Tuple : public BST_expr {
+class BST_Tuple : public BST_ass {
 public:
     AST_TYPE::AST_TYPE ctx_type;
     int num_elts;
     int elts[1];
 
-
     virtual void accept(BSTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    virtual void accept_stmt(StmtVisitor* v);
 
     static BST_Tuple* create(int num_elts) {
         BST_Tuple* o = (BST_Tuple*)new char[offsetof(BST_Tuple, elts) + num_elts * sizeof(int)];
@@ -914,7 +913,7 @@ public:
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Tuple;
 
 private:
-    BST_Tuple(int num_elts) : BST_expr(BST_TYPE::Tuple), num_elts(num_elts) {
+    BST_Tuple(int num_elts) : BST_ass(BST_TYPE::Tuple), num_elts(num_elts) {
         for (int i = 0; i < num_elts; ++i) {
             elts[i] = VREG_UNDEFINED;
         }
@@ -1342,7 +1341,6 @@ public:
     virtual void* visit_clsattribute(BST_ClsAttribute* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_name(BST_Name* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_num(BST_Num* node) { RELEASE_ASSERT(0, ""); }
-    virtual void* visit_tuple(BST_Tuple* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_str(BST_Str* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_landingpad(BST_Landingpad* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_none(BST_None* node) { RELEASE_ASSERT(0, ""); }
@@ -1382,6 +1380,7 @@ public:
     virtual void visit_dict(BST_Dict* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_list(BST_List* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_repr(BST_Repr* node) { RELEASE_ASSERT(0, ""); }
+    virtual void visit_tuple(BST_Tuple* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_unaryop(BST_UnaryOp* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_unpackintoarray(BST_UnpackIntoArray* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_yield(BST_Yield* node) { RELEASE_ASSERT(0, ""); }

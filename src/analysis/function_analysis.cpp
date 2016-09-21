@@ -104,19 +104,6 @@ public:
         return true;
     }
 
-    virtual bool visit_assign(BST_Assign* node) override {
-        // Tuple targets need for now to get handled specially because they don't call visit_vreg with false for
-        // is_dst...
-        if (node->target->type == BST_TYPE::Tuple) {
-            node->value->accept(this);
-            auto* tuple = bst_cast<BST_Tuple>(node->target);
-            for (int i = 0; i < tuple->num_elts; ++i)
-                visit_vreg(&tuple->elts[i], true); // in this case it is actually a target
-            return true;                           // skip
-        }
-        return false;
-    }
-
     bool visit_name(BST_Name* node) {
         if (node->vreg == VREG_UNDEFINED)
             return true;
@@ -347,6 +334,10 @@ public:
         return true;
     }
     virtual bool visit_list(BST_List* node) {
+        _doSet(node->vreg_dst);
+        return true;
+    }
+    virtual bool visit_tuple(BST_Tuple* node) {
         _doSet(node->vreg_dst);
         return true;
     }

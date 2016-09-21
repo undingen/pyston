@@ -544,12 +544,12 @@ private:
         _doSet(node->vreg_dst, getitem_type->callType(ArgPassSpec(1), args, NULL));
     }
 
-    void* visit_tuple(BST_Tuple* node) override {
+    void visit_tuple(BST_Tuple* node) override {
         std::vector<CompilerType*> elt_types;
         for (int i = 0; i < node->num_elts; i++) {
             elt_types.push_back(getType(node->elts[i]));
         }
-        return makeTupleType(elt_types);
+        _doSet(node->vreg_dst, makeTupleType(elt_types));
     }
 
     void visit_unaryop(BST_UnaryOp* node) override {
