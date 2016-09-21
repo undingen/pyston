@@ -279,15 +279,6 @@ private:
                 }
                 break;
             }
-            case BST_TYPE::Subscript:
-                break;
-            case BST_TYPE::Tuple: {
-                BST_Tuple* tt = bst_cast<BST_Tuple>(t);
-                for (int i = 0; i < tt->num_elts; i++) {
-                    _doSet(tt->elts[i]);
-                }
-                break;
-            }
             default:
                 ASSERT(0, "Unknown type for DefinednessVisitor: %d", t->type);
         }
@@ -365,6 +356,12 @@ public:
     }
     virtual bool visit_unaryop(BST_UnaryOp* node) {
         _doSet(node->vreg_dst);
+        return true;
+    }
+    virtual bool visit_unpackintoarray(BST_UnpackIntoArray* node) {
+        for (int i = 0; i < node->num_elts; i++) {
+            _doSet(node->vreg_dst[i]);
+        }
         return true;
     }
     virtual bool visit_yield(BST_Yield* node) {

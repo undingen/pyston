@@ -207,15 +207,6 @@ private:
             }
             case BST_TYPE::Subscript:
                 break;
-            case BST_TYPE::Tuple: {
-                BST_Tuple* tt = bst_cast<BST_Tuple>(target);
-                auto val_types = t->unpackTypes(tt->num_elts);
-                assert(val_types.size() == tt->num_elts);
-                for (int i = 0; i < tt->num_elts; i++) {
-                    _doSet(tt->elts[i], val_types[i]);
-                }
-                break;
-            }
             default:
                 ASSERT(0, "Unknown type for TypePropagator: %d", target->type);
                 abort();
@@ -579,6 +570,14 @@ private:
         CompilerType* rtn_type = attr_type->callType(ArgPassSpec(0), arg_types, NULL);
         rtn_type = unboxedType(rtn_type->getConcreteType());
         _doSet(node->vreg_dst, rtn_type);
+    }
+
+    void visit_unpackintoarray(BST_UnpackIntoArray* node) override {
+        auto src_types = getType(node->vreg_src)->unpackTypes(node->num_elts);
+        assert(src_types.size() == node->num_elts);
+        for (int i = 0; i < node->num_elts; i++) {
+            _doSet(node->vreg_dst[i], src_types[i]);
+        }
     }
 
     void visit_yield(BST_Yield* node) override { _doSet(node->vreg_dst, UNKNOWN); }

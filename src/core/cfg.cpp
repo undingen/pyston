@@ -862,9 +862,6 @@ private:
             assign->target = a_target;
             push_back(assign);
         } else if (target->type == AST_TYPE::Tuple || target->type == AST_TYPE::List) {
-            BST_Assign* assign = new BST_Assign();
-            assign->value = val;
-            assign->lineno = val->lineno;
             std::vector<AST_expr*>* elts;
             if (target->type == AST_TYPE::Tuple) {
                 AST_Tuple* _t = ast_cast<AST_Tuple>(target);
@@ -876,21 +873,20 @@ private:
                 elts = &_t->elts;
             }
 
-            BST_Tuple* new_target = BST_Tuple::create(elts->size());
-            new_target->ctx_type = AST_TYPE::Store;
-            new_target->lineno = target->lineno;
+            BST_UnpackIntoArray* unpack = BST_UnpackIntoArray::create(elts->size());
+            unmapExpr(val, &unpack->vreg_src);
+            unpack->lineno = val->lineno;
 
             // A little hackery: push the assign, even though we're not done constructing it yet,
             // so that we can iteratively push more stuff after it
-            assign->target = new_target;
-            push_back(assign);
+            push_back(unpack);
 
             for (int i = 0; i < elts->size(); i++) {
                 InternedString tmp_name = nodeName("", i);
-                unmapExprDst(makeName(tmp_name, AST_TYPE::Store, target->lineno), &new_target->elts[i]);
-
                 pushAssign((*elts)[i], makeLoad(tmp_name, target, /* is_kill */ true));
+                unmapDst(tmp_name, &unpack->vreg_dst[i]);
             }
+
         } else {
             RELEASE_ASSERT(0, "%d", target->type);
         }
@@ -1993,10 +1989,11 @@ public:
                     // (seriously, try reassigning "None" in CPython).
                     curblock->push_back(node);
                     return;
+                } else if (asgn->value->type == BST_TYPE::UncacheExcInfo || asgn->value->type == BST_TYPE::SetExcInfo
+                           || asgn->value->type == BST_TYPE::Landingpad) {
+                    curblock->push_back(node);
+                    return;
                 }
-            } else if (asgn->value->type == BST_TYPE::UncacheExcInfo || asgn->value->type == BST_TYPE::SetExcInfo) {
-                curblock->push_back(node);
-                return;
             }
         }
 
@@ -2045,16 +2042,14 @@ public:
 
         curblock = exc_dest;
         // TODO: need to clear some temporaries here
-        BST_Assign* exc_asgn = new BST_Assign();
-        BST_Tuple* target = BST_Tuple::create(3);
-        int* array = target->elts;
-        unmapExprDst(makeName(exc_info.exc_type_name, AST_TYPE::Store, node->lineno), &array[0]);
-        unmapExprDst(makeName(exc_info.exc_value_name, AST_TYPE::Store, node->lineno), &array[1]);
-        unmapExprDst(makeName(exc_info.exc_traceback_name, AST_TYPE::Store, node->lineno), &array[2]);
-        exc_asgn->target = target;
+        auto* exc_unpack = BST_UnpackIntoArray::create(3);
+        unmapExpr(wrap(new BST_Landingpad), &exc_unpack->vreg_src);
+        int* array = exc_unpack->vreg_dst;
+        unmapDst(exc_info.exc_type_name, &array[0]);
+        unmapDst(exc_info.exc_value_name, &array[1]);
+        unmapDst(exc_info.exc_traceback_name, &array[2]);
 
-        exc_asgn->value = new BST_Landingpad;
-        curblock->push_back(exc_asgn);
+        curblock->push_back(exc_unpack);
 
         pushJump(exc_info.exc_dest);
 

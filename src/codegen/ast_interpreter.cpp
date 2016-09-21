@@ -100,6 +100,7 @@ private:
     Value visit_return(BST_Return* node);
     Value visit_stmt(BST_stmt* node);
     Value visit_unaryop(BST_UnaryOp* node);
+    Value visit_unpackintoarray(BST_UnpackIntoArray* node);
 
     Value visit_loadsub(BST_LoadSub* node);
     Value visit_loadsubslice(BST_LoadSubSlice* node);
@@ -562,43 +563,6 @@ void ASTInterpreter::doStore(BST_expr* node, STOLEN(Value) value) {
         }
         AUTO_DECREF(o.o);
         pyston::setattr(o.o, attr->attr.getBox(), value.o);
-    } else if (node->type == BST_TYPE::Tuple) {
-        AUTO_DECREF(value.o);
-
-        BST_Tuple* tuple = (BST_Tuple*)node;
-        Box* keep_alive;
-        Box** array = unpackIntoArray(value.o, tuple->num_elts, &keep_alive);
-        AUTO_DECREF(keep_alive);
-
-        std::vector<RewriterVar*> array_vars;
-        if (jit) {
-            array_vars = jit->emitUnpackIntoArray(value, tuple->num_elts);
-            assert(array_vars.size() == tuple->num_elts);
-        }
-
-        for (int i = 0; i < tuple->num_elts; ++i) {
-            doStore(tuple->elts[i], Value(array[i], jit ? array_vars[i] : NULL));
-        }
-    } else if (node->type == BST_TYPE::List) {
-        RELEASE_ASSERT(0, "");
-        AUTO_DECREF(value.o);
-
-        BST_List* list = (BST_List*)node;
-        Box* keep_alive;
-        Box** array = unpackIntoArray(value.o, list->num_elts, &keep_alive);
-        AUTO_DECREF(keep_alive);
-
-        std::vector<RewriterVar*> array_vars;
-        if (jit) {
-            array_vars = jit->emitUnpackIntoArray(value, list->num_elts);
-            assert(array_vars.size() == list->num_elts);
-        }
-
-        for (int i = 0; i < list->num_elts; ++i) {
-            doStore(list->elts[i], Value(array[i], jit ? array_vars[i] : NULL));
-        }
-    } else if (node->type == BST_TYPE::Subscript) {
-
     } else {
         RELEASE_ASSERT(0, "not implemented");
     }
@@ -619,6 +583,26 @@ Value ASTInterpreter::visit_unaryop(BST_UnaryOp* node) {
         return Value(boxBool(!nonzero(operand.o)), jit ? jit->emitNotNonzero(operand) : NULL);
     else
         return Value(unaryop(operand.o, node->op_type), jit ? jit->emitUnaryop(operand, node->op_type) : NULL);
+}
+
+Value ASTInterpreter::visit_unpackintoarray(BST_UnpackIntoArray* node) {
+    Value value = getVReg(node->vreg_src);
+    AUTO_DECREF(value.o);
+
+    Box* keep_alive;
+    Box** array = unpackIntoArray(value.o, node->num_elts, &keep_alive);
+    AUTO_DECREF(keep_alive);
+
+    std::vector<RewriterVar*> array_vars;
+    if (jit) {
+        array_vars = jit->emitUnpackIntoArray(value, node->num_elts);
+        assert(array_vars.size() == node->num_elts);
+    }
+
+    for (int i = 0; i < node->num_elts; ++i) {
+        doStore(node->vreg_dst[i], Value(array[i], jit ? array_vars[i] : NULL));
+    }
+    return Value();
 }
 
 Value ASTInterpreter::visit_binop(BST_BinOp* node) {
@@ -1169,6 +1153,10 @@ Value ASTInterpreter::visit_stmt(BST_stmt* node) {
             break;
         case BST_TYPE::StoreSubSlice:
             rtn = visit_storesubslice((BST_StoreSubSlice*)node);
+            ASTInterpreterJitInterface::pendingCallsCheckHelper();
+            break;
+        case BST_TYPE::UnpackIntoArray:
+            rtn = visit_unpackintoarray((BST_UnpackIntoArray*)node);
             ASTInterpreterJitInterface::pendingCallsCheckHelper();
             break;
 

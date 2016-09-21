@@ -669,6 +669,21 @@ void BST_UnaryOp::accept_stmt(StmtVisitor* v) {
     return v->visit_unaryop(this);
 }
 
+void BST_UnpackIntoArray::accept(BSTVisitor* v) {
+    bool skip = v->visit_unpackintoarray(this);
+    if (skip)
+        return;
+
+    v->visit_vreg(&vreg_src);
+    for (int i = 0; i < num_elts; ++i) {
+        v->visit_vreg(&vreg_dst[i], true);
+    }
+}
+
+void BST_UnpackIntoArray::accept_stmt(StmtVisitor* v) {
+    return v->visit_unpackintoarray(this);
+}
+
 void BST_Yield::accept(BSTVisitor* v) {
     bool skip = v->visit_yield(this);
     if (skip)
@@ -1481,6 +1496,19 @@ bool PrintVisitor::visit_unaryop(BST_UnaryOp* node) {
     return true;
 }
 
+bool PrintVisitor::visit_unpackintoarray(BST_UnpackIntoArray* node) {
+    stream << "(";
+    for (int i = 0; i < node->num_elts; ++i) {
+        visit_vreg(&node->vreg_dst[i]);
+        if (i + 1 < node->num_elts || i == 0)
+            stream << ", ";
+    }
+    stream << ") = ";
+
+    visit_vreg(&node->vreg_src);
+    return true;
+}
+
 bool PrintVisitor::visit_yield(BST_Yield* node) {
     visit_vreg(&node->vreg_dst, true);
     stream << "yield ";
@@ -1658,6 +1686,10 @@ public:
         return false;
     }
     virtual bool visit_unaryop(BST_UnaryOp* node) {
+        output->push_back(node);
+        return false;
+    }
+    virtual bool visit_unpackintoarray(BST_UnpackIntoArray* node) {
         output->push_back(node);
         return false;
     }

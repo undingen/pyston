@@ -1986,14 +1986,15 @@ private:
         _assignSlice(converted_target->getValue(), converted_val->getValue(), extractSlice(slice), unw_info);
     }
 
-    void _doUnpackTuple(BST_Tuple* target, CompilerVariable* val, const UnwindInfo& unw_info) {
+    void doUnpackIntoArray(BST_UnpackIntoArray* target, const UnwindInfo& unw_info) {
         int ntargets = target->num_elts;
 
+        CompilerVariable* val = evalVReg(target->vreg_src);
         std::vector<CompilerVariable*> unpacked = val->unpack(emitter, getOpInfoForNode(target, unw_info), ntargets);
 
         for (int i = 0; i < ntargets; i++) {
             CompilerVariable* thisval = unpacked[i];
-            _doSet(target->elts[i], thisval, unw_info);
+            _doSet(target->vreg_dst[i], thisval, unw_info);
         }
     }
 
@@ -2015,9 +2016,6 @@ private:
                 break;
             case BST_TYPE::Name:
                 _doSet(bst_cast<BST_Name>(target), val, unw_info);
-                break;
-            case BST_TYPE::Tuple:
-                _doUnpackTuple(bst_cast<BST_Tuple>(target), val, unw_info);
                 break;
             default:
                 ASSERT(0, "Unknown type for IRGenerator: %d", target->type);
@@ -2557,6 +2555,9 @@ private:
                 break;
             case BST_TYPE::StoreSubSlice:
                 doStoreSubSlice(bst_cast<BST_StoreSubSlice>(node), unw_info);
+                break;
+            case BST_TYPE::UnpackIntoArray:
+                doUnpackIntoArray(bst_cast<BST_UnpackIntoArray>(node), unw_info);
                 break;
             case BST_TYPE::Branch:
                 assert(!unw_info.hasHandler());

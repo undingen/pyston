@@ -166,7 +166,8 @@ namespace BST_TYPE {
     X(LoadSub, 231)                                                                                                    \
     X(LoadSubSlice, 232)                                                                                               \
     X(StoreSub, 233)                                                                                                   \
-    X(StoreSubSlice, 234)
+    X(StoreSubSlice, 234)                                                                                              \
+    X(UnpackIntoArray, 235)
 
 
 #define GENERATE_ENUM(ENUM, N) ENUM = N,
@@ -258,6 +259,32 @@ public:
     BST_Assign() : BST_stmt(BST_TYPE::Assign) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Assign;
+};
+
+class BST_UnpackIntoArray : public BST_stmt {
+public:
+    int vreg_src = VREG_UNDEFINED;
+    int num_elts;
+    int vreg_dst[1];
+
+    virtual void accept(BSTVisitor* v);
+    virtual void accept_stmt(StmtVisitor* v);
+
+    static BST_UnpackIntoArray* create(int num_elts) {
+        BST_UnpackIntoArray* o
+            = (BST_UnpackIntoArray*)new char[offsetof(BST_UnpackIntoArray, vreg_dst) + num_elts * sizeof(int)];
+        new (o) BST_UnpackIntoArray(num_elts);
+        return o;
+    }
+
+    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::UnpackIntoArray;
+
+private:
+    BST_UnpackIntoArray(int num_elts) : BST_stmt(BST_TYPE::UnpackIntoArray), num_elts(num_elts) {
+        for (int i = 0; i < num_elts; ++i) {
+            vreg_dst[i] = VREG_UNDEFINED;
+        }
+    }
 };
 
 class BST_ass : public BST_stmt {
@@ -1207,6 +1234,7 @@ public:
     virtual bool visit_str(BST_Str* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_tuple(BST_Tuple* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_unaryop(BST_UnaryOp* node) { RELEASE_ASSERT(0, ""); }
+    virtual bool visit_unpackintoarray(BST_UnpackIntoArray* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_yield(BST_Yield* node) { RELEASE_ASSERT(0, ""); }
 
     virtual bool visit_makeclass(BST_MakeClass* node) { RELEASE_ASSERT(0, ""); }
@@ -1274,6 +1302,7 @@ public:
     virtual bool visit_str(BST_Str* node) { return false; }
     virtual bool visit_tuple(BST_Tuple* node) { return false; }
     virtual bool visit_unaryop(BST_UnaryOp* node) { return false; }
+    virtual bool visit_unpackintoarray(BST_UnpackIntoArray* node) { return false; }
     virtual bool visit_yield(BST_Yield* node) { return false; }
 
     virtual bool visit_branch(BST_Branch* node) { return false; }
@@ -1354,6 +1383,7 @@ public:
     virtual void visit_list(BST_List* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_repr(BST_Repr* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_unaryop(BST_UnaryOp* node) { RELEASE_ASSERT(0, ""); }
+    virtual void visit_unpackintoarray(BST_UnpackIntoArray* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_yield(BST_Yield* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_locals(BST_Locals* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_getiter(BST_GetIter* node) { RELEASE_ASSERT(0, ""); }
@@ -1426,6 +1456,7 @@ public:
     virtual bool visit_str(BST_Str* node);
     virtual bool visit_tuple(BST_Tuple* node);
     virtual bool visit_unaryop(BST_UnaryOp* node);
+    virtual bool visit_unpackintoarray(BST_UnpackIntoArray* node);
     virtual bool visit_yield(BST_Yield* node);
 
     virtual bool visit_branch(BST_Branch* node);
