@@ -1029,12 +1029,12 @@ public:
 
 
 // grabs the info about the last raised exception
-class BST_Landingpad : public BST_expr {
+class BST_Landingpad : public BST_ass {
 public:
     virtual void accept(BSTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    virtual void accept_stmt(StmtVisitor* v);
 
-    BST_Landingpad() : BST_expr(BST_TYPE::Landingpad) {}
+    BST_Landingpad() : BST_ass(BST_TYPE::Landingpad) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Landingpad;
 };
@@ -1342,7 +1342,6 @@ public:
     virtual void* visit_name(BST_Name* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_num(BST_Num* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_str(BST_Str* node) { RELEASE_ASSERT(0, ""); }
-    virtual void* visit_landingpad(BST_Landingpad* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_none(BST_None* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_setexcinfo(BST_SetExcInfo* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_uncacheexcinfo(BST_UncacheExcInfo* node) { RELEASE_ASSERT(0, ""); }
@@ -1384,6 +1383,7 @@ public:
     virtual void visit_unaryop(BST_UnaryOp* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_unpackintoarray(BST_UnpackIntoArray* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_yield(BST_Yield* node) { RELEASE_ASSERT(0, ""); }
+    virtual void visit_landingpad(BST_Landingpad* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_locals(BST_Locals* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_getiter(BST_GetIter* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_importfrom(BST_ImportFrom* node) { RELEASE_ASSERT(0, ""); }

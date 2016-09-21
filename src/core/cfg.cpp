@@ -1995,15 +1995,14 @@ public:
                     // (seriously, try reassigning "None" in CPython).
                     curblock->push_back(node);
                     return;
-                } else if (asgn->value->type == BST_TYPE::UncacheExcInfo || asgn->value->type == BST_TYPE::SetExcInfo
-                           || asgn->value->type == BST_TYPE::Landingpad) {
+                } else if (asgn->value->type == BST_TYPE::UncacheExcInfo || asgn->value->type == BST_TYPE::SetExcInfo) {
                     curblock->push_back(node);
                     return;
                 }
             }
         }
 
-        if (node->type == BST_TYPE::AssignVRegVReg) {
+        if (node->type == BST_TYPE::AssignVRegVReg || node->type == BST_TYPE::Landingpad) {
             curblock->push_back(node);
             return;
         }
@@ -2048,8 +2047,13 @@ public:
 
         curblock = exc_dest;
         // TODO: need to clear some temporaries here
+        auto* landingpad = new BST_Landingpad;
+        InternedString landingpad_name = nodeName();
+        unmapDst(landingpad_name, &landingpad->vreg_dst);
+        push_back(landingpad);
+
         auto* exc_unpack = BST_UnpackIntoArray::create(3);
-        unmapExpr(wrap(new BST_Landingpad), &exc_unpack->vreg_src);
+        unmapExpr(makeLoad(landingpad_name, 0, true), &exc_unpack->vreg_src);
         int* array = exc_unpack->vreg_dst;
         unmapDst(exc_info.exc_type_name, &array[0]);
         unmapDst(exc_info.exc_value_name, &array[1]);

@@ -1197,6 +1197,9 @@ Value ASTInterpreter::visit_stmt(BST_stmt* node) {
                 case BST_TYPE::Yield:
                     v = visit_yield((BST_Yield*)node);
                     break;
+                case BST_TYPE::Landingpad:
+                    v = visit_landingpad((BST_Landingpad*)node);
+                    break;
                 case BST_TYPE::Locals:
                     v = visit_locals((BST_Locals*)node);
                     break;
@@ -1610,9 +1613,6 @@ Value ASTInterpreter::visit_expr(BST_expr* node) {
         case BST_TYPE::ClsAttribute:
             return visit_clsAttribute((BST_ClsAttribute*)node);
 
-
-        case BST_TYPE::Landingpad:
-            return visit_landingpad((BST_Landingpad*)node);
 
         case BST_TYPE::None:
             return visit_none((BST_None*)node);

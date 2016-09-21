@@ -1765,10 +1765,6 @@ private:
             case BST_TYPE::ClsAttribute:
                 rtn = evalClsAttribute(bst_cast<BST_ClsAttribute>(node), unw_info);
                 break;
-
-            case BST_TYPE::Landingpad:
-                rtn = evalLandingpad((BST_Landingpad*)node, unw_info);
-                break;
             case BST_TYPE::None:
                 rtn = evalNone((BST_None*)node, unw_info);
                 break;
@@ -2607,6 +2603,9 @@ private:
                         break;
                     case BST_TYPE::Yield:
                         rtn = evalYield(bst_cast<BST_Yield>(node), unw_info);
+                        break;
+                    case BST_TYPE::Landingpad:
+                        rtn = evalLandingpad((BST_Landingpad*)node, unw_info);
                         break;
                     case BST_TYPE::Locals:
                         rtn = evalLocals((BST_Locals*)node, unw_info);

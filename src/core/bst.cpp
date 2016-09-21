@@ -330,9 +330,10 @@ void BST_Landingpad::accept(BSTVisitor* v) {
     bool skip = v->visit_landingpad(this);
     if (skip)
         return;
+    v->visit_vreg(&vreg_dst, true);
 }
 
-void* BST_Landingpad::accept_expr(ExprVisitor* v) {
+void BST_Landingpad::accept_stmt(StmtVisitor* v) {
     return v->visit_landingpad(this);
 }
 
@@ -1171,6 +1172,7 @@ bool PrintVisitor::visit_langprimitive(BST_LangPrimitive* node) {
 }
 */
 bool PrintVisitor::visit_landingpad(BST_Landingpad* node) {
+    visit_vreg(&node->vreg_dst, true);
     stream << ":LANDINGPAD()";
     return true;
 }

@@ -439,7 +439,9 @@ private:
     }
     */
 
-    void* visit_landingpad(BST_Landingpad* node) override { return UNKNOWN; }
+    void visit_landingpad(BST_Landingpad* node) override {
+        _doSet(node->vreg_dst, makeTupleType({ UNKNOWN, UNKNOWN, UNKNOWN }));
+    }
     void visit_locals(BST_Locals* node) override { _doSet(node->vreg_dst, DICT); }
     void visit_getiter(BST_GetIter* node) override {
         _doSet(node->vreg_dst, getType(node->vreg_value)->getPystonIterType());

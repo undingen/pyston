@@ -433,6 +433,10 @@ public:
         _doSet(node->vreg_dst);
         return true;
     }
+    virtual bool visit_landingpad(BST_Landingpad* node) {
+        _doSet(node->vreg_dst);
+        return true;
+    }
     virtual bool visit_storesub(BST_StoreSub* node) { return true; }
     virtual bool visit_storesubslice(BST_StoreSubSlice* node) { return true; }
 
