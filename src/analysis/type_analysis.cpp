@@ -452,10 +452,10 @@ private:
     void* visit_none(BST_None* node) override { return NONE; }
     void visit_nonzero(BST_Nonzero* node) override { return _doSet(node->vreg_dst, UNKNOWN); }
     void visit_checkexcmatch(BST_CheckExcMatch* node) override { return _doSet(node->vreg_dst, UNKNOWN); }
-    void* visit_setexcinfo(BST_SetExcInfo* node) override { return NONE; }
-    void* visit_uncacheexcinfo(BST_UncacheExcInfo* node) override { return NONE; }
+    void visit_setexcinfo(BST_SetExcInfo* node) override {}
+    void visit_uncacheexcinfo(BST_UncacheExcInfo* node) override {}
     void visit_hasnext(BST_HasNext* node) override { return _doSet(node->vreg_dst, BOOL); }
-    void* visit_printexpr(BST_PrintExpr* node) override { return NONE; }
+    void visit_printexpr(BST_PrintExpr* node) override {}
 
 
     void visit_list(BST_List* node) override {

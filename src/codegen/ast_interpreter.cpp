@@ -930,14 +930,14 @@ Value ASTInterpreter::visit_setexcinfo(BST_SetExcInfo* node) {
     if (jit)
         jit->emitSetExcInfo(type, value, traceback);
     setFrameExcInfo(getFrameInfo(), type.o, value.o, traceback.o);
-    return getNone();
+    return Value();
 }
 
 Value ASTInterpreter::visit_uncacheexcinfo(BST_UncacheExcInfo* node) {
     if (jit)
         jit->emitUncacheExcInfo();
     setFrameExcInfo(getFrameInfo(), NULL, NULL, NULL);
-    return getNone();
+    return Value();
 }
 
 Value ASTInterpreter::visit_hasnext(BST_HasNext* node) {
@@ -951,7 +951,7 @@ Value ASTInterpreter::visit_printexpr(BST_PrintExpr* node) {
     Value obj = getVReg(node->vreg_value);
     AUTO_DECREF(obj.o);
     printExprHelper(obj.o);
-    return getNone();
+    return Value();
 }
 
 #if 0
@@ -1170,6 +1170,20 @@ Value ASTInterpreter::visit_stmt(BST_stmt* node) {
         case BST_TYPE::Invoke:
             rtn = visit_invoke((BST_Invoke*)node);
             break;
+
+        case BST_TYPE::SetExcInfo:
+            rtn = visit_setexcinfo((BST_SetExcInfo*)node);
+            ASTInterpreterJitInterface::pendingCallsCheckHelper();
+            break;
+        case BST_TYPE::UncacheExcInfo:
+            rtn = visit_uncacheexcinfo((BST_UncacheExcInfo*)node);
+            ASTInterpreterJitInterface::pendingCallsCheckHelper();
+            break;
+        case BST_TYPE::PrintExpr:
+            rtn = visit_printexpr((BST_PrintExpr*)node);
+            ASTInterpreterJitInterface::pendingCallsCheckHelper();
+            break;
+
         default: {
             Value v;
             switch (node->type) {
@@ -1616,12 +1630,6 @@ Value ASTInterpreter::visit_expr(BST_expr* node) {
 
         case BST_TYPE::None:
             return visit_none((BST_None*)node);
-        case BST_TYPE::SetExcInfo:
-            return visit_setexcinfo((BST_SetExcInfo*)node);
-        case BST_TYPE::UncacheExcInfo:
-            return visit_uncacheexcinfo((BST_UncacheExcInfo*)node);
-        case BST_TYPE::PrintExpr:
-            return visit_printexpr((BST_PrintExpr*)node);
 
         default:
             RELEASE_ASSERT(0, "");

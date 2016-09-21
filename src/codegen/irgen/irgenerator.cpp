@@ -1023,7 +1023,7 @@ private:
         return rtn;
     }
 
-    CompilerVariable* evalSetExcInfo(BST_SetExcInfo* node, const UnwindInfo& unw_info) {
+    void doSetExcInfo(BST_SetExcInfo* node, const UnwindInfo& unw_info) {
         CompilerVariable* type = evalVReg(node->vreg_type);
         CompilerVariable* value = evalVReg(node->vreg_value);
         CompilerVariable* traceback = evalVReg(node->vreg_traceback);
@@ -1043,11 +1043,9 @@ private:
         emitter.refConsumed(converted_type->getValue(), inst);
         emitter.refConsumed(converted_value->getValue(), inst);
         emitter.refConsumed(converted_traceback->getValue(), inst);
-
-        return emitter.getNone();
     }
 
-    CompilerVariable* evalUncacheExcInfo(BST_UncacheExcInfo* node, const UnwindInfo& unw_info) {
+    void doUncacheExcInfo(BST_UncacheExcInfo* node, const UnwindInfo& unw_info) {
         auto* builder = emitter.getBuilder();
 
         llvm::Value* frame_info = irstate->getFrameInfoVar();
@@ -1055,17 +1053,13 @@ private:
         emitter.setType(v, RefType::BORROWED);
 
         emitter.createCall(UnwindInfo::cantUnwind(), g.funcs.setFrameExcInfo, { frame_info, v, v, v }, NOEXC);
-
-        return emitter.getNone();
     }
 
-    CompilerVariable* evalPrintExpr(BST_PrintExpr* node, const UnwindInfo& unw_info) {
+    void doPrintExpr(BST_PrintExpr* node, const UnwindInfo& unw_info) {
         CompilerVariable* obj = evalVReg(node->vreg_value);
         ConcreteCompilerVariable* converted = obj->makeConverted(emitter, obj->getBoxType());
 
         emitter.createCall(unw_info, g.funcs.printExprHelper, converted->getValue());
-
-        return emitter.getNone();
     }
 
     CompilerVariable* _evalBinExp(BST* node, CompilerVariable* left, CompilerVariable* right, AST_TYPE::AST_TYPE type,
@@ -1767,15 +1761,6 @@ private:
                 break;
             case BST_TYPE::None:
                 rtn = evalNone((BST_None*)node, unw_info);
-                break;
-            case BST_TYPE::SetExcInfo:
-                rtn = evalSetExcInfo((BST_SetExcInfo*)node, unw_info);
-                break;
-            case BST_TYPE::UncacheExcInfo:
-                rtn = evalUncacheExcInfo((BST_UncacheExcInfo*)node, unw_info);
-                break;
-            case BST_TYPE::PrintExpr:
-                rtn = evalPrintExpr((BST_PrintExpr*)node, unw_info);
                 break;
 
 
@@ -2577,6 +2562,17 @@ private:
             case BST_TYPE::Raise:
                 doRaise(bst_cast<BST_Raise>(node), unw_info);
                 break;
+            case BST_TYPE::SetExcInfo:
+                doSetExcInfo((BST_SetExcInfo*)node, unw_info);
+                break;
+            case BST_TYPE::UncacheExcInfo:
+                doUncacheExcInfo((BST_UncacheExcInfo*)node, unw_info);
+                break;
+            case BST_TYPE::PrintExpr:
+                doPrintExpr((BST_PrintExpr*)node, unw_info);
+                break;
+
+
             default: {
                 CompilerVariable* rtn = NULL;
                 switch (node->type) {

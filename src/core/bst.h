@@ -1137,26 +1137,26 @@ public:
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::CheckExcMatch;
 };
 
-class BST_SetExcInfo : public BST_expr {
+class BST_SetExcInfo : public BST_stmt {
 public:
     int vreg_type = VREG_UNDEFINED;
     int vreg_value = VREG_UNDEFINED;
     int vreg_traceback = VREG_UNDEFINED;
 
     virtual void accept(BSTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    virtual void accept_stmt(StmtVisitor* v);
 
-    BST_SetExcInfo() : BST_expr(BST_TYPE::SetExcInfo) {}
+    BST_SetExcInfo() : BST_stmt(BST_TYPE::SetExcInfo) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::SetExcInfo;
 };
 
-class BST_UncacheExcInfo : public BST_expr {
+class BST_UncacheExcInfo : public BST_stmt {
 public:
     virtual void accept(BSTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    virtual void accept_stmt(StmtVisitor* v);
 
-    BST_UncacheExcInfo() : BST_expr(BST_TYPE::UncacheExcInfo) {}
+    BST_UncacheExcInfo() : BST_stmt(BST_TYPE::UncacheExcInfo) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::UncacheExcInfo;
 };
@@ -1173,14 +1173,14 @@ public:
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::HasNext;
 };
 
-class BST_PrintExpr : public BST_expr {
+class BST_PrintExpr : public BST_stmt {
 public:
     int vreg_value = VREG_UNDEFINED;
 
     virtual void accept(BSTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
+    virtual void accept_stmt(StmtVisitor* v);
 
-    BST_PrintExpr() : BST_expr(BST_TYPE::PrintExpr) {}
+    BST_PrintExpr() : BST_stmt(BST_TYPE::PrintExpr) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::PrintExpr;
 };
@@ -1343,9 +1343,6 @@ public:
     virtual void* visit_num(BST_Num* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_str(BST_Str* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_none(BST_None* node) { RELEASE_ASSERT(0, ""); }
-    virtual void* visit_setexcinfo(BST_SetExcInfo* node) { RELEASE_ASSERT(0, ""); }
-    virtual void* visit_uncacheexcinfo(BST_UncacheExcInfo* node) { RELEASE_ASSERT(0, ""); }
-    virtual void* visit_printexpr(BST_PrintExpr* node) { RELEASE_ASSERT(0, ""); }
 };
 
 class StmtVisitor {
@@ -1401,6 +1398,10 @@ public:
     virtual void visit_loadsubslice(BST_LoadSubSlice* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_storesub(BST_StoreSub* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_storesubslice(BST_StoreSubSlice* node) { RELEASE_ASSERT(0, ""); }
+
+    virtual void visit_setexcinfo(BST_SetExcInfo* node) { RELEASE_ASSERT(0, ""); }
+    virtual void visit_uncacheexcinfo(BST_UncacheExcInfo* node) { RELEASE_ASSERT(0, ""); }
+    virtual void visit_printexpr(BST_PrintExpr* node) { RELEASE_ASSERT(0, ""); }
 
     virtual void visit_branch(BST_Branch* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_jump(BST_Jump* node) { RELEASE_ASSERT(0, ""); }

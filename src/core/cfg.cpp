@@ -1601,7 +1601,8 @@ private:
 
         assert(node->args.size() == 1);
         unmapExpr(remapExpr(node->args[0]), &rtn->vreg_value);
-        return rtn;
+        push_back(rtn);
+        return NULL;
     }
 
     std::pair<BST_stmt*, InternedString> remapList(AST_List* node) {
@@ -1739,7 +1740,7 @@ private:
         unmapDst(node_name, &rtn->vreg_dst);
         push_back(rtn);
 
-        push_back(makeAssign(new BST_UncacheExcInfo));
+        push_back(new BST_UncacheExcInfo);
 
         if (root_type != AST_TYPE::FunctionDef && root_type != AST_TYPE::Lambda)
             raiseExcHelper(SyntaxError, "'yield' outside function");
@@ -1995,14 +1996,12 @@ public:
                     // (seriously, try reassigning "None" in CPython).
                     curblock->push_back(node);
                     return;
-                } else if (asgn->value->type == BST_TYPE::UncacheExcInfo || asgn->value->type == BST_TYPE::SetExcInfo) {
-                    curblock->push_back(node);
-                    return;
                 }
             }
         }
 
-        if (node->type == BST_TYPE::AssignVRegVReg || node->type == BST_TYPE::Landingpad) {
+        if (node->type == BST_TYPE::AssignVRegVReg || node->type == BST_TYPE::Landingpad
+            || node->type == BST_TYPE::UncacheExcInfo || node->type == BST_TYPE::SetExcInfo) {
             curblock->push_back(node);
             return;
         }
@@ -2950,7 +2949,7 @@ public:
                 unmapExpr(makeLoad(exc_type_name, node, true), &set_exc_info->vreg_type);
                 unmapExpr(makeLoad(exc_value_name, node, true), &set_exc_info->vreg_value);
                 unmapExpr(makeLoad(exc_traceback_name, node, true), &set_exc_info->vreg_traceback);
-                push_back(makeAssign(set_exc_info));
+                push_back(set_exc_info);
 
                 for (AST_stmt* subnode : exc_handler->body) {
                     subnode->accept(this);

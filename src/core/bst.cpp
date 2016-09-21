@@ -443,7 +443,7 @@ void BST_SetExcInfo::accept(BSTVisitor* v) {
     v->visit_vreg(&vreg_traceback);
 }
 
-void* BST_SetExcInfo::accept_expr(ExprVisitor* v) {
+void BST_SetExcInfo::accept_stmt(StmtVisitor* v) {
     return v->visit_setexcinfo(this);
 }
 
@@ -453,7 +453,7 @@ void BST_UncacheExcInfo::accept(BSTVisitor* v) {
         return;
 }
 
-void* BST_UncacheExcInfo::accept_expr(ExprVisitor* v) {
+void BST_UncacheExcInfo::accept_stmt(StmtVisitor* v) {
     return v->visit_uncacheexcinfo(this);
 }
 
@@ -477,7 +477,7 @@ void BST_PrintExpr::accept(BSTVisitor* v) {
     v->visit_vreg(&vreg_value);
 }
 
-void* BST_PrintExpr::accept_expr(ExprVisitor* v) {
+void BST_PrintExpr::accept_stmt(StmtVisitor* v) {
     return v->visit_printexpr(this);
 }
 
