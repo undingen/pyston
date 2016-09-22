@@ -102,12 +102,13 @@ private:
     Value visit_unaryop(BST_UnaryOp* node);
     Value visit_unpackintoarray(BST_UnpackIntoArray* node);
 
+    Value visit_loadattr(BST_LoadAttr* node);
     Value visit_loadsub(BST_LoadSub* node);
     Value visit_loadsubslice(BST_LoadSubSlice* node);
+    Value visit_storeattr(BST_StoreAttr* node);
     Value visit_storesub(BST_StoreSub* node);
     Value visit_storesubslice(BST_StoreSubSlice* node);
 
-    Value visit_attribute(BST_Attribute* node);
     Value visit_dict(BST_Dict* node);
     Value visit_ellipsis(BST_Ellipsis* node);
     Value visit_expr(BST_expr* node);
@@ -127,7 +128,6 @@ private:
     // pseudo
     Value visit_augBinOp(BST_AugBinOp* node);
     Value visit_branch(BST_Branch* node);
-    Value visit_clsAttribute(BST_ClsAttribute* node);
     Value visit_invoke(BST_Invoke* node);
     Value visit_jump(BST_Jump* node);
 
@@ -555,14 +555,6 @@ void ASTInterpreter::doStore(BST_expr* node, STOLEN(Value) value) {
     if (node->type == BST_TYPE::Name) {
         BST_Name* name = (BST_Name*)node;
         doStore(name, value);
-    } else if (node->type == BST_TYPE::Attribute) {
-        BST_Attribute* attr = (BST_Attribute*)node;
-        Value o = visit_expr(attr->value);
-        if (jit) {
-            jit->emitSetAttr(node, o, attr->attr.getBox(), value);
-        }
-        AUTO_DECREF(o.o);
-        pyston::setattr(o.o, attr->attr.getBox(), value.o);
     } else {
         RELEASE_ASSERT(0, "not implemented");
     }
@@ -832,13 +824,6 @@ Value ASTInterpreter::visit_invoke(BST_Invoke* node) {
     }
 
     return v;
-}
-
-Value ASTInterpreter::visit_clsAttribute(BST_ClsAttribute* node) {
-    Value obj = visit_expr(node->value);
-    BoxedString* attr = node->attr.getBox();
-    AUTO_DECREF(obj.o);
-    return Value(getclsattr(obj.o, attr), jit ? jit->emitGetClsAttr(obj, attr) : NULL);
 }
 
 Value ASTInterpreter::visit_augBinOp(BST_AugBinOp* node) {
@@ -1147,6 +1132,10 @@ Value ASTInterpreter::visit_stmt(BST_stmt* node) {
             }
             return rtn;
 
+        case BST_TYPE::StoreAttr:
+            rtn = visit_storeattr((BST_StoreAttr*)node);
+            ASTInterpreterJitInterface::pendingCallsCheckHelper();
+            break;
         case BST_TYPE::StoreSub:
             rtn = visit_storesub((BST_StoreSub*)node);
             ASTInterpreterJitInterface::pendingCallsCheckHelper();
@@ -1216,6 +1205,9 @@ Value ASTInterpreter::visit_stmt(BST_stmt* node) {
                     break;
                 case BST_TYPE::Locals:
                     v = visit_locals((BST_Locals*)node);
+                    break;
+                case BST_TYPE::LoadAttr:
+                    v = visit_loadattr((BST_LoadAttr*)node);
                     break;
                 case BST_TYPE::GetIter:
                     v = visit_getiter((BST_GetIter*)node);
@@ -1613,8 +1605,6 @@ Value ASTInterpreter::visit_compare(BST_Compare* node) {
 
 Value ASTInterpreter::visit_expr(BST_expr* node) {
     switch (node->type) {
-        case BST_TYPE::Attribute:
-            return visit_attribute((BST_Attribute*)node);
         case BST_TYPE::Name:
             return visit_name((BST_Name*)node);
         case BST_TYPE::Num:
@@ -1624,9 +1614,6 @@ Value ASTInterpreter::visit_expr(BST_expr* node) {
 
 
         // pseudo
-        case BST_TYPE::ClsAttribute:
-            return visit_clsAttribute((BST_ClsAttribute*)node);
-
 
         case BST_TYPE::None:
             return visit_none((BST_None*)node);
@@ -1908,6 +1895,20 @@ Value ASTInterpreter::visit_name(BST_Name* node) {
     }
 }
 
+Value ASTInterpreter::visit_loadattr(BST_LoadAttr* node) {
+    Value v = getVReg(node->vreg_value);
+    AUTO_DECREF(v.o);
+
+    BoxedString* attr = node->attr.getBox();
+    Value r;
+    if (node->clsonly)
+        r = Value(getclsattr(v.o, attr), jit ? jit->emitGetClsAttr(v, attr) : NULL);
+    else
+        r = Value(pyston::getattr(v.o, attr), jit ? jit->emitGetAttr(node, v, attr) : NULL);
+    return r;
+}
+
+
 Value ASTInterpreter::visit_loadsub(BST_LoadSub* node) {
     Value value = getVReg(node->vreg_value);
     AUTO_DECREF(value.o);
@@ -1937,6 +1938,16 @@ Value ASTInterpreter::visit_loadsubslice(BST_LoadSubSlice* node) {
     return v;
 }
 
+Value ASTInterpreter::visit_storeattr(BST_StoreAttr* node) {
+    Value value = getVReg(node->vreg_value);
+    Value o = getVReg(node->vreg_target);
+    if (jit) {
+        jit->emitSetAttr(node, o, node->attr.getBox(), value);
+    }
+    AUTO_DECREF(o.o);
+    pyston::setattr(o.o, node->attr.getBox(), value.o);
+    return Value();
+}
 
 Value ASTInterpreter::visit_storesub(BST_StoreSub* node) {
     Value value = getVReg(node->vreg_value);
@@ -2006,13 +2017,6 @@ Value ASTInterpreter::visit_tuple(BST_Tuple* node) {
     }
 
     return Value(rtn, jit ? jit->emitCreateTuple(items) : NULL);
-}
-
-Value ASTInterpreter::visit_attribute(BST_Attribute* node) {
-    Value v = visit_expr(node->value);
-    AUTO_DECREF(v.o);
-    Value r(pyston::getattr(v.o, node->attr.getBox()), jit ? jit->emitGetAttr(v, node->attr.getBox(), node) : NULL);
-    return r;
 }
 }
 

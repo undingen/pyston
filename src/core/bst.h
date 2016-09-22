@@ -167,8 +167,9 @@ namespace BST_TYPE {
     X(LoadSubSlice, 232)                                                                                               \
     X(StoreSub, 233)                                                                                                   \
     X(StoreSubSlice, 234)                                                                                              \
-    X(UnpackIntoArray, 235)
-
+    X(UnpackIntoArray, 235)                                                                                            \
+    X(StoreAttr, 236)                                                                                                  \
+    X(LoadAttr, 237)
 
 #define GENERATE_ENUM(ENUM, N) ENUM = N,
 #define GENERATE_STRING(STRING, N) m[N] = #STRING;
@@ -308,36 +309,45 @@ public:
 };
 
 /*
-class BST_AssignSubscriptSlice : public BST_stmt {
+class BST_AssignToName : public BST_stmt {
 public:
-    int vreg_target = VREG_UNDEFINED;
-    int vreg_lower = VREG_UNDEFINED, vreg_upper = VREG_UNDEFINED, vreg_step = VREG_UNDEFINED;
     int vreg_value = VREG_UNDEFINED;
+
+    AST_TYPE::AST_TYPE ctx_type;
+    InternedString id;
+    ScopeInfo::VarScopeType lookup_type;
+    int vreg = VREG_UNDEFINED;
+    bool is_kill = false;
+
+    // Only valid for lookup_type == DEREF:
+    DerefInfo deref_info = DerefInfo({ INT_MAX, INT_MAX });
+    // Only valid for lookup_type == CLOSURE:
+    int closure_offset = -1;
+
+
 
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
 
-    BST_Assign() : BST_stmt(BST_TYPE::Assign) {}
+    BST_AssignToName() : BST_stmt(BST_TYPE::AssignToName) {}
 
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Assign;
-};
-
-class BST_AssignSubscriptIndex : public BST_stmt {
-public:
-    int vreg_target = VREG_UNDEFINED;
-    int vreg_index = VREG_UNDEFINED;
-    int vreg_value = VREG_UNDEFINED;
-
-    virtual void accept(BSTVisitor* v);
-    virtual void accept_stmt(StmtVisitor* v);
-
-    BST_Assign() : BST_stmt(BST_TYPE::Assign) {}
-
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Assign;
+    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::AssignToName;
 };
 */
 
+class BST_StoreAttr : public BST_stmt {
+public:
+    InternedString attr;
+    int vreg_target = VREG_UNDEFINED;
+    int vreg_value = VREG_UNDEFINED;
 
+    virtual void accept(BSTVisitor* v);
+    virtual void accept_stmt(StmtVisitor* v);
+
+    BST_StoreAttr() : BST_stmt(BST_TYPE::StoreAttr) {}
+
+    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::StoreAttr;
+};
 
 class BST_StoreSub : public BST_stmt {
 public:
@@ -367,6 +377,19 @@ public:
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::StoreSubSlice;
 };
 
+class BST_LoadAttr : public BST_ass {
+public:
+    InternedString attr;
+    int vreg_value = VREG_UNDEFINED;
+    bool clsonly = false;
+
+    virtual void accept(BSTVisitor* v);
+    virtual void accept_stmt(StmtVisitor* v);
+
+    BST_LoadAttr() : BST_ass(BST_TYPE::LoadAttr) {}
+
+    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::LoadAttr;
+};
 
 class BST_LoadSub : public BST_ass {
 public:
@@ -1257,9 +1280,11 @@ public:
     virtual bool visit_hasnext(BST_HasNext* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_printexpr(BST_PrintExpr* node) { RELEASE_ASSERT(0, ""); }
 
+    virtual bool visit_loadattr(BST_LoadAttr* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_loadsub(BST_LoadSub* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_loadsubslice(BST_LoadSubSlice* node) { RELEASE_ASSERT(0, ""); }
 
+    virtual bool visit_storeattr(BST_StoreAttr* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_storesub(BST_StoreSub* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_storesubslice(BST_StoreSubSlice* node) { RELEASE_ASSERT(0, ""); }
 };
@@ -1324,8 +1349,10 @@ public:
     virtual bool visit_hasnext(BST_HasNext* node) override { return false; }
     virtual bool visit_printexpr(BST_PrintExpr* node) override { return false; }
 
+    virtual bool visit_loadattr(BST_LoadAttr* node) override { return false; }
     virtual bool visit_loadsub(BST_LoadSub* node) override { return false; }
     virtual bool visit_loadsubslice(BST_LoadSubSlice* node) override { return false; }
+    virtual bool visit_storeattr(BST_StoreAttr* node) { return false; }
     virtual bool visit_storesub(BST_StoreSub* node) override { return false; }
     virtual bool visit_storesubslice(BST_StoreSubSlice* node) override { return false; }
 };
@@ -1394,8 +1421,10 @@ public:
     virtual void visit_makefunction(BST_MakeFunction* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_makeslice(BST_MakeSlice* node) { RELEASE_ASSERT(0, ""); }
 
+    virtual void visit_loadattr(BST_LoadAttr* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_loadsub(BST_LoadSub* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_loadsubslice(BST_LoadSubSlice* node) { RELEASE_ASSERT(0, ""); }
+    virtual void visit_storeattr(BST_StoreAttr* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_storesub(BST_StoreSub* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_storesubslice(BST_StoreSubSlice* node) { RELEASE_ASSERT(0, ""); }
 
@@ -1479,8 +1508,10 @@ public:
     virtual bool visit_hasnext(BST_HasNext* node);
     virtual bool visit_printexpr(BST_PrintExpr* node);
 
+    virtual bool visit_loadattr(BST_LoadAttr* node);
     virtual bool visit_loadsub(BST_LoadSub* node);
     virtual bool visit_loadsubslice(BST_LoadSubSlice* node);
+    virtual bool visit_storeattr(BST_StoreAttr* node);
     virtual bool visit_storesub(BST_StoreSub* node);
     virtual bool visit_storesubslice(BST_StoreSubSlice* node);
 };

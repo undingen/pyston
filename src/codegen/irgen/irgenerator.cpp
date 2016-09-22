@@ -856,20 +856,6 @@ private:
         emitter.getBuilder()->SetInsertPoint(curblock);
     }
 
-    CompilerVariable* evalAttribute(BST_Attribute* node, const UnwindInfo& unw_info) {
-        CompilerVariable* value = evalExpr(node->value, unw_info);
-
-        CompilerVariable* rtn = value->getattr(emitter, getOpInfoForNode(node, unw_info), node->attr.getBox(), false);
-        return rtn;
-    }
-
-    CompilerVariable* evalClsAttribute(BST_ClsAttribute* node, const UnwindInfo& unw_info) {
-        CompilerVariable* value = evalExpr(node->value, unw_info);
-        CompilerVariable* rtn = value->getattr(emitter, getOpInfoForNode(node, unw_info), node->attr.getBox(), true);
-        return rtn;
-    }
-
-
     CompilerVariable* evalCheckExcMatch(BST_CheckExcMatch* node, const UnwindInfo& unw_info) {
         CompilerVariable* obj = evalVReg(node->vreg_value);
         CompilerVariable* cls = evalVReg(node->vreg_cls);
@@ -1472,12 +1458,20 @@ private:
         }
     }
 
+    CompilerVariable* evalLoadAttr(BST_LoadAttr* node, const UnwindInfo& unw_info) {
+        CompilerVariable* value = evalVReg(node->vreg_value);
+        CompilerVariable* rtn
+            = value->getattr(emitter, getOpInfoForNode(node, unw_info), node->attr.getBox(), node->clsonly);
+        return rtn;
+    }
+
     CompilerVariable* evalLoadSub(BST_LoadSub* node, const UnwindInfo& unw_info) {
         CompilerVariable* value = evalVReg(node->vreg_value);
         CompilerVariable* slice = evalVReg(node->vreg_slice);
         CompilerVariable* rtn = value->getitem(emitter, getOpInfoForNode(node, unw_info), slice);
         return rtn;
     }
+
     CompilerVariable* evalLoadSubSlice(BST_LoadSubSlice* node, const UnwindInfo& unw_info) {
         CompilerVariable* value = evalVReg(node->vreg_value);
         CompilerVariable* lower = node->vreg_lower != VREG_UNDEFINED ? evalVReg(node->vreg_lower) : NULL;
@@ -1740,10 +1734,6 @@ private:
 
         CompilerVariable* rtn = NULL;
         switch (node->type) {
-            case BST_TYPE::Attribute:
-                rtn = evalAttribute(bst_cast<BST_Attribute>(node), unw_info);
-                break;
-
             case BST_TYPE::Name:
                 rtn = evalName(bst_cast<BST_Name>(node), unw_info);
                 break;
@@ -1756,9 +1746,6 @@ private:
 
 
             // pseudo-nodes
-            case BST_TYPE::ClsAttribute:
-                rtn = evalClsAttribute(bst_cast<BST_ClsAttribute>(node), unw_info);
-                break;
             case BST_TYPE::None:
                 rtn = evalNone((BST_None*)node, unw_info);
                 break;
@@ -1892,8 +1879,9 @@ private:
         }
     }
 
-    void _doSetattr(BST_Attribute* target, CompilerVariable* val, const UnwindInfo& unw_info) {
-        CompilerVariable* t = evalExpr(target->value, unw_info);
+    void doStoreAttr(BST_StoreAttr* target, const UnwindInfo& unw_info) {
+        CompilerVariable* val = evalVReg(target->vreg_value);
+        CompilerVariable* t = evalVReg(target->vreg_target);
         t->setattr(emitter, getEmptyOpInfo(unw_info), target->attr.getBox(), val);
     }
 
@@ -1989,9 +1977,6 @@ private:
 
     void _doSet(BST* target, CompilerVariable* val, const UnwindInfo& unw_info) {
         switch (target->type) {
-            case BST_TYPE::Attribute:
-                _doSetattr(bst_cast<BST_Attribute>(target), val, unw_info);
-                break;
             case BST_TYPE::Name:
                 _doSet(bst_cast<BST_Name>(target), val, unw_info);
                 break;
@@ -2528,6 +2513,9 @@ private:
                 assert(!unw_info.hasHandler());
                 doReturn(bst_cast<BST_Return>(node), unw_info);
                 break;
+            case BST_TYPE::StoreAttr:
+                doStoreAttr(bst_cast<BST_StoreAttr>(node), unw_info);
+                break;
             case BST_TYPE::StoreSub:
                 doStoreSub(bst_cast<BST_StoreSub>(node), unw_info);
                 break;
@@ -2605,6 +2593,9 @@ private:
                         break;
                     case BST_TYPE::Locals:
                         rtn = evalLocals((BST_Locals*)node, unw_info);
+                        break;
+                    case BST_TYPE::LoadAttr:
+                        rtn = evalLoadAttr((BST_LoadAttr*)node, unw_info);
                         break;
                     case BST_TYPE::LoadSub:
                         rtn = evalLoadSub((BST_LoadSub*)node, unw_info);

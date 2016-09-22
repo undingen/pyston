@@ -425,6 +425,10 @@ public:
         _doSet(node->vreg_dst);
         return true;
     }
+    virtual bool visit_loadattr(BST_LoadAttr* node) {
+        _doSet(node->vreg_dst);
+        return true;
+    }
     virtual bool visit_loadsub(BST_LoadSub* node) {
         _doSet(node->vreg_dst);
         return true;
@@ -440,6 +444,7 @@ public:
     virtual bool visit_setexcinfo(BST_SetExcInfo* node) { return true; }
     virtual bool visit_uncacheexcinfo(BST_UncacheExcInfo* node) { return true; }
     virtual bool visit_printexpr(BST_PrintExpr* node) { return true; }
+    virtual bool visit_storeattr(BST_StoreAttr* node) { return true; }
     virtual bool visit_storesub(BST_StoreSub* node) { return true; }
     virtual bool visit_storesubslice(BST_StoreSubSlice* node) { return true; }
 

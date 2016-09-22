@@ -380,7 +380,7 @@ RewriterVar* JitFragmentWriter::emitExceptionMatches(RewriterVar* v, RewriterVar
     return call(false, (void*)exceptionMatchesHelper, v, cls)->setType(RefType::OWNED);
 }
 
-RewriterVar* JitFragmentWriter::emitGetAttr(RewriterVar* obj, BoxedString* s, BST_expr* node) {
+RewriterVar* JitFragmentWriter::emitGetAttr(BST* node, RewriterVar* obj, BoxedString* s) {
     return emitPPCall((void*)getattr, { obj, imm(s) }, 2 * 256, true /* record type */, node)
         .first->setType(RefType::OWNED);
 }
@@ -701,7 +701,7 @@ void JitFragmentWriter::emitReturn(RewriterVar* v) {
     v->refConsumed();
 }
 
-void JitFragmentWriter::emitSetAttr(BST_expr* node, RewriterVar* obj, BoxedString* s, STOLEN(RewriterVar*) attr) {
+void JitFragmentWriter::emitSetAttr(BST* node, RewriterVar* obj, BoxedString* s, STOLEN(RewriterVar*) attr) {
     auto rtn = emitPPCall((void*)setattr, { obj, imm(s), attr }, 2 * 256, false /* don't record type */, node);
     attr->refConsumed(rtn.second);
 }

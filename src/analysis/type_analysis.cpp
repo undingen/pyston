@@ -192,9 +192,6 @@ private:
 
     void _doSet(BST_expr* target, CompilerType* t) {
         switch (target->type) {
-            case BST_TYPE::Attribute:
-                // doesn't affect types (yet?)
-                break;
             case BST_TYPE::Name: {
                 auto name = bst_cast<BST_Name>(target);
                 assert(name->lookup_type != ScopeInfo::VarScopeType::UNKNOWN);
@@ -205,8 +202,6 @@ private:
                     assert(name->vreg == VREG_UNDEFINED);
                 break;
             }
-            case BST_TYPE::Subscript:
-                break;
             default:
                 ASSERT(0, "Unknown type for TypePropagator: %d", target->type);
                 abort();
@@ -214,38 +209,6 @@ private:
     }
 
     void visit_ellipsis(BST_Ellipsis* node) override { _doSet(node->vreg_dst, typeFromClass(ellipsis_cls)); }
-
-    void* visit_attribute(BST_Attribute* node) override {
-        CompilerType* t = getType(node->value);
-        CompilerType* rtn = t->getattrType(node->attr, false);
-
-        // if (speculation != TypeAnalysis::NONE && (node->attr == "x" || node->attr == "y" || node->attr == "z")) {
-        // rtn = processSpeculation(float_cls, node, rtn);
-        //}
-
-        if (speculation != TypeAnalysis::NONE) {
-            BoxedClass* speculated_class = predictClassFor(node);
-            rtn = processSpeculation(speculated_class, node, rtn);
-        }
-
-        if (VERBOSITY() >= 2 && rtn == UNDEF) {
-            printf("Think %s.%s is undefined, at %d\n", t->debugName().c_str(), node->attr.c_str(), node->lineno);
-            print_bst(node);
-            printf("\n");
-        }
-        return rtn;
-    }
-
-    void* visit_clsattribute(BST_ClsAttribute* node) override {
-        CompilerType* t = getType(node->value);
-        CompilerType* rtn = t->getattrType(node->attr, true);
-        if (VERBOSITY() >= 2 && rtn == UNDEF) {
-            printf("Think %s.%s is undefined, at %d\n", t->debugName().c_str(), node->attr.c_str(), node->lineno);
-            print_bst(node);
-            printf("\n");
-        }
-        return rtn;
-    }
 
     bool hasFixedOps(CompilerType* type) {
         // This is non-exhaustive:
@@ -522,8 +485,30 @@ private:
         RELEASE_ASSERT(0, "Unknown string type %d", (int)node->str_type);
     }
 
+    void visit_storeattr(BST_StoreAttr* node) override {}
     void visit_storesub(BST_StoreSub* node) override {}
     void visit_storesubslice(BST_StoreSubSlice* node) override {}
+
+    void visit_loadattr(BST_LoadAttr* node) override {
+        CompilerType* t = getType(node->vreg_value);
+        CompilerType* rtn = t->getattrType(node->attr, node->clsonly);
+
+        // if (speculation != TypeAnalysis::NONE && (node->attr == "x" || node->attr == "y" || node->attr == "z")) {
+        // rtn = processSpeculation(float_cls, node, rtn);
+        //}
+
+        if (speculation != TypeAnalysis::NONE) {
+            BoxedClass* speculated_class = predictClassFor(node);
+            rtn = processSpeculation(speculated_class, node, rtn);
+        }
+
+        if (VERBOSITY() >= 2 && rtn == UNDEF) {
+            printf("Think %s.%s is undefined, at %d\n", t->debugName().c_str(), node->attr.c_str(), node->lineno);
+            print_bst(node);
+            printf("\n");
+        }
+        _doSet(node->vreg_dst, rtn);
+    }
 
     void visit_loadsub(BST_LoadSub* node) override {
         CompilerType* val = getType(node->vreg_value);

@@ -524,7 +524,7 @@ private:
 
     BST_expr* applyComprehensionCall(AST_ListComp* node, BST_Name* name) {
         BST_expr* elt = remapExpr(node->elt);
-        return makeCall(makeLoadAttribute(name, internString("append"), true), { elt });
+        return makeCallAttr(name, internString("append"), true, { elt });
     }
 
     template <typename CompType> BST_expr* remapComprehension(CompType* node) {
@@ -553,8 +553,6 @@ private:
             InternedString iter_name = nodeName("lc_iter", i);
             unmapDst(iter_name, &iter_call->vreg_dst);
             push_back(iter_call);
-
-            BST_expr* next_attr = makeLoadAttribute(makeLoad(iter_name, node), internString("next"), true);
 
             CFGBlock* test_block = cfg->addBlock();
             test_block->info = "comprehension_test";
@@ -588,7 +586,7 @@ private:
 
             curblock = body_block;
             InternedString next_name(nodeName());
-            pushAssign(next_name, makeCall(next_attr));
+            pushAssign(next_name, makeCallAttr(makeLoad(iter_name, node), internString("next"), true));
             pushAssign(c->target, makeLoad(next_name, node, true));
 
             for (AST_expr* if_condition : c->ifs) {
@@ -719,22 +717,16 @@ private:
         return rtn;
     }
 
-    BST_expr* makeLoadAttribute(BST_expr* base, InternedString name, bool clsonly) {
-        BST_expr* rtn;
-        if (clsonly) {
-            BST_ClsAttribute* attr = new BST_ClsAttribute();
-            attr->value = base;
-            attr->attr = name;
-            rtn = attr;
-        } else {
-            BST_Attribute* attr = new BST_Attribute();
-            attr->ctx_type = AST_TYPE::Load;
-            attr->value = base;
-            attr->attr = name;
-            rtn = attr;
-        }
+    BST_expr* makeLoadAttribute(BST_expr* base, InternedString attr, bool clsonly) {
+        BST_LoadAttr* rtn = new BST_LoadAttr();
+        rtn->clsonly = clsonly;
+        unmapExpr(base, &rtn->vreg_value);
+        rtn->attr = attr;
         rtn->lineno = base->lineno;
-        return rtn;
+        InternedString name = nodeName();
+        unmapDst(name, &rtn->vreg_dst);
+        push_back(rtn);
+        return makeLoad(name, rtn->lineno, true);
     }
 
     AST_Call* makeASTCall(ASTAllocator& allocator, AST_expr* func) {
@@ -762,23 +754,7 @@ private:
 
     BST_expr* makeCall(BST_expr* func, llvm::ArrayRef<BST_expr*> args = {}) {
         BST_Call* rtn = NULL;
-        if (func->type == BST_TYPE::Attribute) {
-            BST_CallAttr* call = BST_CallAttr::create(args.size(), 0 /* num keywords */);
-            call->attr = bst_cast<BST_Attribute>(func)->attr;
-            unmapExpr(bst_cast<BST_Attribute>(func)->value, &call->vreg_value);
-            for (int i = 0; i < args.size(); ++i) {
-                unmapExpr(args[i], &call->elts[i]);
-            }
-            rtn = call;
-        } else if (func->type == BST_TYPE::ClsAttribute) {
-            BST_CallClsAttr* call = BST_CallClsAttr::create(args.size(), 0 /* num keywords */);
-            call->attr = bst_cast<BST_ClsAttribute>(func)->attr;
-            unmapExpr(bst_cast<BST_ClsAttribute>(func)->value, &call->vreg_value);
-            for (int i = 0; i < args.size(); ++i) {
-                unmapExpr(args[i], &call->elts[i]);
-            }
-            rtn = call;
-        } else if (func->type == BST_TYPE::Name) {
+        if (func->type == BST_TYPE::Name) {
             BST_CallFunc* call = BST_CallFunc::create(args.size(), 0 /* num keywords */);
             unmapExpr(func, &call->vreg_func);
             for (int i = 0; i < args.size(); ++i) {
@@ -789,6 +765,32 @@ private:
             RELEASE_ASSERT(0, "");
         }
         rtn->lineno = func->lineno;
+        InternedString name = nodeName();
+        unmapDst(name, &rtn->vreg_dst);
+        push_back(rtn);
+        return makeLoad(name, rtn->lineno, true);
+    }
+
+    BST_expr* makeCallAttr(BST_expr* target, InternedString attr, bool is_cls, llvm::ArrayRef<BST_expr*> args = {}) {
+        BST_Call* rtn = NULL;
+        if (!is_cls) {
+            BST_CallAttr* call = BST_CallAttr::create(args.size(), 0 /* num keywords */);
+            call->attr = attr;
+            unmapExpr(target, &call->vreg_value);
+            for (int i = 0; i < args.size(); ++i) {
+                unmapExpr(args[i], &call->elts[i]);
+            }
+            rtn = call;
+        } else {
+            BST_CallClsAttr* call = BST_CallClsAttr::create(args.size(), 0 /* num keywords */);
+            call->attr = attr;
+            unmapExpr(target, &call->vreg_value);
+            for (int i = 0; i < args.size(); ++i) {
+                unmapExpr(args[i], &call->elts[i]);
+            }
+            rtn = call;
+        }
+        rtn->lineno = target->lineno;
         InternedString name = nodeName();
         unmapDst(name, &rtn->vreg_dst);
         push_back(rtn);
@@ -847,20 +849,13 @@ private:
             }
 
         } else if (target->type == AST_TYPE::Attribute) {
-            BST_Assign* assign = new BST_Assign();
-            assign->value = val;
-            assign->lineno = val->lineno;
             AST_Attribute* a = ast_cast<AST_Attribute>(target);
-            assert(a->ctx_type == AST_TYPE::Store);
-
-            BST_Attribute* a_target = new BST_Attribute();
-            a_target->value = remapExpr(a->value);
+            BST_StoreAttr* a_target = new BST_StoreAttr();
+            unmapExpr(val, &a_target->vreg_value);
+            unmapExpr(remapExpr(a->value), &a_target->vreg_target);
             a_target->attr = scoping->mangleName(a->attr);
-            a_target->ctx_type = AST_TYPE::Store;
             a_target->lineno = a->lineno;
-
-            assign->target = a_target;
-            push_back(assign);
+            push_back(a_target);
         } else if (target->type == AST_TYPE::Tuple || target->type == AST_TYPE::List) {
             std::vector<AST_expr*>* elts;
             if (target->type == AST_TYPE::Tuple) {
@@ -959,14 +954,15 @@ private:
         return createUniqueName(llvm::Twine("#") + suffix + "_" + llvm::Twine(idx) + "_");
     }
 
-    BST_Attribute* remapAttribute(AST_Attribute* node) {
-        BST_Attribute* rtn = new BST_Attribute();
-
+    BST_expr* remapAttribute(AST_Attribute* node) {
+        BST_LoadAttr* rtn = new BST_LoadAttr();
         rtn->lineno = node->lineno;
-        rtn->ctx_type = node->ctx_type;
         rtn->attr = scoping->mangleName(node->attr);
-        rtn->value = remapExpr(node->value);
-        return rtn;
+        unmapExpr(remapExpr(node->value), &rtn->vreg_value);
+        InternedString name = nodeName();
+        unmapDst(name, &rtn->vreg_dst);
+        push_back(rtn);
+        return makeLoad(name, node->lineno, true);
     }
 
     void assertAssumption(BST_expr* node) {
@@ -1223,9 +1219,9 @@ private:
         BST_Call* rtn_shared = NULL;
         if (node->func->type == AST_TYPE::Attribute) {
             BST_CallAttr* rtn = BST_CallAttr::create(node->args.size(), node->keywords.size());
-            auto func = remapAttribute(ast_cast<AST_Attribute>(node->func));
-            rtn->attr = func->attr;
-            unmapExpr(func->value, &rtn->vreg_value);
+            auto* attr = ast_cast<AST_Attribute>(node->func);
+            rtn->attr = scoping->mangleName(attr->attr);
+            unmapExpr(remapExpr(attr->value), &rtn->vreg_value);
             for (int i = 0; i < node->args.size(); ++i) {
                 unmapExpr(remapExpr(node->args[i]), &rtn->elts[i]);
             }
@@ -1235,9 +1231,9 @@ private:
             rtn_shared = rtn;
         } else if (node->func->type == AST_TYPE::ClsAttribute) {
             BST_CallClsAttr* rtn = BST_CallClsAttr::create(node->args.size(), node->keywords.size());
-            auto func = remapClsAttribute(ast_cast<AST_ClsAttribute>(node->func));
-            rtn->attr = func->attr;
-            unmapExpr(func->value, &rtn->vreg_value);
+            auto* attr = ast_cast<AST_ClsAttribute>(node->func);
+            rtn->attr = scoping->mangleName(attr->attr);
+            unmapExpr(remapExpr(attr->value), &rtn->vreg_value);
             for (int i = 0; i < node->args.size(); ++i) {
                 unmapExpr(remapExpr(node->args[i]), &rtn->elts[i]);
             }
@@ -1273,13 +1269,16 @@ private:
         return std::make_pair(rtn_shared, name);
     }
 
-    BST_ClsAttribute* remapClsAttribute(AST_ClsAttribute* node) {
-        BST_ClsAttribute* rtn = new BST_ClsAttribute();
-
+    BST_expr* remapClsAttribute(AST_ClsAttribute* node) {
+        BST_LoadAttr* rtn = new BST_LoadAttr();
+        rtn->clsonly = true;
         rtn->lineno = node->lineno;
-        rtn->attr = node->attr;
-        rtn->value = remapExpr(node->value);
-        return rtn;
+        rtn->attr = scoping->mangleName(node->attr);
+        unmapExpr(remapExpr(node->value), &rtn->vreg_value);
+        InternedString name = nodeName();
+        unmapDst(name, &rtn->vreg_dst);
+        push_back(rtn);
+        return makeLoad(name, node->lineno, true);
     }
 
     BST_expr* remapCompare(AST_Compare* node) {
@@ -2182,10 +2181,14 @@ public:
                         l = r + 1;
                         continue;
                     }
-                    auto attr = new BST_Attribute(makeLoad(tmpname, node, true), AST_TYPE::Load,
-                                                  internString(a->name.s().substr(l, r - l)));
-                    attr->lineno = import->lineno;
-                    pushAssign(tmpname, attr);
+
+                    auto* store = new BST_StoreAttr;
+                    store->lineno = import->lineno;
+                    store->attr = internString(a->name.s().substr(l, r - l));
+                    unmapExpr(makeLoad(tmpname, node, false), &store->vreg_value);
+                    unmapExpr(makeLoad(tmpname, node, true), &store->vreg_target);
+                    push_back(store);
+
                     l = r + 1;
                 } while (l < a->name.s().size());
                 pushAssign(a->asname, makeLoad(tmpname, node, true));
@@ -2287,7 +2290,7 @@ public:
     }
 
     bool visit_assign(AST_Assign* node) override {
-        BST_expr* remapped_value = remapExpr(node->value);
+        BST_expr* remapped_value = remapExpr(node->value, true);
 
         for (int i = 0; i < node->targets.size(); i++) {
             BST_expr* val;
@@ -2398,22 +2401,33 @@ public:
             case AST_TYPE::Attribute: {
                 AST_Attribute* a = ast_cast<AST_Attribute>(node->target);
                 assert(a->ctx_type == AST_TYPE::Store);
+                auto* value_remapped = remapExpr(a->value);
 
-                BST_Attribute* a_target = new BST_Attribute();
-                a_target->value = remapExpr(a->value);
-                a_target->attr = scoping->mangleName(a->attr);
-                a_target->ctx_type = AST_TYPE::Store;
-                a_target->lineno = a->lineno;
-                remapped_target = a_target;
-
-                BST_Attribute* a_lhs = new BST_Attribute();
-                a_lhs->value = _dup(a_target->value);
-                a_lhs->attr = a_target->attr;
-                a_lhs->ctx_type = AST_TYPE::Load;
+                BST_LoadAttr* a_lhs = new BST_LoadAttr();
+                unmapExpr(_dup2(value_remapped), &a_lhs->vreg_value);
+                a_lhs->attr = scoping->mangleName(a->attr);
                 a_lhs->lineno = a->lineno;
-                remapped_lhs = wrap(a_lhs);
+                InternedString name_lhs = nodeName();
+                unmapDst(name_lhs, &a_lhs->vreg_dst);
+                push_back(a_lhs);
 
-                break;
+                BST_AugBinOp* binop = new BST_AugBinOp();
+                binop->op_type = remapBinOpType(node->op_type);
+                unmapExpr(makeLoad(name_lhs, node->lineno, true), &binop->vreg_left);
+                unmapExpr(remapExpr(node->value), &binop->vreg_right);
+                binop->lineno = node->lineno;
+                InternedString node_name(nodeName());
+                unmapDst(node_name, &binop->vreg_dst);
+                push_back(binop);
+
+                BST_StoreAttr* a_target = new BST_StoreAttr();
+                unmapExpr(makeLoad(node_name, a->lineno, true), &a_target->vreg_value);
+                unmapExpr(value_remapped, &a_target->vreg_target);
+                a_target->attr = a_lhs->attr;
+                a_target->lineno = a->lineno;
+                push_back(a_target);
+
+                return true;
             }
             default:
                 RELEASE_ASSERT(0, "%d", node->target->type);
@@ -2753,11 +2767,11 @@ public:
         unmapDst(itername, &iter_call->vreg_dst);
         push_back(iter_call);
 
-        BST_expr* next_attr = makeLoadAttribute(makeLoad(itername, node), internString("next"), true);
-
         CFGBlock* test_block = cfg->addBlock();
         pushJump(test_block);
         curblock = test_block;
+
+        BST_expr* load_iter = makeLoad(itername, node);
 
         BST_HasNext* test_call = new BST_HasNext;
         test_call->lineno = node->lineno;
@@ -2791,7 +2805,7 @@ public:
 
         curblock = loop_block;
         InternedString next_name(nodeName());
-        pushAssign(next_name, makeCall(next_attr));
+        pushAssign(next_name, makeCallAttr(load_iter, internString("next"), true));
         pushAssign(node->target, makeLoad(next_name, node, true));
 
         for (int i = 0; i < node->body.size(); i++) {
@@ -3115,8 +3129,8 @@ public:
 
         // Oddly, this acces to __enter__ doesn't suffer from the same bug. Perhaps it has something to do with
         // __enter__ being called immediately?
-        BST_expr* enter = makeLoadAttribute(makeLoad(ctxmgrname, node, true), internString("__enter__"), true);
-        enter = wrap(makeCall(enter));
+        BST_expr* enter = makeLoadAttribute(makeLoad(ctxmgrname, node, false), internString("__enter__"), true);
+        enter = wrap(makeCallAttr(makeLoad(ctxmgrname, node, true), internString("__enter__"), true));
         if (node->optional_vars)
             pushAssign(node->optional_vars, enter);
         else

@@ -280,7 +280,7 @@ public:
     RewriterVar* emitCreateTuple(const llvm::ArrayRef<RewriterVar*> values);
     RewriterVar* emitDeref(BST_Name* name);
     RewriterVar* emitExceptionMatches(RewriterVar* v, RewriterVar* cls);
-    RewriterVar* emitGetAttr(RewriterVar* obj, BoxedString* s, BST_expr* node);
+    RewriterVar* emitGetAttr(BST* node, RewriterVar* obj, BoxedString* s);
     RewriterVar* emitGetBlockLocal(BST_Name* name);
     RewriterVar* emitGetBlockLocalMustExist(int vreg);
     void emitKillTemporary(int vreg);
@@ -319,7 +319,7 @@ public:
     void emitRaise0();
     void emitRaise3(RewriterVar* arg0, RewriterVar* arg1, RewriterVar* arg2);
     void emitReturn(RewriterVar* v);
-    void emitSetAttr(BST_expr* node, RewriterVar* obj, BoxedString* s, STOLEN(RewriterVar*) attr);
+    void emitSetAttr(BST* node, RewriterVar* obj, BoxedString* s, STOLEN(RewriterVar*) attr);
     void emitSetBlockLocal(int vreg, STOLEN(RewriterVar*) v);
     void emitSetCurrentInst(BST_stmt* node);
     void emitSetExcInfo(RewriterVar* type, RewriterVar* value, RewriterVar* traceback);
