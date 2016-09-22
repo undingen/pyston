@@ -385,12 +385,10 @@ RewriterVar* JitFragmentWriter::emitGetAttr(BST* node, RewriterVar* obj, BoxedSt
         .first->setType(RefType::OWNED);
 }
 
-RewriterVar* JitFragmentWriter::emitGetBlockLocal(BST_Name* name) {
-    auto s = name->id;
-    auto vreg = name->vreg;
+RewriterVar* JitFragmentWriter::emitGetBlockLocal(InternedString name, int vreg) {
     auto it = local_syms.find(vreg);
     if (it == local_syms.end()) {
-        auto r = emitGetLocal(name);
+        auto r = emitGetLocal(name, vreg);
         assert(r->reftype == RefType::OWNED);
         emitSetBlockLocal(vreg, r);
         return r;
@@ -445,17 +443,15 @@ RewriterVar* JitFragmentWriter::emitGetItem(BST* node, RewriterVar* value, Rewri
         .first->setType(RefType::OWNED);
 }
 
-RewriterVar* JitFragmentWriter::emitGetLocal(BST_Name* name) {
+RewriterVar* JitFragmentWriter::emitGetLocal(InternedString name, int vreg) {
     if (LOG_BJIT_ASSEMBLY)
         comment("BJIT: emitGetLocal start");
-    auto vreg = name->vreg;
-    auto s = name->id;
     assert(vreg >= 0);
     // TODO Can we use BORROWED here? Not sure if there are cases when we can't rely on borrowing the ref
     // from the vregs array.  Safer like this.
     RewriterVar* val_var = vregs_array->getAttr(vreg * 8);
     if (known_non_null_vregs.count(vreg) == 0) {
-        addAction([=]() { _emitGetLocal(val_var, s.c_str()); }, { val_var }, ActionType::NORMAL);
+        addAction([=]() { _emitGetLocal(val_var, name.c_str()); }, { val_var }, ActionType::NORMAL);
         known_non_null_vregs.insert(vreg);
     } else {
         val_var->incref();

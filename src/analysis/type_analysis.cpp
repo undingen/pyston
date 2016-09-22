@@ -485,9 +485,31 @@ private:
         RELEASE_ASSERT(0, "Unknown string type %d", (int)node->str_type);
     }
 
+    void visit_storename(BST_StoreName* node) override {
+        assert(node->lookup_type != ScopeInfo::VarScopeType::UNKNOWN);
+        if (node->lookup_type == ScopeInfo::VarScopeType::FAST
+            || node->lookup_type == ScopeInfo::VarScopeType::CLOSURE) {
+            _doSet(node->vreg, getType(node->vreg_value));
+        } else
+            assert(node->vreg == VREG_UNDEFINED);
+    }
     void visit_storeattr(BST_StoreAttr* node) override {}
     void visit_storesub(BST_StoreSub* node) override {}
     void visit_storesubslice(BST_StoreSubSlice* node) override {}
+
+    void visit_loadname(BST_LoadName* node) override {
+        CompilerType* t = UNKNOWN;
+        assert(node->lookup_type != ScopeInfo::VarScopeType::UNKNOWN);
+        auto name_scope = node->lookup_type;
+
+        if (name_scope == ScopeInfo::VarScopeType::GLOBAL) {
+            if (node->id.s() == "None")
+                t = NONE;
+        } else if (name_scope == ScopeInfo::VarScopeType::FAST || name_scope == ScopeInfo::VarScopeType::CLOSURE)
+            t = getType(node->vreg);
+
+        _doSet(node->vreg_dst, t);
+    }
 
     void visit_loadattr(BST_LoadAttr* node) override {
         CompilerType* t = getType(node->vreg_value);

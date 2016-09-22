@@ -102,9 +102,11 @@ private:
     Value visit_unaryop(BST_UnaryOp* node);
     Value visit_unpackintoarray(BST_UnpackIntoArray* node);
 
+    Value visit_loadname(BST_LoadName* node);
     Value visit_loadattr(BST_LoadAttr* node);
     Value visit_loadsub(BST_LoadSub* node);
     Value visit_loadsubslice(BST_LoadSubSlice* node);
+    Value visit_storename(BST_StoreName* node);
     Value visit_storeattr(BST_StoreAttr* node);
     Value visit_storesub(BST_StoreSub* node);
     Value visit_storesubslice(BST_StoreSubSlice* node);
@@ -1132,6 +1134,10 @@ Value ASTInterpreter::visit_stmt(BST_stmt* node) {
             }
             return rtn;
 
+        case BST_TYPE::StoreName:
+            rtn = visit_storename((BST_StoreName*)node);
+            ASTInterpreterJitInterface::pendingCallsCheckHelper();
+            break;
         case BST_TYPE::StoreAttr:
             rtn = visit_storeattr((BST_StoreAttr*)node);
             ASTInterpreterJitInterface::pendingCallsCheckHelper();
@@ -1205,6 +1211,9 @@ Value ASTInterpreter::visit_stmt(BST_stmt* node) {
                     break;
                 case BST_TYPE::Locals:
                     v = visit_locals((BST_Locals*)node);
+                    break;
+                case BST_TYPE::LoadName:
+                    v = visit_loadname((BST_LoadName*)node);
                     break;
                 case BST_TYPE::LoadAttr:
                     v = visit_loadattr((BST_LoadAttr*)node);
@@ -1855,9 +1864,83 @@ Value ASTInterpreter::visit_name(BST_Name* node) {
 
                 if (is_live) {
                     assert(!node->is_kill);
-                    v.var = jit->emitGetLocal(node);
+                    v.var = jit->emitGetLocal(node->id, node->vreg);
                 } else {
-                    v.var = jit->emitGetBlockLocal(node);
+                    v.var = jit->emitGetBlockLocal(node->id, node->vreg);
+                    if (node->is_kill) {
+                        assert(node->id.s()[0] == '#');
+                        jit->emitKillTemporary(node->vreg);
+                    }
+                }
+            }
+
+            assert(node->vreg >= 0);
+            assert(getVRegInfo().getVReg(node->id) == node->vreg);
+            frame_info.num_vregs = std::max(frame_info.num_vregs, node->vreg + 1);
+            Box* val = vregs[node->vreg];
+
+            if (val) {
+                v.o = val;
+                if (node->is_kill)
+                    vregs[node->vreg] = NULL;
+                else
+                    Py_INCREF(val);
+                return v;
+            }
+
+            assertNameDefined(0, node->id.c_str(), UnboundLocalError, true);
+            RELEASE_ASSERT(0, "should be unreachable");
+        }
+        case ScopeInfo::VarScopeType::NAME: {
+            assert(!node->is_kill && "we might need to support this");
+            Value v;
+            if (jit)
+                v.var = jit->emitGetBoxedLocal(node->id.getBox());
+            v.o = boxedLocalsGet(frame_info.boxedLocals, node->id.getBox(), frame_info.globals);
+            return v;
+        }
+        default:
+            abort();
+    }
+}
+
+
+Value ASTInterpreter::visit_loadname(BST_LoadName* node) {
+    assert(node->lookup_type != ScopeInfo::VarScopeType::UNKNOWN);
+
+    switch (node->lookup_type) {
+        case ScopeInfo::VarScopeType::GLOBAL: {
+            assert(!node->is_kill);
+            Value v;
+            if (jit)
+                v.var = jit->emitGetGlobal(node->id.getBox());
+
+            v.o = getGlobal(frame_info.globals, node->id.getBox());
+            return v;
+        }
+        case ScopeInfo::VarScopeType::DEREF: {
+            assert(!node->is_kill);
+            assert(0);
+            abort();
+            // return Value(ASTInterpreterJitInterface::derefHelper(this, node), jit ? jit->emitDeref(node) : NULL);
+        }
+        case ScopeInfo::VarScopeType::FAST:
+        case ScopeInfo::VarScopeType::CLOSURE: {
+            Value v;
+            if (jit) {
+                bool is_live = true;
+                if (node->is_kill) {
+                    is_live = false;
+                } else if (node->lookup_type == ScopeInfo::VarScopeType::FAST) {
+                    assert(node->vreg >= 0);
+                    is_live = source_info->getLiveness()->isLiveAtEnd(node->vreg, current_block);
+                }
+
+                if (is_live) {
+                    assert(!node->is_kill);
+                    v.var = jit->emitGetLocal(node->id, node->vreg);
+                } else {
+                    v.var = jit->emitGetBlockLocal(node->id, node->vreg);
                     if (node->is_kill) {
                         assert(node->id.s()[0] == '#');
                         jit->emitKillTemporary(node->vreg);
@@ -1937,6 +2020,57 @@ Value ASTInterpreter::visit_loadsubslice(BST_LoadSubSlice* node) {
     v.o = applySlice(value.o, lower.o, upper.o);
     return v;
 }
+
+Value ASTInterpreter::visit_storename(BST_StoreName* node) {
+    Value value = getVReg(node->vreg_value);
+
+    assert(node->lookup_type != ScopeInfo::VarScopeType::UNKNOWN);
+
+    InternedString name = node->id;
+    ScopeInfo::VarScopeType vst = node->lookup_type;
+    if (vst == ScopeInfo::VarScopeType::GLOBAL) {
+        if (jit)
+            jit->emitSetGlobal(name.getBox(), value, getCode()->source->scoping.areGlobalsFromModule());
+        setGlobal(frame_info.globals, name.getBox(), value.o);
+    } else if (vst == ScopeInfo::VarScopeType::NAME) {
+        if (jit)
+            jit->emitSetItemName(name.getBox(), value);
+        assert(frame_info.boxedLocals != NULL);
+        // TODO should probably pre-box the names when it's a scope that usesNameLookup
+        AUTO_DECREF(value.o);
+        setitem(frame_info.boxedLocals, name.getBox(), value.o);
+    } else {
+        bool closure = vst == ScopeInfo::VarScopeType::CLOSURE;
+        if (jit) {
+            bool is_live = true;
+            if (!closure)
+                is_live = source_info->getLiveness()->isLiveAtEnd(node->vreg, current_block);
+            if (is_live) {
+                if (closure) {
+                    // jit->emitSetLocalClosure(node, value);
+                    assert(0);
+                    abort();
+                } else
+                    jit->emitSetLocal(node->vreg, value);
+            } else
+                jit->emitSetBlockLocal(node->vreg, value);
+        }
+
+        if (closure) {
+            // ASTInterpreterJitInterface::setLocalClosureHelper(this, node, value.o);
+            assert(0);
+            abort();
+        } else {
+            assert(getVRegInfo().getVReg(node->id) == node->vreg);
+            frame_info.num_vregs = std::max(frame_info.num_vregs, node->vreg + 1);
+            Box* prev = vregs[node->vreg];
+            vregs[node->vreg] = value.o;
+            Py_XDECREF(prev);
+        }
+    }
+    return Value();
+}
+
 
 Value ASTInterpreter::visit_storeattr(BST_StoreAttr* node) {
     Value value = getVReg(node->vreg_value);

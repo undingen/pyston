@@ -45,6 +45,28 @@ static void fillScopingInfo(BST_Name* node, ScopeInfo* scope_info) {
     assert(node->lookup_type != ScopeInfo::VarScopeType::UNKNOWN);
 }
 
+static void fillScopingInfo(BST_StoreName* node, ScopeInfo* scope_info) {
+    node->lookup_type = scope_info->getScopeTypeOfName(node->id);
+
+    if (node->lookup_type == ScopeInfo::VarScopeType::CLOSURE)
+        node->closure_offset = scope_info->getClosureOffset(node->id);
+    else if (node->lookup_type == ScopeInfo::VarScopeType::DEREF)
+        node->deref_info = scope_info->getDerefInfo(node->id);
+
+    assert(node->lookup_type != ScopeInfo::VarScopeType::UNKNOWN);
+}
+
+static void fillScopingInfo(BST_LoadName* node, ScopeInfo* scope_info) {
+    node->lookup_type = scope_info->getScopeTypeOfName(node->id);
+
+    if (node->lookup_type == ScopeInfo::VarScopeType::CLOSURE)
+        node->closure_offset = scope_info->getClosureOffset(node->id);
+    else if (node->lookup_type == ScopeInfo::VarScopeType::DEREF)
+        node->deref_info = scope_info->getDerefInfo(node->id);
+
+    assert(node->lookup_type != ScopeInfo::VarScopeType::UNKNOWN);
+}
+
 ParamNames::ParamNames(AST_arguments* arguments, InternedStringPool& pool)
     : all_args_contains_names(1), takes_param_names(1), has_vararg_name(0), has_kwarg_name(0) {
     if (!arguments)
@@ -626,7 +648,7 @@ private:
 
             curblock = body_end;
             if (is_innermost) {
-                push_back(makeAssign(applyComprehensionCall(node, makeLoad(rtn_name, node))));
+                applyComprehensionCall(node, makeLoad(rtn_name, node));
 
                 pushJump(test_block, true);
 
@@ -2067,6 +2089,15 @@ public:
             curblock = normal_dest;
     }
 
+    void pushStoreName(InternedString name, BST_expr* value) {
+        BST_StoreName* store = new BST_StoreName();
+        store->id = name;
+        unmapExpr(value, &store->vreg_value);
+        store->lineno = value->lineno;
+        fillScopingInfo(store, scoping);
+        push_back(store);
+    }
+
     bool visit_classdef(AST_ClassDef* node) override {
         auto def = BST_ClassDef::create(node->decorator_list.size());
         def->lineno = node->lineno;
@@ -3450,33 +3481,25 @@ static CFG* computeCFG(llvm::ArrayRef<AST_stmt*> body, AST_TYPE::AST_TYPE ast_ty
 
     if (ast_type == AST_TYPE::ClassDef) {
         // A classdef always starts with "__module__ = __name__"
-        BST_Assign* module_assign = new BST_Assign();
-        auto module_name_target = new BST_Name(stringpool.get("__module__"), AST_TYPE::Store, lineno);
-        fillScopingInfo(module_name_target, scoping);
-
-        auto module_name_value = new BST_Name(stringpool.get("__name__"), AST_TYPE::Load, lineno);
+        auto module_name_value = new BST_LoadName;
+        module_name_value->lineno = lineno;
+        module_name_value->id = stringpool.get("__name__");
+        InternedString module_name = visitor.nodeName();
+        visitor.unmapDst(module_name, &module_name_value->vreg_dst);
         fillScopingInfo(module_name_value, scoping);
+        visitor.push_back(module_name_value);
 
-        module_assign->target = module_name_target;
-        module_assign->value = module_name_value;
-
-        module_assign->lineno = lineno;
-        visitor.push_back(module_assign);
+        visitor.pushStoreName(stringpool.get("__module__"), visitor.makeLoad(module_name, lineno, true));
 
         // If the first statement is just a single string, transform it to an assignment to __doc__
         if (body.size() && body[0]->type == AST_TYPE::Expr) {
             AST_Expr* first_expr = ast_cast<AST_Expr>(body[0]);
             if (first_expr->value->type == AST_TYPE::Str) {
-                BST_Assign* doc_assign = new BST_Assign();
-                auto doc_target_name = new BST_Name(stringpool.get("__doc__"), AST_TYPE::Store, lineno);
-                fillScopingInfo(doc_target_name, scoping);
-                doc_assign->target = doc_target_name;
                 auto doc_val = new BST_Str();
+                doc_val->lineno = lineno;
                 doc_val->str_data = ast_cast<AST_Str>(first_expr->value)->str_data;
                 doc_val->str_type = ast_cast<AST_Str>(first_expr->value)->str_type;
-                doc_assign->value = doc_val;
-                doc_assign->lineno = lineno;
-                visitor.push_back(doc_assign);
+                visitor.pushStoreName(stringpool.get("__doc__"), doc_val);
                 skip_first = true;
             }
         }

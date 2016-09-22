@@ -281,7 +281,7 @@ public:
     RewriterVar* emitDeref(BST_Name* name);
     RewriterVar* emitExceptionMatches(RewriterVar* v, RewriterVar* cls);
     RewriterVar* emitGetAttr(BST* node, RewriterVar* obj, BoxedString* s);
-    RewriterVar* emitGetBlockLocal(BST_Name* name);
+    RewriterVar* emitGetBlockLocal(InternedString name, int vreg);
     RewriterVar* emitGetBlockLocalMustExist(int vreg);
     void emitKillTemporary(int vreg);
     RewriterVar* emitGetBoxedLocal(BoxedString* s);
@@ -289,7 +289,7 @@ public:
     RewriterVar* emitGetClsAttr(RewriterVar* obj, BoxedString* s);
     RewriterVar* emitGetGlobal(BoxedString* s);
     RewriterVar* emitGetItem(BST* node, RewriterVar* value, RewriterVar* slice);
-    RewriterVar* emitGetLocal(BST_Name* name);
+    RewriterVar* emitGetLocal(InternedString name, int vreg);
     RewriterVar* emitGetLocalMustExist(int vreg);
     RewriterVar* emitGetPystonIter(RewriterVar* v);
     RewriterVar* emitHasnext(RewriterVar* v);

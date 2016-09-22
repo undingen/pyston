@@ -482,6 +482,20 @@ void BST_List::accept_stmt(StmtVisitor* v) {
     return v->visit_list(this);
 }
 
+void BST_LoadName::accept(BSTVisitor* v) {
+    bool skip = v->visit_loadname(this);
+    if (skip)
+        return;
+
+    v->visit_vreg(&vreg_dst, true);
+    v->visit_vreg(&vreg);
+}
+
+
+void BST_LoadName::accept_stmt(StmtVisitor* v) {
+    v->visit_loadname(this);
+}
+
 void BST_LoadAttr::accept(BSTVisitor* v) {
     bool skip = v->visit_loadattr(this);
     if (skip)
@@ -526,6 +540,20 @@ void BST_LoadSubSlice::accept_stmt(StmtVisitor* v) {
     v->visit_loadsubslice(this);
 }
 
+
+void BST_StoreName::accept(BSTVisitor* v) {
+    bool skip = v->visit_storename(this);
+    if (skip)
+        return;
+
+    v->visit_vreg(&vreg);
+    v->visit_vreg(&vreg_value);
+}
+
+
+void BST_StoreName::accept_stmt(StmtVisitor* v) {
+    v->visit_storename(this);
+}
 
 void BST_StoreAttr::accept(BSTVisitor* v) {
     bool skip = v->visit_storeattr(this);
@@ -1399,6 +1427,12 @@ bool PrintVisitor::visit_makeslice(BST_MakeSlice* node) {
     return true;
 }
 
+bool PrintVisitor::visit_loadname(BST_LoadName* node) {
+    visit_vreg(&node->vreg_dst, true);
+    stream << node->id.s();
+    return true;
+}
+
 bool PrintVisitor::visit_loadattr(BST_LoadAttr* node) {
     visit_vreg(&node->vreg_dst, true);
     visit_vreg(&node->vreg_value);
@@ -1423,6 +1457,12 @@ bool PrintVisitor::visit_loadsubslice(BST_LoadSubSlice* node) {
     visit_vreg(&node->vreg_lower);
     visit_vreg(&node->vreg_upper);
     stream << "]";
+    return true;
+}
+
+bool PrintVisitor::visit_storename(BST_StoreName* node) {
+    stream << node->id.s() << " = ";
+    visit_vreg(&node->vreg_value);
     return true;
 }
 
@@ -1776,6 +1816,10 @@ public:
         output->push_back(node);
         return false;
     }
+    virtual bool visit_loadname(BST_LoadName* node) override {
+        output->push_back(node);
+        return false;
+    }
     virtual bool visit_loadattr(BST_LoadAttr* node) override {
         output->push_back(node);
         return false;
@@ -1785,6 +1829,10 @@ public:
         return false;
     }
     virtual bool visit_loadsubslice(BST_LoadSubSlice* node) override {
+        output->push_back(node);
+        return false;
+    }
+    virtual bool visit_storename(BST_StoreName* node) override {
         output->push_back(node);
         return false;
     }

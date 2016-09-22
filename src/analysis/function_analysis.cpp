@@ -266,10 +266,12 @@ private:
                 }
                 break;
             }
+
             default:
                 ASSERT(0, "Unknown type for DefinednessVisitor: %d", t->type);
         }
     }
+
 
 public:
     DefinednessVisitor(Map& state) : state(state) {}
@@ -425,6 +427,10 @@ public:
         _doSet(node->vreg_dst);
         return true;
     }
+    virtual bool visit_loadname(BST_LoadName* node) {
+        _doSet(node->vreg_dst);
+        return true;
+    }
     virtual bool visit_loadattr(BST_LoadAttr* node) {
         _doSet(node->vreg_dst);
         return true;
@@ -444,6 +450,20 @@ public:
     virtual bool visit_setexcinfo(BST_SetExcInfo* node) { return true; }
     virtual bool visit_uncacheexcinfo(BST_UncacheExcInfo* node) { return true; }
     virtual bool visit_printexpr(BST_PrintExpr* node) { return true; }
+    virtual bool visit_storename(BST_StoreName* node) {
+        if (node->lookup_type == ScopeInfo::VarScopeType::FAST
+            || node->lookup_type == ScopeInfo::VarScopeType::CLOSURE) {
+            assert(node->vreg >= 0);
+            _doSet(node->vreg);
+        } else if (node->lookup_type == ScopeInfo::VarScopeType::GLOBAL
+                   || node->lookup_type == ScopeInfo::VarScopeType::NAME) {
+            assert(node->vreg == VREG_UNDEFINED);
+            // skip
+        } else {
+            RELEASE_ASSERT(0, "%d", static_cast<int>(node->lookup_type));
+        }
+        return true;
+    }
     virtual bool visit_storeattr(BST_StoreAttr* node) { return true; }
     virtual bool visit_storesub(BST_StoreSub* node) { return true; }
     virtual bool visit_storesubslice(BST_StoreSubSlice* node) { return true; }
