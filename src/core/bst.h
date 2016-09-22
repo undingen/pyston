@@ -430,25 +430,6 @@ public:
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::AugBinOp;
 };
 
-class BST_Attribute : public BST_expr {
-public:
-    BST_expr* value;
-    AST_TYPE::AST_TYPE ctx_type;
-    InternedString attr;
-
-    virtual void accept(BSTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
-
-    BST_Attribute() : BST_expr(BST_TYPE::Attribute) {}
-
-    BST_Attribute(BST_expr* value, AST_TYPE::AST_TYPE ctx_type, InternedString attr)
-        : BST_expr(BST_TYPE::Attribute), value(value), ctx_type(ctx_type), attr(attr) {}
-
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Attribute;
-};
-
-
-
 class BST_BinOp : public BST_ass {
 public:
     AST_TYPE::AST_TYPE op_type;
@@ -1023,19 +1004,6 @@ public:
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Jump;
 };
 
-class BST_ClsAttribute : public BST_expr {
-public:
-    BST_expr* value;
-    InternedString attr;
-
-    virtual void accept(BSTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
-
-    BST_ClsAttribute() : BST_expr(BST_TYPE::ClsAttribute) {}
-
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::ClsAttribute;
-};
-
 class BST_Invoke : public BST_stmt {
 public:
     BST_stmt* stmt;
@@ -1228,12 +1196,10 @@ public:
     virtual bool visit_assign(BST_Assign* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_assignvregvreg(BST_AssignVRegVReg* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_augbinop(BST_AugBinOp* node) { RELEASE_ASSERT(0, ""); }
-    virtual bool visit_attribute(BST_Attribute* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_binop(BST_BinOp* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_callfunc(BST_CallFunc* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_callattr(BST_CallAttr* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_callclsattr(BST_CallClsAttr* node) { RELEASE_ASSERT(0, ""); }
-    virtual bool visit_clsattribute(BST_ClsAttribute* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_compare(BST_Compare* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_classdef(BST_ClassDef* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_deletesub(BST_DeleteSub* node) { RELEASE_ASSERT(0, ""); }
@@ -1298,12 +1264,10 @@ public:
     virtual bool visit_assign(BST_Assign* node) { return false; }
     virtual bool visit_assignvregvreg(BST_AssignVRegVReg* node) { return false; }
     virtual bool visit_augbinop(BST_AugBinOp* node) { return false; }
-    virtual bool visit_attribute(BST_Attribute* node) { return false; }
     virtual bool visit_binop(BST_BinOp* node) { return false; }
     virtual bool visit_callfunc(BST_CallFunc* node) { return false; }
     virtual bool visit_callattr(BST_CallAttr* node) { return false; }
     virtual bool visit_callclsattr(BST_CallClsAttr* node) { return false; }
-    virtual bool visit_clsattribute(BST_ClsAttribute* node) { return false; }
     virtual bool visit_compare(BST_Compare* node) { return false; }
     virtual bool visit_classdef(BST_ClassDef* node) { return false; }
     virtual bool visit_deletesub(BST_DeleteSub* node) { return false; }
@@ -1362,10 +1326,6 @@ protected:
 public:
     virtual ~ExprVisitor() {}
 
-
-
-    virtual void* visit_attribute(BST_Attribute* node) { RELEASE_ASSERT(0, ""); }
-    virtual void* visit_clsattribute(BST_ClsAttribute* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_name(BST_Name* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_num(BST_Num* node) { RELEASE_ASSERT(0, ""); }
     virtual void* visit_str(BST_Str* node) { RELEASE_ASSERT(0, ""); }
@@ -1456,14 +1416,12 @@ public:
     virtual bool visit_assign(BST_Assign* node);
     virtual bool visit_assignvregvreg(BST_AssignVRegVReg* node);
     virtual bool visit_augbinop(BST_AugBinOp* node);
-    virtual bool visit_attribute(BST_Attribute* node);
     virtual bool visit_binop(BST_BinOp* node);
     virtual bool visit_callfunc(BST_CallFunc* node);
     virtual bool visit_callattr(BST_CallAttr* node);
     virtual bool visit_callclsattr(BST_CallClsAttr* node);
     virtual bool visit_compare(BST_Compare* node);
     virtual bool visit_classdef(BST_ClassDef* node);
-    virtual bool visit_clsattribute(BST_ClsAttribute* node);
     virtual bool visit_deletesub(BST_DeleteSub* node);
     virtual bool visit_deletesubslice(BST_DeleteSubSlice* node);
     virtual bool visit_deleteattr(BST_DeleteAttr* node);

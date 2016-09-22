@@ -102,18 +102,6 @@ void BST_AugBinOp::accept_stmt(StmtVisitor* v) {
     return v->visit_augbinop(this);
 }
 
-void BST_Attribute::accept(BSTVisitor* v) {
-    bool skip = v->visit_attribute(this);
-    if (skip)
-        return;
-
-    value->accept(v);
-}
-
-void* BST_Attribute::accept_expr(ExprVisitor* v) {
-    return v->visit_attribute(this);
-}
-
 void BST_BinOp::accept(BSTVisitor* v) {
     bool skip = v->visit_binop(this);
     if (skip)
@@ -750,18 +738,6 @@ void BST_Jump::accept_stmt(StmtVisitor* v) {
     v->visit_jump(this);
 }
 
-void BST_ClsAttribute::accept(BSTVisitor* v) {
-    bool skip = v->visit_clsattribute(this);
-    if (skip)
-        return;
-
-    value->accept(v);
-}
-
-void* BST_ClsAttribute::accept_expr(ExprVisitor* v) {
-    return v->visit_clsattribute(this);
-}
-
 void BST_MakeFunction::accept(BSTVisitor* v) {
     bool skip = v->visit_makefunction(this);
     if (skip)
@@ -901,13 +877,6 @@ bool PrintVisitor::visit_augbinop(BST_AugBinOp* node) {
     stream << '=';
     printOp(node->op_type);
     visit_vreg(&node->vreg_right);
-    return true;
-}
-
-bool PrintVisitor::visit_attribute(BST_Attribute* node) {
-    node->value->accept(this);
-    stream << '.';
-    stream << node->attr.s();
     return true;
 }
 
@@ -1433,7 +1402,7 @@ bool PrintVisitor::visit_makeslice(BST_MakeSlice* node) {
 bool PrintVisitor::visit_loadattr(BST_LoadAttr* node) {
     visit_vreg(&node->vreg_dst, true);
     visit_vreg(&node->vreg_value);
-    stream << "." << node->attr.s();
+    stream << (node->clsonly ? ':' : '.') << node->attr.s();
     return true;
 }
 
@@ -1577,15 +1546,6 @@ bool PrintVisitor::visit_jump(BST_Jump* node) {
     return true;
 }
 
-bool PrintVisitor::visit_clsattribute(BST_ClsAttribute* node) {
-    // printf("getclsattr(");
-    // node->value->accept(this);
-    // printf(", '%s')", node->attr.c_str());
-    node->value->accept(this);
-    stream << ":" << node->attr.s();
-    return true;
-}
-
 bool PrintVisitor::visit_makefunction(BST_MakeFunction* node) {
     visit_vreg(&node->vreg_dst, true);
     stream << "make_";
@@ -1625,10 +1585,6 @@ public:
         return false;
     }
     virtual bool visit_augbinop(BST_AugBinOp* node) {
-        output->push_back(node);
-        return false;
-    }
-    virtual bool visit_attribute(BST_Attribute* node) {
         output->push_back(node);
         return false;
     }
@@ -1751,10 +1707,6 @@ public:
         return false;
     }
     virtual bool visit_jump(BST_Jump* node) {
-        output->push_back(node);
-        return false;
-    }
-    virtual bool visit_clsattribute(BST_ClsAttribute* node) {
         output->push_back(node);
         return false;
     }
