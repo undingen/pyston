@@ -146,6 +146,8 @@ private:
             return STR;
         else if (o->cls == unicode_cls)
             return typeFromClass(unicode_cls);
+        else if (o->cls == none_cls)
+            return NONE;
         else
             RELEASE_ASSERT(0, "");
     }

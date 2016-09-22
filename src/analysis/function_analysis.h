@@ -48,6 +48,7 @@ public:
 
     // we don't keep track of node->parent_block relationships, so you have to pass both:
     bool isKill(BST_Name* node, CFGBlock* parent_block);
+    bool isKill(BST_LoadName* node, CFGBlock* parent_block);
 
     bool isLiveAtEnd(int vreg, CFGBlock* block);
 };

@@ -946,6 +946,7 @@ bool PrintVisitor::visit_callfunc(BST_CallFunc* node) {
 
 bool PrintVisitor::visit_callattr(BST_CallAttr* node) {
     visit_vreg(&node->vreg_dst, true);
+    stream << "@" << node->vreg_value << ".";
     stream << node->attr.s();
     stream << "(";
 
@@ -974,6 +975,7 @@ bool PrintVisitor::visit_callattr(BST_CallAttr* node) {
 
 bool PrintVisitor::visit_callclsattr(BST_CallClsAttr* node) {
     visit_vreg(&node->vreg_dst, true);
+    stream << "@" << node->vreg_value << ":";
     stream << node->attr.s();
     stream << "(";
 
@@ -1429,7 +1431,7 @@ bool PrintVisitor::visit_makeslice(BST_MakeSlice* node) {
 
 bool PrintVisitor::visit_loadname(BST_LoadName* node) {
     visit_vreg(&node->vreg_dst, true);
-    stream << node->id.s();
+    stream << node->id.s() << "(vreg" << node->vreg << ")";
     return true;
 }
 
@@ -1461,7 +1463,7 @@ bool PrintVisitor::visit_loadsubslice(BST_LoadSubSlice* node) {
 }
 
 bool PrintVisitor::visit_storename(BST_StoreName* node) {
-    stream << node->id.s() << " = ";
+    stream << node->id.s() << "(vreg" << node->vreg << ")" << " = ";
     visit_vreg(&node->vreg_value);
     return true;
 }

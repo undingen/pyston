@@ -447,7 +447,7 @@ static int main(int argc, char** argv) noexcept {
         // Set encoding for standard streams. This needs to be done after
         // sys.path is properly set up, so that we can import the
         // encodings module.
-        setEncodingAndErrors();
+        // setEncodingAndErrors();
 
         Stats::endOfInit();
 

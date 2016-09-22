@@ -622,7 +622,7 @@ private:
 
             curblock = test_block;
             BST_HasNext* test_call = new BST_HasNext;
-            unmapExpr(_dup2(makeName(iter_name, AST_TYPE::Load, node->lineno)), &test_call->vreg_value);
+            unmapExpr(_dup(iter_name), &test_call->vreg_value);
             test_call->lineno = c->target->lineno;
             InternedString tmp_test_name = nodeName();
             unmapDst(tmp_test_name, &test_call->vreg_dst);
@@ -2277,7 +2277,7 @@ public:
         auto mkfunc = new BST_MakeFunction(def);
         unmapDst(tmp, &mkfunc->vreg_dst);
         push_back(mkfunc);
-        pushAssign(scoping->mangleName(def->name), makeName(tmp, AST_TYPE::Load, node->lineno, true));
+        pushAssign(scoping->mangleName(def->name), tmp);
 
         return true;
     }
@@ -2920,8 +2920,6 @@ public:
         pushJump(test_block);
         curblock = test_block;
 
-        TmpValue load_iter = _dup(itername);
-
         BST_HasNext* test_call = new BST_HasNext;
         test_call->lineno = node->lineno;
         unmapExpr(_dup(itername), &test_call->vreg_value);
@@ -2954,7 +2952,7 @@ public:
 
         curblock = loop_block;
         InternedString next_name(nodeName());
-        pushAssign(next_name, makeCallAttr(load_iter, internString("next"), true));
+        pushAssign(next_name, makeCallAttr(_dup(itername), internString("next"), true));
         pushAssign(node->target, next_name);
 
         for (int i = 0; i < node->body.size(); i++) {
@@ -3428,6 +3426,8 @@ public:
             *vreg = assignVReg(id);
             return true;
         }
+
+        /*
         if (!name_vreg.count(vreg)) {
             if (*vreg >= 0)
                 *vreg = VREG_UNDEFINED;
@@ -3438,6 +3438,31 @@ public:
         node->accept(this);
         *vreg = node->vreg;
         return true;
+        */
+        if (!id_vreg.count(vreg)) {
+            if (*vreg >= 0)
+                *vreg = VREG_UNDEFINED;
+            return true;
+        }
+
+        auto id = id_vreg[vreg];
+
+        if (step == TrackBlockUsage) {
+            sym_blocks_map[id].insert(current_block);
+            return true;
+        } else if (step == UserVisible) {
+            if (id.isCompilerCreatedName())
+                return true;
+        } else {
+            bool is_block_local = isNameUsedInSingleBlock(id);
+            if (step == CrossBlock && is_block_local)
+                return true;
+            if (step == SingleBlockUse && !is_block_local)
+                return true;
+        }
+        *vreg = assignVReg(id);
+
+        return true;
     }
 
     bool isNameUsedInSingleBlock(InternedString id) {
@@ -3446,7 +3471,8 @@ public:
         return sym_blocks_map[id].size() == 1;
     }
 
-    bool visit_name(BST_Name* node) override {
+    template<typename T>
+    bool visit_nameHelper(T* node) {
         if (node->vreg != VREG_UNDEFINED)
             return true;
 
@@ -3473,6 +3499,19 @@ public:
         return true;
     }
 
+    bool visit_name(BST_Name *node) override {
+        return visit_nameHelper(node);
+    }
+
+    bool visit_loadname(BST_LoadName *node) override {
+        visit_vreg(&node->vreg_dst, true);
+        return visit_nameHelper(node);
+    }
+
+    bool visit_storename(BST_StoreName *node) override {
+        visit_vreg(&node->vreg_value);
+        return visit_nameHelper(node);
+    }
 
     bool visit_deletename(BST_DeleteName* node) override {
         if (node->vreg != VREG_UNDEFINED)
@@ -3856,6 +3895,7 @@ static CFG* computeCFG(llvm::ArrayRef<AST_stmt*> body, AST_TYPE::AST_TYPE ast_ty
         }
     }
 
+    assert(visitor.name_vreg.empty());
     rtn->getVRegInfo().assignVRegs(rtn, param_names, visitor.name_vreg, visitor.id_vreg);
 
     for (auto&& e : visitor.name_vreg) {

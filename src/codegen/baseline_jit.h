@@ -279,6 +279,7 @@ public:
     RewriterVar* emitCreateSlice(RewriterVar* start, RewriterVar* stop, RewriterVar* step);
     RewriterVar* emitCreateTuple(const llvm::ArrayRef<RewriterVar*> values);
     RewriterVar* emitDeref(BST_Name* name);
+    RewriterVar* emitDeref(BST_LoadName* name);
     RewriterVar* emitExceptionMatches(RewriterVar* v, RewriterVar* cls);
     RewriterVar* emitGetAttr(BST* node, RewriterVar* obj, BoxedString* s);
     RewriterVar* emitGetBlockLocal(InternedString name, int vreg);
@@ -328,6 +329,7 @@ public:
     void emitSetItem(RewriterVar* target, RewriterVar* slice, RewriterVar* value);
     void emitSetLocal(int vreg, STOLEN(RewriterVar*) v);
     void emitSetLocalClosure(BST_Name* name, STOLEN(RewriterVar*) v);
+    void emitSetLocalClosure(BST_StoreName* name, STOLEN(RewriterVar*) v);
     // emitSideExit steals a full ref from v, not just a vref
     void emitSideExit(STOLEN(RewriterVar*) v, Box* cmp_value, CFGBlock* next_block);
     void emitUncacheExcInfo();

@@ -376,6 +376,10 @@ RewriterVar* JitFragmentWriter::emitDeref(BST_Name* name) {
     return call(false, (void*)ASTInterpreterJitInterface::derefHelper, getInterp(), imm(name))->setType(RefType::OWNED);
 }
 
+RewriterVar* JitFragmentWriter::emitDeref(BST_LoadName* name) {
+    return call(false, (void*)ASTInterpreterJitInterface::derefHelperLN, getInterp(), imm(name))->setType(RefType::OWNED);
+}
+
 RewriterVar* JitFragmentWriter::emitExceptionMatches(RewriterVar* v, RewriterVar* cls) {
     return call(false, (void*)exceptionMatchesHelper, v, cls)->setType(RefType::OWNED);
 }
@@ -770,6 +774,17 @@ void JitFragmentWriter::emitSetLocalClosure(BST_Name* name, STOLEN(RewriterVar*)
     auto vreg = name->vreg;
     assert(vreg >= 0);
     call(false, (void*)ASTInterpreterJitInterface::setLocalClosureHelper, getInterp(), imm(name), v);
+    v->refConsumed();
+    if (LOG_BJIT_ASSEMBLY)
+        comment("BJIT: emitSetLocalClosure() end");
+}
+
+void JitFragmentWriter::emitSetLocalClosure(BST_StoreName* name, STOLEN(RewriterVar*) v) {
+    if (LOG_BJIT_ASSEMBLY)
+        comment("BJIT: emitSetLocalClosure() start");
+    auto vreg = name->vreg;
+    assert(vreg >= 0);
+    call(false, (void*)ASTInterpreterJitInterface::setLocalClosureHelperSN, getInterp(), imm(name), v);
     v->refConsumed();
     if (LOG_BJIT_ASSEMBLY)
         comment("BJIT: emitSetLocalClosure() end");

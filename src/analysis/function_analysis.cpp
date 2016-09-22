@@ -77,6 +77,7 @@ public:
     bool firstIsDef(int vreg) const { return getStatusFirst(vreg) == Status::DEFINED; }
 
     bool isKilledAt(BST_Name* node, bool is_live_at_end) { return node->is_kill; }
+    bool isKilledAt(BST_LoadName* node, bool is_live_at_end) { return node->is_kill; }
 
     bool visit_classdef(BST_ClassDef* node) {
         visit_vreg(&node->vreg_bases_tuple, false);
@@ -145,6 +146,13 @@ LivenessAnalysis::~LivenessAnalysis() {
 }
 
 bool LivenessAnalysis::isKill(BST_Name* node, CFGBlock* parent_block) {
+    if (node->id.s()[0] != '#')
+        return false;
+
+    return liveness_cache[parent_block]->isKilledAt(node, isLiveAtEnd(node->vreg, parent_block));
+}
+
+bool LivenessAnalysis::isKill(BST_LoadName* node, CFGBlock* parent_block) {
     if (node->id.s()[0] != '#')
         return false;
 

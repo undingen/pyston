@@ -1211,7 +1211,7 @@ private:
         return new ConcreteCompilerVariable(typeFromClass(ellipsis_cls), ellipsis);
     }
 
-    ConcreteCompilerVariable* _getGlobal(BST_Name* node, const UnwindInfo& unw_info) {
+    ConcreteCompilerVariable* _getGlobal(BST_LoadName* node, const UnwindInfo& unw_info) {
         if (node->id.s() == "None")
             return emitter.getNone();
 
@@ -1272,7 +1272,7 @@ private:
     }
 
 
-    CompilerVariable* evalName(BST_Name* node, const UnwindInfo& unw_info) {
+    CompilerVariable* evalLoadName(BST_LoadName* node, const UnwindInfo& unw_info) {
         auto&& scope_info = irstate->getScopeInfo();
 
         bool is_kill = irstate->getLiveness()->isKill(node, myblock);
@@ -1734,9 +1734,9 @@ private:
 
         CompilerVariable* rtn = NULL;
         switch (node->type) {
-            case BST_TYPE::Name:
-                rtn = evalName(bst_cast<BST_Name>(node), unw_info);
-                break;
+            //case BST_TYPE::Name:
+                //rtn = evalName(bst_cast<BST_Name>(node), unw_info);
+            //    break;
             case BST_TYPE::Num:
                 rtn = evalNum(bst_cast<BST_Num>(node), unw_info);
                 break;
@@ -1817,6 +1817,71 @@ private:
 
     // only updates symbol_table if we're *not* setting a global
     void _doSet(BST_Name* node, CompilerVariable* val, const UnwindInfo& unw_info) {
+        assert(node->id.s() != "None");
+        assert(node->id.s() != FRAME_INFO_PTR_NAME);
+        assert(val->getType()->isUsable());
+
+        auto vst = node->lookup_type;
+        assert(vst != ScopeInfo::VarScopeType::UNKNOWN);
+        assert(vst != ScopeInfo::VarScopeType::DEREF);
+
+        auto name = node->id;
+        auto vreg = node->vreg;
+
+        if (vst == ScopeInfo::VarScopeType::GLOBAL) {
+            if (irstate->getSourceInfo()->scoping.areGlobalsFromModule()) {
+                auto parent_module = irstate->getGlobals();
+                ConcreteCompilerVariable* module = new ConcreteCompilerVariable(MODULE, parent_module);
+                module->setattr(emitter, getEmptyOpInfo(unw_info), name.getBox(), val);
+            } else {
+                auto converted = val->makeConverted(emitter, val->getBoxType());
+                auto cs = emitter.createCall3(
+                    unw_info, g.funcs.setGlobal, irstate->getGlobals(),
+                    emitter.setType(embedRelocatablePtr(name.getBox(), g.llvm_boxedstring_type_ptr), RefType::BORROWED),
+                    converted->getValue());
+                emitter.refConsumed(converted->getValue(), cs);
+            }
+        } else if (vst == ScopeInfo::VarScopeType::NAME) {
+            // TODO inefficient
+            llvm::Value* boxedLocals = irstate->getBoxedLocalsVar();
+            llvm::Value* attr = embedRelocatablePtr(name.getBox(), g.llvm_boxedstring_type_ptr);
+            emitter.setType(attr, RefType::BORROWED);
+            emitter.createCall3(unw_info, g.funcs.boxedLocalsSet, boxedLocals, attr,
+                                val->makeConverted(emitter, UNKNOWN)->getValue());
+        } else {
+            // FAST or CLOSURE
+
+            CompilerVariable* prev = symbol_table[vreg];
+            symbol_table[vreg] = val;
+
+            // Clear out the is_defined name since it is now definitely defined:
+            assert(!isIsDefinedName(name.s()));
+            bool maybe_was_undefined = popDefinedVar(vreg, true);
+
+            if (vst == ScopeInfo::VarScopeType::CLOSURE) {
+                size_t offset = irstate->getScopeInfo().getClosureOffset(node);
+
+                // This is basically `closure->elts[offset] = val;`
+                llvm::Value* gep = getClosureElementGep(emitter, irstate->getCreatedClosure(), offset);
+                if (prev) {
+                    auto load = emitter.getBuilder()->CreateLoad(gep);
+                    emitter.setType(load, RefType::OWNED);
+                    if (maybe_was_undefined)
+                        emitter.setNullable(load, true);
+                }
+                llvm::Value* v = val->makeConverted(emitter, UNKNOWN)->getValue();
+                auto store = emitter.getBuilder()->CreateStore(v, gep);
+                emitter.refConsumed(v, store);
+            }
+
+            auto&& get_llvm_val = [&]() { return val->makeConverted(emitter, UNKNOWN)->getValue(); };
+            _setVRegIfUserVisible(vreg, get_llvm_val, prev, maybe_was_undefined);
+        }
+    }
+
+    void doStoreName(BST_StoreName* node, const UnwindInfo& unw_info) {
+        CompilerVariable* val = evalVReg(node->vreg_value);
+
         assert(node->id.s() != "None");
         assert(node->id.s() != FRAME_INFO_PTR_NAME);
         assert(val->getType()->isUsable());
@@ -2513,6 +2578,9 @@ private:
                 assert(!unw_info.hasHandler());
                 doReturn(bst_cast<BST_Return>(node), unw_info);
                 break;
+            case BST_TYPE::StoreName:
+                doStoreName(bst_cast<BST_StoreName>(node), unw_info);
+                break;
             case BST_TYPE::StoreAttr:
                 doStoreAttr(bst_cast<BST_StoreAttr>(node), unw_info);
                 break;
@@ -2593,6 +2661,9 @@ private:
                         break;
                     case BST_TYPE::Locals:
                         rtn = evalLocals((BST_Locals*)node, unw_info);
+                        break;
+                    case BST_TYPE::LoadName:
+                        rtn = evalLoadName((BST_LoadName*)node, unw_info);
                         break;
                     case BST_TYPE::LoadAttr:
                         rtn = evalLoadAttr((BST_LoadAttr*)node, unw_info);

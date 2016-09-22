@@ -159,6 +159,8 @@ class BST_FunctionDef;
 class AST_arguments;
 class BST_expr;
 class BST_Name;
+class BST_LoadName;
+class BST_StoreName;
 class BST_stmt;
 
 class PhiAnalysis;
@@ -479,6 +481,9 @@ public:
     }
     const std::vector<std::pair<InternedString, DerefInfo>>& getAllDerefVarsAndInfo() const { return deref_info; }
     DerefInfo getDerefInfo(BST_Name*) const;
+    DerefInfo getDerefInfo(BST_LoadName*) const;
+    size_t getClosureOffset(BST_LoadName*) const;
+    size_t getClosureOffset(BST_StoreName*) const;
     size_t getClosureOffset(BST_Name*) const;
 
     ScopingResults(ScopeInfo* scope_info, bool globals_from_module);
