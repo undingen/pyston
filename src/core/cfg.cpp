@@ -945,29 +945,6 @@ private:
         return stmt;
     }
 
-    BST_stmt* makeAssign(BST_expr* expr) {
-        InternedString id = nodeName();
-        if (expr->type == BST_TYPE::Name && bst_cast<BST_Name>(expr)->id.isCompilerCreatedName()) {
-            BST_AssignVRegVReg* assign = new BST_AssignVRegVReg;
-            assign->lineno = expr->lineno;
-            assign->kill_src = bst_cast<BST_Name>(expr)->is_kill;
-            unmapExprDst(expr, &assign->vreg_src); // we don't need a kill so use unmapExprDst
-            unmapDst(id, &assign->vreg_dst);
-            return assign;
-        } else if (expr->type == BST_TYPE::Num || expr->type == BST_TYPE::Str) {
-            BST_AssignVRegVReg* assign = new BST_AssignVRegVReg;
-            assign->lineno = expr->lineno;
-            unmapExpr(expr, &assign->vreg_src);
-            unmapDst(id, &assign->vreg_dst);
-            return assign;
-        }
-        BST_Assign* stmt = new BST_Assign();
-        stmt->value = expr;
-        stmt->lineno = expr->lineno;
-        stmt->target = makeName(id, AST_TYPE::Store, expr->lineno, 0);
-        return stmt;
-    }
-
     InternedString nodeName() { return createUniqueName("#"); }
 
     InternedString nodeName(llvm::StringRef suffix) { return createUniqueName(llvm::Twine("#") + suffix + "_"); }
@@ -3164,8 +3141,6 @@ public:
         enter = wrap(makeCallAttr(makeLoad(ctxmgrname, node, true), internString("__enter__"), true));
         if (node->optional_vars)
             pushAssign(node->optional_vars, enter);
-        else
-            push_back(makeAssign(enter));
 
         // push continuations
         CFGBlock* finally_block = cfg->addDeferredBlock();
@@ -3232,9 +3207,8 @@ public:
             cfg->placeBlock(finally_block);
             curblock = finally_block;
             // call the context-manager's exit method, ignoring result
-            push_back(
-                makeAssign(makeCall(makeLoad(exitname, node, true),
-                                    { makeLoad(nonename, node), makeLoad(nonename, node), makeLoad(nonename, node) })));
+            makeCall(makeLoad(exitname, node, true),
+                     { makeLoad(nonename, node), makeLoad(nonename, node), makeLoad(nonename, node) });
 
             if (finally_did_why & (1 << Why::CONTINUE))
                 exitFinallyIf(node, Why::CONTINUE, whyname, /* is_kill */ finally_did_why == (1 << Why::CONTINUE));
