@@ -377,7 +377,8 @@ RewriterVar* JitFragmentWriter::emitDeref(BST_Name* name) {
 }
 
 RewriterVar* JitFragmentWriter::emitDeref(BST_LoadName* name) {
-    return call(false, (void*)ASTInterpreterJitInterface::derefHelperLN, getInterp(), imm(name))->setType(RefType::OWNED);
+    return call(false, (void*)ASTInterpreterJitInterface::derefHelperLN, getInterp(), imm(name))
+        ->setType(RefType::OWNED);
 }
 
 RewriterVar* JitFragmentWriter::emitExceptionMatches(RewriterVar* v, RewriterVar* cls) {

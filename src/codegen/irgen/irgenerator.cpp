@@ -1734,8 +1734,8 @@ private:
 
         CompilerVariable* rtn = NULL;
         switch (node->type) {
-            //case BST_TYPE::Name:
-                //rtn = evalName(bst_cast<BST_Name>(node), unw_info);
+            // case BST_TYPE::Name:
+            // rtn = evalName(bst_cast<BST_Name>(node), unw_info);
             //    break;
             case BST_TYPE::Num:
                 rtn = evalNum(bst_cast<BST_Num>(node), unw_info);

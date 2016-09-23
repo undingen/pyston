@@ -1463,7 +1463,8 @@ bool PrintVisitor::visit_loadsubslice(BST_LoadSubSlice* node) {
 }
 
 bool PrintVisitor::visit_storename(BST_StoreName* node) {
-    stream << node->id.s() << "(vreg" << node->vreg << ")" << " = ";
+    stream << node->id.s() << "(vreg" << node->vreg << ")"
+           << " = ";
     visit_vreg(&node->vreg_value);
     return true;
 }
