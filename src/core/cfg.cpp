@@ -420,20 +420,6 @@ private:
         return name;
     }
 
-    /*
-    BST_Name* makeLoad(InternedString id, AST* node, bool is_kill = false) {
-        return makeName(id, AST_TYPE::Load, node->lineno, is_kill);
-    }
-
-    BST_Name* makeLoad(InternedString id, BST* node, bool is_kill = false) {
-        return makeName(id, AST_TYPE::Load, node->lineno, is_kill);
-    }
-
-    BST_Name* makeLoad(InternedString id, int lineno, bool is_kill = false) {
-        return makeName(id, AST_TYPE::Load, lineno, is_kill);
-    }
-    */
-
     void pushLoopContinuation(CFGBlock* continue_dest, CFGBlock* break_dest) {
         assert(continue_dest
                != break_dest); // I guess this doesn't have to be true, but validates passing say_why=false
@@ -763,6 +749,14 @@ private:
         return TmpValue(vreg_const, lineno);
     }
 
+    TmpValue makeStr(llvm::StringRef str, int lineno = 0) {
+        // TODO: find duplicates...
+        Box* o = source->parent_module->getStringConstant(str, true);
+        source->parent_module->constants.push_back(o);
+        int vreg_const = -source->parent_module->constants.size();
+        return TmpValue(vreg_const, lineno);
+    }
+
     AST_expr* makeASTLoadAttribute(ASTAllocator& allocator, AST_expr* base, InternedString name, bool clsonly) {
         AST_expr* rtn;
         if (clsonly) {
@@ -935,74 +929,8 @@ private:
             RELEASE_ASSERT(0, "%d", target->type);
         }
     }
-    void pushAssign(AST_expr* target, BST_expr* val) {
-        if (target->type == AST_TYPE::Name) {
-            BST_Assign* assign = new BST_Assign();
-            assign->value = val;
-            assign->lineno = val->lineno;
-            assign->target = makeName(ast_cast<AST_Name>(target)->id, AST_TYPE::Store, val->lineno, 0);
-            push_back(assign);
-        } else if (target->type == AST_TYPE::Subscript) {
-            AST_Subscript* s = ast_cast<AST_Subscript>(target);
-            assert(s->ctx_type == AST_TYPE::Store);
 
-            if (isSlice(s->slice)) {
-                auto* slice = ast_cast<AST_Slice>((AST_Slice*)s->slice);
-                auto* s_target = new BST_StoreSubSlice();
-                s_target->lineno = val->lineno;
-                unmapExpr(remapExpr(s->value), &s_target->vreg_target);
-                unmapExpr(remapExpr(slice->lower), &s_target->vreg_lower);
-                unmapExpr(remapExpr(slice->upper), &s_target->vreg_upper);
-                unmapExpr(val, &s_target->vreg_value);
-                push_back(s_target);
-            } else {
-                auto* s_target = new BST_StoreSub();
-                s_target->lineno = val->lineno;
-                unmapExpr(remapExpr(s->value), &s_target->vreg_target);
-                unmapExpr(remapSlice(s->slice), &s_target->vreg_slice);
-                unmapExpr(val, &s_target->vreg_value);
-                push_back(s_target);
-            }
-
-        } else if (target->type == AST_TYPE::Attribute) {
-            AST_Attribute* a = ast_cast<AST_Attribute>(target);
-            BST_StoreAttr* a_target = new BST_StoreAttr();
-            unmapExpr(val, &a_target->vreg_value);
-            unmapExpr(remapExpr(a->value), &a_target->vreg_target);
-            a_target->attr = scoping->mangleName(a->attr);
-            a_target->lineno = a->lineno;
-            push_back(a_target);
-        } else if (target->type == AST_TYPE::Tuple || target->type == AST_TYPE::List) {
-            std::vector<AST_expr*>* elts;
-            if (target->type == AST_TYPE::Tuple) {
-                AST_Tuple* _t = ast_cast<AST_Tuple>(target);
-                assert(_t->ctx_type == AST_TYPE::Store);
-                elts = &_t->elts;
-            } else {
-                AST_List* _t = ast_cast<AST_List>(target);
-                assert(_t->ctx_type == AST_TYPE::Store);
-                elts = &_t->elts;
-            }
-
-            BST_UnpackIntoArray* unpack = BST_UnpackIntoArray::create(elts->size());
-            unmapExpr(val, &unpack->vreg_src);
-            unpack->lineno = val->lineno;
-
-            // A little hackery: push the assign, even though we're not done constructing it yet,
-            // so that we can iteratively push more stuff after it
-            push_back(unpack);
-
-            for (int i = 0; i < elts->size(); i++) {
-                TmpValue tmp_name(nodeName("", i), (*elts)[i]->lineno);
-                pushAssign((*elts)[i], tmp_name);
-                unmapDst(tmp_name, &unpack->vreg_dst[i]);
-            }
-
-        } else {
-            RELEASE_ASSERT(0, "%d", target->type);
-        }
-    }
-
+    /*
     void pushAssign(InternedString id, BST_expr* val) {
         if (id.isCompilerCreatedName()) {
             if (val->type == BST_TYPE::Name && bst_cast<BST_Name>(val)->id.isCompilerCreatedName()) {
@@ -1024,6 +952,7 @@ private:
         }
 
 
+
         BST_Assign* assign = new BST_Assign();
         assign->value = val;
         assign->lineno = val->lineno;
@@ -1035,6 +964,7 @@ private:
         assert(id.isName());
         pushAssign(id.is, val);
     }
+    */
 
     void pushAssign(InternedString id, TmpValue val) {
         if (id.isCompilerCreatedName()) {
@@ -1150,6 +1080,7 @@ private:
         assert(0);
     }
 
+#if 0
     void unmapExpr(BST_expr* node, int* vreg) {
         if (!node) {
             *vreg = VREG_UNDEFINED;
@@ -1209,6 +1140,7 @@ private:
 
         assert(0);
     }
+
     void unmapExprFromUnmapped(int* vreg_old, int* vreg) {
         if (*vreg_old < 0 && *vreg_old != VREG_UNDEFINED) {
             *vreg = *vreg_old;
@@ -1219,7 +1151,7 @@ private:
         assert(!name_vreg.count(vreg));
         name_vreg[vreg] = (BST_Name*)_dup2(name_vreg[vreg_old]);
     }
-
+#endif
     void unmapExprDst(BST_expr* node, int* vreg) {
         /*
         if (!node) {
@@ -1264,7 +1196,7 @@ private:
         push_back(rtn);
         return TmpValue(name, node->lineno);
     }
-
+#if 0
     // Sometimes we want to refer to the same object twice,
     // but we require that no AST* object gets reused.
     // So instead, just create a copy of it.
@@ -1340,7 +1272,7 @@ private:
             RELEASE_ASSERT(0, "%d", val->type);
         }
     }
-
+#endif
     TmpValue remapBoolOp(AST_BoolOp* node) {
         assert(curblock);
 
@@ -2192,8 +2124,7 @@ public:
 
         auto mkclass = new BST_MakeClass(def);
         auto tmp = pushBackCreateDst(mkclass);
-        pushAssign(TmpValue(scoping->mangleName(def->name), node->lineno),
-                   makeName(tmp.is, AST_TYPE::Load, node->lineno, true));
+        pushAssign(TmpValue(scoping->mangleName(def->name), node->lineno), tmp);
 
         return true;
     }
@@ -2254,7 +2185,7 @@ public:
             import->level = level;
 
             unmapExpr(makeNone(node->lineno), &import->vreg_from);
-            unmapExpr(new BST_Str(a->name.s()), &import->vreg_name);
+            unmapExpr(makeStr(a->name.s(), node->lineno), &import->vreg_name);
 
             TmpValue tmpname = pushBackCreateDst(import);
 
@@ -2309,11 +2240,11 @@ public:
         auto tuple = BST_Tuple::create(node->names.size());
         tuple->ctx_type = AST_TYPE::Load;
         for (int i = 0; i < node->names.size(); i++) {
-            unmapExpr(new BST_Str(node->names[i]->name.s()), &tuple->elts[i]);
+            unmapExpr(makeStr(node->names[i]->name.s()), &tuple->elts[i]);
         }
         TmpValue tuple_name = pushBackCreateDst(tuple);
         unmapExpr(tuple_name, &import->vreg_from);
-        unmapExpr(new BST_Str(node->module.s()), &import->vreg_name);
+        unmapExpr(makeStr(node->module.s()), &import->vreg_name);
 
         TmpValue tmp_module_name = pushBackCreateDst(import);
 
@@ -2334,7 +2265,7 @@ public:
                 BST_ImportFrom* import_from = new BST_ImportFrom;
                 import_from->lineno = node->lineno;
                 unmapExpr(is_kill ? tmp_module_name : _dup(tmp_module_name), &import_from->vreg_module);
-                unmapExpr(new BST_Str(a->name.s()), &import_from->vreg_name);
+                unmapExpr(makeStr(a->name.s()), &import_from->vreg_name);
 
                 TmpValue tmp_import_name = pushBackCreateDst(import_from);
                 pushAssign(a->asname.s().size() ? a->asname : a->name, tmp_import_name);
@@ -2436,9 +2367,12 @@ public:
                 if (isSlice(s->slice)) {
                     auto* slice = ast_cast<AST_Slice>(s->slice);
                     BST_LoadSubSlice* s_lhs = new BST_LoadSubSlice();
+                    auto lower_remapped = remapExpr(slice->lower);
+                    auto upper_remapped = remapExpr(slice->upper);
+
                     unmapExpr(_dup(value_remapped), &s_lhs->vreg_value);
-                    unmapExpr(remapExpr(slice->lower), &s_lhs->vreg_lower);
-                    unmapExpr(remapExpr(slice->upper), &s_lhs->vreg_upper);
+                    unmapExpr(_dup(lower_remapped), &s_lhs->vreg_lower);
+                    unmapExpr(_dup(upper_remapped), &s_lhs->vreg_upper);
                     s_lhs->lineno = s->lineno;
                     TmpValue name_lhs = pushBackCreateDst(s_lhs);
 
@@ -2452,9 +2386,9 @@ public:
                     BST_StoreSubSlice* s_target = new BST_StoreSubSlice();
                     s_target->lineno = s->lineno;
                     unmapExpr(node_name, &s_target->vreg_value);
-                    unmapExprFromUnmapped(&s_lhs->vreg_value, &s_target->vreg_target);
-                    unmapExprFromUnmapped(&s_lhs->vreg_lower, &s_target->vreg_lower);
-                    unmapExprFromUnmapped(&s_lhs->vreg_upper, &s_target->vreg_upper);
+                    unmapExpr(value_remapped, &s_target->vreg_target);
+                    unmapExpr(lower_remapped, &s_target->vreg_lower);
+                    unmapExpr(upper_remapped, &s_target->vreg_upper);
                     push_back(s_target);
                 } else {
                     BST_LoadSub* s_lhs = new BST_LoadSub();
@@ -3571,10 +3505,8 @@ static CFG* computeCFG(llvm::ArrayRef<AST_stmt*> body, AST_TYPE::AST_TYPE ast_ty
         for (AST_expr* arg_expr : args->args) {
             if (arg_expr->type == AST_TYPE::Tuple) {
                 InternedString arg_name = stringpool.get("." + std::to_string(counter));
-                BST_Name* arg_name_expr = new BST_Name(arg_name, AST_TYPE::Load, arg_expr->lineno);
                 assert(scoping->getScopeTypeOfName(arg_name) == ScopeInfo::VarScopeType::FAST);
-                arg_name_expr->lookup_type = ScopeInfo::VarScopeType::FAST;
-                visitor.pushAssign(arg_expr, arg_name_expr);
+                visitor.pushAssign(arg_expr, TmpValue(arg_name, arg_expr->lineno));
             } else {
                 assert(arg_expr->type == AST_TYPE::Name);
             }
