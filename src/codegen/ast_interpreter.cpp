@@ -599,9 +599,7 @@ Value ASTInterpreter::visit_binop(BST_BinOp* node) {
     AUTO_DECREF(left.o);
     Value right = getVReg(node->vreg_right);
     AUTO_DECREF(right.o);
-    Value v = doBinOp(node, left, right, node->op_type, BinExpType::BinOp);
-    doStore(node->vreg_dst, v);
-    return Value();
+    return doBinOp(node, left, right, node->op_type, BinExpType::BinOp);
 }
 
 Value ASTInterpreter::visit_ellipsis(BST_Ellipsis* node) {
@@ -830,9 +828,7 @@ Value ASTInterpreter::visit_augBinOp(BST_AugBinOp* node) {
     AUTO_DECREF(left.o);
     Value right = getVReg(node->vreg_right);
     AUTO_DECREF(right.o);
-    Value v = doBinOp(node, left, right, node->op_type, BinExpType::AugBinOp);
-    doStore(node->vreg_dst, v);
-    return Value();
+    return doBinOp(node, left, right, node->op_type, BinExpType::AugBinOp);
 }
 
 Value ASTInterpreter::visit_landingpad(BST_Landingpad* node) {
@@ -954,28 +950,8 @@ Value ASTInterpreter::visit_stmt(BST_stmt* node) {
             rtn = visit_assert((BST_Assert*)node);
             ASTInterpreterJitInterface::pendingCallsCheckHelper();
             break;
-        case BST_TYPE::AssignVRegVReg:
-            rtn = visit_assignvregvreg((BST_AssignVRegVReg*)node);
-            ASTInterpreterJitInterface::pendingCallsCheckHelper();
-            break;
-        case BST_TYPE::AugBinOp:
-            rtn = visit_augBinOp((BST_AugBinOp*)node);
-            ASTInterpreterJitInterface::pendingCallsCheckHelper();
-            break;
-        case BST_TYPE::CallFunc:
-        case BST_TYPE::CallAttr:
-        case BST_TYPE::CallClsAttr:
-            rtn = visit_call((BST_Call*)node);
-            ASTInterpreterJitInterface::pendingCallsCheckHelper();
-            break;
-        case BST_TYPE::Compare:
-            rtn = visit_compare((BST_Compare*)node);
-            ASTInterpreterJitInterface::pendingCallsCheckHelper();
-            break;
-        case BST_TYPE::BinOp:
-            rtn = visit_binop((BST_BinOp*)node);
-            ASTInterpreterJitInterface::pendingCallsCheckHelper();
-            break;
+
+
         case BST_TYPE::DeleteAttr:
             rtn = visit_deleteattr((BST_DeleteAttr*)node);
             ASTInterpreterJitInterface::pendingCallsCheckHelper();
@@ -1062,6 +1038,24 @@ Value ASTInterpreter::visit_stmt(BST_stmt* node) {
         default: {
             Value v;
             switch (node->type) {
+                case BST_TYPE::AssignVRegVReg:
+                    v = visit_assignvregvreg((BST_AssignVRegVReg*)node);
+                    break;
+                case BST_TYPE::AugBinOp:
+                    v = visit_augBinOp((BST_AugBinOp*)node);
+                    break;
+                case BST_TYPE::CallFunc:
+                case BST_TYPE::CallAttr:
+                case BST_TYPE::CallClsAttr:
+                    v = visit_call((BST_Call*)node);
+                    break;
+                case BST_TYPE::Compare:
+                    v = visit_compare((BST_Compare*)node);
+                    break;
+                case BST_TYPE::BinOp:
+                    v = visit_binop((BST_BinOp*)node);
+                    break;
+
                 case BST_TYPE::Dict:
                     v = visit_dict((BST_Dict*)node);
                     break;
@@ -1440,9 +1434,7 @@ Value ASTInterpreter::visit_deletename(BST_DeleteName* target) {
 }
 
 Value ASTInterpreter::visit_assignvregvreg(BST_AssignVRegVReg* node) {
-    Value v = getVReg(node->vreg_src, node->kill_src);
-    doStore(node->vreg_dst, v);
-    return Value();
+    return getVReg(node->vreg_src, node->kill_src);
 }
 
 Value ASTInterpreter::visit_print(BST_Print* node) {
@@ -1481,9 +1473,7 @@ Value ASTInterpreter::visit_compare(BST_Compare* node) {
     AUTO_DECREF(left.o);
     Value right = getVReg(node->vreg_comparator);
     AUTO_DECREF(right.o);
-    Value v = doBinOp(node, left, right, node->op, BinExpType::Compare);
-    doStore(node->vreg_dst, v);
-    return Value();
+    return doBinOp(node, left, right, node->op, BinExpType::Compare);
 }
 
 Value ASTInterpreter::visit_call(BST_Call* node) {
@@ -1566,8 +1556,7 @@ Value ASTInterpreter::visit_call(BST_Call* node) {
                           args.size() > 2 ? args[2] : 0, args.size() > 3 ? &args[3] : 0, keyword_names);
     }
 
-    doStore(node->vreg_dst, v);
-    return Value();
+    return v;
 }
 
 Value ASTInterpreter::visit_repr(BST_Repr* node) {
