@@ -848,7 +848,6 @@ private:
             unmapExpr(val, &assign->vreg_value);
             assign->lineno = val.lineno;
             assign->id = ast_cast<AST_Name>(target)->id;
-            assign->ctx_type = AST_TYPE::Store;
             fillScopingInfo(assign, scoping);
             push_back(assign);
         } else if (target->type == AST_TYPE::Subscript) {
@@ -928,7 +927,6 @@ private:
         unmapExpr(val, &assign->vreg_value);
         assign->lineno = val.lineno;
         assign->id = id;
-        assign->ctx_type = AST_TYPE::Store;
         fillScopingInfo(assign, scoping);
         push_back(assign);
     }
@@ -1434,7 +1432,6 @@ private:
         assert(node->ctx_type == AST_TYPE::Load);
         BST_List* rtn = BST_List::create(node->elts.size());
         rtn->lineno = node->lineno;
-        rtn->ctx_type = node->ctx_type;
         for (int i = 0; i < node->elts.size(); ++i) {
             unmapExpr(remapExpr(node->elts[i]), &rtn->elts[i]);
         }
@@ -1497,7 +1494,6 @@ private:
 
         BST_Tuple* rtn = BST_Tuple::create(node->elts.size());
         rtn->lineno = node->lineno;
-        rtn->ctx_type = node->ctx_type;
 
         for (int i = 0; i < node->elts.size(); ++i) {
             unmapExpr(remapExpr(node->elts[i]), &rtn->elts[i]);
@@ -1954,7 +1950,6 @@ public:
         import->level = level;
 
         auto tuple = BST_Tuple::create(node->names.size());
-        tuple->ctx_type = AST_TYPE::Load;
         for (int i = 0; i < node->names.size(); i++) {
             unmapExpr(makeStr(node->names[i]->name.s()), &tuple->elts[i]);
         }
@@ -2184,14 +2179,12 @@ public:
                         unmapExpr(remapExpr(s->value), &del->vreg_value);
                         unmapExpr(remapExpr(slice->lower), &del->vreg_lower);
                         unmapExpr(remapExpr(slice->upper), &del->vreg_upper);
-                        del->ctx_type = AST_TYPE::Del;
                         push_back(del);
                     } else {
                         auto* del = new BST_DeleteSub;
                         del->lineno = node->lineno;
                         unmapExpr(remapExpr(s->value), &del->vreg_value);
                         unmapExpr(remapSlice(s->slice), &del->vreg_slice);
-                        del->ctx_type = AST_TYPE::Del;
                         push_back(del);
                     }
                     break;
@@ -2200,7 +2193,6 @@ public:
                     AST_Attribute* astattr = static_cast<AST_Attribute*>(t);
                     auto* del = new BST_DeleteAttr;
                     del->lineno = node->lineno;
-                    del->ctx_type = AST_TYPE::Del;
                     unmapExpr(remapExpr(astattr->value), &del->vreg_value);
                     del->attr = scoping->mangleName(astattr->attr);
                     push_back(del);
@@ -2212,7 +2204,6 @@ public:
                     auto* del = new BST_DeleteName;
                     del->lineno = node->lineno;
                     del->id = s->id;
-                    del->ctx_type = AST_TYPE::Del;
 
                     del->lookup_type = scoping->getScopeTypeOfName(s->id);
 
@@ -2453,7 +2444,6 @@ public:
     BST_stmt* makeKill(InternedString name) {
         // There might be a better way to represent this, maybe with a dedicated AST_Kill bytecode?
         auto del = new BST_DeleteName();
-        del->ctx_type = AST_TYPE::Del;
         del->id = name;
         del->lineno = 0;
         del->lookup_type = scoping->getScopeTypeOfName(name);

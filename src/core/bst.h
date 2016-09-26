@@ -254,7 +254,7 @@ public:
 class BST_UnpackIntoArray : public BST_stmt {
 public:
     int vreg_src = VREG_UNDEFINED;
-    int num_elts;
+    const int num_elts;
     int vreg_dst[1];
 
     virtual void accept(BSTVisitor* v);
@@ -302,7 +302,6 @@ class BST_StoreName : public BST_stmt {
 public:
     int vreg_value = VREG_UNDEFINED;
 
-    AST_TYPE::AST_TYPE ctx_type;
     InternedString id;
     ScopeInfo::VarScopeType lookup_type;
     int vreg = VREG_UNDEFINED;
@@ -367,7 +366,6 @@ public:
 
 class BST_LoadName : public BST_ass {
 public:
-    AST_TYPE::AST_TYPE ctx_type;
     InternedString id;
     ScopeInfo::VarScopeType lookup_type;
     int vreg = VREG_UNDEFINED;
@@ -472,8 +470,6 @@ public:
 
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
-
-
 
     static BST_CallFunc* create(int num_args, int num_keywords) {
         BST_CallFunc* o
@@ -603,7 +599,6 @@ public:
 class BST_DeleteAttr : public BST_stmt {
 public:
     int vreg_value = VREG_UNDEFINED;
-    AST_TYPE::AST_TYPE ctx_type;
     InternedString attr;
 
     virtual void accept(BSTVisitor* v);
@@ -616,7 +611,6 @@ public:
 
 class BST_DeleteName : public BST_stmt {
 public:
-    AST_TYPE::AST_TYPE ctx_type;
     InternedString id;
     ScopeInfo::VarScopeType lookup_type;
     int vreg = VREG_UNDEFINED;
@@ -641,8 +635,6 @@ public:
     int vreg_value = VREG_UNDEFINED;
     int vreg_slice = VREG_UNDEFINED;
 
-    AST_TYPE::AST_TYPE ctx_type;
-
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
 
@@ -656,8 +648,6 @@ public:
     int vreg_value = VREG_UNDEFINED;
     int vreg_lower = VREG_UNDEFINED;
     int vreg_upper = VREG_UNDEFINED;
-
-    AST_TYPE::AST_TYPE ctx_type;
 
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
@@ -725,8 +715,7 @@ private:
 
 class BST_List : public BST_ass {
 public:
-    AST_TYPE::AST_TYPE ctx_type;
-    int num_elts;
+    const int num_elts;
     int elts[1];
 
     virtual void accept(BSTVisitor* v);
@@ -838,7 +827,7 @@ public:
 
 class BST_Set : public BST_ass {
 public:
-    int num_elts;
+    const int num_elts;
     int elts[1];
 
     virtual void accept(BSTVisitor* v);
@@ -874,8 +863,7 @@ public:
 
 class BST_Tuple : public BST_ass {
 public:
-    AST_TYPE::AST_TYPE ctx_type;
-    int num_elts;
+    const int num_elts;
     int elts[1];
 
     virtual void accept(BSTVisitor* v);
