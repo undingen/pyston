@@ -484,18 +484,9 @@ private:
 
     TmpValue callNonzero(TmpValue e) {
         BST_Nonzero* call = new BST_Nonzero;
+        call->lineno = e.lineno;
         unmapExpr(e, &call->vreg_value);
-
-
-        // Simple optimization: allow the generation of nested nodes if there isn't a
-        // current exc handler.
-        // if (exc_handlers.size() == 0)
-        //    return call;
-
-        auto name = nodeName();
-        unmapDst(name, &call->vreg_dst);
-        push_back(call);
-        return TmpValue(name, call->lineno);
+        return pushBackCreateDst(call);
     }
 
     TmpValue pushBackCreateDst(BST_ass* rtn) {
@@ -1923,7 +1914,7 @@ public:
                     store->lineno = import->lineno;
                     store->attr = internString(a->name.s().substr(l, r - l));
                     unmapExpr(_dup(tmpname), &store->vreg_value);
-                    unmapExpr(tmpname, &store->vreg_target);
+                    unmapExpr(_dup(tmpname), &store->vreg_target);
                     push_back(store);
 
                     l = r + 1;
@@ -2826,8 +2817,7 @@ public:
 
         // Oddly, this acces to __enter__ doesn't suffer from the same bug. Perhaps it has something to do with
         // __enter__ being called immediately?
-        TmpValue enter = makeLoadAttribute(_dup(ctxmgrname), internString("__enter__"), true);
-        enter = makeCallAttr(ctxmgrname, internString("__enter__"), true);
+        TmpValue enter = makeCallAttr(ctxmgrname, internString("__enter__"), true);
         if (node->optional_vars)
             pushAssign(node->optional_vars, enter);
 
