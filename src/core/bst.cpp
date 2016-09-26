@@ -373,16 +373,6 @@ void BST_ImportStar::accept_stmt(StmtVisitor* v) {
     return v->visit_importstar(this);
 }
 
-void BST_None::accept(BSTVisitor* v) {
-    bool skip = v->visit_none(this);
-    if (skip)
-        return;
-}
-
-void* BST_None::accept_expr(ExprVisitor* v) {
-    return v->visit_none(this);
-}
-
 void BST_Nonzero::accept(BSTVisitor* v) {
     bool skip = v->visit_nonzero(this);
     if (skip)
@@ -593,14 +583,6 @@ void* BST_Name::accept_expr(ExprVisitor* v) {
     return v->visit_name(this);
 }
 
-void BST_Num::accept(BSTVisitor* v) {
-    bool skip = v->visit_num(this);
-}
-
-void* BST_Num::accept_expr(ExprVisitor* v) {
-    return v->visit_num(this);
-}
-
 void BST_Print::accept(BSTVisitor* v) {
     bool skip = v->visit_print(this);
     if (skip)
@@ -666,16 +648,6 @@ void BST_Set::accept(BSTVisitor* v) {
 
 void BST_Set::accept_stmt(StmtVisitor* v) {
     return v->visit_set(this);
-}
-
-void BST_Str::accept(BSTVisitor* v) {
-    bool skip = v->visit_str(this);
-    if (skip)
-        return;
-}
-
-void* BST_Str::accept_expr(ExprVisitor* v) {
-    return v->visit_str(this);
 }
 
 void BST_Tuple::accept(BSTVisitor* v) {
@@ -1222,10 +1194,6 @@ bool PrintVisitor::visit_importstar(BST_ImportStar* node) {
     stream << ")";
     return true;
 }
-bool PrintVisitor::visit_none(BST_None* node) {
-    stream << ":NONE()";
-    return true;
-}
 bool PrintVisitor::visit_nonzero(BST_Nonzero* node) {
     visit_vreg(&node->vreg_dst, true);
     stream << ":NONZERO(";
@@ -1303,23 +1271,6 @@ bool PrintVisitor::visit_name(BST_Name* node) {
 #if 0
     if (node->is_kill) stream << "<k>";
 #endif
-    return false;
-}
-
-
-
-bool PrintVisitor::visit_num(BST_Num* node) {
-    if (node->num_type == AST_Num::INT) {
-        stream << node->n_int;
-    } else if (node->num_type == AST_Num::LONG) {
-        stream << node->n_long << "L";
-    } else if (node->num_type == AST_Num::FLOAT) {
-        stream << node->n_float;
-    } else if (node->num_type == AST_Num::COMPLEX) {
-        stream << node->n_float << "j";
-    } else {
-        RELEASE_ASSERT(0, "");
-    }
     return false;
 }
 
@@ -1476,25 +1427,6 @@ bool PrintVisitor::visit_storesubslice(BST_StoreSubSlice* node) {
     return true;
 }
 
-bool PrintVisitor::visit_str(BST_Str* node) {
-    if (node->str_type == AST_Str::STR) {
-        stream << "\"" << node->str_data << "\"";
-    } else if (node->str_type == AST_Str::UNICODE) {
-        stream << "<unicode value>";
-    } else {
-        RELEASE_ASSERT(0, "%d", node->str_type);
-    }
-    return false;
-}
-/*
-bool PrintVisitor::visit_subscript(BST_Subscript* node) {
-    node->value->accept(this);
-    stream << "[";
-    node->slice->accept(this);
-    stream << "]";
-    return true;
-}
-*/
 bool PrintVisitor::visit_tuple(BST_Tuple* node) {
     visit_vreg(&node->vreg_dst, true);
     stream << "(";
@@ -1676,10 +1608,6 @@ public:
         output->push_back(node);
         return false;
     }
-    virtual bool visit_num(BST_Num* node) {
-        output->push_back(node);
-        return false;
-    }
     virtual bool visit_print(BST_Print* node) {
         output->push_back(node);
         return false;
@@ -1697,10 +1625,6 @@ public:
         return false;
     }
     virtual bool visit_set(BST_Set* node) {
-        output->push_back(node);
-        return false;
-    }
-    virtual bool visit_str(BST_Str* node) {
         output->push_back(node);
         return false;
     }
@@ -1764,10 +1688,6 @@ public:
         return false;
     }
     virtual bool visit_importstar(BST_ImportStar* node) override {
-        output->push_back(node);
-        return false;
-    }
-    virtual bool visit_none(BST_None* node) override {
         output->push_back(node);
         return false;
     }

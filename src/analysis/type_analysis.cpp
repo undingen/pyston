@@ -396,7 +396,6 @@ private:
     void visit_importfrom(BST_ImportFrom* node) override { _doSet(node->vreg_dst, UNKNOWN); }
     void visit_importname(BST_ImportName* node) override { _doSet(node->vreg_dst, UNKNOWN); }
     void visit_importstar(BST_ImportStar* node) override { _doSet(node->vreg_dst, UNKNOWN); }
-    void* visit_none(BST_None* node) override { return NONE; }
     void visit_nonzero(BST_Nonzero* node) override { return _doSet(node->vreg_dst, UNKNOWN); }
     void visit_checkexcmatch(BST_CheckExcMatch* node) override { return _doSet(node->vreg_dst, UNKNOWN); }
     void visit_setexcinfo(BST_SetExcInfo* node) override {}
@@ -441,33 +440,11 @@ private:
         RELEASE_ASSERT(0, "Unknown scope type: %d", (int)name_scope);
     }
 
-    void* visit_num(BST_Num* node) override {
-        switch (node->num_type) {
-            case AST_Num::INT:
-                return INT;
-            case AST_Num::FLOAT:
-                return FLOAT;
-            case AST_Num::LONG:
-                return LONG;
-            case AST_Num::COMPLEX:
-                return BOXED_COMPLEX;
-        }
-        abort();
-    }
-
     void visit_repr(BST_Repr* node) override { _doSet(node->vreg_dst, STR); }
 
     void visit_set(BST_Set* node) override { _doSet(node->vreg_dst, SET); }
 
     void visit_makeslice(BST_MakeSlice* node) override { _doSet(node->vreg_dst, SLICE); }
-
-    void* visit_str(BST_Str* node) override {
-        if (node->str_type == AST_Str::STR)
-            return STR;
-        else if (node->str_type == AST_Str::UNICODE)
-            return typeFromClass(unicode_cls);
-        RELEASE_ASSERT(0, "Unknown string type %d", (int)node->str_type);
-    }
 
     void visit_storename(BST_StoreName* node) override {
         assert(node->lookup_type != ScopeInfo::VarScopeType::UNKNOWN);

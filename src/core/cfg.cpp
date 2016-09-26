@@ -982,137 +982,12 @@ private:
         if (val.isConst()) {
             *vreg = val.vreg_const;
             return;
-            /*
-            if (node->type == BST_TYPE::Name) {
-                BST_Name* name = (BST_Name*)_assureKilled(node);
-                assert(name->is_kill && name->lookup_type == ScopeInfo::VarScopeType::FAST
-                       && name->id.isCompilerCreatedName());
-                assert(!name_vreg.count(vreg));
-                name_vreg[vreg] = name;
-                return;
-            } else if (node->type == BST_TYPE::Num) {
-
-            } else if (node->type == BST_TYPE::Str) {
-                BST_Str* str = (BST_Str*)node;
-                Box* o = NULL;
-
-                if (str->str_type == AST_Str::STR) {
-                    o = source->parent_module->getStringConstant(str->str_data, true);
-                } else if (str->str_type == AST_Str::UNICODE) {
-                    o = source->parent_module->getUnicodeConstant(str->str_data);
-                } else {
-                    RELEASE_ASSERT(0, "%d", str->str_type);
-                }
-
-                source->parent_module->constants.push_back(o);
-                *vreg = -source->parent_module->constants.size();
-                // delete node;
-                return;
-            } else if (node->type == BST_TYPE::None) {
-                source->parent_module->constants.push_back(Py_None);
-                *vreg = -source->parent_module->constants.size();
-                return;
-            }
-            */
         } else if (val.isName()) {
             assert(!id_vreg.count(vreg));
             id_vreg[vreg] = val.is;
             return;
         } else if (val.isUndefined()) {
             *vreg = VREG_UNDEFINED;
-            return;
-        }
-
-        assert(0);
-    }
-
-#if 0
-    void unmapExpr(BST_expr* node, int* vreg) {
-        if (!node) {
-            *vreg = VREG_UNDEFINED;
-            return;
-        }
-
-        // assertAssumption(node);
-
-        if (node->type == BST_TYPE::Name) {
-            BST_Name* name = (BST_Name*)_assureKilled(node);
-            assert(name->is_kill && name->lookup_type == ScopeInfo::VarScopeType::FAST
-                   && name->id.isCompilerCreatedName());
-            assert(!name_vreg.count(vreg));
-            name_vreg[vreg] = name;
-            return;
-        } else if (node->type == BST_TYPE::Num) {
-            BST_Num* num = (BST_Num*)node;
-            Box* o = NULL;
-
-            if (num->num_type == AST_Num::INT) {
-                o = source->parent_module->getIntConstant(num->n_int);
-            } else if (num->num_type == AST_Num::FLOAT) {
-                o = source->parent_module->getFloatConstant(num->n_float);
-            } else if (num->num_type == AST_Num::LONG) {
-                o = source->parent_module->getLongConstant(num->n_long);
-            } else if (num->num_type == AST_Num::COMPLEX) {
-                o = source->parent_module->getPureImaginaryConstant(num->n_float);
-            } else
-                RELEASE_ASSERT(0, "not implemented");
-
-            source->parent_module->constants.push_back(o);
-            *vreg = -source->parent_module->constants.size();
-
-            // delete node;
-            return;
-        } else if (node->type == BST_TYPE::Str) {
-            BST_Str* str = (BST_Str*)node;
-            Box* o = NULL;
-
-            if (str->str_type == AST_Str::STR) {
-                o = source->parent_module->getStringConstant(str->str_data, true);
-            } else if (str->str_type == AST_Str::UNICODE) {
-                o = source->parent_module->getUnicodeConstant(str->str_data);
-            } else {
-                RELEASE_ASSERT(0, "%d", str->str_type);
-            }
-
-            source->parent_module->constants.push_back(o);
-            *vreg = -source->parent_module->constants.size();
-            // delete node;
-            return;
-        } else if (node->type == BST_TYPE::None) {
-            source->parent_module->constants.push_back(Py_None);
-            *vreg = -source->parent_module->constants.size();
-            return;
-        }
-
-        assert(0);
-    }
-
-    void unmapExprFromUnmapped(int* vreg_old, int* vreg) {
-        if (*vreg_old < 0 && *vreg_old != VREG_UNDEFINED) {
-            *vreg = *vreg_old;
-            return;
-        }
-
-        assert(name_vreg.count(vreg_old));
-        assert(!name_vreg.count(vreg));
-        name_vreg[vreg] = (BST_Name*)_dup2(name_vreg[vreg_old]);
-    }
-#endif
-    void unmapExprDst(BST_expr* node, int* vreg) {
-        /*
-        if (!node) {
-            *vreg = VREG_UNDEFINED;
-            return;
-        }
-        */
-
-        // assertAssumption(node);
-
-        if (node->type == BST_TYPE::Name) {
-            BST_Name* name = (BST_Name*)node;
-            assert(name->lookup_type == ScopeInfo::VarScopeType::FAST);
-            assert(!name_vreg.count(vreg));
-            name_vreg[vreg] = name;
             return;
         }
 
@@ -1137,10 +1012,7 @@ private:
         rtn->op_type = remapBinOpType(node->op_type);
         unmapExpr(remapExpr(node->left), &rtn->vreg_left);
         unmapExpr(remapExpr(node->right), &rtn->vreg_right);
-        InternedString name = nodeName();
-        unmapDst(name, &rtn->vreg_dst);
-        push_back(rtn);
-        return TmpValue(name, node->lineno);
+        return pushBackCreateDst(rtn);
     }
 
     TmpValue remapBoolOp(AST_BoolOp* node) {

@@ -112,13 +112,10 @@ private:
 
     Value visit_dict(BST_Dict* node);
     Value visit_ellipsis(BST_Ellipsis* node);
-    Value visit_expr(BST_expr* node);
     Value visit_list(BST_List* node);
     Value visit_name(BST_Name* node);
-    Value visit_num(BST_Num* node);
     Value visit_repr(BST_Repr* node);
     Value visit_set(BST_Set* node);
-    Value visit_str(BST_Str* node);
     Value visit_makeslice(BST_MakeSlice* node);
     Value visit_tuple(BST_Tuple* node);
     Value visit_yield(BST_Yield* node);
@@ -138,7 +135,6 @@ private:
     Value visit_importfrom(BST_ImportFrom* node);
     Value visit_importname(BST_ImportName* node);
     Value visit_importstar(BST_ImportStar* node);
-    Value visit_none(BST_None* node);
     Value visit_nonzero(BST_Nonzero* node);
     Value visit_checkexcmatch(BST_CheckExcMatch* node);
     Value visit_setexcinfo(BST_SetExcInfo* node);
@@ -887,10 +883,6 @@ Value ASTInterpreter::visit_importstar(BST_ImportStar* node) {
     return Value(importStar(module.o, frame_info.globals), jit ? jit->emitImportStar(module) : NULL);
 }
 
-Value ASTInterpreter::visit_none(BST_None* node) {
-    return getNone();
-}
-
 Value ASTInterpreter::visit_nonzero(BST_Nonzero* node) {
     Value obj = getVReg(node->vreg_value);
     AUTO_DECREF(obj.o);
@@ -939,113 +931,6 @@ Value ASTInterpreter::visit_printexpr(BST_PrintExpr* node) {
     printExprHelper(obj.o);
     return Value();
 }
-
-#if 0
-Value ASTInterpreter::visit_langPrimitive(BST_LangPrimitive* node) {
-    Value v;
-    if (node->opcode == BST_LangPrimitive::GET_ITER) {
-        assert(node->args.size() == 1);
-        Value val = visit_expr(node->args[0]);
-        AUTO_DECREF(val.o);
-        v = Value(getPystonIter(val.o), jit ? jit->emitGetPystonIter(val) : NULL);
-    } else if (node->opcode == BST_LangPrimitive::IMPORT_FROM) {
-        assert(node->args.size() == 2);
-        assert(node->args[0]->type == BST_TYPE::Name);
-        assert(node->args[1]->type == BST_TYPE::Str);
-
-        Value module = visit_expr(node->args[0]);
-        AUTO_DECREF(module.o);
-
-        auto ast_str = bst_cast<BST_Str>(node->args[1]);
-        assert(ast_str->str_type == AST_Str::STR);
-        const std::string& name = ast_str->str_data;
-        assert(name.size());
-        BORROWED(BoxedString*)name_boxed = source_info->parent_module->getStringConstant(name, true);
-
-        if (jit)
-            v.var = jit->emitImportFrom(module, name_boxed);
-        v.o = importFrom(module.o, name_boxed);
-    } else if (node->opcode == BST_LangPrimitive::IMPORT_NAME) {
-        assert(node->args.size() == 3);
-        assert(node->args[0]->type == BST_TYPE::Num);
-        assert(static_cast<BST_Num*>(node->args[0])->num_type == AST_Num::INT);
-        assert(node->args[2]->type == BST_TYPE::Str);
-
-        int level = static_cast<BST_Num*>(node->args[0])->n_int;
-        Value froms = visit_expr(node->args[1]);
-        AUTO_DECREF(froms.o);
-        auto ast_str = bst_cast<BST_Str>(node->args[2]);
-        assert(ast_str->str_type == AST_Str::STR);
-        const std::string& module_name = ast_str->str_data;
-        if (jit)
-            v.var = jit->emitImportName(level, froms, module_name);
-        v.o = import(level, froms.o, module_name);
-    } else if (node->opcode == BST_LangPrimitive::IMPORT_STAR) {
-        assert(node->args.size() == 1);
-        assert(node->args[0]->type == BST_TYPE::Name);
-
-        RELEASE_ASSERT(source_info->ast_type == BST_TYPE::Module || source_info->ast_type == BST_TYPE::Suite,
-                       "import * not supported in functions");
-
-        Value module = visit_expr(node->args[0]);
-        AUTO_DECREF(module.o);
-        v = Value(importStar(module.o, frame_info.globals), jit ? jit->emitImportStar(module) : NULL);
-    } else if (node->opcode == BST_LangPrimitive::NONE) {
-        v = getNone();
-    } else if (node->opcode == BST_LangPrimitive::LANDINGPAD) {
-        assert(last_exception.type);
-        v = Value(ASTInterpreterJitInterface::landingpadHelper(this), jit ? jit->emitLandingpad() : NULL);
-    } else if (node->opcode == BST_LangPrimitive::CHECK_EXC_MATCH) {
-        assert(node->args.size() == 2);
-        Value obj = visit_expr(node->args[0]);
-        AUTO_DECREF(obj.o);
-        Value cls = visit_expr(node->args[1]);
-        AUTO_DECREF(cls.o);
-        v = Value(boxBool(exceptionMatches(obj.o, cls.o)), jit ? jit->emitExceptionMatches(obj, cls) : NULL);
-    } else if (node->opcode == BST_LangPrimitive::LOCALS) {
-        assert(frame_info.boxedLocals != NULL);
-        v = Value(incref(frame_info.boxedLocals), jit ? jit->emitGetBoxedLocals() : NULL);
-    } else if (node->opcode == BST_LangPrimitive::NONZERO) {
-        assert(node->args.size() == 1);
-        Value obj = visit_expr(node->args[0]);
-        AUTO_DECREF(obj.o);
-        v = Value(boxBool(nonzero(obj.o)), jit ? jit->emitNonzero(obj) : NULL);
-    } else if (node->opcode == BST_LangPrimitive::SET_EXC_INFO) {
-        assert(node->args.size() == 3);
-
-        Value type = visit_expr(node->args[0]);
-        assert(type.o);
-        Value value = visit_expr(node->args[1]);
-        assert(value.o);
-        Value traceback = visit_expr(node->args[2]);
-        assert(traceback.o);
-
-        if (jit)
-            jit->emitSetExcInfo(type, value, traceback);
-        setFrameExcInfo(getFrameInfo(), type.o, value.o, traceback.o);
-        v = getNone();
-    } else if (node->opcode == BST_LangPrimitive::UNCACHE_EXC_INFO) {
-        assert(node->args.empty());
-        if (jit)
-            jit->emitUncacheExcInfo();
-        setFrameExcInfo(getFrameInfo(), NULL, NULL, NULL);
-        v = getNone();
-    } else if (node->opcode == BST_LangPrimitive::HASNEXT) {
-        assert(node->args.size() == 1);
-        Value obj = visit_expr(node->args[0]);
-        AUTO_DECREF(obj.o);
-        v = Value(boxBool(hasnext(obj.o)), jit ? jit->emitHasnext(obj) : NULL);
-    } else if (node->opcode == BST_LangPrimitive::PRINT_EXPR) {
-        abortJITing();
-        Value obj = visit_expr(node->args[0]);
-        AUTO_DECREF(obj.o);
-        printExprHelper(obj.o);
-        v = getNone();
-    } else
-        RELEASE_ASSERT(0, "unknown opcode %d", node->opcode);
-    return v;
-}
-#endif
 
 Value ASTInterpreter::visit_yield(BST_Yield* node) {
     Value value = node->vreg_value != VREG_UNDEFINED ? getVReg(node->vreg_value) : getNone();
@@ -1601,28 +1486,6 @@ Value ASTInterpreter::visit_compare(BST_Compare* node) {
     return Value();
 }
 
-Value ASTInterpreter::visit_expr(BST_expr* node) {
-    switch (node->type) {
-        case BST_TYPE::Name:
-            return visit_name((BST_Name*)node);
-        case BST_TYPE::Num:
-            return visit_num((BST_Num*)node);
-        case BST_TYPE::Str:
-            return visit_str((BST_Str*)node);
-
-
-        // pseudo
-
-        case BST_TYPE::None:
-            return visit_none((BST_None*)node);
-
-        default:
-            RELEASE_ASSERT(0, "");
-    };
-    return Value();
-}
-
-
 Value ASTInterpreter::visit_call(BST_Call* node) {
     Value v;
     Value func;
@@ -1707,27 +1570,6 @@ Value ASTInterpreter::visit_call(BST_Call* node) {
     return Value();
 }
 
-
-Value ASTInterpreter::visit_num(BST_Num* node) {
-    Box* o = NULL;
-    if (node->num_type == AST_Num::INT) {
-        o = parent_module->getIntConstant(node->n_int);
-    } else if (node->num_type == AST_Num::FLOAT) {
-        o = parent_module->getFloatConstant(node->n_float);
-    } else if (node->num_type == AST_Num::LONG) {
-        o = parent_module->getLongConstant(node->n_long);
-    } else if (node->num_type == AST_Num::COMPLEX) {
-        o = parent_module->getPureImaginaryConstant(node->n_float);
-    } else
-        RELEASE_ASSERT(0, "not implemented");
-    Py_INCREF(o);
-    RewriterVar* v = NULL;
-    if (jit) {
-        v = jit->imm(o)->setType(RefType::BORROWED);
-    }
-    return Value(o, v);
-}
-
 Value ASTInterpreter::visit_repr(BST_Repr* node) {
     Value v = getVReg(node->vreg_value);
     AUTO_DECREF(v.o);
@@ -1756,19 +1598,6 @@ Value ASTInterpreter::visit_set(BST_Set* node) {
         Py_DECREF(set);
         throw e;
     }
-}
-
-Value ASTInterpreter::visit_str(BST_Str* node) {
-    Box* o = NULL;
-    if (node->str_type == AST_Str::STR) {
-        o = parent_module->getStringConstant(node->str_data, true);
-    } else if (node->str_type == AST_Str::UNICODE) {
-        o = parent_module->getUnicodeConstant(node->str_data);
-    } else {
-        RELEASE_ASSERT(0, "%d", node->str_type);
-    }
-    Py_INCREF(o);
-    return Value(o, jit ? jit->imm(o)->setType(RefType::BORROWED) : NULL);
 }
 
 Value ASTInterpreter::getVReg(int vreg, bool is_kill) {

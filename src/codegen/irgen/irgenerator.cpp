@@ -993,8 +993,6 @@ private:
         return v;
     }
 
-    CompilerVariable* evalNone(BST_None* node, const UnwindInfo& unw_info) { return emitter.getNone(); }
-
     CompilerVariable* evalNonzero(BST_Nonzero* node, const UnwindInfo& unw_info) {
         CompilerVariable* obj = evalVReg(node->vreg_value);
 
@@ -1377,21 +1375,6 @@ private:
         }
     }
 
-    CompilerVariable* evalNum(BST_Num* node, const UnwindInfo& unw_info) {
-        // We can operate on ints and floats unboxed, so don't box those at first;
-        // complex and long's have to get boxed so box them immediately.
-        if (node->num_type == AST_Num::INT) {
-            return makeInt(node->n_int);
-        } else if (node->num_type == AST_Num::FLOAT) {
-            return makeFloat(node->n_float);
-        } else if (node->num_type == AST_Num::COMPLEX) {
-            return makePureImaginary(emitter,
-                                     irstate->getSourceInfo()->parent_module->getPureImaginaryConstant(node->n_float));
-        } else {
-            return makeLong(emitter, irstate->getSourceInfo()->parent_module->getLongConstant(node->n_long));
-        }
-    }
-
     CompilerVariable* evalRepr(BST_Repr* node, const UnwindInfo& unw_info) {
         CompilerVariable* var = evalVReg(node->vreg_value);
         ConcreteCompilerVariable* cvar = var->makeConverted(emitter, var->getBoxType());
@@ -1439,24 +1422,6 @@ private:
         return makeSlice(start, stop, step);
     }
 
-    CompilerVariable* evalStr(BST_Str* node, const UnwindInfo& unw_info) {
-        if (node->str_type == AST_Str::STR) {
-            llvm::Value* rtn
-                = embedRelocatablePtr(irstate->getSourceInfo()->parent_module->getStringConstant(node->str_data, true),
-                                      g.llvm_value_type_ptr);
-            emitter.setType(rtn, RefType::BORROWED);
-
-            return new ConcreteCompilerVariable(STR, rtn);
-        } else if (node->str_type == AST_Str::UNICODE) {
-            llvm::Value* rtn = embedRelocatablePtr(
-                irstate->getSourceInfo()->parent_module->getUnicodeConstant(node->str_data), g.llvm_value_type_ptr);
-            emitter.setType(rtn, RefType::BORROWED);
-
-            return new ConcreteCompilerVariable(typeFromClass(unicode_cls), rtn);
-        } else {
-            RELEASE_ASSERT(0, "%d", node->str_type);
-        }
-    }
 
     CompilerVariable* evalLoadAttr(BST_LoadAttr* node, const UnwindInfo& unw_info) {
         CompilerVariable* value = evalVReg(node->vreg_value);
@@ -1695,67 +1660,6 @@ private:
         assert(rtn->getType()->isUsable());
 
         return rtn;
-    }
-
-    /*
-    CompilerVariable* evalSlice(BST_slice* node, const UnwindInfo& unw_info) {
-        // printf("%d expr: %d\n", node->type, node->lineno);
-        if (node->lineno) {
-            emitter.getBuilder()->SetCurrentDebugLocation(
-                llvm::DebugLoc::get(node->lineno, 0, irstate->getFuncDbgInfo()));
-        }
-
-        CompilerVariable* rtn = NULL;
-        switch (node->type) {
-            case BST_TYPE::Ellipsis:
-                rtn = getEllipsis();
-                break;
-            case BST_TYPE::Index:
-                rtn = evalIndex(bst_cast<BST_Index>(node), unw_info);
-                break;
-            case BST_TYPE::Slice:
-                rtn = evalSlice(bst_cast<BST_Slice>(node), unw_info);
-                break;
-            default:
-                printf("Unhandled slice type: %d (irgenerator.cpp:" STRINGIFY(__LINE__) ")\n", node->type);
-                exit(1);
-        }
-        return evalSliceExprPost(node, unw_info, rtn);
-    }
-    */
-
-
-    CompilerVariable* evalExpr(BST_expr* node, const UnwindInfo& unw_info) {
-        // printf("%d expr: %d\n", node->type, node->lineno);
-        if (node->lineno) {
-            emitter.getBuilder()->SetCurrentDebugLocation(
-                llvm::DebugLoc::get(node->lineno, 0, irstate->getFuncDbgInfo()));
-        }
-
-        CompilerVariable* rtn = NULL;
-        switch (node->type) {
-            // case BST_TYPE::Name:
-            // rtn = evalName(bst_cast<BST_Name>(node), unw_info);
-            //    break;
-            case BST_TYPE::Num:
-                rtn = evalNum(bst_cast<BST_Num>(node), unw_info);
-                break;
-            case BST_TYPE::Str:
-                rtn = evalStr(bst_cast<BST_Str>(node), unw_info);
-                break;
-
-
-            // pseudo-nodes
-            case BST_TYPE::None:
-                rtn = evalNone((BST_None*)node, unw_info);
-                break;
-
-
-            default:
-                printf("Unhandled expr type: %d (irgenerator.cpp:" STRINGIFY(__LINE__) ")\n", node->type);
-                exit(1);
-        }
-        return evalSliceExprPost(node, unw_info, rtn);
     }
 
     void setDefinedVar(int vreg, llvm::Value* val) {

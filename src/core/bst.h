@@ -782,25 +782,6 @@ public:
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Name;
 };
 
-class BST_Num : public BST_expr {
-public:
-    AST_Num::NumType num_type;
-
-    // TODO: these should just be Boxed objects now
-    union {
-        int64_t n_int;
-        double n_float;
-    };
-    std::string n_long;
-
-    virtual void accept(BSTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
-
-    BST_Num() : BST_expr(BST_TYPE::Num) {}
-
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Num;
-};
-
 class BST_Repr : public BST_ass {
 public:
     int vreg_value = VREG_UNDEFINED;
@@ -889,23 +870,6 @@ public:
     BST_MakeSlice() : BST_ass(BST_TYPE::MakeSlice) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::MakeSlice;
-};
-
-class BST_Str : public BST_expr {
-public:
-    AST_Str::StrType str_type;
-
-    // The meaning of str_data depends on str_type.  For STR, it's just the bytes value.
-    // For UNICODE, it's the utf-8 encoded value.
-    std::string str_data;
-
-    virtual void accept(BSTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
-
-    BST_Str() : BST_expr(BST_TYPE::Str), str_type(AST_Str::UNSET) {}
-    BST_Str(std::string s) : BST_expr(BST_TYPE::Str), str_type(AST_Str::STR), str_data(std::move(s)) {}
-
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Str;
 };
 
 class BST_Tuple : public BST_ass {
@@ -1101,16 +1065,6 @@ public:
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::ImportStar;
 };
 
-class BST_None : public BST_expr {
-public:
-    virtual void accept(BSTVisitor* v);
-    virtual void* accept_expr(ExprVisitor* v);
-
-    BST_None() : BST_expr(BST_TYPE::None) {}
-
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::None;
-};
-
 // determines whether something is "true" for purposes of `if' and so forth
 class BST_Nonzero : public BST_ass {
 public:
@@ -1221,13 +1175,11 @@ public:
     virtual bool visit_invoke(BST_Invoke* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_list(BST_List* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_name(BST_Name* node) { RELEASE_ASSERT(0, ""); }
-    virtual bool visit_num(BST_Num* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_print(BST_Print* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_raise(BST_Raise* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_repr(BST_Repr* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_return(BST_Return* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_set(BST_Set* node) { RELEASE_ASSERT(0, ""); }
-    virtual bool visit_str(BST_Str* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_tuple(BST_Tuple* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_unaryop(BST_UnaryOp* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_unpackintoarray(BST_UnpackIntoArray* node) { RELEASE_ASSERT(0, ""); }
@@ -1246,7 +1198,6 @@ public:
     virtual bool visit_importfrom(BST_ImportFrom* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_importname(BST_ImportName* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_importstar(BST_ImportStar* node) { RELEASE_ASSERT(0, ""); }
-    virtual bool visit_none(BST_None* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_nonzero(BST_Nonzero* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_checkexcmatch(BST_CheckExcMatch* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_setexcinfo(BST_SetExcInfo* node) { RELEASE_ASSERT(0, ""); }
@@ -1290,13 +1241,11 @@ public:
     virtual bool visit_invoke(BST_Invoke* node) { return false; }
     virtual bool visit_list(BST_List* node) { return false; }
     virtual bool visit_name(BST_Name* node) { return false; }
-    virtual bool visit_num(BST_Num* node) { return false; }
     virtual bool visit_print(BST_Print* node) { return false; }
     virtual bool visit_raise(BST_Raise* node) { return false; }
     virtual bool visit_repr(BST_Repr* node) { return false; }
     virtual bool visit_return(BST_Return* node) { return false; }
     virtual bool visit_set(BST_Set* node) { return false; }
-    virtual bool visit_str(BST_Str* node) { return false; }
     virtual bool visit_tuple(BST_Tuple* node) { return false; }
     virtual bool visit_unaryop(BST_UnaryOp* node) { return false; }
     virtual bool visit_unpackintoarray(BST_UnpackIntoArray* node) { return false; }
@@ -1314,7 +1263,6 @@ public:
     virtual bool visit_importfrom(BST_ImportFrom* node) override { return false; }
     virtual bool visit_importname(BST_ImportName* node) override { return false; }
     virtual bool visit_importstar(BST_ImportStar* node) override { return false; }
-    virtual bool visit_none(BST_None* node) override { return false; }
     virtual bool visit_nonzero(BST_Nonzero* node) override { return false; }
     virtual bool visit_checkexcmatch(BST_CheckExcMatch* node) override { return false; }
     virtual bool visit_setexcinfo(BST_SetExcInfo* node) override { return false; }
@@ -1338,9 +1286,6 @@ public:
     virtual ~ExprVisitor() {}
 
     virtual void* visit_name(BST_Name* node) { RELEASE_ASSERT(0, ""); }
-    virtual void* visit_num(BST_Num* node) { RELEASE_ASSERT(0, ""); }
-    virtual void* visit_str(BST_Str* node) { RELEASE_ASSERT(0, ""); }
-    virtual void* visit_none(BST_None* node) { RELEASE_ASSERT(0, ""); }
 };
 
 class StmtVisitor {
@@ -1444,14 +1389,12 @@ public:
     virtual bool visit_invoke(BST_Invoke* node);
     virtual bool visit_list(BST_List* node);
     virtual bool visit_name(BST_Name* node);
-    virtual bool visit_num(BST_Num* node);
     virtual bool visit_print(BST_Print* node);
     virtual bool visit_raise(BST_Raise* node);
     virtual bool visit_repr(BST_Repr* node);
     virtual bool visit_return(BST_Return* node);
     virtual bool visit_set(BST_Set* node);
 
-    virtual bool visit_str(BST_Str* node);
     virtual bool visit_tuple(BST_Tuple* node);
     virtual bool visit_unaryop(BST_UnaryOp* node);
     virtual bool visit_unpackintoarray(BST_UnpackIntoArray* node);
@@ -1469,7 +1412,6 @@ public:
     virtual bool visit_importfrom(BST_ImportFrom* node);
     virtual bool visit_importname(BST_ImportName* node);
     virtual bool visit_importstar(BST_ImportStar* node);
-    virtual bool visit_none(BST_None* node);
     virtual bool visit_nonzero(BST_Nonzero* node);
     virtual bool visit_checkexcmatch(BST_CheckExcMatch* node);
     virtual bool visit_setexcinfo(BST_SetExcInfo* node);
