@@ -727,27 +727,24 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
                     assert(stmt->type != BST_TYPE::ImportFrom);
                     */
 
-                    if (stmt->type == BST_TYPE::Assign) {
-                        auto asgn = bst_cast<BST_Assign>(stmt);
-                        if (asgn->target->type == BST_TYPE::Name) {
-                            auto asname = bst_cast<BST_Name>(asgn->target);
-                            assert(asname->lookup_type != ScopeInfo::VarScopeType::UNKNOWN);
+                    if (stmt->type == BST_TYPE::StoreName) {
+                        auto asname = bst_cast<BST_StoreName>(stmt);
+                        assert(asname->lookup_type != ScopeInfo::VarScopeType::UNKNOWN);
 
-                            InternedString name = asname->id;
-                            int vreg = bst_cast<BST_Name>(asgn->target)->vreg;
-                            assert(name.c_str()[0] == '#'); // it must be a temporary
-                            // You might think I need to check whether `name' is being assigned globally or locally,
-                            // since a global assign doesn't affect the symbol table. However, the CFG pass only
-                            // generates invoke-assigns to temporary variables. Just to be sure, we assert:
-                            assert(asname->lookup_type != ScopeInfo::VarScopeType::GLOBAL);
+                        InternedString name = asname->id;
+                        int vreg = asname->vreg;
+                        assert(name.c_str()[0] == '#'); // it must be a temporary
+                        // You might think I need to check whether `name' is being assigned globally or locally,
+                        // since a global assign doesn't affect the symbol table. However, the CFG pass only
+                        // generates invoke-assigns to temporary variables. Just to be sure, we assert:
+                        assert(asname->lookup_type != ScopeInfo::VarScopeType::GLOBAL);
 
-                            if ((*sym_table)[vreg]) {
-                                // TODO: inefficient
-                                sym_table = new SymbolTable(*sym_table);
-                                ASSERT((*sym_table)[vreg] != NULL, "%d %s\n", block->idx, name.c_str());
-                                (*sym_table)[vreg] = NULL;
-                                created_new_sym_table = true;
-                            }
+                        if ((*sym_table)[vreg]) {
+                            // TODO: inefficient
+                            sym_table = new SymbolTable(*sym_table);
+                            ASSERT((*sym_table)[vreg] != NULL, "%d %s\n", block->idx, name.c_str());
+                            (*sym_table)[vreg] = NULL;
+                            created_new_sym_table = true;
                         }
                     } else {
 

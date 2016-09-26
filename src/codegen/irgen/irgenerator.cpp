@@ -2078,12 +2078,6 @@ private:
         endBlock(DEAD);
     }
 
-    void doAssign(BST_Assign* node, const UnwindInfo& unw_info) {
-        CompilerVariable* val = evalExpr(node->value, unw_info);
-
-        _doSet(node->target, val, unw_info);
-    }
-
     void doAssign(BST_AssignVRegVReg* node, const UnwindInfo& unw_info) {
         CompilerVariable* val = evalVReg(node->vreg_src, node->kill_src);
 
@@ -2532,9 +2526,6 @@ private:
         switch (node->type) {
             case BST_TYPE::Assert:
                 doAssert(bst_cast<BST_Assert>(node), unw_info);
-                break;
-            case BST_TYPE::Assign:
-                doAssign(bst_cast<BST_Assign>(node), unw_info);
                 break;
             case BST_TYPE::AssignVRegVReg:
                 doAssign(bst_cast<BST_AssignVRegVReg>(node), unw_info);

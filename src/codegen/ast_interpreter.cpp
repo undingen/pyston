@@ -85,7 +85,6 @@ private:
     Value getVReg(int vreg, bool kill = true);
 
     Value visit_assert(BST_Assert* node);
-    Value visit_assign(BST_Assign* node);
     Value visit_assignvregvreg(BST_AssignVRegVReg* node);
     Value visit_binop(BST_BinOp* node);
     Value visit_call(BST_Call* node);
@@ -1070,10 +1069,6 @@ Value ASTInterpreter::visit_stmt(BST_stmt* node) {
             rtn = visit_assert((BST_Assert*)node);
             ASTInterpreterJitInterface::pendingCallsCheckHelper();
             break;
-        case BST_TYPE::Assign:
-            rtn = visit_assign((BST_Assign*)node);
-            ASTInterpreterJitInterface::pendingCallsCheckHelper();
-            break;
         case BST_TYPE::AssignVRegVReg:
             rtn = visit_assignvregvreg((BST_AssignVRegVReg*)node);
             ASTInterpreterJitInterface::pendingCallsCheckHelper();
@@ -1556,12 +1551,6 @@ Value ASTInterpreter::visit_deletename(BST_DeleteName* target) {
         Py_DECREF(vregs[target->vreg]);
         vregs[target->vreg] = NULL;
     }
-    return Value();
-}
-
-Value ASTInterpreter::visit_assign(BST_Assign* node) {
-    Value v = visit_expr(node->value);
-    doStore(node->target, v);
     return Value();
 }
 
@@ -2490,14 +2479,15 @@ extern "C" Box* astInterpretDeoptFromASM(BoxedCode* code, BST_expr* after_expr, 
     CFGBlock* start_block = NULL;
     BST_stmt* starting_statement = NULL;
     while (true) {
-        if (enclosing_stmt->type == BST_TYPE::Assign) {
-            auto asgn = bst_cast<BST_Assign>(enclosing_stmt);
+        if (enclosing_stmt->type == BST_TYPE::StoreName) {
+            /*
+            auto asgn = bst_cast<BST_StoreName>(enclosing_stmt);
             RELEASE_ASSERT(asgn->value == after_expr, "%p %p", asgn->value, after_expr);
             assert(asgn->target->type == BST_TYPE::Name);
-            auto name = bst_cast<BST_Name>(asgn->target);
-            assert(name->id.s()[0] == '#');
+            assert(asgn->id.s()[0] == '#');
             interpreter.addSymbol(name->vreg, expr_val, true);
             break;
+            */
         } else if (enclosing_stmt->type == BST_TYPE::Invoke) {
             auto invoke = bst_cast<BST_Invoke>(enclosing_stmt);
             start_block = invoke->normal_dest;

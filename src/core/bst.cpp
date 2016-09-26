@@ -62,19 +62,6 @@ void BST_Assert::accept_stmt(StmtVisitor* v) {
     v->visit_assert(this);
 }
 
-void BST_Assign::accept(BSTVisitor* v) {
-    bool skip = v->visit_assign(this);
-    if (skip)
-        return;
-
-    value->accept(v);
-    target->accept(v);
-}
-
-void BST_Assign::accept_stmt(StmtVisitor* v) {
-    v->visit_assign(this);
-}
-
 void BST_AssignVRegVReg::accept(BSTVisitor* v) {
     bool skip = v->visit_assignvregvreg(this);
     if (skip)
@@ -840,13 +827,6 @@ bool PrintVisitor::visit_assert(BST_Assert* node) {
         stream << ", ";
         visit_vreg(&node->vreg_msg);
     }
-    return true;
-}
-
-bool PrintVisitor::visit_assign(BST_Assign* node) {
-    node->target->accept(this);
-    stream << " = ";
-    node->value->accept(this);
     return true;
 }
 
@@ -1616,10 +1596,6 @@ public:
 
 
     virtual bool visit_assert(BST_Assert* node) {
-        output->push_back(node);
-        return false;
-    }
-    virtual bool visit_assign(BST_Assign* node) {
         output->push_back(node);
         return false;
     }

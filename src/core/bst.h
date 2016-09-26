@@ -251,19 +251,6 @@ public:
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Assert;
 };
 
-class BST_Assign : public BST_stmt {
-public:
-    BST_expr* target;
-    BST_expr* value;
-
-    virtual void accept(BSTVisitor* v);
-    virtual void accept_stmt(StmtVisitor* v);
-
-    BST_Assign() : BST_stmt(BST_TYPE::Assign) {}
-
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Assign;
-};
-
 class BST_UnpackIntoArray : public BST_stmt {
 public:
     int vreg_src = VREG_UNDEFINED;
@@ -1215,7 +1202,6 @@ public:
     virtual bool visit_vreg(int* vreg, bool is_dst = false) { RELEASE_ASSERT(0, ""); }
 
     virtual bool visit_assert(BST_Assert* node) { RELEASE_ASSERT(0, ""); }
-    virtual bool visit_assign(BST_Assign* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_assignvregvreg(BST_AssignVRegVReg* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_augbinop(BST_AugBinOp* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_binop(BST_BinOp* node) { RELEASE_ASSERT(0, ""); }
@@ -1285,7 +1271,6 @@ public:
     virtual ~NoopBSTVisitor() {}
 
     virtual bool visit_assert(BST_Assert* node) { return false; }
-    virtual bool visit_assign(BST_Assign* node) { return false; }
     virtual bool visit_assignvregvreg(BST_AssignVRegVReg* node) { return false; }
     virtual bool visit_augbinop(BST_AugBinOp* node) { return false; }
     virtual bool visit_binop(BST_BinOp* node) { return false; }
@@ -1364,7 +1349,6 @@ public:
     virtual ~StmtVisitor() {}
 
     virtual void visit_assert(BST_Assert* node) { RELEASE_ASSERT(0, ""); }
-    virtual void visit_assign(BST_Assign* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_assignvregvreg(BST_AssignVRegVReg* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_augbinop(BST_AugBinOp* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_binop(BST_BinOp* node) { RELEASE_ASSERT(0, ""); }
@@ -1441,7 +1425,6 @@ public:
     virtual bool visit_vreg(int* vreg, bool is_dst = false);
 
     virtual bool visit_assert(BST_Assert* node);
-    virtual bool visit_assign(BST_Assign* node);
     virtual bool visit_assignvregvreg(BST_AssignVRegVReg* node);
     virtual bool visit_augbinop(BST_AugBinOp* node);
     virtual bool visit_binop(BST_BinOp* node);

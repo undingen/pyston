@@ -426,11 +426,6 @@ public:
         return true;
     }
 
-    virtual bool visit_assign(BST_Assign* node) {
-        _doSet(node->target);
-        return true;
-    }
-
     virtual bool visit_assignvregvreg(BST_AssignVRegVReg* node) {
         _doSet(node->vreg_dst);
         return true;

@@ -192,24 +192,6 @@ private:
             sym_table[vreg] = t;
     }
 
-    void _doSet(BST_expr* target, CompilerType* t) {
-        switch (target->type) {
-            case BST_TYPE::Name: {
-                auto name = bst_cast<BST_Name>(target);
-                assert(name->lookup_type != ScopeInfo::VarScopeType::UNKNOWN);
-                if (name->lookup_type == ScopeInfo::VarScopeType::FAST
-                    || name->lookup_type == ScopeInfo::VarScopeType::CLOSURE) {
-                    _doSet(name->vreg, t);
-                } else
-                    assert(name->vreg == VREG_UNDEFINED);
-                break;
-            }
-            default:
-                ASSERT(0, "Unknown type for TypePropagator: %d", target->type);
-                abort();
-        }
-    }
-
     void visit_ellipsis(BST_Ellipsis* node) override { _doSet(node->vreg_dst, typeFromClass(ellipsis_cls)); }
 
     bool hasFixedOps(CompilerType* type) {
@@ -595,11 +577,6 @@ private:
 
 
     void visit_assert(BST_Assert* node) override { getType(node->vreg_msg); }
-
-    void visit_assign(BST_Assign* node) override {
-        CompilerType* t = getType(node->value);
-        _doSet(node->target, t);
-    }
 
     void visit_assignvregvreg(BST_AssignVRegVReg* node) override {
         CompilerType* t = getType(node->vreg_src);

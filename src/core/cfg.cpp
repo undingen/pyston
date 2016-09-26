@@ -413,13 +413,6 @@ private:
         return name;
     }
 
-    BST_Name* makeName(InternedString id, AST_TYPE::AST_TYPE ctx_type, int lineno, bool is_kill = false) {
-        BST_Name* name = new BST_Name(id, ctx_type, lineno);
-        fillScopingInfo(name, scoping);
-        name->is_kill = is_kill;
-        return name;
-    }
-
     void pushLoopContinuation(CFGBlock* continue_dest, CFGBlock* break_dest) {
         assert(continue_dest
                != break_dest); // I guess this doesn't have to be true, but validates passing say_why=false
@@ -849,17 +842,6 @@ private:
         return pushBackCreateDst(compare);
     }
 
-    // We need this both on asts (ex assigning to the element name in a for loop), and
-    // for bsts (desugaring an augassign)
-    // TODO: we should get rid of this bst one, or at least not call it the same thing?
-    void pushAssign(BST_expr* target, BST_expr* val) {
-        BST_Assign* assign = new BST_Assign();
-        assign->value = val;
-        assign->lineno = val->lineno;
-        assign->target = target;
-        push_back(assign);
-    }
-
     void pushAssign(AST_expr* target, TmpValue val) {
         if (target->type == AST_TYPE::Name) {
             BST_StoreName* assign = new BST_StoreName();
@@ -929,42 +911,6 @@ private:
             RELEASE_ASSERT(0, "%d", target->type);
         }
     }
-
-    /*
-    void pushAssign(InternedString id, BST_expr* val) {
-        if (id.isCompilerCreatedName()) {
-            if (val->type == BST_TYPE::Name && bst_cast<BST_Name>(val)->id.isCompilerCreatedName()) {
-                BST_AssignVRegVReg* assign = new BST_AssignVRegVReg;
-                assign->lineno = val->lineno;
-                assign->kill_src = bst_cast<BST_Name>(val)->is_kill;
-                unmapExprDst(val, &assign->vreg_src); // we don't need a kill so use unmapExprDst
-                unmapDst(id, &assign->vreg_dst);
-                push_back(assign);
-                return;
-            } else if (val->type == BST_TYPE::Num || val->type == BST_TYPE::Str) {
-                BST_AssignVRegVReg* assign = new BST_AssignVRegVReg;
-                assign->lineno = val->lineno;
-                unmapExpr(val, &assign->vreg_src);
-                unmapDst(id, &assign->vreg_dst);
-                push_back(assign);
-                return;
-            }
-        }
-
-
-
-        BST_Assign* assign = new BST_Assign();
-        assign->value = val;
-        assign->lineno = val->lineno;
-        assign->target = makeName(id, AST_TYPE::Store, val->lineno, 0);
-        push_back(assign);
-    }
-
-    void pushAssign(TmpValue id, BST_expr* val) {
-        assert(id.isName());
-        pushAssign(id.is, val);
-    }
-    */
 
     void pushAssign(InternedString id, TmpValue val) {
         if (id.isCompilerCreatedName()) {
@@ -1196,83 +1142,7 @@ private:
         push_back(rtn);
         return TmpValue(name, node->lineno);
     }
-#if 0
-    // Sometimes we want to refer to the same object twice,
-    // but we require that no AST* object gets reused.
-    // So instead, just create a copy of it.
-    // This is only intended to be used with the primitev types,
-    // ie those that can be used as operands (temp names and constants).
-    BST_expr* _dup(BST_expr* val) {
-        if (val == nullptr)
-            return val;
 
-        if (val->type == BST_TYPE::Name) {
-            BST_Name* orig = bst_cast<BST_Name>(val);
-            BST_Name* made = makeName(orig->id, orig->ctx_type, orig->lineno);
-            return made;
-        } else if (val->type == BST_TYPE::Num) {
-            BST_Num* orig = bst_cast<BST_Num>(val);
-            BST_Num* made = new BST_Num();
-            made->num_type = orig->num_type;
-            made->n_int = orig->n_int;
-            made->n_long = orig->n_long;
-            made->lineno = orig->lineno;
-            return made;
-        } else if (val->type == BST_TYPE::Str) {
-            BST_Str* orig = bst_cast<BST_Str>(val);
-            BST_Str* made = new BST_Str();
-            made->str_type = orig->str_type;
-            made->str_data = orig->str_data;
-            made->lineno = orig->lineno;
-            return made;
-        } else {
-            RELEASE_ASSERT(0, "%d", val->type);
-        }
-    }
-
-
-    BST_expr* _dup2(BST_expr* val) {
-        if (val == nullptr)
-            return nullptr;
-
-        /*if (val->type == BST_TYPE::Name) {
-            BST_Name* orig = bst_cast<BST_Name>(val);
-            auto new_name = nodeName();
-            pushAssign(new_name, _dup(orig));
-            return makeLoad(new_name, orig, true);
-        } else*/ if (val->type == BST_TYPE::Num) {
-            return val;
-        } else if (val->type == BST_TYPE::Str) {
-            return val;
-        } else if (val->type == BST_TYPE::None) {
-            return val;
-        } else {
-            RELEASE_ASSERT(0, "%d", val->type);
-        }
-    }
-
-    BST_expr* _assureKilled(BST_expr* val) {
-        if (val == nullptr)
-            return nullptr;
-
-        /*if (val->type == BST_TYPE::Name) {
-            BST_Name* orig = bst_cast<BST_Name>(val);
-            if (orig->is_kill && orig->id.isCompilerCreatedName())
-                return val;
-            auto new_name = nodeName();
-            pushAssign(new_name, _dup(orig));
-            return makeLoad(new_name, orig, true);
-        } else*/ if (val->type == BST_TYPE::Num) {
-            return val;
-        } else if (val->type == BST_TYPE::Str) {
-            return val;
-        } else if (val->type == BST_TYPE::None) {
-            return val;
-        } else {
-            RELEASE_ASSERT(0, "%d", val->type);
-        }
-    }
-#endif
     TmpValue remapBoolOp(AST_BoolOp* node) {
         assert(curblock);
 
@@ -1992,36 +1862,10 @@ public:
             return;
         }
 
-        if (node->type == BST_TYPE::Assign) {
-            BST_Assign* asgn = bst_cast<BST_Assign>(node);
-            if (asgn->target->type == BST_TYPE::Name) {
-                BST_Name* target = bst_cast<BST_Name>(asgn->target);
-                if (target->id.s()[0] != '#') {
-// assigning to a non-temporary
-#ifndef NDEBUG
-                    if (!(asgn->value->type == BST_TYPE::Name && bst_cast<BST_Name>(asgn->value)->id.s()[0] == '#')
-                        && asgn->value->type != BST_TYPE::Str && asgn->value->type != BST_TYPE::Num) {
-                        fprintf(stdout, "\nError: doing a non-trivial assignment in an invoke is not allowed:\n");
-                        print_bst(node);
-                        printf("\n");
-                        abort();
-                    }
-#endif
-                    curblock->push_back(node);
-                    return;
-                } else if (asgn->value->type == BST_TYPE::Name && bst_cast<BST_Name>(asgn->value)->id.s()[0] == '#') {
-                    // Assigning from one temporary name to another:
-                    curblock->push_back(node);
-                    return;
-                } else if (asgn->value->type == BST_TYPE::Num || asgn->value->type == BST_TYPE::Str
-                           || (asgn->value->type == BST_TYPE::Name
-                               && bst_cast<BST_Name>(asgn->value)->id.s() == "None")) {
-                    // Assigning to a temporary name from an expression that can't throw:
-                    // NB. `None' can't throw in Python, because it's hardcoded
-                    // (seriously, try reassigning "None" in CPython).
-                    curblock->push_back(node);
-                    return;
-                }
+        if (node->type == BST_TYPE::StoreName) {
+            if (bst_cast<BST_StoreName>(node)->id.s()[0] != '#') {
+                curblock->push_back(node);
+                return;
             }
         }
 
