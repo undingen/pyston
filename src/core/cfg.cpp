@@ -951,21 +951,7 @@ private:
         return pushBackCreateDst(rtn);
     }
 
-    void assertAssumption(BST_expr* node) {
-        if (node->type == BST_TYPE::Str || node->type == BST_TYPE::Num)
-            return;
-        if (node->type == BST_TYPE::Name) {
-            BST_Name* name = (BST_Name*)node;
-            assert(name->is_kill && name->lookup_type == ScopeInfo::VarScopeType::FAST
-                   && name->id.isCompilerCreatedName());
-            return;
-        }
-        assert(0);
-    }
-
-    llvm::DenseMap<int*, BST_Name*> name_vreg;
     llvm::DenseMap<int*, InternedString> id_vreg;
-    llvm::DenseMap<InternedString, int*> reverse_id_vreg;
 
     void unmapExpr(TmpValue val, int* vreg) {
         if (val.isConst()) {
@@ -987,8 +973,6 @@ private:
         assert(id.isCompilerCreatedName());
         assert(!id_vreg.count(vreg));
         id_vreg[vreg] = id;
-        // assert(!reverse_id_vreg.count(id));
-        reverse_id_vreg[id] = vreg;
     }
     void unmapDst(TmpValue id, int* vreg) {
         assert(id.isName());
@@ -1910,11 +1894,11 @@ public:
                         continue;
                     }
 
-                    auto* store = new BST_StoreAttr;
+                    auto* store = new BST_LoadAttr;
                     store->lineno = import->lineno;
-                    store->attr = internString(a->name.s().substr(l, r - l));
-                    unmapExpr(_dup(tmpname), &store->vreg_value);
-                    unmapExpr(_dup(tmpname), &store->vreg_target);
+                    store->attr = scoping->mangleName(internString(a->name.s().substr(l, r - l)));
+                    unmapExpr(tmpname, &store->vreg_value);
+                    unmapExpr(tmpname, &store->vreg_dst);
                     push_back(store);
 
                     l = r + 1;
@@ -2924,13 +2908,12 @@ public:
     llvm::DenseMap<InternedString, DefaultedInt<VREG_UNDEFINED>> sym_vreg_map;
     llvm::DenseMap<InternedString, std::unordered_set<CFGBlock*>> sym_blocks_map;
     std::vector<InternedString> vreg_sym_map;
-    llvm::DenseMap<int*, BST_Name*>& name_vreg;
     llvm::DenseMap<int*, InternedString>& id_vreg;
 
     enum Step { TrackBlockUsage = 0, UserVisible, CrossBlock, SingleBlockUse } step;
 
-    AssignVRegsVisitor(llvm::DenseMap<int*, BST_Name*>& name_vreg, llvm::DenseMap<int*, InternedString>& id_vreg)
-        : current_block(0), next_vreg(0), name_vreg(name_vreg), id_vreg(id_vreg) {}
+    AssignVRegsVisitor(llvm::DenseMap<int*, InternedString>& id_vreg)
+        : current_block(0), next_vreg(0), id_vreg(id_vreg) {}
 
     bool visit_functiondef(BST_FunctionDef* node) override {
         for (int i = 0; i < node->num_decorator + node->num_defaults; ++i) {
@@ -2969,18 +2952,7 @@ public:
             return true;
         }
 
-        /*
-        if (!name_vreg.count(vreg)) {
-            if (*vreg >= 0)
-                *vreg = VREG_UNDEFINED;
-            return true;
-        }
 
-        auto* node = name_vreg[vreg];
-        node->accept(this);
-        *vreg = node->vreg;
-        return true;
-        */
         if (!id_vreg.count(vreg)) {
             if (*vreg >= 0)
                 *vreg = VREG_UNDEFINED;
@@ -3096,12 +3068,11 @@ public:
     }
 };
 
-void VRegInfo::assignVRegs(CFG* cfg, const ParamNames& param_names, llvm::DenseMap<int*, BST_Name*>& name_vreg,
-                           llvm::DenseMap<int*, InternedString>& id_vreg) {
+void VRegInfo::assignVRegs(CFG* cfg, const ParamNames& param_names, llvm::DenseMap<int*, InternedString>& id_vreg) {
     assert(!hasVRegsAssigned());
 
     // warning: don't rearrange the steps, they need to be run in this exact order!
-    AssignVRegsVisitor visitor(name_vreg, id_vreg);
+    AssignVRegsVisitor visitor(id_vreg);
     for (auto step : { AssignVRegsVisitor::TrackBlockUsage, AssignVRegsVisitor::UserVisible,
                        AssignVRegsVisitor::CrossBlock, AssignVRegsVisitor::SingleBlockUse }) {
         visitor.step = step;
@@ -3202,7 +3173,14 @@ static CFG* computeCFG(llvm::ArrayRef<AST_stmt*> body, AST_TYPE::AST_TYPE ast_ty
             if (arg_expr->type == AST_TYPE::Tuple) {
                 InternedString arg_name = stringpool.get("." + std::to_string(counter));
                 assert(scoping->getScopeTypeOfName(arg_name) == ScopeInfo::VarScopeType::FAST);
-                visitor.pushAssign(arg_expr, TmpValue(arg_name, arg_expr->lineno));
+
+                auto load = new BST_LoadName();
+                load->id = stringpool.get("." + std::to_string(counter));
+                load->lineno = arg_expr->lineno;
+                fillScopingInfo(load, scoping);
+                TmpValue val = visitor.pushBackCreateDst(load);
+
+                visitor.pushAssign(arg_expr, val);
             } else {
                 assert(arg_expr->type == AST_TYPE::Name);
             }
@@ -3426,12 +3404,7 @@ static CFG* computeCFG(llvm::ArrayRef<AST_stmt*> body, AST_TYPE::AST_TYPE ast_ty
         }
     }
 
-    assert(visitor.name_vreg.empty());
-    rtn->getVRegInfo().assignVRegs(rtn, param_names, visitor.name_vreg, visitor.id_vreg);
-
-    for (auto&& e : visitor.name_vreg) {
-        delete e.second;
-    }
+    rtn->getVRegInfo().assignVRegs(rtn, param_names, visitor.id_vreg);
 
 
     if (VERBOSITY("cfg") >= 2) {
