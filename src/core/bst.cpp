@@ -791,14 +791,15 @@ void PrintVisitor::printIndent() {
 extern "C" BoxedString* repr(Box* obj);
 bool PrintVisitor::visit_vreg(int* vreg, bool is_dst) {
     if (*vreg != VREG_UNDEFINED)
-        stream << "@" << *vreg;
+        stream << "#" << *vreg;
     else
-        stream << "@undef";
+        stream << "#undef";
+
     if (mod && *vreg < 0 && *vreg != VREG_UNDEFINED)
         stream << "(" << autoDecref(repr(mod->constants[-*vreg - 1]))->s() << ")";
 
     if (is_dst)
-        stream << " =";
+        stream << " = ";
 
     return true;
 }
@@ -820,52 +821,10 @@ bool PrintVisitor::visit_assignvregvreg(BST_AssignVRegVReg* node) {
     return true;
 }
 
-void PrintVisitor::printOp(AST_TYPE::AST_TYPE op_type) {
-    switch (op_type) {
-        case BST_TYPE::Add:
-            stream << '+';
-            break;
-        case BST_TYPE::BitAnd:
-            stream << '&';
-            break;
-        case BST_TYPE::BitOr:
-            stream << '|';
-            break;
-        case BST_TYPE::BitXor:
-            stream << '^';
-            break;
-        case BST_TYPE::Div:
-            stream << '/';
-            break;
-        case BST_TYPE::LShift:
-            stream << "<<";
-            break;
-        case BST_TYPE::RShift:
-            stream << ">>";
-            break;
-        case BST_TYPE::Pow:
-            stream << "**";
-            break;
-        case BST_TYPE::Mod:
-            stream << '%';
-            break;
-        case BST_TYPE::Mult:
-            stream << '*';
-            break;
-        case BST_TYPE::Sub:
-            stream << '-';
-            break;
-        default:
-            stream << "<" << (int)op_type << ">";
-            break;
-    }
-}
-
 bool PrintVisitor::visit_augbinop(BST_AugBinOp* node) {
     visit_vreg(&node->vreg_dst, true);
     visit_vreg(&node->vreg_left);
-    stream << '=';
-    printOp(node->op_type);
+    stream << " =" << getOpSymbol(node->op_type) << " ";
     visit_vreg(&node->vreg_right);
     return true;
 }
@@ -873,7 +832,7 @@ bool PrintVisitor::visit_augbinop(BST_AugBinOp* node) {
 bool PrintVisitor::visit_binop(BST_BinOp* node) {
     visit_vreg(&node->vreg_dst, true);
     visit_vreg(&node->vreg_left);
-    printOp(node->op_type);
+    stream << " " << getOpSymbol(node->op_type) << " ";
     visit_vreg(&node->vreg_right);
     return true;
 }
@@ -908,7 +867,7 @@ bool PrintVisitor::visit_callfunc(BST_CallFunc* node) {
 
 bool PrintVisitor::visit_callattr(BST_CallAttr* node) {
     visit_vreg(&node->vreg_dst, true);
-    stream << "@" << node->vreg_value << ".";
+    stream << "#" << node->vreg_value << ".";
     stream << node->attr.s();
     stream << "(";
 
@@ -937,7 +896,7 @@ bool PrintVisitor::visit_callattr(BST_CallAttr* node) {
 
 bool PrintVisitor::visit_callclsattr(BST_CallClsAttr* node) {
     visit_vreg(&node->vreg_dst, true);
-    stream << "@" << node->vreg_value << ":";
+    stream << "#" << node->vreg_value << ":";
     stream << node->attr.s();
     stream << "(";
 
@@ -1317,7 +1276,9 @@ bool PrintVisitor::visit_makeslice(BST_MakeSlice* node) {
 
 bool PrintVisitor::visit_loadname(BST_LoadName* node) {
     visit_vreg(&node->vreg_dst, true);
-    stream << node->id.s() << "(vreg" << node->vreg << ")";
+    stream << node->id.s();
+    if (node->lookup_type == ScopeInfo::VarScopeType::FAST || node->lookup_type == ScopeInfo::VarScopeType::CLOSURE)
+        stream << "(vreg" << node->vreg << ")";
     return true;
 }
 
@@ -1349,8 +1310,10 @@ bool PrintVisitor::visit_loadsubslice(BST_LoadSubSlice* node) {
 }
 
 bool PrintVisitor::visit_storename(BST_StoreName* node) {
-    stream << node->id.s() << "(vreg" << node->vreg << ")"
-           << " = ";
+    stream << node->id.s();
+    if (node->lookup_type == ScopeInfo::VarScopeType::FAST || node->lookup_type == ScopeInfo::VarScopeType::CLOSURE)
+        stream << "(vreg" << node->vreg << ")";
+    stream << " = ";
     visit_vreg(&node->vreg_value);
     return true;
 }

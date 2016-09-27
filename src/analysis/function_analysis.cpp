@@ -296,7 +296,6 @@ public:
         return true;
     }
 
-
     bool visit_makeclass(BST_MakeClass* node) override {
         _doSet(node->vreg_dst);
         return true;
