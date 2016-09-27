@@ -738,6 +738,11 @@ Box* ASTInterpreter::doOSR(BST_Jump* node) {
             bool is_defined = val != NULL;
             sorted_symbol_table[vreg] = is_defined ? incref(val) : incref(VAL_UNDEFINED);
         } else {
+            if (!val) {
+                printf("vreg %d\n", vreg);
+                current_block->print();
+                current_block->cfg->print();
+            }
             assert(val != NULL);
             sorted_symbol_table[vreg] = incref(val);
         }

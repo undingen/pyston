@@ -244,7 +244,7 @@ public:
     virtual void processBB(Map& starting, CFGBlock* block) const;
 };
 
-class DefinednessVisitor : public BSTVisitor {
+class DefinednessVisitor : public NoopBSTVisitor {
 private:
     typedef DefinednessBBAnalyzer::Map Map;
     Map& state;
@@ -283,16 +283,18 @@ private:
 
 public:
     DefinednessVisitor(Map& state) : state(state) {}
+    bool visit_vreg(int* vreg, bool is_dest) override {
+        if (*vreg < 0)
+            return false;
 
-    virtual bool visit_assert(BST_Assert* node) { return true; }
-    virtual bool visit_branch(BST_Branch* node) { return true; }
-    virtual bool visit_invoke(BST_Invoke* node) { return false; }
-    virtual bool visit_jump(BST_Jump* node) { return true; }
-    virtual bool visit_print(BST_Print* node) { return true; }
-    virtual bool visit_raise(BST_Raise* node) { return true; }
-    virtual bool visit_return(BST_Return* node) { return true; }
+        if (is_dest)
+            state[*vreg] = DefinednessAnalysis::Defined;
+        else
+            state[*vreg] = DefinednessAnalysis::Undefined;
+        return false;
+    }
 
-    virtual bool visit_deletename(BST_DeleteName* node) {
+    bool visit_deletename(BST_DeleteName* node) override {
         if (node->lookup_type != ScopeInfo::VarScopeType::GLOBAL
             && node->lookup_type != ScopeInfo::VarScopeType::NAME) {
             assert(node->vreg >= 0);
@@ -302,176 +304,40 @@ public:
         return true;
     }
 
-    virtual bool visit_deleteattr(BST_DeleteAttr* node) { return true; }
-    virtual bool visit_deletesub(BST_DeleteSub* node) { return true; }
-    virtual bool visit_deletesubslice(BST_DeleteSubSlice* node) { return true; }
 
-    virtual bool visit_binop(BST_BinOp* node) {
+    bool visit_makeclass(BST_MakeClass* node) override {
         _doSet(node->vreg_dst);
         return true;
     }
-    virtual bool visit_augbinop(BST_AugBinOp* node) {
-        _doSet(node->vreg_dst);
-        return true;
-    }
-    virtual bool visit_compare(BST_Compare* node) {
+    bool visit_makefunction(BST_MakeFunction* node) override {
         _doSet(node->vreg_dst);
         return true;
     }
 
-    virtual bool visit_callattr(BST_CallAttr* node) {
-        _doSet(node->vreg_dst);
-        return true;
-    }
-    virtual bool visit_callclsattr(BST_CallClsAttr* node) {
-        _doSet(node->vreg_dst);
-        return true;
-    }
-    virtual bool visit_callfunc(BST_CallFunc* node) {
-        _doSet(node->vreg_dst);
-        return true;
-    }
-    virtual bool visit_dict(BST_Dict* node) {
-        _doSet(node->vreg_dst);
-        return true;
-    }
-    virtual bool visit_set(BST_Set* node) {
-        _doSet(node->vreg_dst);
-        return true;
-    }
-    virtual bool visit_ellipsis(BST_Ellipsis* node) {
-        _doSet(node->vreg_dst);
-        return true;
-    }
-    virtual bool visit_list(BST_List* node) {
-        _doSet(node->vreg_dst);
-        return true;
-    }
-    virtual bool visit_tuple(BST_Tuple* node) {
-        _doSet(node->vreg_dst);
-        return true;
-    }
-    virtual bool visit_repr(BST_Repr* node) {
-        _doSet(node->vreg_dst);
-        return true;
-    }
-    virtual bool visit_unaryop(BST_UnaryOp* node) {
-        _doSet(node->vreg_dst);
-        return true;
-    }
-    virtual bool visit_unpackintoarray(BST_UnpackIntoArray* node) {
-        for (int i = 0; i < node->num_elts; i++) {
-            _doSet(node->vreg_dst[i]);
-        }
-        return true;
-    }
-    virtual bool visit_yield(BST_Yield* node) {
-        _doSet(node->vreg_dst);
-        return true;
-    }
-    virtual bool visit_locals(BST_Locals* node) {
-        _doSet(node->vreg_dst);
-        return true;
-    }
-    virtual bool visit_getiter(BST_GetIter* node) {
-        _doSet(node->vreg_dst);
-        return true;
-    }
-    virtual bool visit_importfrom(BST_ImportFrom* node) {
-        _doSet(node->vreg_dst);
-        return true;
-    }
-    virtual bool visit_importname(BST_ImportName* node) {
-        _doSet(node->vreg_dst);
-        return true;
-    }
-    virtual bool visit_importstar(BST_ImportStar* node) {
-        _doSet(node->vreg_dst);
-        return true;
-    }
-    virtual bool visit_nonzero(BST_Nonzero* node) {
-        _doSet(node->vreg_dst);
-        return true;
-    }
-    virtual bool visit_checkexcmatch(BST_CheckExcMatch* node) {
-        _doSet(node->vreg_dst);
-        return true;
-    }
-    virtual bool visit_hasnext(BST_HasNext* node) {
-        _doSet(node->vreg_dst);
-        return true;
-    }
-    virtual bool visit_makeclass(BST_MakeClass* node) {
-        _doSet(node->vreg_dst);
-        return true;
-    }
-    virtual bool visit_makefunction(BST_MakeFunction* node) {
-        _doSet(node->vreg_dst);
-        return true;
-    }
-    virtual bool visit_makeslice(BST_MakeSlice* node) {
-        _doSet(node->vreg_dst);
-        return true;
-    }
-
-    virtual bool visit_classdef(BST_ClassDef* node) {
+    bool visit_classdef(BST_ClassDef* node) override {
         assert(0 && "I think this isn't needed");
-        //_doSet(node->name);
         return true;
     }
 
-    virtual bool visit_functiondef(BST_FunctionDef* node) {
+    bool visit_functiondef(BST_FunctionDef* node) override {
         assert(0 && "I think this isn't needed");
-        //_doSet(node->name);
         return true;
     }
 
-    virtual bool visit_assignvregvreg(BST_AssignVRegVReg* node) {
+    bool visit_assignvregvreg(BST_AssignVRegVReg* node) override {
         _doSet(node->vreg_dst);
+        if (node->kill_src)
+            visit_vreg(&node->vreg_src, false);
         return true;
     }
-    virtual bool visit_loadname(BST_LoadName* node) {
-        _doSet(node->vreg_dst);
-        return true;
-    }
-    virtual bool visit_loadattr(BST_LoadAttr* node) {
-        _doSet(node->vreg_dst);
-        return true;
-    }
-    virtual bool visit_loadsub(BST_LoadSub* node) {
-        _doSet(node->vreg_dst);
-        return true;
-    }
-    virtual bool visit_loadsubslice(BST_LoadSubSlice* node) {
-        _doSet(node->vreg_dst);
-        return true;
-    }
-    virtual bool visit_landingpad(BST_Landingpad* node) {
-        _doSet(node->vreg_dst);
-        return true;
-    }
-    virtual bool visit_setexcinfo(BST_SetExcInfo* node) { return true; }
-    virtual bool visit_uncacheexcinfo(BST_UncacheExcInfo* node) { return true; }
-    virtual bool visit_printexpr(BST_PrintExpr* node) { return true; }
-    virtual bool visit_storename(BST_StoreName* node) {
-        if (node->lookup_type == ScopeInfo::VarScopeType::FAST
-            || node->lookup_type == ScopeInfo::VarScopeType::CLOSURE) {
-            assert(node->vreg >= 0);
-            _doSet(node->vreg);
-        } else if (node->lookup_type == ScopeInfo::VarScopeType::GLOBAL
-                   || node->lookup_type == ScopeInfo::VarScopeType::NAME) {
-            assert(node->vreg == VREG_UNDEFINED);
-            // skip
-        } else {
-            RELEASE_ASSERT(0, "%d", static_cast<int>(node->lookup_type));
-        }
-        return true;
-    }
-    virtual bool visit_storeattr(BST_StoreAttr* node) { return true; }
-    virtual bool visit_storesub(BST_StoreSub* node) { return true; }
-    virtual bool visit_storesubslice(BST_StoreSubSlice* node) { return true; }
 
-    virtual bool visit_exec(BST_Exec* node) { return true; }
+    bool visit_loadname(BST_LoadName* node) override {
+        _doSet(node->vreg_dst);
+        if (node->is_kill && (node->lookup_type == ScopeInfo::VarScopeType::FAST
+                              || node->lookup_type == ScopeInfo::VarScopeType::CLOSURE))
+            visit_vreg(&node->vreg, false);
+        return true;
+    }
 
     friend class DefinednessBBAnalyzer;
 };

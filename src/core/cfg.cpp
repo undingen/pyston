@@ -2899,6 +2899,7 @@ void CFG::print(llvm::raw_ostream& stream, BoxedModule* mod) {
     stream << blocks.size() << " blocks\n";
     for (int i = 0; i < blocks.size(); i++)
         blocks[i]->print(stream, mod);
+    stream.flush();
 }
 
 class AssignVRegsVisitor : public NoopBSTVisitor {

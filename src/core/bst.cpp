@@ -54,7 +54,6 @@ void BST_Assert::accept(BSTVisitor* v) {
     if (skip)
         return;
 
-    // if (vreg_msg != VREG_UNDEFINED)
     v->visit_vreg(&vreg_msg);
 }
 
@@ -67,8 +66,8 @@ void BST_AssignVRegVReg::accept(BSTVisitor* v) {
     if (skip)
         return;
 
-    v->visit_vreg(&vreg_dst, true);
     v->visit_vreg(&vreg_src);
+    v->visit_vreg(&vreg_dst, true);
 }
 
 void BST_AssignVRegVReg::accept_stmt(StmtVisitor* v) {
@@ -80,9 +79,9 @@ void BST_AugBinOp::accept(BSTVisitor* v) {
     if (skip)
         return;
 
-    v->visit_vreg(&vreg_dst, true);
     v->visit_vreg(&vreg_left);
     v->visit_vreg(&vreg_right);
+    v->visit_vreg(&vreg_dst, true);
 }
 
 void BST_AugBinOp::accept_stmt(StmtVisitor* v) {
@@ -94,9 +93,9 @@ void BST_BinOp::accept(BSTVisitor* v) {
     if (skip)
         return;
 
-    v->visit_vreg(&vreg_dst, true);
     v->visit_vreg(&vreg_left);
     v->visit_vreg(&vreg_right);
+    v->visit_vreg(&vreg_dst, true);
 }
 
 void BST_BinOp::accept_stmt(StmtVisitor* v) {
@@ -108,13 +107,13 @@ void BST_CallFunc::accept(BSTVisitor* v) {
     if (skip)
         return;
 
-    v->visit_vreg(&vreg_dst, true);
     v->visit_vreg(&vreg_func);
     for (int i = 0; i < num_args + num_keywords; ++i) {
         v->visit_vreg(&elts[i]);
     }
     v->visit_vreg(&vreg_starargs);
     v->visit_vreg(&vreg_kwargs);
+    v->visit_vreg(&vreg_dst, true);
 }
 
 void BST_CallFunc::accept_stmt(StmtVisitor* v) {
@@ -126,13 +125,13 @@ void BST_CallAttr::accept(BSTVisitor* v) {
     if (skip)
         return;
 
-    v->visit_vreg(&vreg_dst, true);
     v->visit_vreg(&vreg_value);
     for (int i = 0; i < num_args + num_keywords; ++i) {
         v->visit_vreg(&elts[i]);
     }
     v->visit_vreg(&vreg_starargs);
     v->visit_vreg(&vreg_kwargs);
+    v->visit_vreg(&vreg_dst, true);
 }
 
 void BST_CallAttr::accept_stmt(StmtVisitor* v) {
@@ -144,13 +143,13 @@ void BST_CallClsAttr::accept(BSTVisitor* v) {
     if (skip)
         return;
 
-    v->visit_vreg(&vreg_dst, true);
     v->visit_vreg(&vreg_value);
     for (int i = 0; i < num_args + num_keywords; ++i) {
         v->visit_vreg(&elts[i]);
     }
     v->visit_vreg(&vreg_starargs);
     v->visit_vreg(&vreg_kwargs);
+    v->visit_vreg(&vreg_dst, true);
 }
 
 void BST_CallClsAttr::accept_stmt(StmtVisitor* v) {
@@ -162,9 +161,9 @@ void BST_Compare::accept(BSTVisitor* v) {
     if (skip)
         return;
 
-    v->visit_vreg(&vreg_dst, true);
     v->visit_vreg(&vreg_left);
     v->visit_vreg(&vreg_comparator);
+    v->visit_vreg(&vreg_dst, true);
 }
 
 void BST_Compare::accept_stmt(StmtVisitor* v) {
@@ -327,8 +326,9 @@ void BST_GetIter::accept(BSTVisitor* v) {
     bool skip = v->visit_getiter(this);
     if (skip)
         return;
-    v->visit_vreg(&vreg_dst, true);
+
     v->visit_vreg(&vreg_value);
+    v->visit_vreg(&vreg_dst, true);
 }
 
 void BST_GetIter::accept_stmt(StmtVisitor* v) {
@@ -339,9 +339,10 @@ void BST_ImportFrom::accept(BSTVisitor* v) {
     bool skip = v->visit_importfrom(this);
     if (skip)
         return;
-    v->visit_vreg(&vreg_dst, true);
+
     v->visit_vreg(&vreg_module);
     v->visit_vreg(&vreg_name);
+    v->visit_vreg(&vreg_dst, true);
 }
 
 void BST_ImportFrom::accept_stmt(StmtVisitor* v) {
@@ -352,9 +353,10 @@ void BST_ImportName::accept(BSTVisitor* v) {
     bool skip = v->visit_importname(this);
     if (skip)
         return;
-    v->visit_vreg(&vreg_dst, true);
+
     v->visit_vreg(&vreg_from);
     v->visit_vreg(&vreg_name);
+    v->visit_vreg(&vreg_dst, true);
 }
 
 void BST_ImportName::accept_stmt(StmtVisitor* v) {
@@ -365,8 +367,9 @@ void BST_ImportStar::accept(BSTVisitor* v) {
     bool skip = v->visit_importstar(this);
     if (skip)
         return;
-    v->visit_vreg(&vreg_dst, true);
+
     v->visit_vreg(&vreg_name);
+    v->visit_vreg(&vreg_dst, true);
 }
 
 void BST_ImportStar::accept_stmt(StmtVisitor* v) {
@@ -377,8 +380,9 @@ void BST_Nonzero::accept(BSTVisitor* v) {
     bool skip = v->visit_nonzero(this);
     if (skip)
         return;
-    v->visit_vreg(&vreg_dst, true);
+
     v->visit_vreg(&vreg_value);
+    v->visit_vreg(&vreg_dst, true);
 }
 
 void BST_Nonzero::accept_stmt(StmtVisitor* v) {
@@ -389,9 +393,10 @@ void BST_CheckExcMatch::accept(BSTVisitor* v) {
     bool skip = v->visit_checkexcmatch(this);
     if (skip)
         return;
-    v->visit_vreg(&vreg_dst, true);
+
     v->visit_vreg(&vreg_value);
     v->visit_vreg(&vreg_cls);
+    v->visit_vreg(&vreg_dst, true);
 }
 
 void BST_CheckExcMatch::accept_stmt(StmtVisitor* v) {
@@ -426,8 +431,8 @@ void BST_HasNext::accept(BSTVisitor* v) {
     bool skip = v->visit_hasnext(this);
     if (skip)
         return;
-    v->visit_vreg(&vreg_dst, true);
     v->visit_vreg(&vreg_value);
+    v->visit_vreg(&vreg_dst, true);
 }
 
 void BST_HasNext::accept_stmt(StmtVisitor* v) {
@@ -450,9 +455,10 @@ void BST_List::accept(BSTVisitor* v) {
     bool skip = v->visit_list(this);
     if (skip)
         return;
-    v->visit_vreg(&vreg_dst, true);
+
     for (int i = 0; i < num_elts; ++i)
         v->visit_vreg(&elts[i]);
+    v->visit_vreg(&vreg_dst, true);
 }
 
 void BST_List::accept_stmt(StmtVisitor* v) {
@@ -464,8 +470,9 @@ void BST_LoadName::accept(BSTVisitor* v) {
     if (skip)
         return;
 
+    if (lookup_type == ScopeInfo::VarScopeType::FAST || lookup_type == ScopeInfo::VarScopeType::CLOSURE)
+        v->visit_vreg(&vreg);
     v->visit_vreg(&vreg_dst, true);
-    v->visit_vreg(&vreg);
 }
 
 
@@ -478,8 +485,8 @@ void BST_LoadAttr::accept(BSTVisitor* v) {
     if (skip)
         return;
 
-    v->visit_vreg(&vreg_dst, true);
     v->visit_vreg(&vreg_value);
+    v->visit_vreg(&vreg_dst, true);
 }
 
 
@@ -492,10 +499,9 @@ void BST_LoadSub::accept(BSTVisitor* v) {
     bool skip = v->visit_loadsub(this);
     if (skip)
         return;
-
-    v->visit_vreg(&vreg_dst, true);
     v->visit_vreg(&vreg_value);
     v->visit_vreg(&vreg_slice);
+    v->visit_vreg(&vreg_dst, true);
 }
 
 
@@ -507,10 +513,10 @@ void BST_LoadSubSlice::accept(BSTVisitor* v) {
     bool skip = v->visit_loadsubslice(this);
     if (skip)
         return;
-    v->visit_vreg(&vreg_dst, true);
     v->visit_vreg(&vreg_value);
     v->visit_vreg(&vreg_lower);
     v->visit_vreg(&vreg_upper);
+    v->visit_vreg(&vreg_dst, true);
 }
 
 void BST_LoadSubSlice::accept_stmt(StmtVisitor* v) {
@@ -523,7 +529,8 @@ void BST_StoreName::accept(BSTVisitor* v) {
     if (skip)
         return;
 
-    v->visit_vreg(&vreg);
+    if (lookup_type == ScopeInfo::VarScopeType::FAST || lookup_type == ScopeInfo::VarScopeType::CLOSURE)
+        v->visit_vreg(&vreg, true);
     v->visit_vreg(&vreg_value);
 }
 
@@ -537,8 +544,8 @@ void BST_StoreAttr::accept(BSTVisitor* v) {
     if (skip)
         return;
 
-    v->visit_vreg(&vreg_target);
     v->visit_vreg(&vreg_value);
+    v->visit_vreg(&vreg_target);
 }
 
 
@@ -615,8 +622,8 @@ void BST_Repr::accept(BSTVisitor* v) {
     if (skip)
         return;
 
-    v->visit_vreg(&vreg_dst, true);
     v->visit_vreg(&vreg_value);
+    v->visit_vreg(&vreg_dst, true);
 }
 
 void BST_Repr::accept_stmt(StmtVisitor* v) {
@@ -628,7 +635,6 @@ void BST_Return::accept(BSTVisitor* v) {
     if (skip)
         return;
 
-    // if (vreg_value != VREG_UNDEFINED)
     v->visit_vreg(&vreg_value);
 }
 
@@ -640,10 +646,11 @@ void BST_Set::accept(BSTVisitor* v) {
     bool skip = v->visit_set(this);
     if (skip)
         return;
-    v->visit_vreg(&vreg_dst, true);
+
     for (int i = 0; i < num_elts; ++i) {
         v->visit_vreg(&elts[i]);
     }
+    v->visit_vreg(&vreg_dst, true);
 }
 
 void BST_Set::accept_stmt(StmtVisitor* v) {
@@ -654,10 +661,11 @@ void BST_Tuple::accept(BSTVisitor* v) {
     bool skip = v->visit_tuple(this);
     if (skip)
         return;
-    v->visit_vreg(&vreg_dst, true);
+
     for (int i = 0; i < num_elts; ++i) {
         v->visit_vreg(&elts[i]);
     }
+    v->visit_vreg(&vreg_dst, true);
 }
 
 void BST_Tuple::accept_stmt(StmtVisitor* v) {
@@ -668,8 +676,9 @@ void BST_UnaryOp::accept(BSTVisitor* v) {
     bool skip = v->visit_unaryop(this);
     if (skip)
         return;
-    v->visit_vreg(&vreg_dst, true);
+
     v->visit_vreg(&vreg_operand);
+    v->visit_vreg(&vreg_dst, true);
 }
 
 void BST_UnaryOp::accept_stmt(StmtVisitor* v) {
@@ -695,8 +704,9 @@ void BST_Yield::accept(BSTVisitor* v) {
     bool skip = v->visit_yield(this);
     if (skip)
         return;
-    v->visit_vreg(&vreg_dst, true);
+
     v->visit_vreg(&vreg_value);
+    v->visit_vreg(&vreg_dst, true);
 }
 
 void BST_Yield::accept_stmt(StmtVisitor* v) {
@@ -730,8 +740,8 @@ void BST_MakeFunction::accept(BSTVisitor* v) {
     if (skip)
         return;
 
-    v->visit_vreg(&vreg_dst, true);
     function_def->accept(v);
+    v->visit_vreg(&vreg_dst, true);
 }
 
 void BST_MakeFunction::accept_stmt(StmtVisitor* v) {
@@ -743,8 +753,8 @@ void BST_MakeClass::accept(BSTVisitor* v) {
     if (skip)
         return;
 
-    v->visit_vreg(&vreg_dst, true);
     class_def->accept(v);
+    v->visit_vreg(&vreg_dst, true);
 }
 
 void BST_MakeClass::accept_stmt(StmtVisitor* v) {
@@ -756,10 +766,10 @@ void BST_MakeSlice::accept(BSTVisitor* v) {
     if (skip)
         return;
 
-    v->visit_vreg(&vreg_dst, true);
     v->visit_vreg(&vreg_lower);
     v->visit_vreg(&vreg_upper);
     v->visit_vreg(&vreg_step);
+    v->visit_vreg(&vreg_dst, true);
 }
 
 void BST_MakeSlice::accept_stmt(StmtVisitor* v) {
@@ -1096,62 +1106,7 @@ bool PrintVisitor::visit_invoke(BST_Invoke* node) {
     node->stmt->accept(this);
     return true;
 }
-/*
-bool PrintVisitor::visit_langprimitive(BST_LangPrimitive* node) {
-    stream << ":";
-    switch (node->opcode) {
-        case BST_LangPrimitive::CHECK_EXC_MATCH:
-            stream << "CHECK_EXC_MATCH";
-            break;
-        case BST_LangPrimitive::LANDINGPAD:
-            stream << "LANDINGPAD";
-            break;
-        case BST_LangPrimitive::LOCALS:
-            stream << "LOCALS";
-            break;
-        case BST_LangPrimitive::GET_ITER:
-            stream << "GET_ITER";
-            break;
-        case BST_LangPrimitive::IMPORT_FROM:
-            stream << "IMPORT_FROM";
-            break;
-        case BST_LangPrimitive::IMPORT_NAME:
-            stream << "IMPORT_NAME";
-            break;
-        case BST_LangPrimitive::IMPORT_STAR:
-            stream << "IMPORT_STAR";
-            break;
-        case BST_LangPrimitive::NONE:
-            stream << "NONE";
-            break;
-        case BST_LangPrimitive::NONZERO:
-            stream << "NONZERO";
-            break;
-        case BST_LangPrimitive::SET_EXC_INFO:
-            stream << "SET_EXC_INFO";
-            break;
-        case BST_LangPrimitive::UNCACHE_EXC_INFO:
-            stream << "UNCACHE_EXC_INFO";
-            break;
-        case BST_LangPrimitive::HASNEXT:
-            stream << "HASNEXT";
-            break;
-        case BST_LangPrimitive::PRINT_EXPR:
-            stream << "PRINT_EXPR";
-            break;
-        default:
-            RELEASE_ASSERT(0, "%d", node->opcode);
-    }
-    stream << "(";
-    for (int i = 0, n = node->args.size(); i < n; ++i) {
-        if (i > 0)
-            stream << ", ";
-        node->args[i]->accept(this);
-    }
-    stream << ")";
-    return true;
-}
-*/
+
 bool PrintVisitor::visit_landingpad(BST_Landingpad* node) {
     visit_vreg(&node->vreg_dst, true);
     stream << ":LANDINGPAD()";
@@ -1362,6 +1317,8 @@ bool PrintVisitor::visit_makeslice(BST_MakeSlice* node) {
 
 bool PrintVisitor::visit_loadname(BST_LoadName* node) {
     visit_vreg(&node->vreg_dst, true);
+    if (!node->is_kill)
+        stream << "nokill ";
     stream << node->id.s() << "(vreg" << node->vreg << ")";
     return true;
 }
