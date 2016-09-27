@@ -77,7 +77,6 @@ public:
     bool firstIsDef(int vreg) const { return getStatusFirst(vreg) == Status::DEFINED; }
 
     bool isKilledAt(BST_Name* node, bool is_live_at_end) { return node->is_kill; }
-    bool isKilledAt(BST_LoadName* node, bool is_live_at_end) { return node->is_kill; }
 
     bool visit_classdef(BST_ClassDef* node) {
         visit_vreg(&node->vreg_bases_tuple, false);
@@ -146,13 +145,6 @@ LivenessAnalysis::~LivenessAnalysis() {
 }
 
 bool LivenessAnalysis::isKill(BST_Name* node, CFGBlock* parent_block) {
-    if (node->id.s()[0] != '#')
-        return false;
-
-    return liveness_cache[parent_block]->isKilledAt(node, isLiveAtEnd(node->vreg, parent_block));
-}
-
-bool LivenessAnalysis::isKill(BST_LoadName* node, CFGBlock* parent_block) {
     if (node->id.s()[0] != '#')
         return false;
 
@@ -325,17 +317,16 @@ public:
     }
 
     bool visit_assignvregvreg(BST_AssignVRegVReg* node) override {
-        _doSet(node->vreg_dst);
         if (node->kill_src)
             visit_vreg(&node->vreg_src, false);
+        _doSet(node->vreg_dst);
         return true;
     }
 
     bool visit_loadname(BST_LoadName* node) override {
+        // don't visit the vreg it will never get killed
+        // visit_vreg(&node->vreg, false);
         _doSet(node->vreg_dst);
-        if (node->is_kill && (node->lookup_type == ScopeInfo::VarScopeType::FAST
-                              || node->lookup_type == ScopeInfo::VarScopeType::CLOSURE))
-            visit_vreg(&node->vreg, false);
         return true;
     }
 

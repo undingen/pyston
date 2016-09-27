@@ -305,7 +305,6 @@ public:
     InternedString id;
     ScopeInfo::VarScopeType lookup_type;
     int vreg = VREG_UNDEFINED;
-    bool is_kill = false;
 
     // Only valid for lookup_type == DEREF:
     DerefInfo deref_info = DerefInfo({ INT_MAX, INT_MAX });
@@ -368,8 +367,8 @@ class BST_LoadName : public BST_ass {
 public:
     InternedString id;
     ScopeInfo::VarScopeType lookup_type;
+    // LoadName does not kill this vreg
     int vreg = VREG_UNDEFINED;
-    bool is_kill = false;
 
     // Only valid for lookup_type == DEREF:
     DerefInfo deref_info = DerefInfo({ INT_MAX, INT_MAX });
@@ -614,7 +613,6 @@ public:
     InternedString id;
     ScopeInfo::VarScopeType lookup_type;
     int vreg = VREG_UNDEFINED;
-    bool is_kill = false;
 
     // Only valid for lookup_type == DEREF:
     DerefInfo deref_info = DerefInfo({ INT_MAX, INT_MAX });

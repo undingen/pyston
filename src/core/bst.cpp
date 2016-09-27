@@ -1317,8 +1317,6 @@ bool PrintVisitor::visit_makeslice(BST_MakeSlice* node) {
 
 bool PrintVisitor::visit_loadname(BST_LoadName* node) {
     visit_vreg(&node->vreg_dst, true);
-    if (!node->is_kill)
-        stream << "nokill ";
     stream << node->id.s() << "(vreg" << node->vreg << ")";
     return true;
 }

@@ -1269,18 +1269,14 @@ private:
 
 
     CompilerVariable* evalLoadName(BST_LoadName* node, const UnwindInfo& unw_info) {
+        // LoadName is never a kill
         auto&& scope_info = irstate->getScopeInfo();
-
-        bool is_kill = irstate->getLiveness()->isKill(node, myblock);
-        assert(!is_kill || node->id.s()[0] == '#');
 
         ScopeInfo::VarScopeType vst = node->lookup_type;
         assert(vst != ScopeInfo::VarScopeType::UNKNOWN);
         if (vst == ScopeInfo::VarScopeType::GLOBAL) {
-            assert(!is_kill);
             return _getGlobal(node, unw_info);
         } else if (vst == ScopeInfo::VarScopeType::DEREF) {
-            assert(!is_kill);
             assert(scope_info.takesClosure());
 
             // This is the information on how to look up the variable in the closure object.
@@ -1367,8 +1363,6 @@ private:
             }
 
             CompilerVariable* rtn = symbol_table[node->vreg];
-            if (is_kill)
-                symbol_table[node->vreg] = NULL;
             return rtn;
         }
     }

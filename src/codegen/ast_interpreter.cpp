@@ -1719,7 +1719,6 @@ Value ASTInterpreter::visit_loadname(BST_LoadName* node) {
 
     switch (node->lookup_type) {
         case ScopeInfo::VarScopeType::GLOBAL: {
-            assert(!node->is_kill);
             Value v;
             if (jit)
                 v.var = jit->emitGetGlobal(node->id.getBox());
@@ -1728,7 +1727,6 @@ Value ASTInterpreter::visit_loadname(BST_LoadName* node) {
             return v;
         }
         case ScopeInfo::VarScopeType::DEREF: {
-            assert(!node->is_kill);
             return Value(ASTInterpreterJitInterface::derefHelperLN(this, node), jit ? jit->emitDeref(node) : NULL);
         }
         case ScopeInfo::VarScopeType::FAST:
@@ -1736,23 +1734,15 @@ Value ASTInterpreter::visit_loadname(BST_LoadName* node) {
             Value v;
             if (jit) {
                 bool is_live = true;
-                if (node->is_kill) {
-                    is_live = false;
-                } else if (node->lookup_type == ScopeInfo::VarScopeType::FAST) {
+                if (node->lookup_type == ScopeInfo::VarScopeType::FAST) {
                     assert(node->vreg >= 0);
                     is_live = source_info->getLiveness()->isLiveAtEnd(node->vreg, current_block);
                 }
 
-                if (is_live) {
-                    assert(!node->is_kill);
+                if (is_live)
                     v.var = jit->emitGetLocal(node->id, node->vreg);
-                } else {
+                else
                     v.var = jit->emitGetBlockLocal(node->id, node->vreg);
-                    if (node->is_kill) {
-                        assert(node->id.s()[0] == '#');
-                        jit->emitKillTemporary(node->vreg);
-                    }
-                }
             }
 
             assert(node->vreg >= 0);
@@ -1762,10 +1752,7 @@ Value ASTInterpreter::visit_loadname(BST_LoadName* node) {
 
             if (val) {
                 v.o = val;
-                if (node->is_kill)
-                    vregs[node->vreg] = NULL;
-                else
-                    Py_INCREF(val);
+                Py_INCREF(val);
                 return v;
             }
 
@@ -1773,7 +1760,6 @@ Value ASTInterpreter::visit_loadname(BST_LoadName* node) {
             RELEASE_ASSERT(0, "should be unreachable");
         }
         case ScopeInfo::VarScopeType::NAME: {
-            assert(!node->is_kill && "we might need to support this");
             Value v;
             if (jit)
                 v.var = jit->emitGetBoxedLocal(node->id.getBox());
