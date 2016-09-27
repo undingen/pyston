@@ -713,10 +713,10 @@ public:
         return rtn.getInstruction();
     }
 
-    llvm::Value* createDeopt(BST_stmt* current_stmt, BST_expr* node, llvm::Value* node_value) override {
-        llvm::Instruction* v = createIC(createDeoptIC(), (void*)pyston::deopt,
-                                        { embedRelocatablePtr(node, g.llvm_bstexpr_type_ptr), node_value },
+    llvm::Value* createDeopt(BST_stmt* current_stmt, llvm::Value* node_value) override {
+        llvm::Instruction* v = createIC(createDeoptIC(), (void*)pyston::deopt, { node_value },
                                         UnwindInfo(current_stmt, NULL, /* is_after_deopt*/ true));
+        refConsumed(node_value, v);
         llvm::Value* rtn = createAfter<llvm::IntToPtrInst>(v, v, g.llvm_value_type_ptr, "");
         setType(rtn, RefType::OWNED);
         return rtn;
@@ -827,7 +827,7 @@ private:
 
     OpInfo getEmptyOpInfo(const UnwindInfo& unw_info) { return OpInfo(irstate->getEffortLevel(), unw_info, NULL); }
 
-    void createExprTypeGuard(llvm::Value* check_val, BST* node, llvm::Value* node_value, BST_stmt* current_statement) {
+    void createExprTypeGuard(llvm::Value* check_val, llvm::Value* node_value, BST_stmt* current_statement) {
         assert(check_val->getType() == g.i1);
 
         llvm::Metadata* md_vals[]
@@ -848,7 +848,7 @@ private:
 
         curblock = deopt_bb;
         emitter.getBuilder()->SetInsertPoint(curblock);
-        llvm::Value* v = emitter.createDeopt(current_statement, (BST_expr*)node, node_value);
+        llvm::Value* v = emitter.createDeopt(current_statement, node_value);
         llvm::Instruction* ret_inst = emitter.getBuilder()->CreateRet(v);
         irstate->getRefcounts()->refConsumed(v, ret_inst);
 
@@ -1643,7 +1643,7 @@ private:
 
             llvm::Value* guard_check = old_rtn->makeClassCheck(emitter, speculated_class);
             assert(guard_check->getType() == g.i1);
-            createExprTypeGuard(guard_check, node, old_rtn->getValue(), unw_info.current_stmt);
+            createExprTypeGuard(guard_check, old_rtn->getValue(), unw_info.current_stmt);
 
             rtn = unboxVar(speculated_type, old_rtn->getValue());
         }
@@ -2977,7 +2977,7 @@ public:
 
 #if ENABLE_SAMPLING_PROFILER
             auto stmt = block->body[i];
-            if (!(i == 0 && stmt->type == BST_TYPE::Assign) && stmt->lineno > 0) // could be a landingpad
+            if (stmt->type != BST_TYPE::Landigpad && stmt->lineno > 0)
                 doSafePoint(block->body[i]);
 #endif
 

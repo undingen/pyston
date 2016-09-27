@@ -748,47 +748,15 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
                         }
                     } else {
 
-                        switch (stmt->type) {
-                            // HACK: remove this explicit list here
-                            case BST_TYPE::AssignVRegVReg:
-                            case BST_TYPE::LoadSub:
-                            case BST_TYPE::LoadSubSlice:
-                            case BST_TYPE::AugBinOp:
-                            case BST_TYPE::BinOp:
-                            case BST_TYPE::CallAttr:
-                            case BST_TYPE::CallClsAttr:
-                            case BST_TYPE::CallFunc:
-                            case BST_TYPE::Compare:
-                            case BST_TYPE::Dict:
-                            case BST_TYPE::Ellipsis:
-                            case BST_TYPE::List:
-                            case BST_TYPE::Repr:
-                            case BST_TYPE::Set:
-                            case BST_TYPE::MakeSlice:
-                            case BST_TYPE::UnaryOp:
-                            case BST_TYPE::Yield:
-                            case BST_TYPE::MakeFunction:
-                            case BST_TYPE::MakeClass:
-                            case BST_TYPE::Locals:
-                            case BST_TYPE::GetIter:
-                            case BST_TYPE::ImportFrom:
-                            case BST_TYPE::ImportName:
-                            case BST_TYPE::ImportStar:
-                            case BST_TYPE::Nonzero:
-                            case BST_TYPE::CheckExcMatch:
-                            case BST_TYPE::HasNext: {
-                                BST_ass* bst = (BST_ass*)stmt;
-                                if ((*sym_table)[bst->vreg_dst]) {
-                                    sym_table = new SymbolTable(*sym_table);
-                                    ASSERT((*sym_table)[bst->vreg_dst] != NULL, "%d\n", block->idx);
-                                    (*sym_table)[bst->vreg_dst] = NULL;
-                                    created_new_sym_table = true;
-                                }
-                                break;
+                        if (stmt->isBST_ass()) {
+                            BST_ass* bst = (BST_ass*)stmt;
+                            if ((*sym_table)[bst->vreg_dst]) {
+                                sym_table = new SymbolTable(*sym_table);
+                                ASSERT((*sym_table)[bst->vreg_dst] != NULL, "%d\n", block->idx);
+                                (*sym_table)[bst->vreg_dst] = NULL;
+                                created_new_sym_table = true;
                             }
-                            default:
-                                break;
-                        };
+                        }
                     }
                 }
 

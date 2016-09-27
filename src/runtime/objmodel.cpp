@@ -136,7 +136,7 @@ extern "C" void xdecrefAndRethrow(void* cxa_ptr, int num, ...) {
     rawReraise(e.type, e.value, e.traceback);
 }
 
-extern "C" Box* deopt(BST_expr* expr, Box* value) {
+extern "C" Box* deopt(STOLEN(Box*) value) {
     ASSERT(ENABLE_FRAME_INTROSPECTION, "deopt will not work with frame introspection turned off");
 
     STAT_TIMER(t0, "us_timer_deopt", 10);
@@ -156,7 +156,7 @@ extern "C" Box* deopt(BST_expr* expr, Box* value) {
         deopt_state.frame_state.frame_info->exc.value = NULL;
     }
 
-    return astInterpretDeopt(deopt_state.cf->code_obj, expr, deopt_state.current_stmt, value, deopt_state.frame_state);
+    return astInterpretDeopt(deopt_state.cf->code_obj, deopt_state.current_stmt, value, deopt_state.frame_state);
 }
 
 extern "C" void printHelper(Box* w, Box* v, bool nl) {

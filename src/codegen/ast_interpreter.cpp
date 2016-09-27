@@ -2236,14 +2236,13 @@ Box* astInterpretFunctionEval(BoxedCode* code, Box* globals, Box* boxedLocals) {
 }
 
 // caution when changing the function arguments: this function gets called from an assembler wrapper!
-extern "C" Box* astInterpretDeoptFromASM(BoxedCode* code, BST_expr* after_expr, BST_stmt* enclosing_stmt, Box* expr_val,
+extern "C" Box* astInterpretDeoptFromASM(BoxedCode* code, BST_stmt* enclosing_stmt, Box* expr_val,
                                          STOLEN(FrameStackState) frame_state) {
     static_assert(sizeof(FrameStackState) <= 2 * 8, "astInterpretDeopt assumes that all args get passed in regs!");
 
     assert(code);
     assert(enclosing_stmt);
     assert(frame_state.locals);
-    assert(after_expr);
     assert(expr_val);
 
     SourceInfo* source_info = code->source.get();
@@ -2288,20 +2287,15 @@ extern "C" Box* astInterpretDeoptFromASM(BoxedCode* code, BST_expr* after_expr, 
     CFGBlock* start_block = NULL;
     BST_stmt* starting_statement = NULL;
     while (true) {
-        if (enclosing_stmt->type == BST_TYPE::StoreName) {
-            /*
-            auto asgn = bst_cast<BST_StoreName>(enclosing_stmt);
-            RELEASE_ASSERT(asgn->value == after_expr, "%p %p", asgn->value, after_expr);
-            assert(asgn->target->type == BST_TYPE::Name);
-            assert(asgn->id.s()[0] == '#');
-            interpreter.addSymbol(name->vreg, expr_val, true);
-            break;
-            */
-        } else if (enclosing_stmt->type == BST_TYPE::Invoke) {
+        if (enclosing_stmt->type == BST_TYPE::Invoke) {
             auto invoke = bst_cast<BST_Invoke>(enclosing_stmt);
             start_block = invoke->normal_dest;
             starting_statement = start_block->body[0];
             enclosing_stmt = invoke->stmt;
+        } else if (enclosing_stmt->isBST_ass()) {
+            interpreter.addSymbol(((BST_ass*)enclosing_stmt)->vreg_dst, expr_val, true);
+            Py_DECREF(expr_val);
+            break;
         } else {
             RELEASE_ASSERT(0, "should not be able to reach here with anything other than an Assign (got %d)",
                            enclosing_stmt->type);

@@ -217,6 +217,8 @@ public:
     BST(BST_TYPE::BST_TYPE type) : type(type), lineno(0) {}
 #endif
     BST(BST_TYPE::BST_TYPE type, uint32_t lineno) : type(type), lineno(lineno) {}
+
+    bool isBST_ass();
 };
 
 class BST_expr : public BST {

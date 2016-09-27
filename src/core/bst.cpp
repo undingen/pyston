@@ -49,6 +49,43 @@ static void visitCFG(CFG* cfg, BSTVisitor* v) {
             e->accept(v);
 }
 
+bool BST::isBST_ass() {
+    switch (type) {
+        case BST_TYPE::AssignVRegVReg:
+        case BST_TYPE::LoadSub:
+        case BST_TYPE::LoadSubSlice:
+        case BST_TYPE::LoadName:
+        case BST_TYPE::LoadAttr:
+        case BST_TYPE::AugBinOp:
+        case BST_TYPE::BinOp:
+        case BST_TYPE::CallAttr:
+        case BST_TYPE::CallClsAttr:
+        case BST_TYPE::CallFunc:
+        case BST_TYPE::Compare:
+        case BST_TYPE::Dict:
+        case BST_TYPE::Ellipsis:
+        case BST_TYPE::List:
+        case BST_TYPE::Repr:
+        case BST_TYPE::Set:
+        case BST_TYPE::MakeSlice:
+        case BST_TYPE::UnaryOp:
+        case BST_TYPE::Yield:
+        case BST_TYPE::MakeFunction:
+        case BST_TYPE::MakeClass:
+        case BST_TYPE::Locals:
+        case BST_TYPE::GetIter:
+        case BST_TYPE::ImportFrom:
+        case BST_TYPE::ImportName:
+        case BST_TYPE::ImportStar:
+        case BST_TYPE::Nonzero:
+        case BST_TYPE::CheckExcMatch:
+        case BST_TYPE::HasNext:
+            return true;
+        default:
+            return false;
+    };
+}
+
 void BST_Assert::accept(BSTVisitor* v) {
     bool skip = v->visit_assert(this);
     if (skip)

@@ -81,7 +81,7 @@ Box* astInterpretFunction(BoxedCode* f, Box* closure, Box* generator, Box* globa
                           Box** args);
 Box* astInterpretFunctionEval(BoxedCode* cf, Box* globals, Box* boxedLocals);
 // this function is implemented in the src/codegen/ast_interpreter_exec.S assembler file
-extern "C" Box* astInterpretDeopt(BoxedCode* cf, BST_expr* after_expr, BST_stmt* enclosing_stmt, Box* expr_val,
+extern "C" Box* astInterpretDeopt(BoxedCode* cf, BST_stmt* enclosing_stmt, Box* expr_val,
                                   STOLEN(FrameStackState) frame_state);
 
 struct FrameInfo;
