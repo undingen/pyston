@@ -1262,8 +1262,10 @@ private:
             }
         }
         CompilerVariable* rtn = symbol_table[vreg];
-        if (is_kill)
+        if (is_kill) {
             symbol_table[vreg] = NULL;
+            popDefinedVar(vreg, true /* allow_missing */);
+        }
         return rtn;
     }
 
