@@ -37,7 +37,8 @@ TEST_F(AnalysisTest, augassign) {
     FutureFlags future_flags = getFutureFlags(module->body, fn.c_str());
 
     auto scoping = std::make_shared<ScopingAnalysis>(module, true);
-    auto module_code = computeAllCFGs(module, true, future_flags, boxString(fn), NULL);
+    BoxedModule* main_module = createModule(autoDecref(boxString("__main__")), "<string>");
+    auto module_code = computeAllCFGs(module, true, future_flags, boxString(fn), main_module);
 
     assert(module->body[0]->type == AST_TYPE::FunctionDef);
     AST_FunctionDef* func = static_cast<AST_FunctionDef*>(module->body[0]);
@@ -91,7 +92,8 @@ void doOsrTest(bool is_osr, bool i_maybe_undefined) {
 
     FutureFlags future_flags = getFutureFlags(module->body, fn.c_str());
 
-    auto module_code = computeAllCFGs(module, true, future_flags, boxString(fn), NULL);
+    BoxedModule* main_module = createModule(autoDecref(boxString("__main__")), "<string>");
+    auto module_code = computeAllCFGs(module, true, future_flags, boxString(fn), main_module);
 
     // Hack to get at the cfg:
     BoxedCode* code = NULL;
@@ -111,7 +113,7 @@ void doOsrTest(bool is_osr, bool i_maybe_undefined) {
 
     InternedString i_str = module->interned_strings->get("i");
     InternedString idi_str = module->interned_strings->get("!is_defined_i");
-    InternedString iter_str = module->interned_strings->get("#iter_3");
+    InternedString iter_str = module->interned_strings->get("#iter_4");
 
     CFGBlock* loop_backedge = cfg->blocks[5];
     ASSERT_EQ(6, loop_backedge->idx);
@@ -159,8 +161,12 @@ void doOsrTest(bool is_osr, bool i_maybe_undefined) {
 
     if (is_osr)
         EXPECT_EQ(0, phis->getAllRequiredFor(if_join).numSet());
-    else
+    else {
+        for (auto e : phis->getAllRequiredFor(if_join))
+            printf("%d\n", e);
         EXPECT_EQ(1, phis->getAllRequiredFor(if_join).numSet());
+
+    }
 }
 
 TEST_F(AnalysisTest, osr_initial) {

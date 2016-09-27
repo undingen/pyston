@@ -78,7 +78,7 @@ public:
 
     bool isKilledAt(BST_Name* node, bool is_live_at_end) { return node->is_kill; }
 
-    bool visit_classdef(BST_ClassDef* node) {
+    bool visit_classdef(BST_ClassDef* node) override {
         visit_vreg(&node->vreg_bases_tuple, false);
 
         for (int i = 0; i < node->num_decorator; ++i)
@@ -87,14 +87,14 @@ public:
         return true;
     }
 
-    bool visit_functiondef(BST_FunctionDef* node) {
+    bool visit_functiondef(BST_FunctionDef* node) override {
         for (int i = 0; i < node->num_decorator + node->num_defaults; ++i)
             visit_vreg(&node->elts[i], false);
 
         return true;
     }
 
-    virtual bool visit_vreg(int* vreg, bool is_dst) {
+    bool visit_vreg(int* vreg, bool is_dst) override {
         if (*vreg >= 0) {
             if (is_dst)
                 _doStore(*vreg);
@@ -104,7 +104,16 @@ public:
         return true;
     }
 
-    bool visit_name(BST_Name* node) {
+    bool visit_deletename(BST_DeleteName* node) override {
+        if (node->vreg < 0 || node->vreg >= analysis->cfg->getVRegInfo().getNumOfUserVisibleVRegs())
+            return true;
+
+        _doLoad(node->vreg);
+        _doStore(node->vreg);
+        return true;
+    }
+
+    bool visit_name(BST_Name* node) override {
         if (node->vreg == VREG_UNDEFINED)
             return true;
 

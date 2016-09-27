@@ -827,13 +827,12 @@ void PrintVisitor::printIndent() {
 
 extern "C" BoxedString* repr(Box* obj);
 bool PrintVisitor::visit_vreg(int* vreg, bool is_dst) {
-    if (*vreg != VREG_UNDEFINED)
+    if (*vreg != VREG_UNDEFINED) {
         stream << "#" << *vreg;
-    else
+        if (mod && *vreg < 0)
+            stream << "(" << autoDecref(repr(mod->constants[-*vreg - 1]))->s() << ")";
+    } else
         stream << "#undef";
-
-    if (mod && *vreg < 0 && *vreg != VREG_UNDEFINED)
-        stream << "(" << autoDecref(repr(mod->constants[-*vreg - 1]))->s() << ")";
 
     if (is_dst)
         stream << " = ";
