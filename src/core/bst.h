@@ -218,7 +218,7 @@ public:
 #endif
     BST(BST_TYPE::BST_TYPE type, uint32_t lineno) : type(type), lineno(lineno) {}
 
-    bool isBST_ass();
+    virtual bool isBST_ass() const { return false; }
 };
 
 class BST_expr : public BST {
@@ -284,6 +284,8 @@ public:
     int vreg_dst = VREG_UNDEFINED;
     BST_ass(BST_TYPE::BST_TYPE type) : BST_stmt(type) {}
     BST_ass(BST_TYPE::BST_TYPE type, int lineno) : BST_stmt(type, lineno) {}
+
+    bool isBST_ass() const override { return true; }
 };
 
 class BST_AssignVRegVReg : public BST_ass {
@@ -942,7 +944,7 @@ class CFGBlock;
 
 class BST_Branch : public BST_stmt {
 public:
-    int vreg_test;
+    int vreg_test = VREG_UNDEFINED;
     CFGBlock* iftrue, *iffalse;
 
     virtual void accept(BSTVisitor* v);

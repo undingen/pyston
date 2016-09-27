@@ -356,35 +356,6 @@ private:
 
     void visit_dict(BST_Dict* node) override { _doSet(node->vreg_dst, DICT); }
 
-
-    /*
-    void* visit_langprimitive(BST_LangPrimitive* node) override {
-        switch (node->opcode) {
-            case BST_LangPrimitive::CHECK_EXC_MATCH:
-                return BOOL;
-            case BST_LangPrimitive::LOCALS:
-                return DICT;
-            case BST_LangPrimitive::GET_ITER:
-                return getType(node->args[0])->getPystonIterType();
-            case BST_LangPrimitive::LANDINGPAD:
-            case BST_LangPrimitive::IMPORT_FROM:
-            case BST_LangPrimitive::IMPORT_STAR:
-            case BST_LangPrimitive::IMPORT_NAME:
-                return UNKNOWN;
-            case BST_LangPrimitive::NONE:
-            case BST_LangPrimitive::SET_EXC_INFO:
-            case BST_LangPrimitive::UNCACHE_EXC_INFO:
-            case BST_LangPrimitive::PRINT_EXPR:
-                return NONE;
-            case BST_LangPrimitive::HASNEXT:
-            case BST_LangPrimitive::NONZERO:
-                return BOOL;
-            default:
-                RELEASE_ASSERT(0, "%d", node->opcode);
-        }
-    }
-    */
-
     void visit_landingpad(BST_Landingpad* node) override {
         _doSet(node->vreg_dst, makeTupleType({ UNKNOWN, UNKNOWN, UNKNOWN }));
     }
