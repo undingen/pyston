@@ -141,8 +141,6 @@ class BST_stmt : public BST {
 public:
     virtual void accept_stmt(StmtVisitor* v) = 0;
 
-    int cxx_exception_count = 0;
-
     BST_stmt(BST_TYPE::BST_TYPE type) : BST(type) {}
     BST_stmt(BST_TYPE::BST_TYPE type, uint32_t lineno) : BST(type, lineno) {}
 };
