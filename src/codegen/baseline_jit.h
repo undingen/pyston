@@ -249,7 +249,7 @@ private:
         uint8_t* end_addr;
         std::unique_ptr<ICSetupInfo> ic;
         StackInfo stack_info;
-        BST* node;
+        BST_stmt* node;
         std::vector<Location> decref_infos;
         std::unique_ptr<TypeRecorder> type_recorder;
     };
@@ -266,12 +266,12 @@ public:
     RewriterVar* imm(uint64_t val);
     RewriterVar* imm(void* val);
 
-    RewriterVar* emitAugbinop(BST* node, RewriterVar* lhs, RewriterVar* rhs, int op_type);
+    RewriterVar* emitAugbinop(BST_stmt* node, RewriterVar* lhs, RewriterVar* rhs, int op_type);
     RewriterVar* emitApplySlice(RewriterVar* target, RewriterVar* lower, RewriterVar* upper);
-    RewriterVar* emitBinop(BST* node, RewriterVar* lhs, RewriterVar* rhs, int op_type);
-    RewriterVar* emitCallattr(BST* node, RewriterVar* obj, BoxedString* attr, CallattrFlags flags,
+    RewriterVar* emitBinop(BST_stmt* node, RewriterVar* lhs, RewriterVar* rhs, int op_type);
+    RewriterVar* emitCallattr(BST_stmt* node, RewriterVar* obj, BoxedString* attr, CallattrFlags flags,
                               const llvm::ArrayRef<RewriterVar*> args, std::vector<BoxedString*>* keyword_names);
-    RewriterVar* emitCompare(BST* node, RewriterVar* lhs, RewriterVar* rhs, int op_type);
+    RewriterVar* emitCompare(BST_stmt* node, RewriterVar* lhs, RewriterVar* rhs, int op_type);
     RewriterVar* emitCreateDict();
     void emitDictSet(RewriterVar* dict, RewriterVar* k, RewriterVar* v);
     RewriterVar* emitCreateList(const llvm::ArrayRef<STOLEN(RewriterVar*)> values);
@@ -280,7 +280,7 @@ public:
     RewriterVar* emitCreateTuple(const llvm::ArrayRef<RewriterVar*> values);
     RewriterVar* emitDeref(BST_LoadName* name);
     RewriterVar* emitExceptionMatches(RewriterVar* v, RewriterVar* cls);
-    RewriterVar* emitGetAttr(BST* node, RewriterVar* obj, BoxedString* s);
+    RewriterVar* emitGetAttr(BST_stmt* node, RewriterVar* obj, BoxedString* s);
     RewriterVar* emitGetBlockLocal(InternedString name, int vreg);
     RewriterVar* emitGetBlockLocalMustExist(int vreg);
     void emitKillTemporary(int vreg);
@@ -288,7 +288,7 @@ public:
     RewriterVar* emitGetBoxedLocals();
     RewriterVar* emitGetClsAttr(RewriterVar* obj, BoxedString* s);
     RewriterVar* emitGetGlobal(BoxedString* s);
-    RewriterVar* emitGetItem(BST* node, RewriterVar* value, RewriterVar* slice);
+    RewriterVar* emitGetItem(BST_stmt* node, RewriterVar* value, RewriterVar* slice);
     RewriterVar* emitGetLocal(InternedString name, int vreg);
     RewriterVar* emitGetLocalMustExist(int vreg);
     RewriterVar* emitGetPystonIter(RewriterVar* v);
@@ -300,7 +300,7 @@ public:
     RewriterVar* emitNonzero(RewriterVar* v);
     RewriterVar* emitNotNonzero(RewriterVar* v);
     RewriterVar* emitRepr(RewriterVar* v);
-    RewriterVar* emitRuntimeCall(BST* node, RewriterVar* obj, ArgPassSpec argspec,
+    RewriterVar* emitRuntimeCall(BST_stmt* node, RewriterVar* obj, ArgPassSpec argspec,
                                  const llvm::ArrayRef<RewriterVar*> args, std::vector<BoxedString*>* keyword_names);
     RewriterVar* emitUnaryop(RewriterVar* v, int op_type);
     std::vector<RewriterVar*> emitUnpackIntoArray(RewriterVar* v, uint64_t num);
@@ -319,7 +319,7 @@ public:
     void emitRaise0();
     void emitRaise3(RewriterVar* arg0, RewriterVar* arg1, RewriterVar* arg2);
     void emitReturn(RewriterVar* v);
-    void emitSetAttr(BST* node, RewriterVar* obj, BoxedString* s, STOLEN(RewriterVar*) attr);
+    void emitSetAttr(BST_stmt* node, RewriterVar* obj, BoxedString* s, STOLEN(RewriterVar*) attr);
     void emitSetBlockLocal(int vreg, STOLEN(RewriterVar*) v);
     void emitSetCurrentInst(BST_stmt* node);
     void emitSetExcInfo(RewriterVar* type, RewriterVar* value, RewriterVar* traceback);
@@ -354,7 +354,7 @@ private:
                                            const llvm::ArrayRef<RewriterVar*> additional_uses);
     std::pair<RewriterVar*, RewriterAction*> emitPPCall(void* func_addr, llvm::ArrayRef<RewriterVar*> args,
                                                         unsigned short pp_size, bool should_record_type = false,
-                                                        BST* bst_node = NULL,
+                                                        BST_stmt* bst_node = NULL,
                                                         llvm::ArrayRef<RewriterVar*> additional_uses = {});
 
     static void assertNameDefinedHelper(const char* id);
@@ -374,7 +374,7 @@ private:
     void _emitJump(CFGBlock* b, RewriterVar* block_next, ExitInfo& exit_info);
     void _emitOSRPoint();
     void _emitPPCall(RewriterVar* result, void* func_addr, llvm::ArrayRef<RewriterVar*> args, unsigned short pp_size,
-                     BST* bst_node, llvm::ArrayRef<RewriterVar*> vars_to_bump);
+                     BST_stmt* bst_node, llvm::ArrayRef<RewriterVar*> vars_to_bump);
     void _emitRecordType(RewriterVar* obj_cls_var);
     void _emitReturn(RewriterVar* v);
     void _emitSideExit(STOLEN(RewriterVar*) var, RewriterVar* val_constant, CFGBlock* next_block,

@@ -75,7 +75,7 @@ public:
 
 private:
     Value createFunction(BST_FunctionDef* node);
-    Value doBinOp(BST* node, Value left, Value right, int op, BinExpType exp_type);
+    Value doBinOp(BST_stmt* node, Value left, Value right, int op, BinExpType exp_type);
     void doStore(int vreg, STOLEN(Value) value);
     void doStoreArg(BST_Name* name, STOLEN(Value) value);
     Box* doOSR(BST_Jump* node);
@@ -90,7 +90,6 @@ private:
     Value visit_compare(BST_Compare* node);
     Value visit_copyvreg(BST_CopyVReg* node);
     Value visit_dict(BST_Dict* node);
-    Value visit_ellipsis(BST_Ellipsis* node);
     Value visit_getiter(BST_GetIter* node);
     Value visit_hasnext(BST_HasNext* node);
     Value visit_importfrom(BST_ImportFrom* node);
@@ -466,7 +465,7 @@ Box* ASTInterpreter::execute(ASTInterpreter& interpreter, CFGBlock* start_block,
     return executeInnerAndSetupFrame(interpreter, start_block, start_at);
 }
 
-Value ASTInterpreter::doBinOp(BST* node, Value left, Value right, int op, BinExpType exp_type) {
+Value ASTInterpreter::doBinOp(BST_stmt* node, Value left, Value right, int op, BinExpType exp_type) {
     switch (exp_type) {
         case BinExpType::AugBinOp:
             return Value(augbinop(left.o, right.o, op), jit ? jit->emitAugbinop(node, left, right, op) : NULL);
@@ -567,10 +566,6 @@ Value ASTInterpreter::visit_binop(BST_BinOp* node) {
     Value right = getVReg(node->vreg_right);
     AUTO_DECREF(right.o);
     return doBinOp(node, left, right, node->op_type, BinExpType::BinOp);
-}
-
-Value ASTInterpreter::visit_ellipsis(BST_Ellipsis* node) {
-    return Value(incref(Ellipsis), jit ? jit->imm(Ellipsis) : NULL);
 }
 
 Value ASTInterpreter::visit_makeslice(BST_MakeSlice* node) {
@@ -1017,9 +1012,6 @@ Value ASTInterpreter::visit_stmt(BST_stmt* node) {
                 case BST_TYPE::Dict:
                     v = visit_dict((BST_Dict*)node);
                     break;
-                case BST_TYPE::Ellipsis:
-                    v = visit_ellipsis((BST_Ellipsis*)node);
-                    break;
                 case BST_TYPE::List:
                     v = visit_list((BST_List*)node);
                     break;
@@ -1087,9 +1079,9 @@ Value ASTInterpreter::visit_stmt(BST_stmt* node) {
                     v = visit_makeslice((BST_MakeSlice*)node);
                     break;
                 default:
-                    RELEASE_ASSERT(0, "not implemented");
+                    RELEASE_ASSERT(0, "not implemented %d", node->type);
             };
-            doStore(((BST_dst*)node)->vreg_dst, v);
+            doStore(((BST_stmt_with_dest*)node)->vreg_dst, v);
             ASTInterpreterJitInterface::pendingCallsCheckHelper();
             break;
         }
@@ -2134,8 +2126,8 @@ extern "C" Box* astInterpretDeoptFromASM(BoxedCode* code, BST_stmt* enclosing_st
             start_block = invoke->normal_dest;
             starting_statement = start_block->body[0];
             enclosing_stmt = invoke->stmt;
-        } else if (enclosing_stmt->isBST_dst()) {
-            int vreg_dst = ((BST_dst*)enclosing_stmt)->vreg_dst;
+        } else if (enclosing_stmt->has_dest_vreg()) {
+            int vreg_dst = ((BST_stmt_with_dest*)enclosing_stmt)->vreg_dst;
             if (vreg_dst != VREG_UNDEFINED)
                 interpreter.addSymbol(vreg_dst, expr_val, true);
             break;

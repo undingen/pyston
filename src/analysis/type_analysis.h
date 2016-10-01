@@ -25,7 +25,7 @@ namespace pyston {
 
 class CFGBlock;
 class BoxedClass;
-class BST_dst;
+class BST_stmt_with_dest;
 class OSREntryDescriptor;
 
 class TypeAnalysis {
@@ -39,7 +39,7 @@ public:
 
     virtual ConcreteCompilerType* getTypeAtBlockStart(int vreg, CFGBlock* block) = 0;
     virtual ConcreteCompilerType* getTypeAtBlockEnd(int vreg, CFGBlock* block) = 0;
-    virtual BoxedClass* speculatedExprClass(BST_dst*) = 0;
+    virtual BoxedClass* speculatedExprClass(BST_stmt_with_dest*) = 0;
 };
 
 TypeAnalysis* doTypeAnalysis(CFG* cfg, const ParamNames& param_names,

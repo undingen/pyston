@@ -816,7 +816,7 @@ public:
     virtual CFGBlock* getCFGBlock() override { return myblock; }
 
 private:
-    OpInfo getOpInfoForNode(BST* ast, const UnwindInfo& unw_info) {
+    OpInfo getOpInfoForNode(BST_stmt* ast, const UnwindInfo& unw_info) {
         assert(ast);
 
         return OpInfo(irstate->getEffortLevel(), unw_info, ICInfo::getICInfoForNode(ast));
@@ -1033,8 +1033,8 @@ private:
         emitter.createCall(unw_info, g.funcs.printExprHelper, converted->getValue());
     }
 
-    CompilerVariable* _evalBinExp(BST* node, CompilerVariable* left, CompilerVariable* right, AST_TYPE::AST_TYPE type,
-                                  BinExpType exp_type, const UnwindInfo& unw_info) {
+    CompilerVariable* _evalBinExp(BST_stmt* node, CompilerVariable* left, CompilerVariable* right,
+                                  AST_TYPE::AST_TYPE type, BinExpType exp_type, const UnwindInfo& unw_info) {
         assert(left);
         assert(right);
 
@@ -1244,6 +1244,8 @@ private:
                 return new ConcreteCompilerVariable(typeFromClass(unicode_cls), rtn);
             } else if (o->cls == none_cls) {
                 return emitter.getNone();
+            } else if (o->cls == ellipsis_cls) {
+                return getEllipsis();
             } else {
                 RELEASE_ASSERT(0, "");
             }
@@ -2489,12 +2491,8 @@ private:
                     case BST_TYPE::Compare:
                         rtn = evalCompare(bst_cast<BST_Compare>(node), unw_info);
                         break;
-
                     case BST_TYPE::Dict:
                         rtn = evalDict(bst_cast<BST_Dict>(node), unw_info);
-                        break;
-                    case BST_TYPE::Ellipsis:
-                        rtn = getEllipsis();
                         break;
                     case BST_TYPE::List:
                         rtn = evalList(bst_cast<BST_List>(node), unw_info);
@@ -2566,8 +2564,8 @@ private:
                         printf("Unhandled stmt type at " __FILE__ ":" STRINGIFY(__LINE__) ": %d\n", node->type);
                         exit(1);
                 }
-                rtn = evalSliceExprPost((BST_dst*)node, unw_info, rtn);
-                _doSet(((BST_dst*)node)->vreg_dst, rtn, unw_info);
+                rtn = evalSliceExprPost((BST_stmt_with_dest*)node, unw_info, rtn);
+                _doSet(((BST_stmt_with_dest*)node)->vreg_dst, rtn, unw_info);
             }
         }
     }

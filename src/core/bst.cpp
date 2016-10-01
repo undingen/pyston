@@ -28,9 +28,9 @@
 namespace pyston {
 
 #ifdef DEBUG_LINE_NUMBERS
-int BST::next_lineno = 100000;
+int BST_stmt::next_lineno = 100000;
 
-BST::BST(BST_TYPE::BST_TYPE type) : type(type), lineno(++next_lineno) {
+BST_stmt::BST_stmt(BST_TYPE::BST_TYPE type) : type(type), lineno(++next_lineno) {
     // if (lineno == 100644)
     // raise(SIGTRAP);
 }
@@ -248,17 +248,6 @@ void BST_Dict::accept(BSTVisitor* v) {
 
 void BST_Dict::accept_stmt(StmtVisitor* v) {
     return v->visit_dict(this);
-}
-
-void BST_Ellipsis::accept(BSTVisitor* v) {
-    bool skip = v->visit_ellipsis(this);
-    if (skip)
-        return;
-    v->visit_vreg(&vreg_dst, true);
-}
-
-void BST_Ellipsis::accept_stmt(StmtVisitor* v) {
-    return v->visit_ellipsis(this);
 }
 
 void BST_Exec::accept(BSTVisitor* v) {
@@ -765,7 +754,7 @@ void BST_MakeSlice::accept_stmt(StmtVisitor* v) {
     return v->visit_makeslice(this);
 }
 
-void print_bst(BST* bst) {
+void print_bst(BST_stmt* bst) {
     PrintVisitor v(0, llvm::outs(), NULL);
     bst->accept(&v);
     v.flush();
@@ -989,12 +978,6 @@ bool PrintVisitor::visit_deletename(BST_DeleteName* node) {
 bool PrintVisitor::visit_dict(BST_Dict* node) {
     visit_vreg(&node->vreg_dst, true);
     stream << "{}";
-    return true;
-}
-
-bool PrintVisitor::visit_ellipsis(BST_Ellipsis* node) {
-    visit_vreg(&node->vreg_dst, true);
-    stream << "...";
     return true;
 }
 
@@ -1415,11 +1398,11 @@ bool PrintVisitor::visit_makeclass(BST_MakeClass* node) {
 namespace {
 class FlattenVisitor : public BSTVisitor {
 private:
-    std::vector<BST*>* output;
+    std::vector<BST_stmt*>* output;
     bool expand_scopes;
 
 public:
-    FlattenVisitor(std::vector<BST*>* output, bool expand_scopes)
+    FlattenVisitor(std::vector<BST_stmt*>* output, bool expand_scopes)
         : BSTVisitor(false /* visit child CFG */), output(output), expand_scopes(expand_scopes) {
         assert(expand_scopes && "not sure if this works properly");
     }
@@ -1481,10 +1464,6 @@ public:
         return false;
     }
     virtual bool visit_dict(BST_Dict* node) {
-        output->push_back(node);
-        return false;
-    }
-    virtual bool visit_ellipsis(BST_Ellipsis* node) {
         output->push_back(node);
         return false;
     }
@@ -1646,7 +1625,7 @@ public:
 };
 }
 
-void flatten(llvm::ArrayRef<BST_stmt*> roots, std::vector<BST*>& output, bool expand_scopes) {
+void flatten(llvm::ArrayRef<BST_stmt*> roots, std::vector<BST_stmt*>& output, bool expand_scopes) {
     FlattenVisitor visitor(&output, expand_scopes);
 
     for (int i = 0; i < roots.size(); i++) {

@@ -492,7 +492,7 @@ private:
         return pushBackCreateDst(call);
     }
 
-    TmpValue pushBackCreateDst(BST_dst* rtn) {
+    TmpValue pushBackCreateDst(BST_stmt_with_dest* rtn) {
         TmpValue name(nodeName(), rtn->lineno);
         unmapExpr(name, &rtn->vreg_dst);
         push_back(rtn);
@@ -1189,9 +1189,8 @@ private:
     }
 
     TmpValue remapEllipsis(AST_Ellipsis* node) {
-        auto r = new BST_Ellipsis();
-        r->lineno = node->lineno;
-        return pushBackCreateDst(r);
+        int vreg_const = addConst(Ellipsis);
+        return TmpValue(vreg_const, node->lineno);
     }
 
     TmpValue remapExtSlice(AST_ExtSlice* node) {
@@ -3250,11 +3249,11 @@ static CFG* computeCFG(llvm::ArrayRef<AST_stmt*> body, AST_TYPE::AST_TYPE ast_ty
 
     assert(rtn->getStartingBlock()->idx == 0);
 
-    std::vector<BST*> flattened;
+    std::vector<BST_stmt*> flattened;
     for (auto b : rtn->blocks)
         flatten(b->body, flattened, true);
 
-    std::unordered_map<BST*, int> deduped;
+    std::unordered_map<BST_stmt*, int> deduped;
     bool no_dups = true;
     for (auto e : flattened) {
         deduped[e]++;

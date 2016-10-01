@@ -154,7 +154,6 @@ struct ICSlotInfo;
 
 class CFG;
 class AST;
-class BST;
 class BST_FunctionDef;
 class AST_arguments;
 class BST_Name;

@@ -43,7 +43,7 @@ public:
     ConcreteCompilerType* getTypeAtBlockStart(int vreg, CFGBlock* block) override;
     ConcreteCompilerType* getTypeAtBlockEnd(int vreg, CFGBlock* block) override;
 
-    BoxedClass* speculatedExprClass(BST_dst*) override { return NULL; }
+    BoxedClass* speculatedExprClass(BST_stmt_with_dest*) override { return NULL; }
 };
 
 ConcreteCompilerType* NullTypeAnalysis::getTypeAtBlockStart(int vreg, CFGBlock* block) {
@@ -78,8 +78,8 @@ static BoxedClass* simpleCallSpeculation(BST_Call* node, CompilerType* rtn_type,
 
 typedef VRegMap<CompilerType*> TypeMap;
 typedef llvm::DenseMap<CFGBlock*, TypeMap> AllTypeMap;
-typedef llvm::DenseMap<BST*, CompilerType*> ExprTypeMap;
-typedef llvm::DenseMap<BST*, BoxedClass*> TypeSpeculations;
+typedef llvm::DenseMap<BST_stmt*, CompilerType*> ExprTypeMap;
+typedef llvm::DenseMap<BST_stmt*, BoxedClass*> TypeSpeculations;
 class BasicBlockTypePropagator : public StmtVisitor {
 private:
     static const bool EXPAND_UNNEEDED = true;
@@ -107,7 +107,7 @@ private:
         }
     }
 
-    CompilerType* processSpeculation(BoxedClass* speculated_cls, BST* node, CompilerType* old_type) {
+    CompilerType* processSpeculation(BoxedClass* speculated_cls, BST_stmt* node, CompilerType* old_type) {
         assert(old_type);
         assert(speculation != TypeAnalysis::NONE);
 
@@ -146,6 +146,8 @@ private:
             return typeFromClass(unicode_cls);
         else if (o->cls == none_cls)
             return NONE;
+        else if (o->cls == ellipsis_cls)
+            return typeFromClass(ellipsis_cls);
         else
             RELEASE_ASSERT(0, "");
     }
@@ -171,8 +173,6 @@ private:
         if (t && vreg != VREG_UNDEFINED)
             sym_table[vreg] = t;
     }
-
-    void visit_ellipsis(BST_Ellipsis* node) override { _doSet(node->vreg_dst, typeFromClass(ellipsis_cls)); }
 
     bool hasFixedOps(CompilerType* type) {
         // This is non-exhaustive:
@@ -240,7 +240,7 @@ private:
         _doSet(node->vreg_dst, t);
     }
 
-    template <typename CallType> CompilerType* handleCall(CompilerType* func, CallType* node) {
+    template <typename CallType> CompilerType* visit_callHelper(CompilerType* func, CallType* node) {
         std::vector<CompilerType*> arg_types;
         for (int i = 0; i < node->num_args; i++) {
             arg_types.push_back(getType(node->elts[i]));
@@ -275,7 +275,7 @@ private:
 
     void visit_callfunc(BST_CallFunc* node) override {
         CompilerType* func = getType(node->vreg_func);
-        _doSet(node->vreg_dst, handleCall(func, node));
+        _doSet(node->vreg_dst, visit_callHelper(func, node));
     }
 
     void visit_callattr(BST_CallAttr* node) override {
@@ -288,7 +288,7 @@ private:
             printf("\n");
         }
 
-        _doSet(node->vreg_dst, handleCall(func, node));
+        _doSet(node->vreg_dst, visit_callHelper(func, node));
     }
 
     void visit_callclsattr(BST_CallClsAttr* node) override {
@@ -300,7 +300,7 @@ private:
             printf("\n");
         }
 
-        _doSet(node->vreg_dst, handleCall(func, node));
+        _doSet(node->vreg_dst, visit_callHelper(func, node));
     }
 
     CompilerType* visit_compareHelper(BST_Compare* node) {
@@ -495,10 +495,10 @@ private:
         _doSet(mkclass->vreg_dst, UNKNOWN);
     }
 
-    void visit_deletesub(BST_DeleteSub* node) { getType(node->vreg_value); }
-    void visit_deletesubslice(BST_DeleteSubSlice* node) { getType(node->vreg_value); }
-    void visit_deleteattr(BST_DeleteAttr* node) { getType(node->vreg_value); }
-    void visit_deletename(BST_DeleteName* node) {
+    void visit_deletesub(BST_DeleteSub* node) override { getType(node->vreg_value); }
+    void visit_deletesubslice(BST_DeleteSubSlice* node) override { getType(node->vreg_value); }
+    void visit_deleteattr(BST_DeleteAttr* node) override { getType(node->vreg_value); }
+    void visit_deletename(BST_DeleteName* node) override {
         assert(node->lookup_type != ScopeInfo::VarScopeType::UNKNOWN);
         if (node->lookup_type == ScopeInfo::VarScopeType::FAST
             || node->lookup_type == ScopeInfo::VarScopeType::CLOSURE) {
@@ -590,7 +590,7 @@ public:
         return rtn;
     }
 
-    BoxedClass* speculatedExprClass(BST_dst* call) override { return type_speculations[call]; }
+    BoxedClass* speculatedExprClass(BST_stmt_with_dest* call) override { return type_speculations[call]; }
 
     static bool merge(CompilerType* lhs, CompilerType*& rhs) {
         if (!lhs)

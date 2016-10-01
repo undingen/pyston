@@ -51,43 +51,42 @@ namespace BST_TYPE {
     X(DeleteSub, 14)                                                                                                   \
     X(DeleteSubSlice, 15)                                                                                              \
     X(Dict, 16)                                                                                                        \
-    X(Ellipsis, 17)                                                                                                    \
-    X(Exec, 18)                                                                                                        \
-    X(FunctionDef, 19)                                                                                                 \
-    X(GetIter, 20)                                                                                                     \
-    X(HasNext, 21)                                                                                                     \
-    X(ImportFrom, 22)                                                                                                  \
-    X(ImportName, 23)                                                                                                  \
-    X(ImportStar, 24)                                                                                                  \
-    X(Invoke, 25)                                                                                                      \
-    X(Jump, 26)                                                                                                        \
-    X(Landingpad, 27)                                                                                                  \
-    X(List, 28)                                                                                                        \
-    X(LoadAttr, 29)                                                                                                    \
-    X(LoadName, 30)                                                                                                    \
-    X(LoadSub, 31)                                                                                                     \
-    X(LoadSubSlice, 32)                                                                                                \
-    X(Locals, 33)                                                                                                      \
-    X(MakeClass, 34)                                                                                                   \
-    X(MakeFunction, 35)                                                                                                \
-    X(MakeSlice, 36)                                                                                                   \
-    X(Nonzero, 37)                                                                                                     \
-    X(Print, 38)                                                                                                       \
-    X(PrintExpr, 39)                                                                                                   \
-    X(Raise, 40)                                                                                                       \
-    X(Repr, 41)                                                                                                        \
-    X(Return, 42)                                                                                                      \
-    X(Set, 43)                                                                                                         \
-    X(SetExcInfo, 44)                                                                                                  \
-    X(StoreAttr, 45)                                                                                                   \
-    X(StoreName, 46)                                                                                                   \
-    X(StoreSub, 47)                                                                                                    \
-    X(StoreSubSlice, 48)                                                                                               \
-    X(Tuple, 49)                                                                                                       \
-    X(UnaryOp, 50)                                                                                                     \
-    X(UncacheExcInfo, 51)                                                                                              \
-    X(UnpackIntoArray, 52)                                                                                             \
-    X(Yield, 53)
+    X(Exec, 17)                                                                                                        \
+    X(FunctionDef, 18)                                                                                                 \
+    X(GetIter, 19)                                                                                                     \
+    X(HasNext, 20)                                                                                                     \
+    X(ImportFrom, 21)                                                                                                  \
+    X(ImportName, 22)                                                                                                  \
+    X(ImportStar, 23)                                                                                                  \
+    X(Invoke, 24)                                                                                                      \
+    X(Jump, 25)                                                                                                        \
+    X(Landingpad, 26)                                                                                                  \
+    X(List, 27)                                                                                                        \
+    X(LoadAttr, 28)                                                                                                    \
+    X(LoadName, 29)                                                                                                    \
+    X(LoadSub, 30)                                                                                                     \
+    X(LoadSubSlice, 31)                                                                                                \
+    X(Locals, 32)                                                                                                      \
+    X(MakeClass, 33)                                                                                                   \
+    X(MakeFunction, 34)                                                                                                \
+    X(MakeSlice, 35)                                                                                                   \
+    X(Nonzero, 36)                                                                                                     \
+    X(Print, 37)                                                                                                       \
+    X(PrintExpr, 38)                                                                                                   \
+    X(Raise, 39)                                                                                                       \
+    X(Repr, 40)                                                                                                        \
+    X(Return, 41)                                                                                                      \
+    X(Set, 42)                                                                                                         \
+    X(SetExcInfo, 43)                                                                                                  \
+    X(StoreAttr, 44)                                                                                                   \
+    X(StoreName, 45)                                                                                                   \
+    X(StoreSub, 46)                                                                                                    \
+    X(StoreSubSlice, 47)                                                                                               \
+    X(Tuple, 48)                                                                                                       \
+    X(UnaryOp, 49)                                                                                                     \
+    X(UncacheExcInfo, 50)                                                                                              \
+    X(UnpackIntoArray, 51)                                                                                             \
+    X(Yield, 52)
 
 #define GENERATE_ENUM(ENUM, N) ENUM = N,
 #define GENERATE_STRING(STRING, N) m[N] = #STRING;
@@ -109,16 +108,35 @@ class BSTVisitor;
 class ExprVisitor;
 class StmtVisitor;
 
-static constexpr int VREG_UNDEFINED = std::numeric_limits<int>::min();
+// Most nodes got a destination vreg and one or more source vregs. Currently all of them are 32bit long. Some nodes
+// support a variable size of operands (e.g. the tuple node) but the size can't change after creating the node.
+// In general all instructions except CopyVReg kill the source operand vregs except if the source is a constant. If one
+// needs the preserve the source vreg on needs to create a new temporary using the CopyVReg opcode.
 
-class BST {
+// There is a special vreg number: VREG_UNDEFINED
+static constexpr int VREG_UNDEFINED = std::numeric_limits<int>::min();
+// - when it's set as an operand vreg: it means that this is a not-set optional argument.
+//   e.g. for a slice which only has lower set: upper would be VREG_UNDEFINED
+// - if it's the destination it's means the result value should get immediately killed
+//   e.g. "invoke 15 16: %undef = %11(%14)"
+//    this is a call whose result gets ignored
+//
+// all other negative vreg numbers are indices into a constant table (after adding 1 and making them positive).
+// Constants can be all str and numeric types, None and Ellipis. Every constant will only get stored once in the table.
+// e.g. (4, 2, 'lala') generates: "%undef = (%-1|4|, %-2|2|, %-3|'lala'|)"
+//  this creates a tuple whose elements are the constant idx -1, -2 and -3.
+//  in order to make it easier for a human to understand we print the actual value of the constant between | characters.
+
+
+class BST_stmt {
 public:
-    virtual ~BST() {}
+    virtual ~BST_stmt() {}
 
     const BST_TYPE::BST_TYPE type;
     uint32_t lineno;
 
     virtual void accept(BSTVisitor* v) = 0;
+    virtual void accept_stmt(StmtVisitor* v) = 0;
 
 // #define DEBUG_LINE_NUMBERS 1
 #ifdef DEBUG_LINE_NUMBERS
@@ -128,31 +146,23 @@ private:
     static int next_lineno;
 
 public:
-    BST(BST_TYPE::BST_TYPE type);
+    BST_stmt(BST_TYPE::BST_TYPE type);
 #else
-    BST(BST_TYPE::BST_TYPE type) : type(type), lineno(0) {}
+    BST_stmt(BST_TYPE::BST_TYPE type) : type(type), lineno(0) {}
 #endif
-    BST(BST_TYPE::BST_TYPE type, uint32_t lineno) : type(type), lineno(lineno) {}
+    BST_stmt(BST_TYPE::BST_TYPE type, uint32_t lineno) : type(type), lineno(lineno) {}
 
-    virtual bool isBST_dst() const { return false; }
-};
-
-class BST_stmt : public BST {
-public:
-    virtual void accept_stmt(StmtVisitor* v) = 0;
-
-    BST_stmt(BST_TYPE::BST_TYPE type) : BST(type) {}
-    BST_stmt(BST_TYPE::BST_TYPE type, uint32_t lineno) : BST(type, lineno) {}
+    virtual bool has_dest_vreg() const { return false; }
 };
 
 // base class of all nodes which have a single destination vreg
-class BST_dst : public BST_stmt {
+class BST_stmt_with_dest : public BST_stmt {
 public:
     int vreg_dst = VREG_UNDEFINED;
-    BST_dst(BST_TYPE::BST_TYPE type) : BST_stmt(type) {}
-    BST_dst(BST_TYPE::BST_TYPE type, int lineno) : BST_stmt(type, lineno) {}
+    BST_stmt_with_dest(BST_TYPE::BST_TYPE type) : BST_stmt(type) {}
+    BST_stmt_with_dest(BST_TYPE::BST_TYPE type, int lineno) : BST_stmt(type, lineno) {}
 
-    bool isBST_dst() const override { return true; }
+    bool has_dest_vreg() const override { return true; }
 };
 
 
@@ -195,14 +205,17 @@ private:
     }
 };
 
-class BST_CopyVReg : public BST_dst {
+// This is a special instruction which copies a vreg without destroying the source.
+// All other instructions always kill the operands (except if they are a constant) so if one needs the operand to stay
+// alive one has to create a copy usning CopyVReg first.
+class BST_CopyVReg : public BST_stmt_with_dest {
 public:
     int vreg_src = VREG_UNDEFINED; // this vreg will not get killed!
 
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
 
-    BST_CopyVReg() : BST_dst(BST_TYPE::CopyVReg) {}
+    BST_CopyVReg() : BST_stmt_with_dest(BST_TYPE::CopyVReg) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::CopyVReg;
 };
@@ -273,7 +286,7 @@ public:
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::StoreSubSlice;
 };
 
-class BST_LoadName : public BST_dst {
+class BST_LoadName : public BST_stmt_with_dest {
 public:
     InternedString id;
     ScopeInfo::VarScopeType lookup_type;
@@ -288,12 +301,12 @@ public:
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
 
-    BST_LoadName() : BST_dst(BST_TYPE::LoadName) {}
+    BST_LoadName() : BST_stmt_with_dest(BST_TYPE::LoadName) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::LoadName;
 };
 
-class BST_LoadAttr : public BST_dst {
+class BST_LoadAttr : public BST_stmt_with_dest {
 public:
     InternedString attr;
     int vreg_value = VREG_UNDEFINED;
@@ -302,12 +315,12 @@ public:
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
 
-    BST_LoadAttr() : BST_dst(BST_TYPE::LoadAttr) {}
+    BST_LoadAttr() : BST_stmt_with_dest(BST_TYPE::LoadAttr) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::LoadAttr;
 };
 
-class BST_LoadSub : public BST_dst {
+class BST_LoadSub : public BST_stmt_with_dest {
 public:
     int vreg_value = VREG_UNDEFINED;
     int vreg_slice = VREG_UNDEFINED;
@@ -315,12 +328,12 @@ public:
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
 
-    BST_LoadSub() : BST_dst(BST_TYPE::LoadSub) {}
+    BST_LoadSub() : BST_stmt_with_dest(BST_TYPE::LoadSub) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::LoadSub;
 };
 
-class BST_LoadSubSlice : public BST_dst {
+class BST_LoadSubSlice : public BST_stmt_with_dest {
 public:
     int vreg_value = VREG_UNDEFINED;
     int vreg_lower = VREG_UNDEFINED, vreg_upper = VREG_UNDEFINED;
@@ -328,12 +341,12 @@ public:
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
 
-    BST_LoadSubSlice() : BST_dst(BST_TYPE::LoadSubSlice) {}
+    BST_LoadSubSlice() : BST_stmt_with_dest(BST_TYPE::LoadSubSlice) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::LoadSubSlice;
 };
 
-class BST_AugBinOp : public BST_dst {
+class BST_AugBinOp : public BST_stmt_with_dest {
 public:
     AST_TYPE::AST_TYPE op_type;
     int vreg_left = VREG_UNDEFINED, vreg_right = VREG_UNDEFINED;
@@ -341,12 +354,12 @@ public:
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
 
-    BST_AugBinOp() : BST_dst(BST_TYPE::AugBinOp) {}
+    BST_AugBinOp() : BST_stmt_with_dest(BST_TYPE::AugBinOp) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::AugBinOp;
 };
 
-class BST_BinOp : public BST_dst {
+class BST_BinOp : public BST_stmt_with_dest {
 public:
     AST_TYPE::AST_TYPE op_type;
     int vreg_left = VREG_UNDEFINED, vreg_right = VREG_UNDEFINED;
@@ -354,12 +367,12 @@ public:
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
 
-    BST_BinOp() : BST_dst(BST_TYPE::BinOp) {}
+    BST_BinOp() : BST_stmt_with_dest(BST_TYPE::BinOp) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::BinOp;
 };
 
-class BST_Call : public BST_dst {
+class BST_Call : public BST_stmt_with_dest {
 public:
     int vreg_starargs = VREG_UNDEFINED, vreg_kwargs = VREG_UNDEFINED;
     const int num_args;
@@ -369,7 +382,7 @@ public:
     std::unique_ptr<std::vector<BoxedString*>> keywords_names;
 
     BST_Call(BST_TYPE::BST_TYPE type, int num_args, int num_keywords)
-        : BST_dst(type), num_args(num_args), num_keywords(num_keywords) {}
+        : BST_stmt_with_dest(type), num_args(num_args), num_keywords(num_keywords) {}
 };
 
 class BST_CallFunc : public BST_Call {
@@ -450,7 +463,7 @@ private:
 };
 
 
-class BST_Compare : public BST_dst {
+class BST_Compare : public BST_stmt_with_dest {
 public:
     AST_TYPE::AST_TYPE op;
     int vreg_comparator = VREG_UNDEFINED;
@@ -459,7 +472,7 @@ public:
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
 
-    BST_Compare() : BST_dst(BST_TYPE::Compare) {}
+    BST_Compare() : BST_stmt_with_dest(BST_TYPE::Compare) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Compare;
 };
@@ -495,12 +508,12 @@ private:
     }
 };
 
-class BST_Dict : public BST_dst {
+class BST_Dict : public BST_stmt_with_dest {
 public:
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
 
-    BST_Dict() : BST_dst(BST_TYPE::Dict) {}
+    BST_Dict() : BST_stmt_with_dest(BST_TYPE::Dict) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Dict;
 };
@@ -565,16 +578,6 @@ public:
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::DeleteSubSlice;
 };
 
-class BST_Ellipsis : public BST_dst {
-public:
-    virtual void accept(BSTVisitor* v);
-    virtual void accept_stmt(StmtVisitor* v);
-
-    BST_Ellipsis() : BST_dst(BST_TYPE::Ellipsis) {}
-
-    static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Ellipsis;
-};
-
 class BST_Exec : public BST_stmt {
 public:
     int vreg_body = VREG_UNDEFINED;
@@ -621,7 +624,7 @@ private:
     }
 };
 
-class BST_List : public BST_dst {
+class BST_List : public BST_stmt_with_dest {
 public:
     const int num_elts;
     int elts[1];
@@ -638,21 +641,21 @@ public:
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::List;
 
 private:
-    BST_List(int num_elts) : BST_dst(BST_TYPE::List), num_elts(num_elts) {
+    BST_List(int num_elts) : BST_stmt_with_dest(BST_TYPE::List), num_elts(num_elts) {
         for (int i = 0; i < num_elts; ++i) {
             elts[i] = VREG_UNDEFINED;
         }
     }
 };
 
-class BST_Repr : public BST_dst {
+class BST_Repr : public BST_stmt_with_dest {
 public:
     int vreg_value = VREG_UNDEFINED;
 
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
 
-    BST_Repr() : BST_dst(BST_TYPE::Repr) {}
+    BST_Repr() : BST_stmt_with_dest(BST_TYPE::Repr) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Repr;
 };
@@ -699,7 +702,7 @@ public:
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Return;
 };
 
-class BST_Set : public BST_dst {
+class BST_Set : public BST_stmt_with_dest {
 public:
     const int num_elts;
     int elts[1];
@@ -716,26 +719,26 @@ public:
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Set;
 
 private:
-    BST_Set(int num_elts) : BST_dst(BST_TYPE::Set), num_elts(num_elts) {
+    BST_Set(int num_elts) : BST_stmt_with_dest(BST_TYPE::Set), num_elts(num_elts) {
         for (int i = 0; i < num_elts; ++i) {
             elts[i] = VREG_UNDEFINED;
         }
     }
 };
 
-class BST_MakeSlice : public BST_dst {
+class BST_MakeSlice : public BST_stmt_with_dest {
 public:
     int vreg_lower = VREG_UNDEFINED, vreg_upper = VREG_UNDEFINED, vreg_step = VREG_UNDEFINED;
 
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
 
-    BST_MakeSlice() : BST_dst(BST_TYPE::MakeSlice) {}
+    BST_MakeSlice() : BST_stmt_with_dest(BST_TYPE::MakeSlice) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::MakeSlice;
 };
 
-class BST_Tuple : public BST_dst {
+class BST_Tuple : public BST_stmt_with_dest {
 public:
     const int num_elts;
     int elts[1];
@@ -752,14 +755,14 @@ public:
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Tuple;
 
 private:
-    BST_Tuple(int num_elts) : BST_dst(BST_TYPE::Tuple), num_elts(num_elts) {
+    BST_Tuple(int num_elts) : BST_stmt_with_dest(BST_TYPE::Tuple), num_elts(num_elts) {
         for (int i = 0; i < num_elts; ++i) {
             elts[i] = VREG_UNDEFINED;
         }
     }
 };
 
-class BST_UnaryOp : public BST_dst {
+class BST_UnaryOp : public BST_stmt_with_dest {
 public:
     int vreg_operand = VREG_UNDEFINED;
     AST_TYPE::AST_TYPE op_type;
@@ -767,43 +770,43 @@ public:
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
 
-    BST_UnaryOp() : BST_dst(BST_TYPE::UnaryOp) {}
+    BST_UnaryOp() : BST_stmt_with_dest(BST_TYPE::UnaryOp) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::UnaryOp;
 };
 
-class BST_Yield : public BST_dst {
+class BST_Yield : public BST_stmt_with_dest {
 public:
     int vreg_value = VREG_UNDEFINED;
 
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
 
-    BST_Yield() : BST_dst(BST_TYPE::Yield) {}
+    BST_Yield() : BST_stmt_with_dest(BST_TYPE::Yield) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Yield;
 };
 
-class BST_MakeFunction : public BST_dst {
+class BST_MakeFunction : public BST_stmt_with_dest {
 public:
     BST_FunctionDef* function_def;
 
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
 
-    BST_MakeFunction(BST_FunctionDef* fd) : BST_dst(BST_TYPE::MakeFunction, fd->lineno), function_def(fd) {}
+    BST_MakeFunction(BST_FunctionDef* fd) : BST_stmt_with_dest(BST_TYPE::MakeFunction, fd->lineno), function_def(fd) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::MakeFunction;
 };
 
-class BST_MakeClass : public BST_dst {
+class BST_MakeClass : public BST_stmt_with_dest {
 public:
     BST_ClassDef* class_def;
 
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
 
-    BST_MakeClass(BST_ClassDef* cd) : BST_dst(BST_TYPE::MakeClass, cd->lineno), class_def(cd) {}
+    BST_MakeClass(BST_ClassDef* cd) : BST_stmt_with_dest(BST_TYPE::MakeClass, cd->lineno), class_def(cd) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::MakeClass;
 };
@@ -855,39 +858,39 @@ public:
 
 
 // grabs the info about the last raised exception
-class BST_Landingpad : public BST_dst {
+class BST_Landingpad : public BST_stmt_with_dest {
 public:
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
 
-    BST_Landingpad() : BST_dst(BST_TYPE::Landingpad) {}
+    BST_Landingpad() : BST_stmt_with_dest(BST_TYPE::Landingpad) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Landingpad;
 };
 
-class BST_Locals : public BST_dst {
+class BST_Locals : public BST_stmt_with_dest {
 public:
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
 
-    BST_Locals() : BST_dst(BST_TYPE::Locals) {}
+    BST_Locals() : BST_stmt_with_dest(BST_TYPE::Locals) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Locals;
 };
 
-class BST_GetIter : public BST_dst {
+class BST_GetIter : public BST_stmt_with_dest {
 public:
     int vreg_value = VREG_UNDEFINED;
 
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
 
-    BST_GetIter() : BST_dst(BST_TYPE::GetIter) {}
+    BST_GetIter() : BST_stmt_with_dest(BST_TYPE::GetIter) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::GetIter;
 };
 
-class BST_ImportFrom : public BST_dst {
+class BST_ImportFrom : public BST_stmt_with_dest {
 public:
     int vreg_module = VREG_UNDEFINED;
     int vreg_name = VREG_UNDEFINED;
@@ -895,12 +898,12 @@ public:
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
 
-    BST_ImportFrom() : BST_dst(BST_TYPE::ImportFrom) {}
+    BST_ImportFrom() : BST_stmt_with_dest(BST_TYPE::ImportFrom) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::ImportFrom;
 };
 
-class BST_ImportName : public BST_dst {
+class BST_ImportName : public BST_stmt_with_dest {
 public:
     int vreg_from = VREG_UNDEFINED;
     int level = VREG_UNDEFINED;
@@ -910,37 +913,37 @@ public:
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
 
-    BST_ImportName() : BST_dst(BST_TYPE::ImportName) {}
+    BST_ImportName() : BST_stmt_with_dest(BST_TYPE::ImportName) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::ImportName;
 };
 
-class BST_ImportStar : public BST_dst {
+class BST_ImportStar : public BST_stmt_with_dest {
 public:
     int vreg_name = VREG_UNDEFINED;
 
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
 
-    BST_ImportStar() : BST_dst(BST_TYPE::ImportStar) {}
+    BST_ImportStar() : BST_stmt_with_dest(BST_TYPE::ImportStar) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::ImportStar;
 };
 
 // determines whether something is "true" for purposes of `if' and so forth
-class BST_Nonzero : public BST_dst {
+class BST_Nonzero : public BST_stmt_with_dest {
 public:
     int vreg_value = VREG_UNDEFINED;
 
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
 
-    BST_Nonzero() : BST_dst(BST_TYPE::Nonzero) {}
+    BST_Nonzero() : BST_stmt_with_dest(BST_TYPE::Nonzero) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Nonzero;
 };
 
-class BST_CheckExcMatch : public BST_dst {
+class BST_CheckExcMatch : public BST_stmt_with_dest {
 public:
     int vreg_value = VREG_UNDEFINED;
     int vreg_cls = VREG_UNDEFINED;
@@ -948,7 +951,7 @@ public:
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
 
-    BST_CheckExcMatch() : BST_dst(BST_TYPE::CheckExcMatch) {}
+    BST_CheckExcMatch() : BST_stmt_with_dest(BST_TYPE::CheckExcMatch) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::CheckExcMatch;
 };
@@ -977,14 +980,14 @@ public:
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::UncacheExcInfo;
 };
 
-class BST_HasNext : public BST_dst {
+class BST_HasNext : public BST_stmt_with_dest {
 public:
     int vreg_value = VREG_UNDEFINED;
 
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
 
-    BST_HasNext() : BST_dst(BST_TYPE::HasNext) {}
+    BST_HasNext() : BST_stmt_with_dest(BST_TYPE::HasNext) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::HasNext;
 };
@@ -1024,7 +1027,7 @@ public:
         : id(id), lookup_type(ScopeInfo::VarScopeType::UNKNOWN), vreg(VREG_UNDEFINED) {}
 };
 
-template <typename T> T* bst_cast(BST* node) {
+template <typename T> T* bst_cast(BST_stmt* node) {
     ASSERT(!node || node->type == T::TYPE, "%d", node ? node->type : 0);
     return static_cast<T*>(node);
 }
@@ -1056,7 +1059,6 @@ public:
     virtual bool visit_deletesub(BST_DeleteSub* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_deletesubslice(BST_DeleteSubSlice* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_dict(BST_Dict* node) { RELEASE_ASSERT(0, ""); }
-    virtual bool visit_ellipsis(BST_Ellipsis* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_exec(BST_Exec* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_functiondef(BST_FunctionDef* node) { RELEASE_ASSERT(0, ""); }
     virtual bool visit_getiter(BST_GetIter* node) { RELEASE_ASSERT(0, ""); }
@@ -1101,59 +1103,58 @@ public:
     NoopBSTVisitor(bool skip_visit_child_cfg) : BSTVisitor(skip_visit_child_cfg) {}
     virtual ~NoopBSTVisitor() {}
 
-    virtual bool visit_assert(BST_Assert* node) { return false; }
-    virtual bool visit_augbinop(BST_AugBinOp* node) { return false; }
-    virtual bool visit_binop(BST_BinOp* node) { return false; }
-    virtual bool visit_branch(BST_Branch* node) { return false; }
-    virtual bool visit_callattr(BST_CallAttr* node) { return false; }
-    virtual bool visit_callclsattr(BST_CallClsAttr* node) { return false; }
-    virtual bool visit_callfunc(BST_CallFunc* node) { return false; }
+    virtual bool visit_assert(BST_Assert* node) override { return false; }
+    virtual bool visit_augbinop(BST_AugBinOp* node) override { return false; }
+    virtual bool visit_binop(BST_BinOp* node) override { return false; }
+    virtual bool visit_branch(BST_Branch* node) override { return false; }
+    virtual bool visit_callattr(BST_CallAttr* node) override { return false; }
+    virtual bool visit_callclsattr(BST_CallClsAttr* node) override { return false; }
+    virtual bool visit_callfunc(BST_CallFunc* node) override { return false; }
     virtual bool visit_checkexcmatch(BST_CheckExcMatch* node) override { return false; }
-    virtual bool visit_classdef(BST_ClassDef* node) { return false; }
-    virtual bool visit_compare(BST_Compare* node) { return false; }
-    virtual bool visit_copyvreg(BST_CopyVReg* node) { return false; }
-    virtual bool visit_deleteattr(BST_DeleteAttr* node) { return false; }
-    virtual bool visit_deletename(BST_DeleteName* node) { return false; }
-    virtual bool visit_deletesub(BST_DeleteSub* node) { return false; }
-    virtual bool visit_deletesubslice(BST_DeleteSubSlice* node) { return false; }
-    virtual bool visit_dict(BST_Dict* node) { return false; }
-    virtual bool visit_ellipsis(BST_Ellipsis* node) { return false; }
-    virtual bool visit_exec(BST_Exec* node) { return false; }
-    virtual bool visit_functiondef(BST_FunctionDef* node) { return false; }
+    virtual bool visit_classdef(BST_ClassDef* node) override { return false; }
+    virtual bool visit_compare(BST_Compare* node) override { return false; }
+    virtual bool visit_copyvreg(BST_CopyVReg* node) override { return false; }
+    virtual bool visit_deleteattr(BST_DeleteAttr* node) override { return false; }
+    virtual bool visit_deletename(BST_DeleteName* node) override { return false; }
+    virtual bool visit_deletesub(BST_DeleteSub* node) override { return false; }
+    virtual bool visit_deletesubslice(BST_DeleteSubSlice* node) override { return false; }
+    virtual bool visit_dict(BST_Dict* node) override { return false; }
+    virtual bool visit_exec(BST_Exec* node) override { return false; }
+    virtual bool visit_functiondef(BST_FunctionDef* node) override { return false; }
     virtual bool visit_getiter(BST_GetIter* node) override { return false; }
     virtual bool visit_hasnext(BST_HasNext* node) override { return false; }
     virtual bool visit_importfrom(BST_ImportFrom* node) override { return false; }
     virtual bool visit_importname(BST_ImportName* node) override { return false; }
     virtual bool visit_importstar(BST_ImportStar* node) override { return false; }
-    virtual bool visit_invoke(BST_Invoke* node) { return false; }
-    virtual bool visit_jump(BST_Jump* node) { return false; }
+    virtual bool visit_invoke(BST_Invoke* node) override { return false; }
+    virtual bool visit_jump(BST_Jump* node) override { return false; }
     virtual bool visit_landingpad(BST_Landingpad* node) override { return false; }
-    virtual bool visit_list(BST_List* node) { return false; }
+    virtual bool visit_list(BST_List* node) override { return false; }
     virtual bool visit_loadattr(BST_LoadAttr* node) override { return false; }
     virtual bool visit_loadname(BST_LoadName* node) override { return false; }
     virtual bool visit_loadsub(BST_LoadSub* node) override { return false; }
     virtual bool visit_loadsubslice(BST_LoadSubSlice* node) override { return false; }
     virtual bool visit_locals(BST_Locals* node) override { return false; }
-    virtual bool visit_makeclass(BST_MakeClass* node) { return false; }
-    virtual bool visit_makefunction(BST_MakeFunction* node) { return false; }
-    virtual bool visit_makeslice(BST_MakeSlice* node) { return false; }
+    virtual bool visit_makeclass(BST_MakeClass* node) override { return false; }
+    virtual bool visit_makefunction(BST_MakeFunction* node) override { return false; }
+    virtual bool visit_makeslice(BST_MakeSlice* node) override { return false; }
     virtual bool visit_nonzero(BST_Nonzero* node) override { return false; }
-    virtual bool visit_print(BST_Print* node) { return false; }
+    virtual bool visit_print(BST_Print* node) override { return false; }
     virtual bool visit_printexpr(BST_PrintExpr* node) override { return false; }
-    virtual bool visit_raise(BST_Raise* node) { return false; }
-    virtual bool visit_repr(BST_Repr* node) { return false; }
-    virtual bool visit_return(BST_Return* node) { return false; }
-    virtual bool visit_set(BST_Set* node) { return false; }
+    virtual bool visit_raise(BST_Raise* node) override { return false; }
+    virtual bool visit_repr(BST_Repr* node) override { return false; }
+    virtual bool visit_return(BST_Return* node) override { return false; }
+    virtual bool visit_set(BST_Set* node) override { return false; }
     virtual bool visit_setexcinfo(BST_SetExcInfo* node) override { return false; }
-    virtual bool visit_storeattr(BST_StoreAttr* node) { return false; }
-    virtual bool visit_storename(BST_StoreName* node) { return false; }
+    virtual bool visit_storeattr(BST_StoreAttr* node) override { return false; }
+    virtual bool visit_storename(BST_StoreName* node) override { return false; }
     virtual bool visit_storesub(BST_StoreSub* node) override { return false; }
     virtual bool visit_storesubslice(BST_StoreSubSlice* node) override { return false; }
-    virtual bool visit_tuple(BST_Tuple* node) { return false; }
-    virtual bool visit_unaryop(BST_UnaryOp* node) { return false; }
+    virtual bool visit_tuple(BST_Tuple* node) override { return false; }
+    virtual bool visit_unaryop(BST_UnaryOp* node) override { return false; }
     virtual bool visit_uncacheexcinfo(BST_UncacheExcInfo* node) override { return false; }
-    virtual bool visit_unpackintoarray(BST_UnpackIntoArray* node) { return false; }
-    virtual bool visit_yield(BST_Yield* node) { return false; }
+    virtual bool visit_unpackintoarray(BST_UnpackIntoArray* node) override { return false; }
+    virtual bool visit_yield(BST_Yield* node) override { return false; }
 };
 
 class StmtVisitor {
@@ -1177,7 +1178,6 @@ public:
     virtual void visit_deletesub(BST_DeleteSub* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_deletesubslice(BST_DeleteSubSlice* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_dict(BST_Dict* node) { RELEASE_ASSERT(0, ""); }
-    virtual void visit_ellipsis(BST_Ellipsis* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_exec(BST_Exec* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_functiondef(BST_FunctionDef* node) { RELEASE_ASSERT(0, ""); }
     virtual void visit_getiter(BST_GetIter* node) { RELEASE_ASSERT(0, ""); }
@@ -1216,7 +1216,7 @@ public:
     virtual void visit_yield(BST_Yield* node) { RELEASE_ASSERT(0, ""); }
 };
 
-void print_bst(BST* bst);
+void print_bst(BST_stmt* bst);
 class PrintVisitor : public BSTVisitor {
 private:
     llvm::raw_ostream& stream;
@@ -1249,7 +1249,6 @@ public:
     virtual bool visit_deletesub(BST_DeleteSub* node);
     virtual bool visit_deletesubslice(BST_DeleteSubSlice* node);
     virtual bool visit_dict(BST_Dict* node);
-    virtual bool visit_ellipsis(BST_Ellipsis* node);
     virtual bool visit_exec(BST_Exec* node);
     virtual bool visit_functiondef(BST_FunctionDef* node);
     virtual bool visit_getiter(BST_GetIter* node);
@@ -1291,7 +1290,7 @@ public:
 // Given an BST node, return a vector of the node plus all its descendents.
 // This is useful for analyses that care more about the constituent nodes than the
 // exact tree structure; ex, finding all "global" directives.
-void flatten(llvm::ArrayRef<BST_stmt*> roots, std::vector<BST*>& output, bool expand_scopes);
+void flatten(llvm::ArrayRef<BST_stmt*> roots, std::vector<BST_stmt*>& output, bool expand_scopes);
 };
 
 #endif
