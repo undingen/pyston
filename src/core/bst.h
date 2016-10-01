@@ -165,7 +165,55 @@ public:
     bool has_dest_vreg() const override { return true; }
 };
 
+#define BSTVARVREGS(opcode, base_class, num_elts, vreg_dst)                                                            \
+public:                                                                                                                \
+    static BST_##opcode* create(int num_elts) { return new (num_elts) BST_##opcode(num_elts); }                        \
+    static void operator delete(void* ptr) { ::operator delete[](ptr); }                                               \
+                                                                                                                       \
+private:                                                                                                               \
+    static void* operator new(size_t, int num_elts) {                                                                  \
+        return ::new char[offsetof(BST_##opcode, vreg_dst) + num_elts * sizeof(int)];                                  \
+    }                                                                                                                  \
+    BST_##opcode(int num_elts) : base_class(BST_TYPE::opcode), num_elts(num_elts) {                                    \
+        for (int i = 0; i < num_elts; ++i) {                                                                           \
+            vreg_dst[i] = VREG_UNDEFINED;                                                                              \
+        }                                                                                                              \
+    }
 
+#define BSTVARVREGS2(opcode, base_class, num_elts, num_elts2, vreg_dst)                                                \
+public:                                                                                                                \
+    static BST_##opcode* create(int num_elts, int num_elts2) {                                                         \
+        return new (num_elts + num_elts2) BST_##opcode(num_elts, num_elts2);                                           \
+    }                                                                                                                  \
+    static void operator delete(void* ptr) { ::operator delete[](ptr); }                                               \
+                                                                                                                       \
+private:                                                                                                               \
+    static void* operator new(size_t, int num_elts_total) {                                                            \
+        return ::new char[offsetof(BST_##opcode, vreg_dst) + num_elts_total * sizeof(int)];                            \
+    }                                                                                                                  \
+    BST_##opcode(int num_elts, int num_elts2)                                                                          \
+        : base_class(BST_TYPE::opcode), num_elts(num_elts), num_elts2(num_elts2) {                                     \
+        for (int i = 0; i < num_elts + num_elts2; ++i) {                                                               \
+            vreg_dst[i] = VREG_UNDEFINED;                                                                              \
+        }                                                                                                              \
+    }
+
+#define BSTVARVREGS2CALL(opcode, num_elts, num_elts2, vreg_dst)                                                        \
+public:                                                                                                                \
+    static BST_##opcode* create(int num_elts, int num_elts2) {                                                         \
+        return new (num_elts + num_elts2) BST_##opcode(num_elts, num_elts2);                                           \
+    }                                                                                                                  \
+    static void operator delete(void* ptr) { ::operator delete[](ptr); }                                               \
+                                                                                                                       \
+private:                                                                                                               \
+    static void* operator new(size_t, int num_elts_total) {                                                            \
+        return ::new char[offsetof(BST_##opcode, vreg_dst) + num_elts_total * sizeof(int)];                            \
+    }                                                                                                                  \
+    BST_##opcode(int num_elts, int num_elts2) : BST_Call(BST_TYPE::opcode, num_elts, num_elts2) {                      \
+        for (int i = 0; i < num_elts + num_elts2; ++i) {                                                               \
+            vreg_dst[i] = VREG_UNDEFINED;                                                                              \
+        }                                                                                                              \
+    }
 
 class BST_Assert : public BST_stmt {
 public:
@@ -188,21 +236,9 @@ public:
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
 
-    static BST_UnpackIntoArray* create(int num_elts) {
-        BST_UnpackIntoArray* o
-            = (BST_UnpackIntoArray*)new char[offsetof(BST_UnpackIntoArray, vreg_dst) + num_elts * sizeof(int)];
-        new (o) BST_UnpackIntoArray(num_elts);
-        return o;
-    }
-
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::UnpackIntoArray;
 
-private:
-    BST_UnpackIntoArray(int num_elts) : BST_stmt(BST_TYPE::UnpackIntoArray), num_elts(num_elts) {
-        for (int i = 0; i < num_elts; ++i) {
-            vreg_dst[i] = VREG_UNDEFINED;
-        }
-    }
+    BSTVARVREGS(UnpackIntoArray, BST_stmt, num_elts, vreg_dst)
 };
 
 // This is a special instruction which copies a vreg without destroying the source.
@@ -233,7 +269,6 @@ public:
     DerefInfo deref_info = DerefInfo({ INT_MAX, INT_MAX });
     // Only valid for lookup_type == CLOSURE:
     int closure_offset = -1;
-
 
 
     virtual void accept(BSTVisitor* v);
@@ -393,21 +428,9 @@ public:
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
 
-    static BST_CallFunc* create(int num_args, int num_keywords) {
-        BST_CallFunc* o
-            = (BST_CallFunc*)new char[offsetof(BST_CallFunc, elts) + (num_args + num_keywords) * sizeof(int)];
-        new (o) BST_CallFunc(num_args, num_keywords);
-        return o;
-    }
-
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::CallFunc;
 
-private:
-    BST_CallFunc(int num_args, int num_keywords) : BST_Call(BST_TYPE::CallFunc, num_args, num_keywords) {
-        for (int i = 0; i < num_args + num_keywords; ++i) {
-            elts[i] = VREG_UNDEFINED;
-        }
-    }
+    BSTVARVREGS2CALL(CallFunc, num_args, num_keywords, elts)
 };
 
 class BST_CallAttr : public BST_Call {
@@ -419,21 +442,9 @@ public:
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
 
-    static BST_CallAttr* create(int num_args, int num_keywords) {
-        BST_CallAttr* o
-            = (BST_CallAttr*)new char[offsetof(BST_CallAttr, elts) + (num_args + num_keywords) * sizeof(int)];
-        new (o) BST_CallAttr(num_args, num_keywords);
-        return o;
-    }
-
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::CallAttr;
 
-private:
-    BST_CallAttr(int num_args, int num_keywords) : BST_Call(BST_TYPE::CallAttr, num_args, num_keywords) {
-        for (int i = 0; i < num_args + num_keywords; ++i) {
-            elts[i] = VREG_UNDEFINED;
-        }
-    }
+    BSTVARVREGS2CALL(CallAttr, num_args, num_keywords, elts)
 };
 
 class BST_CallClsAttr : public BST_Call {
@@ -445,21 +456,9 @@ public:
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
 
-    static BST_CallClsAttr* create(int num_args, int num_keywords) {
-        BST_CallClsAttr* o
-            = (BST_CallClsAttr*)new char[offsetof(BST_CallClsAttr, elts) + (num_args + num_keywords) * sizeof(int)];
-        new (o) BST_CallClsAttr(num_args, num_keywords);
-        return o;
-    }
-
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::CallClsAttr;
 
-private:
-    BST_CallClsAttr(int num_args, int num_keywords) : BST_Call(BST_TYPE::CallClsAttr, num_args, num_keywords) {
-        for (int i = 0; i < num_args + num_keywords; ++i) {
-            elts[i] = VREG_UNDEFINED;
-        }
-    }
+    BSTVARVREGS2CALL(CallClsAttr, num_args, num_keywords, elts)
 };
 
 
@@ -489,23 +488,9 @@ public:
     const int num_decorator;
     int decorator[1];
 
-
-
-    static BST_ClassDef* create(int num_decorator) {
-        BST_ClassDef* o = (BST_ClassDef*)new char[offsetof(BST_ClassDef, decorator) + (num_decorator) * sizeof(int)];
-        new (o) BST_ClassDef(num_decorator);
-        return o;
-    }
-
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::ClassDef;
 
-
-private:
-    BST_ClassDef(int num_decorator) : BST_stmt(BST_TYPE::ClassDef), num_decorator(num_decorator) {
-        for (int i = 0; i < num_decorator; ++i) {
-            decorator[i] = VREG_UNDEFINED;
-        }
-    }
+    BSTVARVREGS(ClassDef, BST_stmt, num_decorator, decorator)
 };
 
 class BST_Dict : public BST_stmt_with_dest {
@@ -606,22 +591,10 @@ public:
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
 
-    static BST_FunctionDef* create(int num_decorator, int num_defaults) {
-        BST_FunctionDef* o = (BST_FunctionDef*)new char[offsetof(BST_FunctionDef, elts)
-                                                        + (num_decorator + num_defaults) * sizeof(int)];
-        new (o) BST_FunctionDef(num_decorator, num_defaults);
-        return o;
-    }
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::FunctionDef;
 
-private:
-    BST_FunctionDef(int num_decorator, int num_defaults)
-        : BST_stmt(BST_TYPE::FunctionDef), num_decorator(num_decorator), num_defaults(num_defaults) {
-        for (int i = 0; i < num_decorator + num_defaults; ++i) {
-            elts[i] = VREG_UNDEFINED;
-        }
-    }
+    BSTVARVREGS2(FunctionDef, BST_stmt, num_decorator, num_defaults, elts)
 };
 
 class BST_List : public BST_stmt_with_dest {
@@ -632,20 +605,9 @@ public:
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
 
-    static BST_List* create(int num_elts) {
-        BST_List* o = (BST_List*)new char[offsetof(BST_List, elts) + num_elts * sizeof(int)];
-        new (o) BST_List(num_elts);
-        return o;
-    }
-
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::List;
 
-private:
-    BST_List(int num_elts) : BST_stmt_with_dest(BST_TYPE::List), num_elts(num_elts) {
-        for (int i = 0; i < num_elts; ++i) {
-            elts[i] = VREG_UNDEFINED;
-        }
-    }
+    BSTVARVREGS(List, BST_stmt_with_dest, num_elts, elts)
 };
 
 class BST_Repr : public BST_stmt_with_dest {
@@ -710,20 +672,9 @@ public:
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
 
-    static BST_Set* create(int num_elts) {
-        BST_Set* o = (BST_Set*)new char[offsetof(BST_Set, elts) + num_elts * sizeof(int)];
-        new (o) BST_Set(num_elts);
-        return o;
-    }
-
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Set;
 
-private:
-    BST_Set(int num_elts) : BST_stmt_with_dest(BST_TYPE::Set), num_elts(num_elts) {
-        for (int i = 0; i < num_elts; ++i) {
-            elts[i] = VREG_UNDEFINED;
-        }
-    }
+    BSTVARVREGS(Set, BST_stmt_with_dest, num_elts, elts)
 };
 
 class BST_MakeSlice : public BST_stmt_with_dest {
@@ -746,20 +697,9 @@ public:
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
 
-    static BST_Tuple* create(int num_elts) {
-        BST_Tuple* o = (BST_Tuple*)new char[offsetof(BST_Tuple, elts) + num_elts * sizeof(int)];
-        new (o) BST_Tuple(num_elts);
-        return o;
-    }
-
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::Tuple;
 
-private:
-    BST_Tuple(int num_elts) : BST_stmt_with_dest(BST_TYPE::Tuple), num_elts(num_elts) {
-        for (int i = 0; i < num_elts; ++i) {
-            elts[i] = VREG_UNDEFINED;
-        }
-    }
+    BSTVARVREGS(Tuple, BST_stmt_with_dest, num_elts, elts)
 };
 
 class BST_UnaryOp : public BST_stmt_with_dest {
