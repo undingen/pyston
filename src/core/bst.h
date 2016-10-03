@@ -1156,18 +1156,18 @@ public:
     virtual void visit_yield(BST_Yield* node) { RELEASE_ASSERT(0, ""); }
 };
 
-void print_bst(BST_stmt* bst);
+void print_bst(BST_stmt* bst, const ConstantVRegInfo& constant_vregs);
 class PrintVisitor : public BSTVisitor {
 private:
     llvm::raw_ostream& stream;
+    const ConstantVRegInfo& constant_vregs;
     int indent;
-    BoxedModule* mod;
     void printIndent();
     void printOp(AST_TYPE::AST_TYPE op_type);
 
 public:
-    PrintVisitor(int indent, llvm::raw_ostream& stream, BoxedModule* mod)
-        : BSTVisitor(false /* visit child CFG */), stream(stream), indent(indent), mod(mod) {}
+    PrintVisitor(const ConstantVRegInfo& constant_vregs, int indent, llvm::raw_ostream& stream)
+        : BSTVisitor(false /* visit child CFG */), stream(stream), constant_vregs(constant_vregs), indent(indent) {}
     virtual ~PrintVisitor() {}
     void flush() { stream.flush(); }
 

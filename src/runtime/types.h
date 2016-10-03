@@ -1271,8 +1271,6 @@ private:
 public:
     DEFAULT_CLASS(module_cls);
 
-    std::vector<Box*> constants;
-
     friend void _PyModule_Clear(PyObject*) noexcept;
 };
 

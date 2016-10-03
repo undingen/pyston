@@ -185,7 +185,7 @@ void CFGBlock::unconnectFrom(CFGBlock* successor) {
                                   successor->predecessors.end());
 }
 
-void CFGBlock::print(llvm::raw_ostream& stream, BoxedModule* mod) {
+void CFGBlock::print(const ConstantVRegInfo& constant_vregs, llvm::raw_ostream& stream) {
     stream << "Block " << idx;
     if (info)
         stream << " '" << info << "'";
@@ -200,7 +200,7 @@ void CFGBlock::print(llvm::raw_ostream& stream, BoxedModule* mod) {
     }
     stream << "\n";
 
-    PrintVisitor pv(4, stream, mod);
+    PrintVisitor pv(constant_vregs, 4, stream);
     for (int j = 0; j < body.size(); j++) {
         stream << "    ";
         body[j]->accept(&pv);
@@ -510,8 +510,7 @@ private:
         auto it = consts.find(o);
         if (it != consts.end())
             return it->second;
-        source->parent_module->constants.push_back(o);
-        int vreg = -source->parent_module->constants.size();
+        int vreg = source->constant_vregs.addConstant(o);
         consts[o] = vreg;
         return vreg;
     }
@@ -2842,11 +2841,11 @@ public:
     }
 };
 
-void CFG::print(llvm::raw_ostream& stream, BoxedModule* mod) {
+void CFG::print(const ConstantVRegInfo& constant_vregs, llvm::raw_ostream& stream) {
     stream << "CFG:\n";
     stream << blocks.size() << " blocks\n";
     for (int i = 0; i < blocks.size(); i++)
-        blocks[i]->print(stream, mod);
+        blocks[i]->print(constant_vregs, stream);
     stream.flush();
 }
 
@@ -3150,7 +3149,7 @@ static CFG* computeCFG(llvm::ArrayRef<AST_stmt*> body, AST_TYPE::AST_TYPE ast_ty
 
     if (VERBOSITY("cfg") >= 3) {
         printf("Before cfg checking and transformations:\n");
-        rtn->print();
+        rtn->print(source->constant_vregs);
     }
 
 #ifndef NDEBUG
@@ -3178,7 +3177,7 @@ static CFG* computeCFG(llvm::ArrayRef<AST_stmt*> body, AST_TYPE::AST_TYPE ast_ty
 
         if (b->predecessors.size() == 0) {
             if (b != rtn->getStartingBlock()) {
-                rtn->print();
+                rtn->print(source->constant_vregs);
             }
             ASSERT(b == rtn->getStartingBlock(), "%d", b->idx);
         }
@@ -3233,13 +3232,13 @@ static CFG* computeCFG(llvm::ArrayRef<AST_stmt*> body, AST_TYPE::AST_TYPE ast_ty
         deduped[e]++;
         if (deduped[e] == 2) {
             printf("Duplicated: ");
-            print_bst(e);
+            print_bst(e, source->constant_vregs);
             printf("\n");
             no_dups = false;
         }
     }
     if (!no_dups)
-        rtn->print();
+        rtn->print(source->constant_vregs);
     assert(no_dups);
 
 // Uncomment this for some heavy checking to make sure that we don't forget
@@ -3342,7 +3341,7 @@ static CFG* computeCFG(llvm::ArrayRef<AST_stmt*> body, AST_TYPE::AST_TYPE ast_ty
 
     if (VERBOSITY("cfg") >= 2) {
         printf("Final cfg:\n");
-        rtn->print(llvm::outs(), source->parent_module);
+        rtn->print(source->constant_vregs, llvm::outs());
     }
 
     return rtn;
@@ -3411,7 +3410,7 @@ BoxedCode* computeAllCFGs(AST* ast, bool globals_from_module, FutureFlags future
         .runRecursively(ast->getBody(), ast->getName(), ast->lineno, nullptr, ast);
 }
 
-void printCFG(CFG* cfg) {
-    cfg->print();
+void printCFG(CFG* cfg, const ConstantVRegInfo& constant_vregs) {
+    cfg->print(constant_vregs);
 }
 }

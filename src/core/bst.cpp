@@ -754,8 +754,8 @@ void BST_MakeSlice::accept_stmt(StmtVisitor* v) {
     return v->visit_makeslice(this);
 }
 
-void print_bst(BST_stmt* bst) {
-    PrintVisitor v(0, llvm::outs(), NULL);
+void print_bst(BST_stmt* bst, const ConstantVRegInfo& constant_vregs) {
+    PrintVisitor v(constant_vregs, 0, llvm::outs());
     bst->accept(&v);
     v.flush();
 }
@@ -770,8 +770,8 @@ extern "C" BoxedString* repr(Box* obj);
 bool PrintVisitor::visit_vreg(int* vreg, bool is_dst) {
     if (*vreg != VREG_UNDEFINED) {
         stream << "%" << *vreg;
-        if (mod && *vreg < 0)
-            stream << "|" << autoDecref(repr(mod->constants[-*vreg - 1]))->s() << "|";
+        if (*vreg < 0)
+            stream << "|" << autoDecref(repr(constant_vregs.getConstant(*vreg)))->s() << "|";
     } else
         stream << "%undef";
 

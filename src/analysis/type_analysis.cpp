@@ -89,17 +89,17 @@ private:
     ExprTypeMap& expr_types;
     TypeSpeculations& type_speculations;
     TypeAnalysis::SpeculationLevel speculation;
-    BoxedModule* mod; // TODO: needed for the constants, move them somewhere else
+    const ConstantVRegInfo& constant_vregs;
 
     BasicBlockTypePropagator(CFGBlock* block, TypeMap& initial, ExprTypeMap& expr_types,
                              TypeSpeculations& type_speculations, TypeAnalysis::SpeculationLevel speculation,
-                             BoxedModule* mod)
+                             const ConstantVRegInfo& constant_vregs)
         : block(block),
           sym_table(initial),
           expr_types(expr_types),
           type_speculations(type_speculations),
           speculation(speculation),
-          mod(mod) {}
+          constant_vregs(constant_vregs) {}
 
     void run() {
         for (int i = 0; i < block->body.size(); i++) {
@@ -118,7 +118,7 @@ private:
                     printf("in propagator, speculating that %s would actually be %s, at ",
                            old_type->debugName().c_str(), speculated_type->debugName().c_str());
                     fflush(stdout);
-                    print_bst(node);
+                    print_bst(node, constant_vregs);
                     llvm::outs().flush();
                     printf("\n");
                 }
@@ -131,7 +131,7 @@ private:
     }
 
     CompilerType* getConstantType(int vreg) {
-        Box* o = mod->constants[-vreg - 1];
+        Box* o = constant_vregs.getConstant(vreg);
         if (o->cls == int_cls)
             return INT;
         else if (o->cls == float_cls)
@@ -284,7 +284,7 @@ private:
 
         if (VERBOSITY() >= 2 && func == UNDEF) {
             printf("Think %s.%s is undefined, at %d\n", t->debugName().c_str(), node->attr.c_str(), node->lineno);
-            print_bst(node);
+            print_bst(node, constant_vregs);
             printf("\n");
         }
 
@@ -297,7 +297,7 @@ private:
 
         if (VERBOSITY() >= 2 && func == UNDEF) {
             printf("Think %s.%s is undefined, at %d\n", t->debugName().c_str(), node->attr.c_str(), node->lineno);
-            print_bst(node);
+            print_bst(node, constant_vregs);
             printf("\n");
         }
 
@@ -399,7 +399,7 @@ private:
 
         if (VERBOSITY() >= 2 && rtn == UNDEF) {
             printf("Think %s.%s is undefined, at %d\n", t->debugName().c_str(), node->attr.c_str(), node->lineno);
-            print_bst(node);
+            print_bst(node, constant_vregs);
             printf("\n");
         }
         _doSet(node->vreg_dst, rtn);
@@ -551,9 +551,9 @@ private:
 public:
     static TypeMap propagate(CFGBlock* block, const TypeMap& starting, ExprTypeMap& expr_types,
                              TypeSpeculations& type_speculations, TypeAnalysis::SpeculationLevel speculation,
-                             BoxedModule* mod) {
+                             const ConstantVRegInfo& constant_vregs) {
         TypeMap ending = starting;
-        BasicBlockTypePropagator(block, ending, expr_types, type_speculations, speculation, mod).run();
+        BasicBlockTypePropagator(block, ending, expr_types, type_speculations, speculation, constant_vregs).run();
         return ending;
     }
 };
@@ -632,7 +632,7 @@ public:
     }
 
     static PropagatingTypeAnalysis* doAnalysis(SpeculationLevel speculation, TypeMap&& initial_types,
-                                               CFGBlock* initial_block, BoxedModule* mod) {
+                                               CFGBlock* initial_block, const ConstantVRegInfo& constant_vregs) {
         Timer _t("PropagatingTypeAnalysis::doAnalysis()");
 
         CFG* cfg = initial_block->cfg;
@@ -673,7 +673,7 @@ public:
             }
 
             TypeMap ending = BasicBlockTypePropagator::propagate(block, starting_types.find(block)->second, expr_types,
-                                                                 type_speculations, speculation, mod);
+                                                                 type_speculations, speculation, constant_vregs);
 
             if (VERBOSITY("types") >= 3) {
                 printf("before (after):\n");
@@ -729,7 +729,8 @@ public:
 
 // public entry point:
 TypeAnalysis* doTypeAnalysis(CFG* cfg, const ParamNames& arg_names, const std::vector<ConcreteCompilerType*>& arg_types,
-                             EffortLevel effort, TypeAnalysis::SpeculationLevel speculation, BoxedModule* mod) {
+                             EffortLevel effort, TypeAnalysis::SpeculationLevel speculation,
+                             const ConstantVRegInfo& constant_vregs) {
     // if (effort == EffortLevel::INTERPRETED) {
     // return new NullTypeAnalysis();
     //}
@@ -748,11 +749,12 @@ TypeAnalysis* doTypeAnalysis(CFG* cfg, const ParamNames& arg_names, const std::v
 
     assert(i == arg_types.size());
 
-    return PropagatingTypeAnalysis::doAnalysis(speculation, std::move(initial_types), cfg->getStartingBlock(), mod);
+    return PropagatingTypeAnalysis::doAnalysis(speculation, std::move(initial_types), cfg->getStartingBlock(),
+                                               constant_vregs);
 }
 
 TypeAnalysis* doTypeAnalysis(const OSREntryDescriptor* entry_descriptor, EffortLevel effort,
-                             TypeAnalysis::SpeculationLevel speculation, BoxedModule* mod) {
+                             TypeAnalysis::SpeculationLevel speculation, const ConstantVRegInfo& constant_vregs) {
     auto cfg = entry_descriptor->code->source->cfg;
     auto&& vreg_info = cfg->getVRegInfo();
     TypeMap initial_types(vreg_info.getTotalNumOfVRegs());
@@ -762,6 +764,6 @@ TypeAnalysis* doTypeAnalysis(const OSREntryDescriptor* entry_descriptor, EffortL
     }
 
     return PropagatingTypeAnalysis::doAnalysis(speculation, std::move(initial_types),
-                                               entry_descriptor->backedge->target, mod);
+                                               entry_descriptor->backedge->target, constant_vregs);
 }
 }
