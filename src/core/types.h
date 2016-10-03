@@ -479,9 +479,6 @@ public:
     }
     const std::vector<std::pair<InternedString, DerefInfo>>& getAllDerefVarsAndInfo() const { return deref_info; }
     DerefInfo getDerefInfo(BST_LoadName*) const;
-    size_t getClosureOffset(BST_LoadName*) const;
-    size_t getClosureOffset(BST_StoreName*) const;
-    size_t getClosureOffset(BST_Name*) const;
 
     ScopingResults(ScopeInfo* scope_info, bool globals_from_module);
 };

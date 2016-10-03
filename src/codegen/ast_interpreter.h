@@ -49,8 +49,7 @@ struct ASTInterpreterJitInterface {
     static Box* landingpadHelper(void* interp);
     static void pendingCallsCheckHelper();
     static void setExcInfoHelper(void* interp, STOLEN(Box*) type, STOLEN(Box*) value, STOLEN(Box*) traceback);
-    static void setLocalClosureHelper(void* interp, BST_Name* name, Box* v);
-    static void setLocalClosureHelperSN(void* interp, BST_StoreName* name, Box* v);
+    static void setLocalClosureHelper(void* interp, int vreg, int closure_offset, Box* v);
     static void uncacheExcInfoHelper(void* interp);
     static void raise0Helper(void* interp) __attribute__((noreturn));
     static Box* yieldHelper(void* interp, STOLEN(Box*) value);

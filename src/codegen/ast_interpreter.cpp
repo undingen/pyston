@@ -511,7 +511,7 @@ void ASTInterpreter::doStoreArg(BST_Name* node, STOLEN(Value) value) {
     } else if (vst == ScopeInfo::VarScopeType::FAST || vst == ScopeInfo::VarScopeType::CLOSURE) {
         bool closure = vst == ScopeInfo::VarScopeType::CLOSURE;
         if (closure) {
-            ASTInterpreterJitInterface::setLocalClosureHelper(this, node, value.o);
+            ASTInterpreterJitInterface::setLocalClosureHelper(this, node->vreg, node->closure_offset, value.o);
         } else {
             assert(getVRegInfo().getVReg(node->id) == node->vreg);
             frame_info.num_vregs = std::max(frame_info.num_vregs, node->vreg + 1);
@@ -989,6 +989,7 @@ Value ASTInterpreter::visit_stmt(BST_stmt* node) {
             ASTInterpreterJitInterface::pendingCallsCheckHelper();
             break;
 
+        // Handle all cases which are derived from BST_stmt_with_dest
         default: {
             Value v;
             switch (node->type) {
@@ -1703,7 +1704,7 @@ void ASTInterpreter::visit_storename(BST_StoreName* node) {
         }
 
         if (closure) {
-            ASTInterpreterJitInterface::setLocalClosureHelperSN(this, node, value.o);
+            ASTInterpreterJitInterface::setLocalClosureHelper(this, node->vreg, node->closure_offset, value.o);
         } else {
             assert(getVRegInfo().getVReg(node->id) == node->vreg);
             frame_info.num_vregs = std::max(frame_info.num_vregs, node->vreg + 1);
@@ -1861,7 +1862,6 @@ Box* ASTInterpreterJitInterface::derefHelper(void* _interpreter, BST_LoadName* n
     return val;
 }
 
-
 Box* ASTInterpreterJitInterface::landingpadHelper(void* _interpreter) {
     ASTInterpreter* interpreter = (ASTInterpreter*)_interpreter;
     ExcInfo& last_exception = interpreter->last_exception;
@@ -1888,32 +1888,12 @@ void ASTInterpreterJitInterface::setExcInfoHelper(void* _interpreter, STOLEN(Box
     setFrameExcInfo(interpreter->getFrameInfo(), type, value, traceback);
 }
 
-void ASTInterpreterJitInterface::setLocalClosureHelper(void* _interpreter, BST_Name* name, Box* v) {
-    assert(name->lookup_type == ScopeInfo::VarScopeType::CLOSURE);
-
+void ASTInterpreterJitInterface::setLocalClosureHelper(void* _interpreter, int vreg, int closure_offset, Box* v) {
     ASTInterpreter* interpreter = (ASTInterpreter*)_interpreter;
 
-    auto vreg = name->vreg;
     interpreter->frame_info.num_vregs = std::max(interpreter->frame_info.num_vregs, (int)vreg + 1);
     Box* prev = interpreter->vregs[vreg];
     interpreter->vregs[vreg] = v;
-    auto closure_offset = interpreter->scope_info.getClosureOffset(name);
-    Box* prev_closure_elt = interpreter->created_closure->elts[closure_offset];
-    interpreter->created_closure->elts[closure_offset] = incref(v);
-    Py_XDECREF(prev);
-    Py_XDECREF(prev_closure_elt);
-}
-
-void ASTInterpreterJitInterface::setLocalClosureHelperSN(void* _interpreter, BST_StoreName* name, Box* v) {
-    assert(name->lookup_type == ScopeInfo::VarScopeType::CLOSURE);
-
-    ASTInterpreter* interpreter = (ASTInterpreter*)_interpreter;
-
-    auto vreg = name->vreg;
-    interpreter->frame_info.num_vregs = std::max(interpreter->frame_info.num_vregs, (int)vreg + 1);
-    Box* prev = interpreter->vregs[vreg];
-    interpreter->vregs[vreg] = v;
-    auto closure_offset = interpreter->scope_info.getClosureOffset(name);
     Box* prev_closure_elt = interpreter->created_closure->elts[closure_offset];
     interpreter->created_closure->elts[closure_offset] = incref(v);
     Py_XDECREF(prev);

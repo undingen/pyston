@@ -769,7 +769,8 @@ void JitFragmentWriter::emitSetLocalClosure(BST_StoreName* name, STOLEN(Rewriter
         comment("BJIT: emitSetLocalClosure() start");
     auto vreg = name->vreg;
     assert(vreg >= 0);
-    call(false, (void*)ASTInterpreterJitInterface::setLocalClosureHelperSN, getInterp(), imm(name), v);
+    call(false, (void*)ASTInterpreterJitInterface::setLocalClosureHelper, getInterp(), imm(vreg),
+         imm(name->closure_offset), v);
     v->refConsumed();
     if (LOG_BJIT_ASSEMBLY)
         comment("BJIT: emitSetLocalClosure() end");

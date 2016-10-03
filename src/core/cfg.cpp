@@ -35,35 +35,25 @@
 
 namespace pyston {
 
-static void fillScopingInfo(BST_Name* node, ScopeInfo* scope_info) {
+
+template <typename Node> void fillScopingInfo(Node* node, ScopeInfo* scope_info) {
+    node->lookup_type = scope_info->getScopeTypeOfName(node->id);
+
+    if (node->lookup_type == ScopeInfo::VarScopeType::CLOSURE)
+        node->closure_offset = scope_info->getClosureOffset(node->id);
+    else if (node->lookup_type == ScopeInfo::VarScopeType::DEREF)
+        node->deref_info = scope_info->getDerefInfo(node->id);
+
+    assert(node->lookup_type != ScopeInfo::VarScopeType::UNKNOWN);
+}
+
+template <> void fillScopingInfo<BST_Name>(BST_Name* node, ScopeInfo* scope_info) {
     node->lookup_type = scope_info->getScopeTypeOfName(node->id);
 
     if (node->lookup_type == ScopeInfo::VarScopeType::CLOSURE)
         node->closure_offset = scope_info->getClosureOffset(node->id);
     else if (node->lookup_type == ScopeInfo::VarScopeType::DEREF)
         assert(0 && "should not happen");
-
-    assert(node->lookup_type != ScopeInfo::VarScopeType::UNKNOWN);
-}
-
-static void fillScopingInfo(BST_StoreName* node, ScopeInfo* scope_info) {
-    node->lookup_type = scope_info->getScopeTypeOfName(node->id);
-
-    if (node->lookup_type == ScopeInfo::VarScopeType::CLOSURE)
-        node->closure_offset = scope_info->getClosureOffset(node->id);
-    else if (node->lookup_type == ScopeInfo::VarScopeType::DEREF)
-        node->deref_info = scope_info->getDerefInfo(node->id);
-
-    assert(node->lookup_type != ScopeInfo::VarScopeType::UNKNOWN);
-}
-
-static void fillScopingInfo(BST_LoadName* node, ScopeInfo* scope_info) {
-    node->lookup_type = scope_info->getScopeTypeOfName(node->id);
-
-    if (node->lookup_type == ScopeInfo::VarScopeType::CLOSURE)
-        node->closure_offset = scope_info->getClosureOffset(node->id);
-    else if (node->lookup_type == ScopeInfo::VarScopeType::DEREF)
-        node->deref_info = scope_info->getDerefInfo(node->id);
 
     assert(node->lookup_type != ScopeInfo::VarScopeType::UNKNOWN);
 }
@@ -2148,19 +2138,10 @@ public:
                 }
                 case AST_TYPE::Name: {
                     AST_Name* s = static_cast<AST_Name*>(t);
-
                     auto* del = new BST_DeleteName;
                     del->lineno = node->lineno;
                     del->id = s->id;
-
-                    del->lookup_type = scoping->getScopeTypeOfName(s->id);
-
-                    if (del->lookup_type == ScopeInfo::VarScopeType::CLOSURE)
-                        del->closure_offset = scoping->getClosureOffset(s->id);
-                    else if (del->lookup_type == ScopeInfo::VarScopeType::DEREF)
-                        del->deref_info = scoping->getDerefInfo(s->id);
-                    assert(del->lookup_type != ScopeInfo::VarScopeType::UNKNOWN);
-
+                    fillScopingInfo(del, scoping);
                     push_back(del);
                     break;
                 }
@@ -2395,14 +2376,7 @@ public:
         auto del = new BST_DeleteName();
         del->id = name;
         del->lineno = 0;
-        del->lookup_type = scoping->getScopeTypeOfName(name);
-
-        if (del->lookup_type == ScopeInfo::VarScopeType::CLOSURE)
-            del->closure_offset = scoping->getClosureOffset(name);
-        else if (del->lookup_type == ScopeInfo::VarScopeType::DEREF)
-            del->deref_info = scoping->getDerefInfo(name);
-        assert(del->lookup_type != ScopeInfo::VarScopeType::UNKNOWN);
-
+        fillScopingInfo(del, scoping);
         return del;
     }
 

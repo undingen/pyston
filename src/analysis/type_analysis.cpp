@@ -294,6 +294,7 @@ private:
     void visit_callclsattr(BST_CallClsAttr* node) override {
         CompilerType* t = getType(node->vreg_value);
         CompilerType* func = t->getattrType(node->attr, true);
+
         if (VERBOSITY() >= 2 && func == UNDEF) {
             printf("Think %s.%s is undefined, at %d\n", t->debugName().c_str(), node->attr.c_str(), node->lineno);
             print_bst(node);
@@ -323,10 +324,7 @@ private:
         arg_types.push_back(right);
         return attr_type->callType(ArgPassSpec(2), arg_types, NULL);
     }
-    void visit_compare(BST_Compare* node) override {
-        CompilerType* t = visit_compareHelper(node);
-        _doSet(node->vreg_dst, t);
-    }
+    void visit_compare(BST_Compare* node) override { _doSet(node->vreg_dst, visit_compareHelper(node)); }
 
     void visit_dict(BST_Dict* node) override { _doSet(node->vreg_dst, DICT); }
 
@@ -346,7 +344,6 @@ private:
     void visit_uncacheexcinfo(BST_UncacheExcInfo* node) override {}
     void visit_hasnext(BST_HasNext* node) override { return _doSet(node->vreg_dst, BOOL); }
     void visit_printexpr(BST_PrintExpr* node) override {}
-
 
     void visit_list(BST_List* node) override {
         // Get all the sub-types, even though they're not necessary to

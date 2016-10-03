@@ -1738,7 +1738,7 @@ private:
             bool maybe_was_undefined = popDefinedVar(vreg, true);
 
             if (vst == ScopeInfo::VarScopeType::CLOSURE) {
-                size_t offset = irstate->getScopeInfo().getClosureOffset(node);
+                size_t offset = node->closure_offset;
 
                 // This is basically `closure->elts[offset] = val;`
                 llvm::Value* gep = getClosureElementGep(emitter, irstate->getCreatedClosure(), offset);
@@ -1803,7 +1803,7 @@ private:
             bool maybe_was_undefined = popDefinedVar(vreg, true);
 
             if (vst == ScopeInfo::VarScopeType::CLOSURE) {
-                size_t offset = irstate->getScopeInfo().getClosureOffset(node);
+                size_t offset = node->closure_offset;
 
                 // This is basically `closure->elts[offset] = val;`
                 llvm::Value* gep = getClosureElementGep(emitter, irstate->getCreatedClosure(), offset);
@@ -1925,6 +1925,7 @@ private:
     }
 
     void doAssert(BST_Assert* node, const UnwindInfo& unw_info) {
+        // cfg translates all asserts into only 'assert 0' on the failing path.
         std::vector<llvm::Value*> llvm_args;
 
         // We could patchpoint this or try to avoid the overhead, but this should only
@@ -2470,7 +2471,7 @@ private:
                 doPrintExpr((BST_PrintExpr*)node, unw_info);
                 break;
 
-
+            // Handle all cases which are derived from BST_stmt_with_dest
             default: {
                 CompilerVariable* rtn = NULL;
                 switch (node->type) {
