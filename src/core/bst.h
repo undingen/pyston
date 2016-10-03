@@ -1156,7 +1156,9 @@ public:
     virtual void visit_yield(BST_Yield* node) { RELEASE_ASSERT(0, ""); }
 };
 
+class ConstantVRegInfo;
 void print_bst(BST_stmt* bst, const ConstantVRegInfo& constant_vregs);
+
 class PrintVisitor : public BSTVisitor {
 private:
     llvm::raw_ostream& stream;

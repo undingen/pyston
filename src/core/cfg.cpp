@@ -246,9 +246,10 @@ public:
                               AST* orig_node);
 };
 
-static CFG* computeCFG(llvm::ArrayRef<AST_stmt*> body, AST_TYPE::AST_TYPE ast_type, int lineno, AST_arguments* args,
-                       BoxedString* filename, SourceInfo* source, const ParamNames& param_names, ScopeInfo* scoping,
-                       ModuleCFGProcessor* cfgizer);
+static std::pair<CFG*, ConstantVRegInfo> computeCFG(llvm::ArrayRef<AST_stmt*> body, AST_TYPE::AST_TYPE ast_type,
+                                                    int lineno, AST_arguments* args, BoxedString* filename,
+                                                    SourceInfo* source, const ParamNames& param_names,
+                                                    ScopeInfo* scoping, ModuleCFGProcessor* cfgizer);
 
 // This keeps track of the result of an instruction it's either a name, const or undefined.
 struct TmpValue {
@@ -362,12 +363,14 @@ private:
     std::vector<ContInfo> continuations;
     std::vector<ExcBlockInfo> exc_handlers;
     llvm::DenseMap<Box*, int> consts;
+    ConstantVRegInfo constant_vregs;
 
     unsigned int next_var_index = 0;
 
-    friend CFG* computeCFG(llvm::ArrayRef<AST_stmt*> body, AST_TYPE::AST_TYPE ast_type, int lineno, AST_arguments* args,
-                           BoxedString* filename, SourceInfo* source, const ParamNames& param_names, ScopeInfo* scoping,
-                           ModuleCFGProcessor* cfgizer);
+    friend std::pair<CFG*, ConstantVRegInfo> computeCFG(llvm::ArrayRef<AST_stmt*> body, AST_TYPE::AST_TYPE ast_type,
+                                                        int lineno, AST_arguments* args, BoxedString* filename,
+                                                        SourceInfo* source, const ParamNames& param_names,
+                                                        ScopeInfo* scoping, ModuleCFGProcessor* cfgizer);
 
 public:
     CFGVisitor(BoxedString* filename, SourceInfo* source, InternedStringPool& stringpool, ScopeInfo* scoping,
@@ -510,7 +513,7 @@ private:
         auto it = consts.find(o);
         if (it != consts.end())
             return it->second;
-        int vreg = source->constant_vregs.addConstant(o);
+        int vreg = constant_vregs.addConstant(o);
         consts[o] = vreg;
         return vreg;
     }
@@ -3058,9 +3061,10 @@ void VRegInfo::assignVRegs(CFG* cfg, const ParamNames& param_names, llvm::DenseM
 }
 
 
-static CFG* computeCFG(llvm::ArrayRef<AST_stmt*> body, AST_TYPE::AST_TYPE ast_type, int lineno, AST_arguments* args,
-                       BoxedString* filename, SourceInfo* source, const ParamNames& param_names, ScopeInfo* scoping,
-                       ModuleCFGProcessor* cfgizer) {
+static std::pair<CFG*, ConstantVRegInfo> computeCFG(llvm::ArrayRef<AST_stmt*> body, AST_TYPE::AST_TYPE ast_type,
+                                                    int lineno, AST_arguments* args, BoxedString* filename,
+                                                    SourceInfo* source, const ParamNames& param_names,
+                                                    ScopeInfo* scoping, ModuleCFGProcessor* cfgizer) {
     STAT_TIMER(t0, "us_timer_computecfg", 0);
 
     CFG* rtn = new CFG();
@@ -3149,7 +3153,7 @@ static CFG* computeCFG(llvm::ArrayRef<AST_stmt*> body, AST_TYPE::AST_TYPE ast_ty
 
     if (VERBOSITY("cfg") >= 3) {
         printf("Before cfg checking and transformations:\n");
-        rtn->print(source->constant_vregs);
+        rtn->print(visitor.constant_vregs);
     }
 
 #ifndef NDEBUG
@@ -3177,7 +3181,7 @@ static CFG* computeCFG(llvm::ArrayRef<AST_stmt*> body, AST_TYPE::AST_TYPE ast_ty
 
         if (b->predecessors.size() == 0) {
             if (b != rtn->getStartingBlock()) {
-                rtn->print(source->constant_vregs);
+                rtn->print(visitor.constant_vregs);
             }
             ASSERT(b == rtn->getStartingBlock(), "%d", b->idx);
         }
@@ -3232,13 +3236,13 @@ static CFG* computeCFG(llvm::ArrayRef<AST_stmt*> body, AST_TYPE::AST_TYPE ast_ty
         deduped[e]++;
         if (deduped[e] == 2) {
             printf("Duplicated: ");
-            print_bst(e, source->constant_vregs);
+            print_bst(e, visitor.constant_vregs);
             printf("\n");
             no_dups = false;
         }
     }
     if (!no_dups)
-        rtn->print(source->constant_vregs);
+        rtn->print(visitor.constant_vregs);
     assert(no_dups);
 
 // Uncomment this for some heavy checking to make sure that we don't forget
@@ -3341,10 +3345,10 @@ static CFG* computeCFG(llvm::ArrayRef<AST_stmt*> body, AST_TYPE::AST_TYPE ast_ty
 
     if (VERBOSITY("cfg") >= 2) {
         printf("Final cfg:\n");
-        rtn->print(source->constant_vregs, llvm::outs());
+        rtn->print(visitor.constant_vregs, llvm::outs());
     }
 
-    return rtn;
+    return std::make_pair(rtn, visitor.constant_vregs);
 }
 
 
@@ -3391,15 +3395,18 @@ BoxedCode* ModuleCFGProcessor::runRecursively(llvm::ArrayRef<AST_stmt*> body, Bo
     for (auto e : param_names.allArgsAsName())
         fillScopingInfo(e, scope_info);
 
-    si->cfg = computeCFG(body, ast_type, lineno, args, fn, si.get(), param_names, scope_info, this);
+    ConstantVRegInfo constant_vregs;
+    std::tie(si->cfg, constant_vregs)
+        = computeCFG(body, ast_type, lineno, args, fn, si.get(), param_names, scope_info, this);
 
     BoxedCode* code;
     if (args)
         code = new BoxedCode(args->args.size(), args->vararg, args->kwarg, lineno, std::move(si),
-                             std::move(param_names), fn, name, autoDecref(getDocString(body)));
-    else
-        code = new BoxedCode(0, false, false, lineno, std::move(si), std::move(param_names), fn, name,
+                             std::move(constant_vregs), std::move(param_names), fn, name,
                              autoDecref(getDocString(body)));
+    else
+        code = new BoxedCode(0, false, false, lineno, std::move(si), std::move(constant_vregs), std::move(param_names),
+                             fn, name, autoDecref(getDocString(body)));
 
     return code;
 }

@@ -24,6 +24,7 @@
 namespace pyston {
 
 class CFGBlock;
+class ConstantVRegInfo;
 class BoxedClass;
 class BST_stmt_with_dest;
 class OSREntryDescriptor;

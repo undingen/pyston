@@ -181,7 +181,7 @@ public:
     BoxedClosure* getPassedClosure() { return frame_info.passed_closure; }
     Box** getVRegs() { return vregs; }
     const ScopingResults& getScopeInfo() { return scope_info; }
-    const ConstantVRegInfo getConstantVRegInfo() { return source_info->constant_vregs; }
+    const ConstantVRegInfo getConstantVRegInfo() { return getCode()->constant_vregs; }
 
     void addSymbol(int vreg, Box* value, bool allow_duplicates);
     void setGenerator(Box* gen);

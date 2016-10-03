@@ -484,19 +484,6 @@ public:
 };
 
 // Data about a single textual function definition.
-class ConstantVRegInfo {
-private:
-    std::vector<Box*> constants;
-
-public:
-    Box* getConstant(int vreg) const { return constants[-(vreg + 1)]; }
-    // returns the vreg num for the constant (which is a negative number)
-    int addConstant(Box* o) {
-        constants.push_back(o);
-        return -constants.size();
-    }
-};
-
 class SourceInfo {
 private:
     std::unique_ptr<LivenessAnalysis> liveness_info;
@@ -506,7 +493,6 @@ public:
     ScopingResults scoping;
     CFG* cfg;
     FutureFlags future_flags;
-    ConstantVRegInfo constant_vregs;
     bool is_generator;
 
     // This should really be an AST_TYPE::AST_TYPE, using that would require resolving a circular dependency
