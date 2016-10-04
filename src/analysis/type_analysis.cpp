@@ -102,9 +102,10 @@ private:
           constant_vregs(constant_vregs) {}
 
     void run() {
-        for (int i = 0; i < block->body.size(); i++) {
-            block->body[i]->accept_stmt(this);
-        }
+        block->doForAllStmt([&](BST_stmt* stmt) {
+            stmt->accept_stmt(this);
+            return false;
+        });
     }
 
     CompilerType* processSpeculation(BoxedClass* speculated_cls, BST_stmt* node, CompilerType* old_type) {

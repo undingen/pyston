@@ -25,6 +25,17 @@ protected:
     }
 };
 
+BoxedCode* getFirstMakeFunctionCode(BoxedCode* module_code) {
+    BoxedCode* code = NULL;
+    module_code->source->cfg->getStartingBlock()->doForAllStmt([&](BST_stmt* stmt){
+        if (stmt->type !=  BST_TYPE::MakeFunction)
+                return false;
+        code = module_code->constant_vregs.getFuncOrClass(bst_cast<BST_MakeFunction>(stmt)->index_function_def).second;
+        return true;
+    });
+    return code;
+}
+
 // this test use functions (VRegInfo::getVReg) which are only available in a debug build
 #ifndef NDEBUG
 TEST_F(AnalysisTest, augassign) {
@@ -52,13 +63,7 @@ TEST_F(AnalysisTest, augassign) {
     ParamNames param_names(args, *module->interned_strings.get());
 
     // Hack to get at the cfg:
-    BoxedCode* code = NULL;
-    for (BST_stmt* stmt : module_code->source->cfg->blocks[0]->body) {
-        if (stmt->type !=  BST_TYPE::MakeFunction)
-            continue;
-        code = module_code->constant_vregs.getFuncOrClass(bst_cast<BST_MakeFunction>(stmt)->index_function_def).second;
-        break;
-    }
+    BoxedCode* code = getFirstMakeFunctionCode(module_code);
     CFG* cfg = code->source->cfg;
     assert(cfg);
 
@@ -69,7 +74,7 @@ TEST_F(AnalysisTest, augassign) {
 
     for (CFGBlock* block : cfg->blocks) {
         //printf("%d\n", block->idx);
-        if (block->body.back()->type != BST_TYPE::Return)
+        if (block->getLastStmt()->type != BST_TYPE::Return)
             ASSERT_TRUE(liveness->isLiveAtEnd(vregs.getVReg(module->interned_strings->get("a")), block));
     }
 
@@ -97,13 +102,7 @@ void doOsrTest(bool is_osr, bool i_maybe_undefined) {
     auto module_code = computeAllCFGs(module, true, future_flags, boxString(fn), main_module);
 
     // Hack to get at the cfg:
-    BoxedCode* code = NULL;
-    for (BST_stmt* stmt : module_code->source->cfg->blocks[0]->body) {
-        if (stmt->type !=  BST_TYPE::MakeFunction)
-            continue;
-        code = module_code->constant_vregs.getFuncOrClass(bst_cast<BST_MakeFunction>(stmt)->index_function_def).second;
-        break;
-    }
+    BoxedCode* code = getFirstMakeFunctionCode(module_code);
     assert(code);
     CFG* cfg = code->source->cfg;
     std::unique_ptr<LivenessAnalysis> liveness = computeLivenessInfo(cfg, code->constant_vregs);
@@ -118,10 +117,10 @@ void doOsrTest(bool is_osr, bool i_maybe_undefined) {
 
     CFGBlock* loop_backedge = cfg->blocks[5];
     ASSERT_EQ(6, loop_backedge->idx);
-    ASSERT_EQ(1, loop_backedge->body.size());
+    ASSERT_TRUE(loop_backedge->body->is_terminator());
 
-    ASSERT_EQ(BST_TYPE::Jump, loop_backedge->body[0]->type);
-    BST_Jump* backedge = bst_cast<BST_Jump>(loop_backedge->body[0]);
+    ASSERT_EQ(BST_TYPE::Jump, loop_backedge->body->type);
+    BST_Jump* backedge = bst_cast<BST_Jump>(loop_backedge->body);
     ASSERT_LE(backedge->target->idx, loop_backedge->idx);
 
     std::unique_ptr<PhiAnalysis> phis;

@@ -162,7 +162,76 @@ static int getLastLineno(llvm::ArrayRef<AST_stmt*> body, int default_lineno) {
     return getLastLinenoSub(body.back());
 }
 
-void CFGBlock::connectTo(CFGBlock* successor, bool allow_backedge) {
+class CFGConstruction;
+class CFGConstructionBlock {
+public:
+    CFGConstruction* const cfg;
+
+    llvm::SmallVector<BST_stmt*, 4> body;
+    llvm::SmallVector<CFGConstructionBlock*, 2> predecessors, successors;
+    int idx; // index in the CFG
+    const char* info;
+
+    typedef llvm::SmallVector<BST_stmt*, 4>::iterator iterator;
+
+    CFGConstructionBlock(CFGConstruction* cfg, int idx) : cfg(cfg), idx(idx), info(NULL) {}
+
+    void connectTo(CFGConstructionBlock* successor, bool allow_backedge = false);
+    void unconnectFrom(CFGConstructionBlock* successor);
+
+    void push_back(BST_stmt* node) { body.push_back(node); }
+    void print(const ConstantVRegInfo& constant_vregs, llvm::raw_ostream& stream);
+};
+
+class CFGConstruction {
+private:
+    int next_idx;
+    VRegInfo vreg_info;
+
+public:
+    std::vector<CFGConstructionBlock*> blocks;
+
+public:
+    CFGConstruction() : next_idx(0) {}
+    ~CFGConstruction() {
+        for (auto&& block : blocks) {
+            delete block;
+        }
+    }
+
+    CFGConstructionBlock* getStartingBlock() { return blocks[0]; }
+    VRegInfo& getVRegInfo() { return vreg_info; }
+
+    CFGConstructionBlock* addBlock() {
+        int idx = next_idx;
+        next_idx++;
+        CFGConstructionBlock* block = new CFGConstructionBlock(this, idx);
+        blocks.push_back(block);
+        return block;
+    }
+
+    // Creates a block which must be placed later, using placeBlock().
+    // Must be placed on same CFG it was created on.
+    // You can also safely delete it without placing it.
+    CFGConstructionBlock* addDeferredBlock() { return new CFGConstructionBlock(this, -1); }
+
+    void placeBlock(CFGConstructionBlock* block) {
+        assert(block->idx == -1);
+        block->idx = next_idx;
+        next_idx++;
+        blocks.push_back(block);
+    }
+
+    void print(const ConstantVRegInfo& constant_vregs, llvm::raw_ostream& stream = llvm::outs()) {
+        stream << "CFG:\n";
+        stream << blocks.size() << " blocks\n";
+        for (int i = 0; i < blocks.size(); i++)
+            blocks[i]->print(constant_vregs, stream);
+        stream.flush();
+    }
+};
+
+void CFGConstructionBlock::connectTo(CFGConstructionBlock* successor, bool allow_backedge) {
     assert(successors.size() <= 1);
 
     if (!allow_backedge) {
@@ -177,7 +246,7 @@ void CFGBlock::connectTo(CFGBlock* successor, bool allow_backedge) {
     successor->predecessors.push_back(this);
 }
 
-void CFGBlock::unconnectFrom(CFGBlock* successor) {
+void CFGConstructionBlock::unconnectFrom(CFGConstructionBlock* successor) {
     // assert(successors.count(successor));
     // assert(successor->predecessors.count(this));
     successors.erase(std::remove(successors.begin(), successors.end(), successor), successors.end());
@@ -185,7 +254,7 @@ void CFGBlock::unconnectFrom(CFGBlock* successor) {
                                   successor->predecessors.end());
 }
 
-void CFGBlock::print(const ConstantVRegInfo& constant_vregs, llvm::raw_ostream& stream) {
+void CFGConstructionBlock::print(const ConstantVRegInfo& constant_vregs, llvm::raw_ostream& stream) {
     stream << "Block " << idx;
     if (info)
         stream << " '" << info << "'";
@@ -206,6 +275,30 @@ void CFGBlock::print(const ConstantVRegInfo& constant_vregs, llvm::raw_ostream& 
         body[j]->accept(&pv);
         stream << "\n";
     }
+}
+
+void CFGBlock::print(const ConstantVRegInfo& constant_vregs, llvm::raw_ostream& stream) {
+    stream << "Block " << idx;
+    if (info)
+        stream << " '" << info << "'";
+
+    stream << "; Predecessors:";
+    for (int j = 0; j < predecessors.size(); j++) {
+        stream << " " << predecessors[j]->idx;
+    }
+    stream << " Successors:";
+    for (int j = 0; j < successors.size(); j++) {
+        stream << " " << successors[j]->idx;
+    }
+    stream << "\n";
+
+    PrintVisitor pv(constant_vregs, 4, stream);
+    doForAllStmt([&](BST_stmt* stmt) {
+        stream << "    ";
+        stmt->accept(&pv);
+        stream << "\n";
+        return false;
+    });
 }
 
 static const std::string RETURN_NAME("#rtnval");
@@ -270,6 +363,7 @@ struct TmpValue {
     bool isUndefined() const { return type == UNDEFINED; }
 };
 
+
 // A class that crawls the AST of a single function and computes the CFG
 class CFGVisitor : public ASTVisitor {
     // ---------- Types ----------
@@ -314,7 +408,7 @@ private:
      */
     struct ContInfo {
         // where to jump to if a continue, break, or return happens respectively
-        CFGBlock* continue_dest, *break_dest, *return_dest;
+        CFGConstructionBlock* continue_dest, *break_dest, *return_dest;
         // true if this continuation needs to know the reason why we entered it. `finally' blocks use this info to
         // determine how to resume execution after they finish.
         bool say_why;
@@ -325,8 +419,8 @@ private:
         // name of the variable to store the reason Why we jumped in.
         InternedString why_name;
 
-        ContInfo(CFGBlock* continue_dest, CFGBlock* break_dest, CFGBlock* return_dest, bool say_why,
-                 InternedString why_name)
+        ContInfo(CFGConstructionBlock* continue_dest, CFGConstructionBlock* break_dest,
+                 CFGConstructionBlock* return_dest, bool say_why, InternedString why_name)
             : continue_dest(continue_dest),
               break_dest(break_dest),
               return_dest(return_dest),
@@ -337,7 +431,7 @@ private:
 
     struct ExcBlockInfo {
         // where to jump in case of an exception
-        CFGBlock* exc_dest;
+        CFGConstructionBlock* exc_dest;
         // variable names to store the exception (type, value, traceback) in
         InternedString exc_type_name, exc_value_name, exc_traceback_name;
 
@@ -356,10 +450,10 @@ private:
     // function (otherwise we SyntaxError).
     AST_TYPE::AST_TYPE root_type;
     FutureFlags future_flags;
-    CFG* cfg;
+    CFGConstruction* cfg;
     ModuleCFGProcessor* cfgizer;
 
-    CFGBlock* curblock;
+    CFGConstructionBlock* curblock;
     std::vector<ContInfo> continuations;
     std::vector<ExcBlockInfo> exc_handlers;
     llvm::DenseMap<Box*, int> consts;
@@ -374,7 +468,8 @@ private:
 
 public:
     CFGVisitor(BoxedString* filename, SourceInfo* source, InternedStringPool& stringpool, ScopeInfo* scoping,
-               AST_TYPE::AST_TYPE root_type, FutureFlags future_flags, CFG* cfg, ModuleCFGProcessor* cfgizer)
+               AST_TYPE::AST_TYPE root_type, FutureFlags future_flags, CFGConstruction* cfg,
+               ModuleCFGProcessor* cfgizer)
         : filename(filename),
           source(source),
           stringpool(stringpool),
@@ -409,13 +504,13 @@ private:
         return name;
     }
 
-    void pushLoopContinuation(CFGBlock* continue_dest, CFGBlock* break_dest) {
+    void pushLoopContinuation(CFGConstructionBlock* continue_dest, CFGConstructionBlock* break_dest) {
         assert(continue_dest
                != break_dest); // I guess this doesn't have to be true, but validates passing say_why=false
         continuations.emplace_back(continue_dest, break_dest, nullptr, false, internString(""));
     }
 
-    void pushFinallyContinuation(CFGBlock* finally_block, InternedString why_name) {
+    void pushFinallyContinuation(CFGConstructionBlock* finally_block, InternedString why_name) {
         continuations.emplace_back(finally_block, finally_block, finally_block, true, why_name);
     }
 
@@ -591,13 +686,13 @@ private:
         auto* list = BST_List::create(0);
         list->lineno = node->lineno;
         TmpValue rtn_name = pushBackCreateDst(list);
-        std::vector<CFGBlock*> exit_blocks;
+        std::vector<CFGConstructionBlock*> exit_blocks;
 
         // Where the current level should jump to after finishing its iteration.
         // For the outermost comprehension, this is NULL, and it doesn't jump anywhere;
         // for the inner comprehensions, they should jump to the next-outer comprehension
         // when they are done iterating.
-        CFGBlock* finished_block = NULL;
+        CFGConstructionBlock* finished_block = NULL;
 
         for (int i = 0, n = node->generators.size(); i < n; i++) {
             AST_comprehension* c = node->generators[i];
@@ -611,7 +706,7 @@ private:
             unmapExpr(iter_name, &iter_call->vreg_dst);
             push_back(iter_call);
 
-            CFGBlock* test_block = cfg->addBlock();
+            CFGConstructionBlock* test_block = cfg->addBlock();
             test_block->info = "comprehension_test";
             // printf("Test block for comp %d is %d\n", i, test_block->idx);
             pushJump(test_block);
@@ -622,9 +717,9 @@ private:
             test_call->lineno = c->target->lineno;
             TmpValue tmp_test_name = pushBackCreateDst(test_call);
 
-            CFGBlock* body_block = cfg->addBlock();
+            CFGConstructionBlock* body_block = cfg->addBlock();
             body_block->info = "comprehension_body";
-            CFGBlock* exit_block = cfg->addDeferredBlock();
+            CFGConstructionBlock* exit_block = cfg->addDeferredBlock();
             exit_block->info = "comprehension_exit";
             exit_blocks.push_back(exit_block);
             // printf("Body block for comp %d is %d\n", i, body_block->idx);
@@ -632,8 +727,8 @@ private:
             BST_Branch* br = new BST_Branch();
             br->lineno = node->lineno;
             unmapExpr(_dup(tmp_test_name), &br->vreg_test);
-            br->iftrue = body_block;
-            br->iffalse = exit_block;
+            br->iftrue = (CFGBlock*)body_block;
+            br->iffalse = (CFGBlock*)exit_block;
             curblock->connectTo(body_block);
             curblock->connectTo(exit_block);
             push_back(br);
@@ -650,16 +745,16 @@ private:
                 push_back(br);
 
                 // Put this below the entire body?
-                CFGBlock* body_tramp = cfg->addBlock();
+                CFGConstructionBlock* body_tramp = cfg->addBlock();
                 body_tramp->info = "comprehension_if_trampoline";
                 // printf("body_tramp for %d is %d\n", i, body_tramp->idx);
-                CFGBlock* body_continue = cfg->addBlock();
+                CFGConstructionBlock* body_continue = cfg->addBlock();
                 body_continue->info = "comprehension_if_continue";
                 // printf("body_continue for %d is %d\n", i, body_continue->idx);
 
-                br->iffalse = body_tramp;
+                br->iffalse = (CFGBlock*)body_tramp;
                 curblock->connectTo(body_tramp);
-                br->iftrue = body_continue;
+                br->iftrue = (CFGBlock*)body_continue;
                 curblock->connectTo(body_continue);
 
                 curblock = body_tramp;
@@ -668,7 +763,7 @@ private:
                 curblock = body_continue;
             }
 
-            CFGBlock* body_end = curblock;
+            CFGConstructionBlock* body_end = curblock;
 
             assert((finished_block != NULL) == (i != 0));
             if (finished_block) {
@@ -702,9 +797,9 @@ private:
         return rtn_name;
     }
 
-    void pushJump(CFGBlock* target, bool allow_backedge = false, int lineno = 0) {
+    void pushJump(CFGConstructionBlock* target, bool allow_backedge = false, int lineno = 0) {
         BST_Jump* rtn = new BST_Jump();
-        rtn->target = target;
+        rtn->target = (CFGBlock*)target;
         rtn->lineno = lineno;
 
         push_back(rtn);
@@ -723,11 +818,11 @@ private:
     // NB. this can (but usually doesn't) generate new blocks, which is why we require `iftrue' and `iffalse' to be
     // deferred, to avoid heisenbugs. of course, this doesn't allow these branches to be backedges, but that hasn't yet
     // been necessary.
-    void pushBranch(TmpValue test, CFGBlock* iftrue, CFGBlock* iffalse) {
+    void pushBranch(TmpValue test, CFGConstructionBlock* iftrue, CFGConstructionBlock* iffalse) {
         assert(iftrue->idx == -1 && iffalse->idx == -1);
         BST_Branch* branch = makeBranch(test);
-        branch->iftrue = iftrue;
-        branch->iffalse = iffalse;
+        branch->iftrue = (CFGBlock*)iftrue;
+        branch->iffalse = (CFGBlock*)iffalse;
         curblock->connectTo(iftrue);
         curblock->connectTo(iffalse);
         push_back(branch);
@@ -988,8 +1083,8 @@ private:
 
         InternedString name = nodeName();
 
-        CFGBlock* starting_block = curblock;
-        CFGBlock* exit_block = cfg->addDeferredBlock();
+        CFGConstructionBlock* starting_block = curblock;
+        CFGConstructionBlock* exit_block = cfg->addDeferredBlock();
 
         for (int i = 0; i < node->values.size() - 1; i++) {
             TmpValue val = remapExpr(node->values[i]);
@@ -1000,18 +1095,18 @@ private:
             br->lineno = val.lineno;
             push_back(br);
 
-            CFGBlock* was_block = curblock;
-            CFGBlock* next_block = cfg->addBlock();
-            CFGBlock* crit_break_block = cfg->addBlock();
+            CFGConstructionBlock* was_block = curblock;
+            CFGConstructionBlock* next_block = cfg->addBlock();
+            CFGConstructionBlock* crit_break_block = cfg->addBlock();
             was_block->connectTo(next_block);
             was_block->connectTo(crit_break_block);
 
             if (node->op_type == AST_TYPE::Or) {
-                br->iftrue = crit_break_block;
-                br->iffalse = next_block;
+                br->iftrue = (CFGBlock*)crit_break_block;
+                br->iffalse = (CFGBlock*)next_block;
             } else if (node->op_type == AST_TYPE::And) {
-                br->iffalse = crit_break_block;
-                br->iftrue = next_block;
+                br->iffalse = (CFGBlock*)crit_break_block;
+                br->iftrue = (CFGBlock*)next_block;
             } else {
                 RELEASE_ASSERT(0, "");
             }
@@ -1111,7 +1206,7 @@ private:
         } else {
             TmpValue name(nodeName(), node->lineno);
 
-            CFGBlock* exit_block = cfg->addDeferredBlock();
+            CFGConstructionBlock* exit_block = cfg->addDeferredBlock();
             TmpValue left = remapExpr(node->left);
 
             for (int i = 0; i < node->ops.size(); i++) {
@@ -1140,14 +1235,14 @@ private:
                 unmapExpr(callNonzero(_dup(name)), &br->vreg_test);
                 push_back(br);
 
-                CFGBlock* was_block = curblock;
-                CFGBlock* next_block = cfg->addBlock();
-                CFGBlock* crit_break_block = cfg->addBlock();
+                CFGConstructionBlock* was_block = curblock;
+                CFGConstructionBlock* next_block = cfg->addBlock();
+                CFGConstructionBlock* crit_break_block = cfg->addBlock();
                 was_block->connectTo(next_block);
                 was_block->connectTo(crit_break_block);
 
-                br->iffalse = crit_break_block;
-                br->iftrue = next_block;
+                br->iffalse = (CFGBlock*)crit_break_block;
+                br->iftrue = (CFGBlock*)next_block;
 
                 curblock = crit_break_block;
                 pushJump(exit_block);
@@ -1324,9 +1419,9 @@ private:
         assert(curblock);
 
         InternedString rtn_name = nodeName();
-        CFGBlock* iftrue = cfg->addDeferredBlock();
-        CFGBlock* iffalse = cfg->addDeferredBlock();
-        CFGBlock* exit_block = cfg->addDeferredBlock();
+        CFGConstructionBlock* iftrue = cfg->addDeferredBlock();
+        CFGConstructionBlock* iffalse = cfg->addDeferredBlock();
+        CFGConstructionBlock* exit_block = cfg->addDeferredBlock();
 
         pushBranch(remapExpr(node->test), iftrue, iffalse);
 
@@ -1590,8 +1685,8 @@ private:
     }
 
     // helper for visit_{tryfinally,with}
-    CFGBlock* makeFinallyCont(Why reason, TmpValue whyexpr, CFGBlock* then_block) {
-        CFGBlock* otherwise = cfg->addDeferredBlock();
+    CFGConstructionBlock* makeFinallyCont(Why reason, TmpValue whyexpr, CFGConstructionBlock* then_block) {
+        CFGConstructionBlock* otherwise = cfg->addDeferredBlock();
         otherwise->info = "finally_otherwise";
         pushBranch(makeCompare(AST_TYPE::Eq, whyexpr, makeNum(reason, whyexpr.lineno)), then_block, otherwise);
         cfg->placeBlock(otherwise);
@@ -1600,7 +1695,7 @@ private:
 
     // Helper for visit_with. Performs the appropriate exit from a with-block, according to the value of `why'.
     // NB. `exit_block' is only used if `why' is FALLTHROUGH.
-    void exitFinally(AST* node, Why why, CFGBlock* exit_block = nullptr) {
+    void exitFinally(AST* node, Why why, CFGConstructionBlock* exit_block = nullptr) {
         switch (why) {
             case Why::RETURN:
                 doReturn(TmpValue(internString(RETURN_NAME), node->lineno));
@@ -1626,9 +1721,9 @@ private:
     // performing the appropriate exit from the with-block if they are equal.
     // NB. `exit_block' is only used if `why' is FALLTHROUGH.
     void exitFinallyIf(AST* node, Why why, TmpValue whyname, bool is_kill = false) {
-        CFGBlock* do_exit = cfg->addDeferredBlock();
+        CFGConstructionBlock* do_exit = cfg->addDeferredBlock();
         do_exit->info = "with_exit_if";
-        CFGBlock* otherwise = makeFinallyCont(why, is_kill ? whyname : _dup(whyname), do_exit);
+        CFGConstructionBlock* otherwise = makeFinallyCont(why, is_kill ? whyname : _dup(whyname), do_exit);
 
         cfg->placeBlock(do_exit);
         curblock = do_exit;
@@ -1691,17 +1786,17 @@ public:
         // TODO: would be much better (both more efficient and require less special casing)
         // if we just didn't generate this control flow as exceptions.
 
-        CFGBlock* normal_dest = cfg->addBlock();
+        CFGConstructionBlock* normal_dest = cfg->addBlock();
         // Add an extra exc_dest trampoline to prevent critical edges:
-        CFGBlock* exc_dest;
+        CFGConstructionBlock* exc_dest;
         if (is_raise)
             exc_dest = normal_dest;
         else
             exc_dest = cfg->addBlock();
 
         BST_Invoke* invoke = new BST_Invoke(node);
-        invoke->normal_dest = normal_dest;
-        invoke->exc_dest = exc_dest;
+        invoke->normal_dest = (CFGBlock*)normal_dest;
+        invoke->exc_dest = (CFGBlock*)exc_dest;
         invoke->lineno = node->lineno;
 
         curblock->push_back(invoke);
@@ -1917,14 +2012,14 @@ public:
         unmapExpr(callNonzero(remapExpr(node->test)), &br->vreg_test);
         push_back(br);
 
-        CFGBlock* iffalse = cfg->addBlock();
+        CFGConstructionBlock* iffalse = cfg->addBlock();
         iffalse->info = "assert_fail";
         curblock->connectTo(iffalse);
-        CFGBlock* iftrue = cfg->addBlock();
+        CFGConstructionBlock* iftrue = cfg->addBlock();
         iftrue->info = "assert_pass";
         curblock->connectTo(iftrue);
-        br->iftrue = iftrue;
-        br->iffalse = iffalse;
+        br->iftrue = (CFGBlock*)iftrue;
+        br->iffalse = (CFGBlock*)iffalse;
 
         curblock = iffalse;
 
@@ -2229,13 +2324,13 @@ public:
         unmapExpr(callNonzero(remapExpr(node->test)), &br->vreg_test);
         push_back(br);
 
-        CFGBlock* starting_block = curblock;
-        CFGBlock* exit = cfg->addDeferredBlock();
+        CFGConstructionBlock* starting_block = curblock;
+        CFGConstructionBlock* exit = cfg->addDeferredBlock();
         exit->info = "ifexit";
 
-        CFGBlock* iftrue = cfg->addBlock();
+        CFGConstructionBlock* iftrue = cfg->addBlock();
         iftrue->info = "iftrue";
-        br->iftrue = iftrue;
+        br->iftrue = (CFGBlock*)iftrue;
         starting_block->connectTo(iftrue);
         curblock = iftrue;
         for (int i = 0; i < node->body.size(); i++) {
@@ -2247,8 +2342,8 @@ public:
             pushJump(exit);
         }
 
-        CFGBlock* iffalse = cfg->addBlock();
-        br->iffalse = iffalse;
+        CFGConstructionBlock* iffalse = cfg->addBlock();
+        br->iffalse = (CFGBlock*)iffalse;
         starting_block->connectTo(iffalse);
 
         iffalse->info = "iffalse";
@@ -2301,24 +2396,24 @@ public:
     bool visit_while(AST_While* node) override {
         assert(curblock);
 
-        CFGBlock* test_block = cfg->addBlock();
+        CFGConstructionBlock* test_block = cfg->addBlock();
         test_block->info = "while_test";
         pushJump(test_block);
 
         curblock = test_block;
         BST_Branch* br = makeBranch(remapExpr(node->test));
-        CFGBlock* test_block_end = curblock;
+        CFGConstructionBlock* test_block_end = curblock;
         push_back(br);
 
         // We need a reference to this block early on so we can break to it,
         // but we don't want it to be placed until after the orelse.
-        CFGBlock* end = cfg->addDeferredBlock();
+        CFGConstructionBlock* end = cfg->addDeferredBlock();
         end->info = "while_exit";
         pushLoopContinuation(test_block, end);
 
-        CFGBlock* body = cfg->addBlock();
+        CFGConstructionBlock* body = cfg->addBlock();
         body->info = "while_body_start";
-        br->iftrue = body;
+        br->iftrue = (CFGBlock*)body;
 
         test_block_end->connectTo(body);
         curblock = body;
@@ -2331,9 +2426,9 @@ public:
             pushJump(test_block, true);
         popContinuation();
 
-        CFGBlock* orelse = cfg->addBlock();
+        CFGConstructionBlock* orelse = cfg->addBlock();
         orelse->info = "while_orelse_start";
-        br->iffalse = orelse;
+        br->iffalse = (CFGBlock*)orelse;
         test_block_end->connectTo(orelse);
         curblock = orelse;
         for (int i = 0; i < node->orelse.size(); i++) {
@@ -2380,7 +2475,7 @@ public:
         unmapExpr(itername, &iter_call->vreg_dst);
         push_back(iter_call);
 
-        CFGBlock* test_block = cfg->addBlock();
+        CFGConstructionBlock* test_block = cfg->addBlock();
         pushJump(test_block);
         curblock = test_block;
 
@@ -2391,17 +2486,17 @@ public:
         BST_Branch* test_br = makeBranch(tmp_has_call);
 
         push_back(test_br);
-        CFGBlock* test_true = cfg->addBlock();
-        CFGBlock* test_false = cfg->addBlock();
-        test_br->iftrue = test_true;
-        test_br->iffalse = test_false;
+        CFGConstructionBlock* test_true = cfg->addBlock();
+        CFGConstructionBlock* test_false = cfg->addBlock();
+        test_br->iftrue = (CFGBlock*)test_true;
+        test_br->iffalse = (CFGBlock*)test_false;
         curblock->connectTo(test_true);
         curblock->connectTo(test_false);
 
-        CFGBlock* loop_block = cfg->addBlock();
-        CFGBlock* break_block = cfg->addDeferredBlock();
-        CFGBlock* end_block = cfg->addDeferredBlock();
-        CFGBlock* else_block = cfg->addDeferredBlock();
+        CFGConstructionBlock* loop_block = cfg->addBlock();
+        CFGConstructionBlock* break_block = cfg->addDeferredBlock();
+        CFGConstructionBlock* end_block = cfg->addDeferredBlock();
+        CFGConstructionBlock* else_block = cfg->addDeferredBlock();
 
         curblock = test_true;
         // TODO simplify the breaking of these crit edges?
@@ -2432,10 +2527,10 @@ public:
             BST_Branch* end_br = makeBranch(tmp_end_call);
             push_back(end_br);
 
-            CFGBlock* end_true = cfg->addBlock();
-            CFGBlock* end_false = cfg->addBlock();
-            end_br->iftrue = end_true;
-            end_br->iffalse = end_false;
+            CFGConstructionBlock* end_true = cfg->addBlock();
+            CFGConstructionBlock* end_false = cfg->addBlock();
+            end_br->iftrue = (CFGBlock*)end_true;
+            end_br->iffalse = (CFGBlock*)end_false;
             curblock->connectTo(end_true);
             curblock->connectTo(end_false);
 
@@ -2504,7 +2599,7 @@ public:
         assert(curblock);
         assert(node->handlers.size() > 0);
 
-        CFGBlock* exc_handler_block = cfg->addDeferredBlock();
+        CFGConstructionBlock* exc_handler_block = cfg->addDeferredBlock();
         TmpValue exc_type_name(nodeName("type"), node->lineno);
         TmpValue exc_value_name(nodeName("value"), node->lineno);
         TmpValue exc_traceback_name(nodeName("traceback"), node->lineno);
@@ -2527,7 +2622,7 @@ public:
             }
         }
 
-        CFGBlock* join_block = cfg->addDeferredBlock();
+        CFGConstructionBlock* join_block = cfg->addDeferredBlock();
         if (curblock)
             pushJump(join_block);
 
@@ -2541,7 +2636,7 @@ public:
             for (AST_ExceptHandler* exc_handler : node->handlers) {
                 assert(!caught_all && "bare except clause not the last one in the list?");
 
-                CFGBlock* exc_next = nullptr;
+                CFGConstructionBlock* exc_next = nullptr;
                 if (exc_handler->type) {
                     TmpValue handled_type = remapExpr(exc_handler->type);
 
@@ -2556,11 +2651,11 @@ public:
                     unmapExpr(callNonzero(name_is_caught_here), &br->vreg_test);
                     br->lineno = exc_handler->lineno;
 
-                    CFGBlock* exc_handle = cfg->addBlock();
+                    CFGConstructionBlock* exc_handle = cfg->addBlock();
                     exc_next = cfg->addDeferredBlock();
 
-                    br->iftrue = exc_handle;
-                    br->iffalse = exc_next;
+                    br->iftrue = (CFGBlock*)exc_handle;
+                    br->iffalse = (CFGBlock*)exc_next;
                     curblock->connectTo(exc_handle);
                     curblock->connectTo(exc_next);
                     push_back(br);
@@ -2628,14 +2723,14 @@ public:
     bool visit_tryfinally(AST_TryFinally* node) override {
         assert(curblock);
 
-        CFGBlock* exc_handler_block = cfg->addDeferredBlock();
+        CFGConstructionBlock* exc_handler_block = cfg->addDeferredBlock();
         InternedString exc_type_name = nodeName("type");
         InternedString exc_value_name = nodeName("value");
         InternedString exc_traceback_name = nodeName("traceback");
         TmpValue exc_why_name(nodeName("why"), node->lineno);
         exc_handlers.push_back({ exc_handler_block, exc_type_name, exc_value_name, exc_traceback_name, false });
 
-        CFGBlock* finally_block = cfg->addDeferredBlock();
+        CFGConstructionBlock* finally_block = cfg->addDeferredBlock();
         pushFinallyContinuation(finally_block, exc_why_name.is);
 
         for (AST_stmt* subnode : node->body) {
@@ -2683,8 +2778,8 @@ public:
             if (did_why & (1 << Why::CONTINUE))
                 exitFinallyIf(node, Why::CONTINUE, exc_why_name);
             if (maybe_exception) {
-                CFGBlock* reraise = cfg->addDeferredBlock();
-                CFGBlock* noexc = makeFinallyCont(Why::EXCEPTION, exc_why_name, reraise);
+                CFGConstructionBlock* reraise = cfg->addDeferredBlock();
+                CFGConstructionBlock* noexc = makeFinallyCont(Why::EXCEPTION, exc_why_name, reraise);
 
                 cfg->placeBlock(reraise);
                 curblock = reraise;
@@ -2730,7 +2825,7 @@ public:
         TmpValue exc_type_name(nodeName("exc_type"), node->lineno);
         TmpValue exc_value_name(nodeName("exc_value"), node->lineno);
         TmpValue exc_traceback_name(nodeName("exc_traceback"), node->lineno);
-        CFGBlock* exit_block = cfg->addDeferredBlock();
+        CFGConstructionBlock* exit_block = cfg->addDeferredBlock();
         exit_block->info = "with_exit";
 
         pushAssign(ctxmgrname, remapExpr(node->context_expr));
@@ -2747,11 +2842,11 @@ public:
             pushAssign(node->optional_vars, enter);
 
         // push continuations
-        CFGBlock* finally_block = cfg->addDeferredBlock();
+        CFGConstructionBlock* finally_block = cfg->addDeferredBlock();
         finally_block->info = "with_finally";
         pushFinallyContinuation(finally_block, whyname.is);
 
-        CFGBlock* exc_block = cfg->addDeferredBlock();
+        CFGConstructionBlock* exc_block = cfg->addDeferredBlock();
         exc_block->info = "with_exc";
         exc_handlers.push_back({ exc_block, exc_type_name.is, exc_value_name.is, exc_traceback_name.is, false });
 
@@ -2785,10 +2880,10 @@ public:
                        makeCall(exitname, { _dup(exc_type_name), _dup(exc_value_name), _dup(exc_traceback_name) }));
 
             // if it returns true, suppress the error and go to our exit block
-            CFGBlock* reraise_block = cfg->addDeferredBlock();
+            CFGConstructionBlock* reraise_block = cfg->addDeferredBlock();
             reraise_block->info = "with_reraise";
             // break potential critical edge
-            CFGBlock* exiter = cfg->addDeferredBlock();
+            CFGConstructionBlock* exiter = cfg->addDeferredBlock();
             exiter->info = "with_exiter";
             pushBranch(suppressname, exiter, reraise_block);
 
@@ -2845,10 +2940,10 @@ void CFG::print(const ConstantVRegInfo& constant_vregs, llvm::raw_ostream& strea
 
 class AssignVRegsVisitor : public NoopBSTVisitor {
 public:
-    CFGBlock* current_block;
+    CFGConstructionBlock* current_block;
     int next_vreg;
     llvm::DenseMap<InternedString, DefaultedInt<VREG_UNDEFINED>> sym_vreg_map;
-    llvm::DenseMap<InternedString, std::unordered_set<CFGBlock*>> sym_blocks_map;
+    llvm::DenseMap<InternedString, std::unordered_set<CFGConstructionBlock*>> sym_blocks_map;
     llvm::DenseSet<InternedString>
         name_is_read; // this is used to find unused desination vregs which we can transform to VREG_UNDEFINED
     std::vector<InternedString> vreg_sym_map;
@@ -3002,8 +3097,8 @@ public:
     }
 };
 
-void VRegInfo::assignVRegs(CFG* cfg, const ParamNames& param_names, llvm::DenseMap<int*, InternedString>& id_vreg,
-                           const ConstantVRegInfo& constant_vregs) {
+void VRegInfo::assignVRegs(CFGConstruction* cfg, const ParamNames& param_names,
+                           llvm::DenseMap<int*, InternedString>& id_vreg, const ConstantVRegInfo& constant_vregs) {
     assert(!hasVRegsAssigned());
 
     // warning: don't rearrange the steps, they need to be run in this exact order!
@@ -3012,7 +3107,7 @@ void VRegInfo::assignVRegs(CFG* cfg, const ParamNames& param_names, llvm::DenseM
                        AssignVRegsVisitor::CrossBlock, AssignVRegsVisitor::SingleBlockUse }) {
         visitor.step = step;
 
-        for (CFGBlock* b : cfg->blocks) {
+        for (CFGConstructionBlock* b : cfg->blocks) {
             visitor.current_block = b;
 
 #if REUSE_VREGS
@@ -3061,7 +3156,7 @@ static std::pair<CFG*, ConstantVRegInfo> computeCFG(llvm::ArrayRef<AST_stmt*> bo
                                                     ScopeInfo* scoping, ModuleCFGProcessor* cfgizer) {
     STAT_TIMER(t0, "us_timer_computecfg", 0);
 
-    CFG* rtn = new CFG();
+    CFGConstruction* rtn = new CFGConstruction();
 
     assert((bool)args == (ast_type == AST_TYPE::FunctionDef || ast_type == AST_TYPE::Lambda));
 
@@ -3157,12 +3252,12 @@ static std::pair<CFG*, ConstantVRegInfo> computeCFG(llvm::ArrayRef<AST_stmt*> bo
 
     assert(rtn->getStartingBlock()->predecessors.size() == 0);
 
-    for (CFGBlock* b : rtn->blocks) {
+    for (CFGConstructionBlock* b : rtn->blocks) {
         ASSERT(b->idx != -1, "Forgot to place a block!");
-        for (CFGBlock* b2 : b->predecessors) {
+        for (CFGConstructionBlock* b2 : b->predecessors) {
             ASSERT(b2->idx != -1, "Forgot to place a block!");
         }
-        for (CFGBlock* b2 : b->successors) {
+        for (CFGConstructionBlock* b2 : b->successors) {
             ASSERT(b2->idx != -1, "Forgot to place a block!");
         }
 
@@ -3282,9 +3377,9 @@ static std::pair<CFG*, ConstantVRegInfo> computeCFG(llvm::ArrayRef<AST_stmt*> bo
 
     // Must evaluate end() on every iteration because erase() will invalidate the end.
     for (auto it = rtn->blocks.begin(); it != rtn->blocks.end(); ++it) {
-        CFGBlock* b = *it;
+        CFGConstructionBlock* b = *it;
         while (b->successors.size() == 1) {
-            CFGBlock* b2 = b->successors[0];
+            CFGConstructionBlock* b2 = b->successors[0];
             if (b2->predecessors.size() != 1)
                 break;
 
@@ -3306,7 +3401,7 @@ static std::pair<CFG*, ConstantVRegInfo> computeCFG(llvm::ArrayRef<AST_stmt*> bo
             b->body.insert(b->body.end(), b2->body.begin(), b2->body.end());
             b->unconnectFrom(b2);
 
-            for (CFGBlock* b3 : b2->successors) {
+            for (CFGConstructionBlock* b3 : b2->successors) {
                 b->connectTo(b3, true);
                 b2->unconnectFrom(b3);
             }
@@ -3318,13 +3413,92 @@ static std::pair<CFG*, ConstantVRegInfo> computeCFG(llvm::ArrayRef<AST_stmt*> bo
 
     rtn->getVRegInfo().assignVRegs(rtn, param_names, visitor.id_vreg, visitor.constant_vregs);
 
+    CFG* final_cfg = new CFG(rtn->getVRegInfo());
+    auto& a = final_cfg->bytes;
+    final_cfg->blocks.reserve(rtn->blocks.size());
+
+    int exact_size = 0;
+    llvm::DenseMap<CFGConstructionBlock*, CFGBlock*> old_new_blocks;
+    for (auto block : rtn->blocks) {
+        final_cfg->blocks.push_back(new CFGBlock(final_cfg, block->idx, block->info));
+        old_new_blocks[block] = final_cfg->blocks.back();
+        for (auto&& s : block->body) {
+            exact_size += s->size_in_bytes();
+            if (s->type == BST_TYPE::Invoke)
+                exact_size += bst_cast<BST_Invoke>(s)->stmt->size_in_bytes();
+        }
+    }
+
+    a.reset(new unsigned char[exact_size]);
+
+    static StatCounter bst_bytecode_bytes("num_bst_bytecode_bytes");
+    bst_bytecode_bytes.log(exact_size);
+
+    int i = 0;
+    unsigned char* last_stmt = (unsigned char*)a.get();
+
+    auto append_stmt = [&](BST_stmt* stmt) {
+        int s = stmt->size_in_bytes();
+        memcpy(last_stmt, stmt, s);
+        last_stmt += s;
+    };
+
+    for (CFGConstructionBlock* block : rtn->blocks) {
+        CFGBlock* new_block = final_cfg->blocks[i];
+        for (auto&& s : block->successors) {
+            new_block->successors.push_back(old_new_blocks[s]);
+        }
+        for (auto&& s : block->predecessors) {
+            new_block->predecessors.push_back(old_new_blocks[s]);
+        }
+
+        new_block->body = (BST_stmt*)last_stmt;
+        for (BST_stmt* stmt : block->body) {
+            if (stmt->type == BST_TYPE::Invoke) {
+                BST_Invoke* invoke = bst_cast<BST_Invoke>(stmt);
+                BST_Invoke* new_invoke = (BST_Invoke*)last_stmt;
+                append_stmt(stmt);
+
+                new_invoke->normal_dest = old_new_blocks[(CFGConstructionBlock*)invoke->normal_dest];
+                new_invoke->exc_dest = old_new_blocks[(CFGConstructionBlock*)invoke->exc_dest];
+                new_invoke->stmt = (BST_stmt*)last_stmt;
+
+                append_stmt(invoke->stmt);
+            } else if (stmt->type == BST_TYPE::Branch) {
+                BST_Branch* br = bst_cast<BST_Branch>(stmt);
+                BST_Branch* new_branch = (BST_Branch*)last_stmt;
+                append_stmt(stmt);
+
+                new_branch->iffalse = old_new_blocks[(CFGConstructionBlock*)br->iffalse];
+                new_branch->iftrue = old_new_blocks[(CFGConstructionBlock*)br->iftrue];
+            } else if (stmt->type == BST_TYPE::Jump) {
+                BST_Jump* jmp = bst_cast<BST_Jump>(stmt);
+                BST_Jump* new_jmp = (BST_Jump*)last_stmt;
+                append_stmt(stmt);
+                new_jmp->target = old_new_blocks[(CFGConstructionBlock*)jmp->target];
+            } else {
+                append_stmt(stmt);
+            }
+        }
+        ++i;
+    }
+
+    // erase original nodes
+    for (auto block : rtn->blocks) {
+        for (auto&& s : block->body) {
+            if (s->type == BST_TYPE::Invoke)
+                delete bst_cast<BST_Invoke>(s)->stmt;
+            delete s;
+        }
+    }
+    delete rtn;
 
     if (VERBOSITY("cfg") >= 2) {
         printf("Final cfg:\n");
-        rtn->print(visitor.constant_vregs, llvm::outs());
+        final_cfg->print(visitor.constant_vregs, llvm::outs());
     }
 
-    return std::make_pair(rtn, std::move(visitor.constant_vregs));
+    return std::make_pair(final_cfg, std::move(visitor.constant_vregs));
 }
 
 

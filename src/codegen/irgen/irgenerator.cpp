@@ -2951,19 +2951,21 @@ public:
             }
             printf("\n");
         }
-        for (int i = 0; i < block->body.size(); i++) {
+
+        block->doForAllStmt([&](BST_stmt* stmt) {
             if (state == DEAD)
-                break;
+                return true;
             assert(state != FINISHED);
 
 #if ENABLE_SAMPLING_PROFILER
-            auto stmt = block->body[i];
             if (stmt->type != BST_TYPE::Landigpad && stmt->lineno > 0)
-                doSafePoint(block->body[i]);
+                doSafePoint(stmt);
 #endif
+            doStmt(stmt, UnwindInfo(irstate->getCode(), stmt, NULL));
 
-            doStmt(block->body[i], UnwindInfo(irstate->getCode(), block->body[i], NULL));
-        }
+            return false;
+        });
+
         if (VERBOSITY("irgenerator") >= 2) { // print ending symbol table
             printf("  %d fini:", block->idx);
             for (auto it = symbol_table.begin(); it != symbol_table.end(); ++it)

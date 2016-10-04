@@ -383,7 +383,7 @@ Box* ASTInterpreter::executeInner(ASTInterpreter& interpreter, CFGBlock* start_b
     assert((start_block == NULL) == (start_at == NULL));
     if (start_block == NULL) {
         start_block = interpreter.source_info->cfg->getStartingBlock();
-        start_at = start_block->body[0];
+        start_at = start_block->body;
     }
 
     // Important that this happens after RegisterHelper:
@@ -394,17 +394,19 @@ Box* ASTInterpreter::executeInner(ASTInterpreter& interpreter, CFGBlock* start_b
     if (!from_start) {
         interpreter.current_block = start_block;
         bool started = false;
-        for (auto s : start_block->body) {
+
+        start_block->doForAllStmt([&](BST_stmt* s) {
             if (!started) {
                 if (s != start_at)
-                    continue;
+                    return false;
                 started = true;
             }
 
             interpreter.setCurrentStatement(s);
             Py_XDECREF(v.o);
             v = interpreter.visit_stmt(s);
-        }
+            return false;
+        });
     } else {
         interpreter.next_block = start_block;
     }
@@ -448,7 +450,7 @@ Box* ASTInterpreter::executeInner(ASTInterpreter& interpreter, CFGBlock* start_b
             interpreter.startJITing(interpreter.current_block);
         }
 
-        for (BST_stmt* s : interpreter.current_block->body) {
+        interpreter.current_block->doForAllStmt([&](BST_stmt* s) {
             interpreter.setCurrentStatement(s);
             if (interpreter.jit)
                 interpreter.jit->emitSetCurrentInst(s);
@@ -456,7 +458,8 @@ Box* ASTInterpreter::executeInner(ASTInterpreter& interpreter, CFGBlock* start_b
                 Py_DECREF(v.o);
             }
             v = interpreter.visit_stmt(s);
-        }
+            return false;
+        });
     }
     return v.o;
 }
@@ -2112,7 +2115,7 @@ extern "C" Box* astInterpretDeoptFromASM(BoxedCode* code, BST_stmt* enclosing_st
         if (enclosing_stmt->type == BST_TYPE::Invoke) {
             auto invoke = bst_cast<BST_Invoke>(enclosing_stmt);
             start_block = invoke->normal_dest;
-            starting_statement = start_block->body[0];
+            starting_statement = start_block->body;
             enclosing_stmt = invoke->stmt;
         } else if (enclosing_stmt->has_dest_vreg()) {
             int vreg_dst = ((BST_stmt_with_dest*)enclosing_stmt)->vreg_dst;
@@ -2127,15 +2130,14 @@ extern "C" Box* astInterpretDeoptFromASM(BoxedCode* code, BST_stmt* enclosing_st
     if (start_block == NULL) {
         // TODO innefficient
         for (auto block : code->source->cfg->blocks) {
-            int n = block->body.size();
-            for (int i = 0; i < n; i++) {
-                if (block->body[i] == enclosing_stmt) {
-                    ASSERT(i + 1 < n, "how could we deopt from a non-invoke terminator?");
+            block->doForAllStmt([&](BST_stmt* stmt) {
+                if (stmt == enclosing_stmt) {
                     start_block = block;
-                    starting_statement = block->body[i + 1];
-                    break;
+                    starting_statement = (BST_stmt*)&((unsigned char*)stmt)[stmt->size_in_bytes()];
+                    return true;
                 }
-            }
+                return false;
+            });
 
             if (start_block)
                 break;

@@ -102,9 +102,12 @@ LivenessAnalysis::LivenessAnalysis(CFG* cfg, const ConstantVRegInfo& constant_vr
 
     for (CFGBlock* b : cfg->blocks) {
         auto visitor = new LivenessBBVisitor(this, constant_vreg); // livenessCache unique_ptr will delete it.
-        for (BST_stmt* stmt : b->body) {
+
+        b->doForAllStmt([&](BST_stmt* stmt) {
             stmt->accept(visitor);
-        }
+            return false;
+        });
+
         liveness_cache.insert(std::make_pair(b, std::unique_ptr<LivenessBBVisitor>(visitor)));
     }
 
@@ -257,9 +260,12 @@ public:
 void DefinednessBBAnalyzer::processBB(Map& starting, CFGBlock* block) const {
     DefinednessVisitor visitor(starting, constant_vregs);
 
-    for (int i = 0; i < block->body.size(); i++) {
-        block->body[i]->accept(&visitor);
-    }
+
+    block->doForAllStmt([&](BST_stmt* stmt) {
+        stmt->accept(&visitor);
+        return false;
+    });
+
 
     if (VERBOSITY("analysis") >= 3) {
         printf("At end of block %d:\n", block->idx);
