@@ -36,18 +36,18 @@
 namespace pyston {
 
 
-template <typename Node> void fillScopingInfo(Node* node, ScopeInfo* scope_info) {
-    node->lookup_type = scope_info->getScopeTypeOfName(node->id);
+template <typename Node> void fillScopingInfo(Node* node, InternedString id, ScopeInfo* scope_info) {
+    node->lookup_type = scope_info->getScopeTypeOfName(id);
 
     if (node->lookup_type == ScopeInfo::VarScopeType::CLOSURE)
-        node->closure_offset = scope_info->getClosureOffset(node->id);
+        node->closure_offset = scope_info->getClosureOffset(id);
     else if (node->lookup_type == ScopeInfo::VarScopeType::DEREF)
-        node->deref_info = scope_info->getDerefInfo(node->id);
+        node->deref_info = scope_info->getDerefInfo(id);
 
     assert(node->lookup_type != ScopeInfo::VarScopeType::UNKNOWN);
 }
 
-template <> void fillScopingInfo<BST_Name>(BST_Name* node, ScopeInfo* scope_info) {
+void fillScopingInfo(BST_Name* node, ScopeInfo* scope_info) {
     node->lookup_type = scope_info->getScopeTypeOfName(node->id);
 
     if (node->lookup_type == ScopeInfo::VarScopeType::CLOSURE)
@@ -502,9 +502,9 @@ private:
 
         auto rtn = new BST_LoadName;
         rtn->lineno = name->lineno;
-        rtn->id = name->id;
+        rtn->index_id = constant_vregs.addInternedString(name->id);
         rtn->lookup_type = name->lookup_type;
-        fillScopingInfo(rtn, scoping);
+        fillScopingInfo(rtn, name->id, scoping);
         return pushBackCreateDst(rtn);
     }
 
@@ -768,7 +768,7 @@ private:
         BST_LoadAttr* rtn = new BST_LoadAttr();
         rtn->clsonly = clsonly;
         unmapExpr(base, &rtn->vreg_value);
-        rtn->attr = attr;
+        rtn->index_attr = constant_vregs.addInternedString(attr);
         rtn->lineno = base.lineno;
         return pushBackCreateDst(rtn);
     }
@@ -810,7 +810,7 @@ private:
         BST_Call* rtn = NULL;
         if (!is_cls) {
             BST_CallAttr* call = BST_CallAttr::create(args.size(), 0 /* num keywords */);
-            call->attr = attr;
+            call->index_attr = constant_vregs.addInternedString(attr);
             unmapExpr(target, &call->vreg_value);
             for (int i = 0; i < args.size(); ++i) {
                 unmapExpr(args[i], &call->elts[i]);
@@ -818,7 +818,7 @@ private:
             rtn = call;
         } else {
             BST_CallClsAttr* call = BST_CallClsAttr::create(args.size(), 0 /* num keywords */);
-            call->attr = attr;
+            call->index_attr = constant_vregs.addInternedString(attr);
             unmapExpr(target, &call->vreg_value);
             for (int i = 0; i < args.size(); ++i) {
                 unmapExpr(args[i], &call->elts[i]);
@@ -842,8 +842,8 @@ private:
             BST_StoreName* assign = new BST_StoreName();
             unmapExpr(val, &assign->vreg_value);
             assign->lineno = val.lineno;
-            assign->id = ast_cast<AST_Name>(target)->id;
-            fillScopingInfo(assign, scoping);
+            assign->index_id = constant_vregs.addInternedString(ast_cast<AST_Name>(target)->id);
+            fillScopingInfo(assign, ast_cast<AST_Name>(target)->id, scoping);
             push_back(assign);
         } else if (target->type == AST_TYPE::Subscript) {
             AST_Subscript* s = ast_cast<AST_Subscript>(target);
@@ -872,7 +872,7 @@ private:
             BST_StoreAttr* a_target = new BST_StoreAttr();
             unmapExpr(val, &a_target->vreg_value);
             unmapExpr(remapExpr(a->value), &a_target->vreg_target);
-            a_target->attr = scoping->mangleName(a->attr);
+            a_target->index_attr = constant_vregs.addInternedString(scoping->mangleName(a->attr));
             a_target->lineno = a->lineno;
             push_back(a_target);
         } else if (target->type == AST_TYPE::Tuple || target->type == AST_TYPE::List) {
@@ -923,8 +923,8 @@ private:
         auto* assign = new BST_StoreName();
         unmapExpr(val, &assign->vreg_value);
         assign->lineno = val.lineno;
-        assign->id = id;
-        fillScopingInfo(assign, scoping);
+        assign->index_id = constant_vregs.addInternedString(id);
+        fillScopingInfo(assign, id, scoping);
         push_back(assign);
     }
 
@@ -949,7 +949,7 @@ private:
     TmpValue remapAttribute(AST_Attribute* node) {
         BST_LoadAttr* rtn = new BST_LoadAttr();
         rtn->lineno = node->lineno;
-        rtn->attr = scoping->mangleName(node->attr);
+        rtn->index_attr = constant_vregs.addInternedString(scoping->mangleName(node->attr));
         unmapExpr(remapExpr(node->value), &rtn->vreg_value);
         return pushBackCreateDst(rtn);
     }
@@ -1037,7 +1037,7 @@ private:
         if (node->func->type == AST_TYPE::Attribute) {
             BST_CallAttr* rtn = BST_CallAttr::create(node->args.size(), node->keywords.size());
             auto* attr = ast_cast<AST_Attribute>(node->func);
-            rtn->attr = scoping->mangleName(attr->attr);
+            rtn->index_attr = constant_vregs.addInternedString(scoping->mangleName(attr->attr));
             unmapExpr(remapExpr(attr->value), &rtn->vreg_value);
             for (int i = 0; i < node->args.size(); ++i) {
                 unmapExpr(remapExpr(node->args[i]), &rtn->elts[i]);
@@ -1049,7 +1049,7 @@ private:
         } else if (node->func->type == AST_TYPE::ClsAttribute) {
             BST_CallClsAttr* rtn = BST_CallClsAttr::create(node->args.size(), node->keywords.size());
             auto* attr = ast_cast<AST_ClsAttribute>(node->func);
-            rtn->attr = scoping->mangleName(attr->attr);
+            rtn->index_attr = constant_vregs.addInternedString(scoping->mangleName(attr->attr));
             unmapExpr(remapExpr(attr->value), &rtn->vreg_value);
             for (int i = 0; i < node->args.size(); ++i) {
                 unmapExpr(remapExpr(node->args[i]), &rtn->elts[i]);
@@ -1089,7 +1089,7 @@ private:
         BST_LoadAttr* rtn = new BST_LoadAttr();
         rtn->clsonly = true;
         rtn->lineno = node->lineno;
-        rtn->attr = scoping->mangleName(node->attr);
+        rtn->index_attr = constant_vregs.addInternedString(scoping->mangleName(node->attr));
         unmapExpr(remapExpr(node->value), &rtn->vreg_value);
         return pushBackCreateDst(rtn);
     }
@@ -1668,7 +1668,7 @@ public:
         };
 
         if (type == BST_TYPE::StoreName) {
-            if (bst_cast<BST_StoreName>(node)->id.s()[0] != '#') {
+            if (constant_vregs.getInternedString(bst_cast<BST_StoreName>(node)->index_id).s()[0] != '#') {
                 curblock->push_back(node);
                 return;
             }
@@ -1677,7 +1677,7 @@ public:
         // Deleting temporary names is safe, since we only use it to represent kills.
         if (node->type == BST_TYPE::DeleteName) {
             BST_DeleteName* del = bst_cast<BST_DeleteName>(node);
-            if (del->id.s()[0] == '#') {
+            if (constant_vregs.getInternedString(del->index_id).s()[0] == '#') {
                 curblock->push_back(node);
                 return;
             }
@@ -1736,17 +1736,17 @@ public:
 
     void pushStoreName(InternedString name, TmpValue value) {
         BST_StoreName* store = new BST_StoreName();
-        store->id = name;
+        store->index_id = constant_vregs.addInternedString(name);
         unmapExpr(value, &store->vreg_value);
         store->lineno = value.lineno;
-        fillScopingInfo(store, scoping);
+        fillScopingInfo(store, name, scoping);
         push_back(store);
     }
 
     bool visit_classdef(AST_ClassDef* node) override {
         auto def = BST_ClassDef::create(node->decorator_list.size());
         def->lineno = node->lineno;
-        def->name = node->name;
+        def->index_name = constant_vregs.addInternedString(node->name);
 
         // Decorators are evaluated before bases:
         for (int i = 0; i < node->decorator_list.size(); ++i) {
@@ -1763,7 +1763,7 @@ public:
         auto code = cfgizer->runRecursively(node->body, node->name.getBox(), node->lineno, NULL, node);
         auto mkclass = new BST_MakeClass(def, constant_vregs.addFuncOrClass(def, code));
         auto tmp = pushBackCreateDst(mkclass);
-        pushAssign(TmpValue(scoping->mangleName(def->name), node->lineno), tmp);
+        pushAssign(TmpValue(scoping->mangleName(node->name), node->lineno), tmp);
 
         return true;
     }
@@ -1771,7 +1771,7 @@ public:
     bool visit_functiondef(AST_FunctionDef* node) override {
         auto def = BST_FunctionDef::create(node->decorator_list.size(), node->args->defaults.size());
         def->lineno = node->lineno;
-        def->name = node->name;
+        def->index_name = constant_vregs.addInternedString(node->name);
 
         // Decorators are evaluated before the defaults, so this *must* go before remapArguments().
         // TODO(rntz): do we have a test for this
@@ -1785,7 +1785,7 @@ public:
         auto code = cfgizer->runRecursively(node->body, node->name.getBox(), node->lineno, node->args, node);
         auto mkfunc = new BST_MakeFunction(def, constant_vregs.addFuncOrClass(def, code));
         auto tmp = pushBackCreateDst(mkfunc);
-        pushAssign(TmpValue(scoping->mangleName(def->name), node->lineno), tmp);
+        pushAssign(TmpValue(scoping->mangleName(node->name), node->lineno), tmp);
 
         return true;
     }
@@ -1844,7 +1844,8 @@ public:
 
                     auto* store = new BST_LoadAttr;
                     store->lineno = import->lineno;
-                    store->attr = scoping->mangleName(internString(a->name.s().substr(l, r - l)));
+                    store->index_attr = constant_vregs.addInternedString(
+                        scoping->mangleName(internString(a->name.s().substr(l, r - l))));
                     unmapExpr(tmpname, &store->vreg_value);
                     unmapExpr(tmpname, &store->vreg_dst);
                     push_back(store);
@@ -2054,7 +2055,7 @@ public:
 
                 BST_LoadAttr* a_lhs = new BST_LoadAttr();
                 unmapExpr(_dup(value_remapped), &a_lhs->vreg_value);
-                a_lhs->attr = scoping->mangleName(a->attr);
+                a_lhs->index_attr = constant_vregs.addInternedString(scoping->mangleName(a->attr));
                 a_lhs->lineno = a->lineno;
                 TmpValue name_lhs = pushBackCreateDst(a_lhs);
 
@@ -2068,7 +2069,7 @@ public:
                 BST_StoreAttr* a_target = new BST_StoreAttr();
                 unmapExpr(node_name, &a_target->vreg_value);
                 unmapExpr(value_remapped, &a_target->vreg_target);
-                a_target->attr = a_lhs->attr;
+                a_target->index_attr = a_lhs->index_attr;
                 a_target->lineno = a->lineno;
                 push_back(a_target);
 
@@ -2115,7 +2116,7 @@ public:
                     auto* del = new BST_DeleteAttr;
                     del->lineno = node->lineno;
                     unmapExpr(remapExpr(astattr->value), &del->vreg_value);
-                    del->attr = scoping->mangleName(astattr->attr);
+                    del->index_attr = constant_vregs.addInternedString(scoping->mangleName(astattr->attr));
                     push_back(del);
                     break;
                 }
@@ -2123,8 +2124,8 @@ public:
                     AST_Name* s = static_cast<AST_Name*>(t);
                     auto* del = new BST_DeleteName;
                     del->lineno = node->lineno;
-                    del->id = s->id;
-                    fillScopingInfo(del, scoping);
+                    del->index_id = constant_vregs.addInternedString(s->id);
+                    fillScopingInfo(del, s->id, scoping);
                     push_back(del);
                     break;
                 }
@@ -2357,9 +2358,9 @@ public:
     BST_stmt* makeKill(InternedString name) {
         // There might be a better way to represent this, maybe with a dedicated AST_Kill bytecode?
         auto del = new BST_DeleteName();
-        del->id = name;
+        del->index_id = constant_vregs.addInternedString(name);
         del->lineno = 0;
-        fillScopingInfo(del, scoping);
+        fillScopingInfo(del, name, scoping);
         return del;
     }
 
@@ -2922,6 +2923,33 @@ public:
         if (node->vreg != VREG_UNDEFINED)
             return true;
 
+        InternedString id = constant_vregs.getInternedString(node->index_id);
+        ASSERT(node->lookup_type != ScopeInfo::VarScopeType::UNKNOWN, "%s", id.c_str());
+
+        if (node->lookup_type != ScopeInfo::VarScopeType::FAST && node->lookup_type != ScopeInfo::VarScopeType::CLOSURE)
+            return true;
+
+        if (step == TrackBlockUsage) {
+            sym_blocks_map[id].insert(current_block);
+            return true;
+        } else if (step == UserVisible) {
+            if (id.isCompilerCreatedName())
+                return true;
+        } else {
+            bool is_block_local = node->lookup_type == ScopeInfo::VarScopeType::FAST && isNameUsedInSingleBlock(id);
+            if (step == CrossBlock && is_block_local)
+                return true;
+            if (step == SingleBlockUse && !is_block_local)
+                return true;
+        }
+        node->vreg = assignVReg(id);
+        return true;
+    }
+
+    bool visit_nameHelper(BST_Name* node) {
+        if (node->vreg != VREG_UNDEFINED)
+            return true;
+
         ASSERT(node->lookup_type != ScopeInfo::VarScopeType::UNKNOWN, "%s", node->id.c_str());
 
         if (node->lookup_type != ScopeInfo::VarScopeType::FAST && node->lookup_type != ScopeInfo::VarScopeType::CLOSURE)
@@ -3043,11 +3071,12 @@ static std::pair<CFG*, ConstantVRegInfo> computeCFG(llvm::ArrayRef<AST_stmt*> bo
     bool skip_first = false;
 
     if (ast_type == AST_TYPE::ClassDef) {
+        InternedString id = stringpool.get("__name__");
         // A classdef always starts with "__module__ = __name__"
         auto module_name_value = new BST_LoadName;
         module_name_value->lineno = lineno;
-        module_name_value->id = stringpool.get("__name__");
-        fillScopingInfo(module_name_value, scoping);
+        module_name_value->index_id = visitor.constant_vregs.addInternedString(id);
+        fillScopingInfo(module_name_value, id, scoping);
         TmpValue module_name = visitor.pushBackCreateDst(module_name_value);
         visitor.pushStoreName(stringpool.get("__module__"), module_name);
 
@@ -3077,9 +3106,9 @@ static std::pair<CFG*, ConstantVRegInfo> computeCFG(llvm::ArrayRef<AST_stmt*> bo
                 assert(scoping->getScopeTypeOfName(arg_name) == ScopeInfo::VarScopeType::FAST);
 
                 auto load = new BST_LoadName();
-                load->id = stringpool.get("." + std::to_string(counter));
+                load->index_id = visitor.constant_vregs.addInternedString(arg_name);
                 load->lineno = arg_expr->lineno;
-                fillScopingInfo(load, scoping);
+                fillScopingInfo(load, arg_name, scoping);
                 TmpValue val = visitor.pushBackCreateDst(load);
 
                 visitor.pushAssign(arg_expr, val);

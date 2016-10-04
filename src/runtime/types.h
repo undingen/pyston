@@ -1082,6 +1082,8 @@ public:
     ConstantVRegInfo() {}
 
     Box* getConstant(int vreg) const { return constants[-(vreg + 1)]; }
+    InternedString getInternedString(int vreg) const { return InternedString::unsafe((BoxedString*)getConstant(vreg)); }
+
     std::pair<BST_stmt*, BoxedCode*> getFuncOrClass(int constant) const { return funcs_and_classes[constant]; }
     const std::vector<BoxedString*>* getKeywordNames(int constant) const { return keyword_names[constant].get(); }
 
@@ -1090,6 +1092,8 @@ public:
         constants.push_back(o);
         return -constants.size();
     }
+
+    int addInternedString(InternedString s) { return addConstant(s.getBox()); }
 
     int addFuncOrClass(BST_stmt* stmt, STOLEN(BoxedCode*) code) {
         funcs_and_classes.emplace_back(stmt, code);

@@ -280,10 +280,11 @@ private:
 
     void visit_callattr(BST_CallAttr* node) override {
         CompilerType* t = getType(node->vreg_value);
-        CompilerType* func = t->getattrType(node->attr, false);
+        InternedString attr = constant_vregs.getInternedString(node->index_attr);
+        CompilerType* func = t->getattrType(attr, false);
 
         if (VERBOSITY() >= 2 && func == UNDEF) {
-            printf("Think %s.%s is undefined, at %d\n", t->debugName().c_str(), node->attr.c_str(), node->lineno);
+            printf("Think %s.%s is undefined, at %d\n", t->debugName().c_str(), attr.c_str(), node->lineno);
             print_bst(node, constant_vregs);
             printf("\n");
         }
@@ -293,10 +294,11 @@ private:
 
     void visit_callclsattr(BST_CallClsAttr* node) override {
         CompilerType* t = getType(node->vreg_value);
-        CompilerType* func = t->getattrType(node->attr, true);
+        InternedString attr = constant_vregs.getInternedString(node->index_attr);
+        CompilerType* func = t->getattrType(attr, true);
 
         if (VERBOSITY() >= 2 && func == UNDEF) {
-            printf("Think %s.%s is undefined, at %d\n", t->debugName().c_str(), node->attr.c_str(), node->lineno);
+            printf("Think %s.%s is undefined, at %d\n", t->debugName().c_str(), attr.c_str(), node->lineno);
             print_bst(node, constant_vregs);
             printf("\n");
         }
@@ -380,7 +382,8 @@ private:
         auto name_scope = node->lookup_type;
 
         if (name_scope == ScopeInfo::VarScopeType::GLOBAL) {
-            if (node->id.s() == "None")
+            InternedString id = constant_vregs.getInternedString(node->index_id);
+            if (id.s() == "None")
                 t = NONE;
         } else if (name_scope == ScopeInfo::VarScopeType::FAST || name_scope == ScopeInfo::VarScopeType::CLOSURE)
             t = getType(node->vreg);
@@ -390,7 +393,8 @@ private:
 
     void visit_loadattr(BST_LoadAttr* node) override {
         CompilerType* t = getType(node->vreg_value);
-        CompilerType* rtn = t->getattrType(node->attr, node->clsonly);
+        InternedString attr = constant_vregs.getInternedString(node->index_attr);
+        CompilerType* rtn = t->getattrType(attr, node->clsonly);
 
         if (speculation != TypeAnalysis::NONE) {
             BoxedClass* speculated_class = predictClassFor(node);
@@ -398,7 +402,7 @@ private:
         }
 
         if (VERBOSITY() >= 2 && rtn == UNDEF) {
-            printf("Think %s.%s is undefined, at %d\n", t->debugName().c_str(), node->attr.c_str(), node->lineno);
+            printf("Think %s.%s is undefined, at %d\n", t->debugName().c_str(), attr.c_str(), node->lineno);
             print_bst(node, constant_vregs);
             printf("\n");
         }
