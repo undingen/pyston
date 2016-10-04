@@ -1073,10 +1073,11 @@ private:
         rtn_shared->lineno = node->lineno;
 
         if (node->keywords.size()) {
-            rtn_shared->keywords_names = llvm::make_unique<std::vector<BoxedString*>>();
+            llvm::SmallVector<BoxedString*, 8> keywords_names;
             for (auto kw : node->keywords) {
-                rtn_shared->keywords_names->push_back(kw->arg.getBox());
+                keywords_names.push_back(kw->arg.getBox());
             }
+            rtn_shared->index_keyword_names = constant_vregs.addKeywordNames(keywords_names);
         }
 
         unmapExpr(remapExpr(node->starargs), &rtn_shared->vreg_starargs);
@@ -3294,7 +3295,7 @@ static std::pair<CFG*, ConstantVRegInfo> computeCFG(llvm::ArrayRef<AST_stmt*> bo
         rtn->print(visitor.constant_vregs, llvm::outs());
     }
 
-    return std::make_pair(rtn, visitor.constant_vregs);
+    return std::make_pair(rtn, std::move(visitor.constant_vregs));
 }
 
 
@@ -3341,18 +3342,17 @@ BoxedCode* ModuleCFGProcessor::runRecursively(llvm::ArrayRef<AST_stmt*> body, Bo
     for (auto e : param_names.allArgsAsName())
         fillScopingInfo(e, scope_info);
 
-    ConstantVRegInfo constant_vregs;
-    std::tie(si->cfg, constant_vregs)
-        = computeCFG(body, ast_type, lineno, args, fn, si.get(), param_names, scope_info, this);
+    auto cfg_result = computeCFG(body, ast_type, lineno, args, fn, si.get(), param_names, scope_info, this);
+    si->cfg = cfg_result.first;
 
     BoxedCode* code;
     if (args)
         code = new BoxedCode(args->args.size(), args->vararg, args->kwarg, lineno, std::move(si),
-                             std::move(constant_vregs), std::move(param_names), fn, name,
+                             std::move(cfg_result.second), std::move(param_names), fn, name,
                              autoDecref(getDocString(body)));
     else
-        code = new BoxedCode(0, false, false, lineno, std::move(si), std::move(constant_vregs), std::move(param_names),
-                             fn, name, autoDecref(getDocString(body)));
+        code = new BoxedCode(0, false, false, lineno, std::move(si), std::move(cfg_result.second),
+                             std::move(param_names), fn, name, autoDecref(getDocString(body)));
 
     return code;
 }

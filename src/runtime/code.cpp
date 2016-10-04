@@ -117,7 +117,7 @@ void BoxedCode::dealloc(Box* b) noexcept {
 }
 
 BoxedCode::BoxedCode(int num_args, bool takes_varargs, bool takes_kwargs, int firstlineno,
-                     std::unique_ptr<SourceInfo> source, ConstantVRegInfo constant_vregs, ParamNames param_names,
+                     std::unique_ptr<SourceInfo> source, ConstantVRegInfo&& constant_vregs, ParamNames param_names,
                      BoxedString* filename, BoxedString* name, Box* doc)
     : source(std::move(source)),
       constant_vregs(std::move(constant_vregs)),

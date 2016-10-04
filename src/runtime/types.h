@@ -1075,11 +1075,15 @@ private:
     std::vector<Box*> constants;
     mutable std::vector<std::pair<BST_stmt*, BoxedCode*>> funcs_and_classes;
 
+    // TODO: when we support tuple constants inside vregs we can remove it and just use a normal constant vreg for it
+    std::vector<std::unique_ptr<std::vector<BoxedString*>>> keyword_names;
+
 public:
     ConstantVRegInfo() {}
 
     Box* getConstant(int vreg) const { return constants[-(vreg + 1)]; }
     std::pair<BST_stmt*, BoxedCode*> getFuncOrClass(int constant) const { return funcs_and_classes[constant]; }
+    const std::vector<BoxedString*>* getKeywordNames(int constant) const { return keyword_names[constant].get(); }
 
     // returns the vreg num for the constant (which is a negative number)
     int addConstant(Box* o) {
@@ -1090,6 +1094,11 @@ public:
     int addFuncOrClass(BST_stmt* stmt, STOLEN(BoxedCode*) code) {
         funcs_and_classes.emplace_back(stmt, code);
         return funcs_and_classes.size() - 1;
+    }
+
+    int addKeywordNames(llvm::ArrayRef<BoxedString*> name) {
+        keyword_names.emplace_back(new std::vector<BoxedString*>(name.begin(), name.end()));
+        return keyword_names.size() - 1;
     }
 
     void dealloc() const {
@@ -1149,7 +1158,7 @@ public:
 
     // Constructor for Python code objects:
     BoxedCode(int num_args, bool takes_varargs, bool takes_kwargs, int firstlineno, std::unique_ptr<SourceInfo> source,
-              ConstantVRegInfo constant_vregs, ParamNames param_names, BoxedString* filename, BoxedString* name,
+              ConstantVRegInfo&& constant_vregs, ParamNames param_names, BoxedString* filename, BoxedString* name,
               Box* doc);
 
     // Constructor for code objects created by the runtime:
