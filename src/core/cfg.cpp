@@ -1254,13 +1254,8 @@ private:
         static BoxedString* gen_name = getStaticString("<generator>");
 
         BoxedCode* code = cfgizer->runRecursively(new_body, gen_name, node->lineno, genexp_args, node);
-        // XXX bad!  this should be tracked ex through co_consts
-        // cur_code->co_consts.push_back(def->code)
-        constants.push_back(code);
-
         BST_FunctionDef* func = BST_FunctionDef::create(0, 0);
-        func->code = code;
-        BST_MakeFunction* mkfunc = new BST_MakeFunction(func);
+        BST_MakeFunction* mkfunc = new BST_MakeFunction(func, constant_vregs.addFuncOrClass(func, code));
         TmpValue func_var_name = pushBackCreateDst(mkfunc);
 
         return makeCall(func_var_name, { first });
@@ -1317,13 +1312,8 @@ private:
         static BoxedString* comp_name = getStaticString("<comperehension>");
 
         BoxedCode* code = cfgizer->runRecursively(new_body, comp_name, node->lineno, args, node);
-        // XXX bad!  this should be tracked ex through co_consts
-        // cur_code->co_consts.push_back(def->code)
-        constants.push_back(code);
-
         BST_FunctionDef* func = BST_FunctionDef::create(0, 0);
-        func->code = code;
-        BST_MakeFunction* mkfunc = new BST_MakeFunction(func);
+        BST_MakeFunction* mkfunc = new BST_MakeFunction(func, constant_vregs.addFuncOrClass(func, code));
         TmpValue func_var_name = pushBackCreateDst(mkfunc);
 
         return makeCall(func_var_name, { first });
@@ -1375,12 +1365,8 @@ private:
         }
 
         auto name = getStaticString("<lambda>");
-        bdef->code = cfgizer->runRecursively({ stmt }, name, node->lineno, node->args, node);
-        // XXX bad!  this should be tracked ex through co_consts
-        // cur_code->co_consts.push_back(def->code)
-        constants.push_back(bdef->code);
-
-        auto mkfn = new BST_MakeFunction(bdef);
+        auto code = cfgizer->runRecursively({ stmt }, name, node->lineno, node->args, node);
+        auto mkfn = new BST_MakeFunction(bdef, constant_vregs.addFuncOrClass(bdef, code));
         return pushBackCreateDst(mkfn);
     }
 
@@ -1773,12 +1759,8 @@ public:
         TmpValue bases_name = pushBackCreateDst(bases);
         unmapExpr(bases_name, &def->vreg_bases_tuple);
 
-        def->code = cfgizer->runRecursively(node->body, node->name.getBox(), node->lineno, NULL, node);
-        // XXX bad!  this should be tracked ex through co_consts
-        // cur_code->co_consts.push_back(def->code)
-        constants.push_back(def->code);
-
-        auto mkclass = new BST_MakeClass(def);
+        auto code = cfgizer->runRecursively(node->body, node->name.getBox(), node->lineno, NULL, node);
+        auto mkclass = new BST_MakeClass(def, constant_vregs.addFuncOrClass(def, code));
         auto tmp = pushBackCreateDst(mkclass);
         pushAssign(TmpValue(scoping->mangleName(def->name), node->lineno), tmp);
 
@@ -1799,12 +1781,8 @@ public:
             unmapExpr(remapExpr(node->args->defaults[i]), &def->elts[node->decorator_list.size() + i]);
         }
 
-        def->code = cfgizer->runRecursively(node->body, node->name.getBox(), node->lineno, node->args, node);
-        // XXX bad!  this should be tracked ex through co_consts
-        // cur_code->co_consts.push_back(def->code)
-        constants.push_back(def->code);
-
-        auto mkfunc = new BST_MakeFunction(def);
+        auto code = cfgizer->runRecursively(node->body, node->name.getBox(), node->lineno, node->args, node);
+        auto mkfunc = new BST_MakeFunction(def, constant_vregs.addFuncOrClass(def, code));
         auto tmp = pushBackCreateDst(mkfunc);
         pushAssign(TmpValue(scoping->mangleName(def->name), node->lineno), tmp);
 
@@ -2876,8 +2854,8 @@ public:
 
     enum Step { TrackBlockUsage = 0, UserVisible, CrossBlock, SingleBlockUse } step;
 
-    AssignVRegsVisitor(llvm::DenseMap<int*, InternedString>& id_vreg)
-        : NoopBSTVisitor(true /* skip child CFG nodes */), current_block(0), next_vreg(0), id_vreg(id_vreg) {}
+    AssignVRegsVisitor(llvm::DenseMap<int*, InternedString>& id_vreg, const ConstantVRegInfo& constant_vregs)
+        : NoopBSTVisitor(constant_vregs), current_block(0), next_vreg(0), id_vreg(id_vreg) {}
 
     bool visit_vreg(int* vreg, bool is_dst = false) override {
         if (is_dst) {
@@ -2995,11 +2973,12 @@ public:
     }
 };
 
-void VRegInfo::assignVRegs(CFG* cfg, const ParamNames& param_names, llvm::DenseMap<int*, InternedString>& id_vreg) {
+void VRegInfo::assignVRegs(CFG* cfg, const ParamNames& param_names, llvm::DenseMap<int*, InternedString>& id_vreg,
+                           const ConstantVRegInfo& constant_vregs) {
     assert(!hasVRegsAssigned());
 
     // warning: don't rearrange the steps, they need to be run in this exact order!
-    AssignVRegsVisitor visitor(id_vreg);
+    AssignVRegsVisitor visitor(id_vreg, constant_vregs);
     for (auto step : { AssignVRegsVisitor::TrackBlockUsage, AssignVRegsVisitor::UserVisible,
                        AssignVRegsVisitor::CrossBlock, AssignVRegsVisitor::SingleBlockUse }) {
         visitor.step = step;
@@ -3212,25 +3191,6 @@ static std::pair<CFG*, ConstantVRegInfo> computeCFG(llvm::ArrayRef<AST_stmt*> bo
 
     assert(rtn->getStartingBlock()->idx == 0);
 
-    std::vector<BST_stmt*> flattened;
-    for (auto b : rtn->blocks)
-        flatten(b->body, flattened, true);
-
-    std::unordered_map<BST_stmt*, int> deduped;
-    bool no_dups = true;
-    for (auto e : flattened) {
-        deduped[e]++;
-        if (deduped[e] == 2) {
-            printf("Duplicated: ");
-            print_bst(e, visitor.constant_vregs);
-            printf("\n");
-            no_dups = false;
-        }
-    }
-    if (!no_dups)
-        rtn->print(visitor.constant_vregs);
-    assert(no_dups);
-
 // Uncomment this for some heavy checking to make sure that we don't forget
 // to set lineno.  It will catch a lot of things that don't necessarily
 // need to be fixed.
@@ -3326,7 +3286,7 @@ static std::pair<CFG*, ConstantVRegInfo> computeCFG(llvm::ArrayRef<AST_stmt*> bo
         }
     }
 
-    rtn->getVRegInfo().assignVRegs(rtn, param_names, visitor.id_vreg);
+    rtn->getVRegInfo().assignVRegs(rtn, param_names, visitor.id_vreg, visitor.constant_vregs);
 
 
     if (VERBOSITY("cfg") >= 2) {

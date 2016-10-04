@@ -1073,16 +1073,30 @@ static_assert(sizeof(BoxedDict) == sizeof(PyDictObject), "");
 class ConstantVRegInfo {
 private:
     std::vector<Box*> constants;
+    mutable std::vector<std::pair<BST_stmt*, BoxedCode*>> funcs_and_classes;
 
 public:
-    ConstantVRegInfo(){};
+    ConstantVRegInfo() {}
 
     Box* getConstant(int vreg) const { return constants[-(vreg + 1)]; }
+    std::pair<BST_stmt*, BoxedCode*> getFuncOrClass(int constant) const { return funcs_and_classes[constant]; }
 
     // returns the vreg num for the constant (which is a negative number)
     int addConstant(Box* o) {
         constants.push_back(o);
         return -constants.size();
+    }
+
+    int addFuncOrClass(BST_stmt* stmt, STOLEN(BoxedCode*) code) {
+        funcs_and_classes.emplace_back(stmt, code);
+        return funcs_and_classes.size() - 1;
+    }
+
+    void dealloc() const {
+        for (auto&& e : funcs_and_classes) {
+            Py_DECREF(e.second);
+        }
+        funcs_and_classes.clear();
     }
 };
 

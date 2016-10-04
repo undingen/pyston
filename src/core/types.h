@@ -160,6 +160,7 @@ class BST_Name;
 class BST_LoadName;
 class BST_StoreName;
 class BST_stmt;
+class ConstantVRegInfo;
 
 class PhiAnalysis;
 class LivenessAnalysis;
@@ -499,7 +500,7 @@ public:
     // between ast.h and core/types.h
     int ast_type;
 
-    LivenessAnalysis* getLiveness();
+    LivenessAnalysis* getLiveness(const ConstantVRegInfo& constant_vregs);
 
     SourceInfo(BoxedModule* m, ScopingResults scoping, FutureFlags future_flags, int ast_type, bool is_generator);
     ~SourceInfo();

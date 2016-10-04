@@ -52,16 +52,17 @@ TEST_F(AnalysisTest, augassign) {
     ParamNames param_names(args, *module->interned_strings.get());
 
     // Hack to get at the cfg:
-    CFG* cfg = NULL;
+    BoxedCode* code = NULL;
     for (BST_stmt* stmt : module_code->source->cfg->blocks[0]->body) {
         if (stmt->type !=  BST_TYPE::MakeFunction)
             continue;
-        cfg = bst_cast<BST_MakeFunction>(stmt)->function_def->code->source->cfg;
+        code = module_code->constant_vregs.getFuncOrClass(bst_cast<BST_MakeFunction>(stmt)->index_function_def).second;
         break;
     }
+    CFG* cfg = code->source->cfg;
     assert(cfg);
 
-    std::unique_ptr<LivenessAnalysis> liveness = computeLivenessInfo(cfg);
+    std::unique_ptr<LivenessAnalysis> liveness = computeLivenessInfo(cfg, code->constant_vregs);
     auto&& vregs = cfg->getVRegInfo();
 
     //cfg->print();
@@ -72,7 +73,7 @@ TEST_F(AnalysisTest, augassign) {
             ASSERT_TRUE(liveness->isLiveAtEnd(vregs.getVReg(module->interned_strings->get("a")), block));
     }
 
-    std::unique_ptr<PhiAnalysis> phis = computeRequiredPhis(ParamNames(args, *module->interned_strings.get()), cfg, liveness.get());
+    std::unique_ptr<PhiAnalysis> phis = computeRequiredPhis(ParamNames(args, *module->interned_strings.get()), cfg, liveness.get(), code->constant_vregs);
 }
 
 void doOsrTest(bool is_osr, bool i_maybe_undefined) {
@@ -100,12 +101,12 @@ void doOsrTest(bool is_osr, bool i_maybe_undefined) {
     for (BST_stmt* stmt : module_code->source->cfg->blocks[0]->body) {
         if (stmt->type !=  BST_TYPE::MakeFunction)
             continue;
-        code = bst_cast<BST_MakeFunction>(stmt)->function_def->code;
+        code = module_code->constant_vregs.getFuncOrClass(bst_cast<BST_MakeFunction>(stmt)->index_function_def).second;
         break;
     }
     assert(code);
     CFG* cfg = code->source->cfg;
-    std::unique_ptr<LivenessAnalysis> liveness = computeLivenessInfo(cfg);
+    std::unique_ptr<LivenessAnalysis> liveness = computeLivenessInfo(cfg, code->constant_vregs);
 
     // cfg->print();
 
@@ -134,9 +135,9 @@ void doOsrTest(bool is_osr, bool i_maybe_undefined) {
         if (i_maybe_undefined)
             entry_descriptor->potentially_undefined.set(vreg);
         entry_descriptor->args[vregs.getVReg(iter_str)] = fake_type;
-        phis = computeRequiredPhis(entry_descriptor, liveness.get());
+        phis = computeRequiredPhis(entry_descriptor, liveness.get(), code->constant_vregs);
     } else {
-        phis = computeRequiredPhis(ParamNames(func->args, *module->interned_strings), cfg, liveness.get());
+        phis = computeRequiredPhis(ParamNames(func->args, *module->interned_strings), cfg, liveness.get(), code->constant_vregs);
     }
 
     // First, verify that we require phi nodes for the block we enter into.

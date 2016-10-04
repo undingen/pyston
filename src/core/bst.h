@@ -481,8 +481,6 @@ public:
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
 
-    BoxedCode* code;
-
     InternedString name;
     int vreg_bases_tuple;
     const int num_decorator;
@@ -581,7 +579,7 @@ class BST_FunctionDef : public BST_stmt {
 public:
     InternedString name; // if the name is not set this is a lambda
 
-    BoxedCode* code;
+    // int index_function_def = -1;
 
     const int num_decorator;
     const int num_defaults;
@@ -729,24 +727,26 @@ public:
 
 class BST_MakeFunction : public BST_stmt_with_dest {
 public:
-    BST_FunctionDef* function_def;
+    const int index_function_def;
 
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
 
-    BST_MakeFunction(BST_FunctionDef* fd) : BST_stmt_with_dest(BST_TYPE::MakeFunction, fd->lineno), function_def(fd) {}
+    BST_MakeFunction(BST_FunctionDef* fd, int index_function_def)
+        : BST_stmt_with_dest(BST_TYPE::MakeFunction, fd->lineno), index_function_def(index_function_def) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::MakeFunction;
 };
 
 class BST_MakeClass : public BST_stmt_with_dest {
 public:
-    BST_ClassDef* class_def;
+    const int index_class_def;
 
     virtual void accept(BSTVisitor* v);
     virtual void accept_stmt(StmtVisitor* v);
 
-    BST_MakeClass(BST_ClassDef* cd) : BST_stmt_with_dest(BST_TYPE::MakeClass, cd->lineno), class_def(cd) {}
+    BST_MakeClass(BST_ClassDef* cd, int index_class_def)
+        : BST_stmt_with_dest(BST_TYPE::MakeClass, cd->lineno), index_class_def(index_class_def) {}
 
     static const BST_TYPE::BST_TYPE TYPE = BST_TYPE::MakeClass;
 };
@@ -972,12 +972,11 @@ template <typename T> T* bst_cast(BST_stmt* node) {
     return static_cast<T*>(node);
 }
 
-
+class ConstantVRegInfo;
 class BSTVisitor {
 public:
-    const bool skip_visit_child_cfg;
-    // if skip_visit_child_cfg is set function and class defs will not visit their body nodes.
-    BSTVisitor(bool skip_visit_child_cfg) : skip_visit_child_cfg(skip_visit_child_cfg) {}
+    const ConstantVRegInfo& constant_vregs;
+    BSTVisitor(const ConstantVRegInfo& constant_vregs) : constant_vregs(constant_vregs) {}
     virtual ~BSTVisitor() {}
 
     // pseudo
@@ -1040,7 +1039,7 @@ public:
 class NoopBSTVisitor : public BSTVisitor {
 protected:
 public:
-    NoopBSTVisitor(bool skip_visit_child_cfg) : BSTVisitor(skip_visit_child_cfg) {}
+    NoopBSTVisitor(const ConstantVRegInfo& constant_vregs) : BSTVisitor(constant_vregs) {}
     virtual ~NoopBSTVisitor() {}
 
     virtual bool visit_assert(BST_Assert* node) override { return false; }
@@ -1156,20 +1155,17 @@ public:
     virtual void visit_yield(BST_Yield* node) { RELEASE_ASSERT(0, ""); }
 };
 
-class ConstantVRegInfo;
 void print_bst(BST_stmt* bst, const ConstantVRegInfo& constant_vregs);
-
 class PrintVisitor : public BSTVisitor {
 private:
     llvm::raw_ostream& stream;
-    const ConstantVRegInfo& constant_vregs;
     int indent;
     void printIndent();
     void printOp(AST_TYPE::AST_TYPE op_type);
 
 public:
     PrintVisitor(const ConstantVRegInfo& constant_vregs, int indent, llvm::raw_ostream& stream)
-        : BSTVisitor(false /* visit child CFG */), stream(stream), constant_vregs(constant_vregs), indent(indent) {}
+        : BSTVisitor(constant_vregs), stream(stream), indent(indent) {}
     virtual ~PrintVisitor() {}
     void flush() { stream.flush(); }
 
@@ -1228,11 +1224,6 @@ public:
     virtual bool visit_unpackintoarray(BST_UnpackIntoArray* node);
     virtual bool visit_yield(BST_Yield* node);
 };
-
-// Given an BST node, return a vector of the node plus all its descendents.
-// This is useful for analyses that care more about the constituent nodes than the
-// exact tree structure; ex, finding all "global" directives.
-void flatten(llvm::ArrayRef<BST_stmt*> roots, std::vector<BST_stmt*>& output, bool expand_scopes);
 };
 
 #endif

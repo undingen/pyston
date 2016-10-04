@@ -107,7 +107,11 @@ void BoxedCode::dealloc(Box* b) noexcept {
     Py_XDECREF(o->name);
     Py_XDECREF(o->_doc);
 
+    o->tryDeallocatingTheBJitCode();
     o->source.reset(nullptr);
+    o->constant_vregs.dealloc();
+
+    o->~BoxedCode();
 
     o->cls->tp_free(o);
 }

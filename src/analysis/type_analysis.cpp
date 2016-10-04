@@ -479,7 +479,7 @@ private:
     }
 
     void visit_makeclass(BST_MakeClass* mkclass) override {
-        BST_ClassDef* node = mkclass->class_def;
+        auto* node = bst_cast<BST_ClassDef>(constant_vregs.getFuncOrClass(mkclass->index_class_def).first);
 
         for (int i = 0; i < node->num_decorator; ++i) {
             getType(node->decorator[i]);
@@ -505,12 +505,11 @@ private:
     }
 
     void visit_makefunction(BST_MakeFunction* mkfn) override {
-        BST_FunctionDef* node = mkfn->function_def;
+        auto* node = bst_cast<BST_FunctionDef>(constant_vregs.getFuncOrClass(mkfn->index_function_def).first);
 
         for (int i = 0; i < node->num_defaults + node->num_decorator; ++i) {
             getType(node->elts[i]);
         }
-
         CompilerType* t = UNKNOWN;
         if (node->num_decorator == 0)
             t = typeFromClass(function_cls);

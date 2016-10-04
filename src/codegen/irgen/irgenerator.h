@@ -92,6 +92,7 @@ public:
 
     CompiledFunction* getCurFunction() { return cf; }
     BoxedCode* getCode() { return code; }
+    const ConstantVRegInfo& getConstantVRegInfo();
 
     ExceptionStyle getExceptionStyle() { return cf->exception_style; }
 
@@ -115,7 +116,7 @@ public:
 
     SourceInfo* getSourceInfo() { return source_info; }
 
-    LivenessAnalysis* getLiveness() { return source_info->getLiveness(); }
+    LivenessAnalysis* getLiveness() { return source_info->getLiveness(getConstantVRegInfo()); }
     PhiAnalysis* getPhis() { return phis.get(); }
 
     const ScopingResults& getScopeInfo();

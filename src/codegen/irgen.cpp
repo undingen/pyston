@@ -344,8 +344,8 @@ private:
     SymbolTable* sym_table;
     bool created_new_sym_table;
 
-    SymTableDstVRegDeleter(SymbolTable* sym_table)
-        : NoopBSTVisitor(true /* skip child CFG nodes */), sym_table(sym_table), created_new_sym_table(false) {}
+    SymTableDstVRegDeleter(SymbolTable* sym_table, const ConstantVRegInfo& constant_vregs)
+        : NoopBSTVisitor(constant_vregs), sym_table(sym_table), created_new_sym_table(false) {}
 
 protected:
     bool visit_vreg(int* vreg, bool is_dst = false) override {
@@ -361,9 +361,9 @@ protected:
     }
 
 public:
-    static std::pair<SymbolTable*, bool /* created_new_sym_table */> removeDestVRegsFromSymTable(SymbolTable* sym_table,
-                                                                                                 BST_Invoke* stmt) {
-        SymTableDstVRegDeleter visitor(sym_table);
+    static std::pair<SymbolTable*, bool /* created_new_sym_table */>
+    removeDestVRegsFromSymTable(SymbolTable* sym_table, BST_Invoke* stmt, const ConstantVRegInfo& constant_vregs) {
+        SymTableDstVRegDeleter visitor(sym_table, constant_vregs);
         stmt->accept(&visitor);
         return std::make_pair(visitor.sym_table, visitor.created_new_sym_table);
     }
@@ -739,7 +739,7 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
                 bool created_new_sym_table = false;
                 if (last_inst->type == BST_TYPE::Invoke && bst_cast<BST_Invoke>(last_inst)->exc_dest == block)
                     std::tie(sym_table, created_new_sym_table) = SymTableDstVRegDeleter::removeDestVRegsFromSymTable(
-                        sym_table, bst_cast<BST_Invoke>(last_inst));
+                        sym_table, bst_cast<BST_Invoke>(last_inst), irstate->getCode()->constant_vregs);
 
                 generator->copySymbolsFrom(sym_table);
                 for (auto&& p : *definedness_tables[pred]) {
@@ -1119,13 +1119,13 @@ std::pair<CompiledFunction*, llvm::Function*> doCompile(BoxedCode* code, SourceI
         computeBlockSetClosure(blocks);
     }
 
-    LivenessAnalysis* liveness = source->getLiveness();
+    LivenessAnalysis* liveness = source->getLiveness(code->constant_vregs);
     std::unique_ptr<PhiAnalysis> phis;
 
     if (entry_descriptor)
-        phis = computeRequiredPhis(entry_descriptor, liveness);
+        phis = computeRequiredPhis(entry_descriptor, liveness, code->constant_vregs);
     else
-        phis = computeRequiredPhis(*param_names, source->cfg, liveness);
+        phis = computeRequiredPhis(*param_names, source->cfg, liveness, code->constant_vregs);
 
     RefcountTracker refcounter;
 

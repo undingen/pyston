@@ -29,6 +29,7 @@ namespace pyston {
 class BST_Jump;
 class CFG;
 class CFGBlock;
+class ConstantVRegInfo;
 class LivenessBBVisitor;
 
 class LivenessAnalysis {
@@ -42,7 +43,7 @@ private:
     VRegMap<llvm::DenseMap<CFGBlock*, bool>> result_cache;
 
 public:
-    LivenessAnalysis(CFG* cfg);
+    LivenessAnalysis(CFG* cfg, const ConstantVRegInfo& constant_vreg);
     ~LivenessAnalysis();
 
     bool isLiveAtEnd(int vreg, CFGBlock* block);
@@ -66,7 +67,7 @@ private:
 public:
     DefinednessAnalysis() {}
 
-    void run(VRegMap<DefinitionLevel> initial_map, CFGBlock* initial_block);
+    void run(VRegMap<DefinitionLevel> initial_map, CFGBlock* initial_block, const ConstantVRegInfo& constant_vregs);
 
     DefinitionLevel isDefinedAtEnd(int vreg, CFGBlock* block);
     const VRegSet& getDefinedVregsAtEnd(CFGBlock* block);
@@ -88,7 +89,7 @@ public:
     // Initials_need_phis specifies that initial_map should count as an additional entry point
     // that may require phis.
     PhiAnalysis(VRegMap<DefinednessAnalysis::DefinitionLevel> initial_map, CFGBlock* initial_block,
-                bool initials_need_phis, LivenessAnalysis* liveness);
+                bool initials_need_phis, LivenessAnalysis* liveness, const ConstantVRegInfo& constant_vreg);
 
     bool isRequired(int vreg, CFGBlock* block);
     bool isRequiredAfter(int vreg, CFGBlock* block);
@@ -100,9 +101,11 @@ public:
     bool isPotentiallyUndefinedAt(int vreg, CFGBlock* block);
 };
 
-std::unique_ptr<LivenessAnalysis> computeLivenessInfo(CFG*);
-std::unique_ptr<PhiAnalysis> computeRequiredPhis(const ParamNames&, CFG*, LivenessAnalysis*);
-std::unique_ptr<PhiAnalysis> computeRequiredPhis(const OSREntryDescriptor*, LivenessAnalysis*);
+std::unique_ptr<LivenessAnalysis> computeLivenessInfo(CFG*, const ConstantVRegInfo& constant_vreg);
+std::unique_ptr<PhiAnalysis> computeRequiredPhis(const ParamNames&, CFG*, LivenessAnalysis*,
+                                                 const ConstantVRegInfo& constant_vreg);
+std::unique_ptr<PhiAnalysis> computeRequiredPhis(const OSREntryDescriptor*, LivenessAnalysis*,
+                                                 const ConstantVRegInfo& constant_vreg);
 }
 
 #endif
