@@ -222,7 +222,7 @@ RewriterVar* JitFragmentWriter::imm(uint64_t val) {
     return loadConst(val);
 }
 
-RewriterVar* JitFragmentWriter::imm(void* val) {
+RewriterVar* JitFragmentWriter::imm(const void* val) {
     return loadConst((uint64_t)val);
 }
 
@@ -268,7 +268,7 @@ RewriterVar* JitFragmentWriter::emitCallattr(BST_stmt* node, RewriterVar* obj, B
     }
 
     if (keyword_names)
-        call_args.push_back(imm((void*)keyword_names));
+        call_args.push_back(imm(keyword_names));
 
     return emitPPCall((void*)callattr, call_args, 2 * 640, true /* record type */, node, additional_uses)
         .first->setType(RefType::OWNED);
@@ -276,7 +276,7 @@ RewriterVar* JitFragmentWriter::emitCallattr(BST_stmt* node, RewriterVar* obj, B
     // We could make this faster but for now: keep it simple, stupid...
     RewriterVar* attr_var = imm(attr);
     RewriterVar* flags_var = imm(flags.asInt());
-    RewriterVar* keyword_names_var = keyword_names ? imm((void*)keyword_names) : nullptr;
+    RewriterVar* keyword_names_var = keyword_names ? imm(keyword_names) : nullptr;
 
     RewriterVar* args_array = nullptr;
     if (args.size())
@@ -538,13 +538,13 @@ RewriterVar* JitFragmentWriter::emitRuntimeCall(BST_stmt* node, RewriterVar* obj
     } else
         call_args.push_back(imm(0ul));
     if (keyword_names)
-        call_args.push_back(imm((void*)keyword_names));
+        call_args.push_back(imm(keyword_names));
 
     return emitPPCall((void*)runtimeCall, call_args, 2 * 640, node != NULL /* record type */, node, additional_uses)
         .first->setType(RefType::OWNED);
 #else
     RewriterVar* argspec_var = imm(argspec.asInt());
-    RewriterVar* keyword_names_var = keyword_names ? imm((void*)keyword_names) : nullptr;
+    RewriterVar* keyword_names_var = keyword_names ? imm(keyword_names) : nullptr;
 
     RewriterVar* args_array = nullptr;
     if (args.size()) {

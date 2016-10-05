@@ -142,7 +142,7 @@ public:
 
     bool is_terminator() const __attribute__((always_inline)) {
         return type == BST_TYPE::Branch || type == BST_TYPE::Jump || type == BST_TYPE::Invoke
-               || type == BST_TYPE::Return || type == BST_TYPE::Raise;
+               || type == BST_TYPE::Return || type == BST_TYPE::Raise || type == BST_TYPE::Assert;
     }
 
 // #define DEBUG_LINE_NUMBERS 1
@@ -1036,6 +1036,7 @@ int BST_stmt::size_in_bytes() const {
         return bst_cast<const BST_##x>(this)->size_in_bytes();
         FOREACH_TYPE(DISPATCH_SIZE)
     };
+    RELEASE_ASSERT(0, "unreachable");
 }
 
 bool BST_stmt::has_dest_vreg() const {
@@ -1045,6 +1046,7 @@ bool BST_stmt::has_dest_vreg() const {
         return std::is_base_of<BST_stmt_with_dest, BST_##x>();
         FOREACH_TYPE(DISPATCH_HAS_DEST)
     };
+    RELEASE_ASSERT(0, "unreachable");
 }
 
 class ConstantVRegInfo;

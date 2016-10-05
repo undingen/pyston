@@ -264,7 +264,7 @@ public:
 
     RewriterVar* getInterp();
     RewriterVar* imm(uint64_t val);
-    RewriterVar* imm(void* val);
+    RewriterVar* imm(const void* val);
 
     RewriterVar* emitAugbinop(BST_stmt* node, RewriterVar* lhs, RewriterVar* rhs, int op_type);
     RewriterVar* emitApplySlice(RewriterVar* target, RewriterVar* lower, RewriterVar* upper);
