@@ -27,6 +27,8 @@
 #include "core/bst.h"
 #include "core/options.h"
 #include "core/types.h"
+#include "runtime/complex.h"
+#include "runtime/long.h"
 #include "runtime/objmodel.h"
 #include "runtime/types.h"
 
@@ -456,10 +458,19 @@ private:
     CFGConstructionBlock* curblock;
     std::vector<ContInfo> continuations;
     std::vector<ExcBlockInfo> exc_handlers;
-    llvm::DenseMap<Box*, int> consts;
+
     ConstantVRegInfo constant_vregs;
 
     unsigned int next_var_index = 0;
+
+    llvm::DenseMap<Box*, int> consts;
+    llvm::StringMap<BoxedString*> str_constants;
+    llvm::StringMap<Box*> unicode_constants;
+    // I'm not sure how well it works to use doubles as hashtable keys; thankfully
+    // it's not a big deal if we get misses.
+    std::unordered_map<int64_t, Box*> imaginary_constants;
+    llvm::StringMap<Box*> long_constants;
+    llvm::DenseMap<InternedString, int> interned_string_constants;
 
     friend std::pair<CFG*, ConstantVRegInfo> computeCFG(llvm::ArrayRef<AST_stmt*> body, AST_TYPE::AST_TYPE ast_type,
                                                         int lineno, AST_arguments* args, BoxedString* filename,
@@ -587,22 +598,6 @@ private:
         return name;
     }
 
-    TmpValue remapName(AST_Name* name) {
-        if (!name)
-            return TmpValue();
-
-        // we treat None as a constant because it can never get modified
-        if (name->id == "None")
-            return makeNone(name->lineno);
-
-        auto rtn = new BST_LoadName;
-        rtn->lineno = name->lineno;
-        rtn->index_id = constant_vregs.addInternedString(name->id);
-        rtn->lookup_type = name->lookup_type;
-        fillScopingInfo(rtn, name->id, scoping);
-        return pushBackCreateDst(rtn);
-    }
-
     int addConst(Box* o) {
         // make sure all consts are unique
         auto it = consts.find(o);
@@ -613,16 +608,39 @@ private:
         return vreg;
     }
 
+    static int64_t getDoubleBits(double d) {
+        int64_t rtn;
+        static_assert(sizeof(rtn) == sizeof(d), "");
+        memcpy(&rtn, &d, sizeof(d));
+        return rtn;
+    }
+
+    TmpValue makeNum(int64_t n, int lineno) {
+        Box* o = constant_vregs.getIntConstant(n);
+        int vreg_const = addConst(o);
+        return TmpValue(vreg_const, lineno);
+    }
+
     TmpValue remapNum(AST_Num* num) {
         Box* o = NULL;
         if (num->num_type == AST_Num::INT) {
-            o = source->parent_module->getIntConstant(num->n_int);
+            o = constant_vregs.getIntConstant(num->n_int);
         } else if (num->num_type == AST_Num::FLOAT) {
-            o = source->parent_module->getFloatConstant(num->n_float);
+            o = constant_vregs.getFloatConstant(num->n_float);
         } else if (num->num_type == AST_Num::LONG) {
-            o = source->parent_module->getLongConstant(num->n_long);
+            Box*& r = long_constants[num->n_long];
+            if (!r) {
+                r = createLong(num->n_long);
+                constant_vregs.addOwned(r);
+            }
+            o = r;
         } else if (num->num_type == AST_Num::COMPLEX) {
-            o = source->parent_module->getPureImaginaryConstant(num->n_float);
+            Box*& r = imaginary_constants[getDoubleBits(num->n_float)];
+            if (!r) {
+                r = createPureImaginary(num->n_float);
+                constant_vregs.addOwned(r);
+            }
+            o = r;
         } else
             RELEASE_ASSERT(0, "not implemented");
 
@@ -630,25 +648,30 @@ private:
         return TmpValue(vreg_const, num->lineno);
     }
 
-    TmpValue remapStr(AST_Str* str) {
-        // TODO make this serializable
-        Box* o = NULL;
-        if (str->str_type == AST_Str::STR) {
-            o = source->parent_module->getStringConstant(str->str_data, true);
-        } else if (str->str_type == AST_Str::UNICODE) {
-            o = source->parent_module->getUnicodeConstant(str->str_data);
-        } else {
-            RELEASE_ASSERT(0, "%d", str->str_type);
+    TmpValue makeStr(llvm::StringRef str, int lineno = 0) {
+        BoxedString*& o = str_constants[str];
+        // we always intern the string
+        if (!o) {
+            o = internStringMortal(str);
+            constant_vregs.addOwned(o);
         }
-
-        int vreg_const = addConst(o);
-        return TmpValue(vreg_const, str->lineno);
-    }
-
-    TmpValue makeNum(int n, int lineno) {
-        Box* o = source->parent_module->getIntConstant(n);
         int vreg_const = addConst(o);
         return TmpValue(vreg_const, lineno);
+    }
+
+    TmpValue remapStr(AST_Str* str) {
+        // TODO make this serializable
+        if (str->str_type == AST_Str::STR) {
+            return makeStr(str->str_data, str->lineno);
+        } else if (str->str_type == AST_Str::UNICODE) {
+            Box*& r = unicode_constants[str->str_data];
+            if (!r) {
+                r = decodeUTF8StringPtr(str->str_data);
+                constant_vregs.addOwned(r);
+            }
+            return TmpValue(addConst(r), str->lineno);
+        }
+        RELEASE_ASSERT(0, "%d", str->str_type);
     }
 
     TmpValue makeNone(int lineno) {
@@ -656,10 +679,29 @@ private:
         return TmpValue(vreg_const, lineno);
     }
 
-    TmpValue makeStr(llvm::StringRef str, int lineno = 0) {
-        Box* o = source->parent_module->getStringConstant(str, true);
-        int vreg_const = addConst(o);
-        return TmpValue(vreg_const, lineno);
+    int remapInternedString(InternedString id) {
+        auto it = interned_string_constants.find(id);
+        if (it != interned_string_constants.end())
+            return it->second;
+        int index = constant_vregs.addInternedString(id);
+        interned_string_constants[id] = index;
+        return index;
+    }
+
+    TmpValue remapName(AST_Name* name) {
+        if (!name)
+            return TmpValue();
+
+        // we treat None as a constant because it can never get modified
+        if (name->id == "None")
+            return makeNone(name->lineno);
+
+        auto rtn = new BST_LoadName;
+        rtn->lineno = name->lineno;
+        rtn->index_id = remapInternedString(name->id);
+        rtn->lookup_type = name->lookup_type;
+        fillScopingInfo(rtn, name->id, scoping);
+        return pushBackCreateDst(rtn);
     }
 
     TmpValue applyComprehensionCall(AST_ListComp* node, TmpValue name) {
@@ -863,7 +905,7 @@ private:
         BST_LoadAttr* rtn = new BST_LoadAttr();
         rtn->clsonly = clsonly;
         unmapExpr(base, &rtn->vreg_value);
-        rtn->index_attr = constant_vregs.addInternedString(attr);
+        rtn->index_attr = remapInternedString(attr);
         rtn->lineno = base.lineno;
         return pushBackCreateDst(rtn);
     }
@@ -905,7 +947,7 @@ private:
         BST_Call* rtn = NULL;
         if (!is_cls) {
             BST_CallAttr* call = BST_CallAttr::create(args.size(), 0 /* num keywords */);
-            call->index_attr = constant_vregs.addInternedString(attr);
+            call->index_attr = remapInternedString(attr);
             unmapExpr(target, &call->vreg_value);
             for (int i = 0; i < args.size(); ++i) {
                 unmapExpr(args[i], &call->elts[i]);
@@ -913,7 +955,7 @@ private:
             rtn = call;
         } else {
             BST_CallClsAttr* call = BST_CallClsAttr::create(args.size(), 0 /* num keywords */);
-            call->index_attr = constant_vregs.addInternedString(attr);
+            call->index_attr = remapInternedString(attr);
             unmapExpr(target, &call->vreg_value);
             for (int i = 0; i < args.size(); ++i) {
                 unmapExpr(args[i], &call->elts[i]);
@@ -937,7 +979,7 @@ private:
             BST_StoreName* assign = new BST_StoreName();
             unmapExpr(val, &assign->vreg_value);
             assign->lineno = val.lineno;
-            assign->index_id = constant_vregs.addInternedString(ast_cast<AST_Name>(target)->id);
+            assign->index_id = remapInternedString(ast_cast<AST_Name>(target)->id);
             fillScopingInfo(assign, ast_cast<AST_Name>(target)->id, scoping);
             push_back(assign);
         } else if (target->type == AST_TYPE::Subscript) {
@@ -967,7 +1009,7 @@ private:
             BST_StoreAttr* a_target = new BST_StoreAttr();
             unmapExpr(val, &a_target->vreg_value);
             unmapExpr(remapExpr(a->value), &a_target->vreg_target);
-            a_target->index_attr = constant_vregs.addInternedString(scoping->mangleName(a->attr));
+            a_target->index_attr = remapInternedString(scoping->mangleName(a->attr));
             a_target->lineno = a->lineno;
             push_back(a_target);
         } else if (target->type == AST_TYPE::Tuple || target->type == AST_TYPE::List) {
@@ -1018,7 +1060,7 @@ private:
         auto* assign = new BST_StoreName();
         unmapExpr(val, &assign->vreg_value);
         assign->lineno = val.lineno;
-        assign->index_id = constant_vregs.addInternedString(id);
+        assign->index_id = remapInternedString(id);
         fillScopingInfo(assign, id, scoping);
         push_back(assign);
     }
@@ -1044,7 +1086,7 @@ private:
     TmpValue remapAttribute(AST_Attribute* node) {
         BST_LoadAttr* rtn = new BST_LoadAttr();
         rtn->lineno = node->lineno;
-        rtn->index_attr = constant_vregs.addInternedString(scoping->mangleName(node->attr));
+        rtn->index_attr = remapInternedString(scoping->mangleName(node->attr));
         unmapExpr(remapExpr(node->value), &rtn->vreg_value);
         return pushBackCreateDst(rtn);
     }
@@ -1132,7 +1174,7 @@ private:
         if (node->func->type == AST_TYPE::Attribute) {
             BST_CallAttr* rtn = BST_CallAttr::create(node->args.size(), node->keywords.size());
             auto* attr = ast_cast<AST_Attribute>(node->func);
-            rtn->index_attr = constant_vregs.addInternedString(scoping->mangleName(attr->attr));
+            rtn->index_attr = remapInternedString(scoping->mangleName(attr->attr));
             unmapExpr(remapExpr(attr->value), &rtn->vreg_value);
             for (int i = 0; i < node->args.size(); ++i) {
                 unmapExpr(remapExpr(node->args[i]), &rtn->elts[i]);
@@ -1144,7 +1186,7 @@ private:
         } else if (node->func->type == AST_TYPE::ClsAttribute) {
             BST_CallClsAttr* rtn = BST_CallClsAttr::create(node->args.size(), node->keywords.size());
             auto* attr = ast_cast<AST_ClsAttribute>(node->func);
-            rtn->index_attr = constant_vregs.addInternedString(scoping->mangleName(attr->attr));
+            rtn->index_attr = remapInternedString(scoping->mangleName(attr->attr));
             unmapExpr(remapExpr(attr->value), &rtn->vreg_value);
             for (int i = 0; i < node->args.size(); ++i) {
                 unmapExpr(remapExpr(node->args[i]), &rtn->elts[i]);
@@ -1184,7 +1226,7 @@ private:
         BST_LoadAttr* rtn = new BST_LoadAttr();
         rtn->clsonly = true;
         rtn->lineno = node->lineno;
-        rtn->index_attr = constant_vregs.addInternedString(scoping->mangleName(node->attr));
+        rtn->index_attr = remapInternedString(scoping->mangleName(node->attr));
         unmapExpr(remapExpr(node->value), &rtn->vreg_value);
         return pushBackCreateDst(rtn);
     }
@@ -1831,7 +1873,7 @@ public:
 
     void pushStoreName(InternedString name, TmpValue value) {
         BST_StoreName* store = new BST_StoreName();
-        store->index_id = constant_vregs.addInternedString(name);
+        store->index_id = remapInternedString(name);
         unmapExpr(value, &store->vreg_value);
         store->lineno = value.lineno;
         fillScopingInfo(store, name, scoping);
@@ -1841,7 +1883,7 @@ public:
     bool visit_classdef(AST_ClassDef* node) override {
         auto def = BST_ClassDef::create(node->decorator_list.size());
         def->lineno = node->lineno;
-        def->index_name = constant_vregs.addInternedString(node->name);
+        def->index_name = remapInternedString(node->name);
 
         // Decorators are evaluated before bases:
         for (int i = 0; i < node->decorator_list.size(); ++i) {
@@ -1866,7 +1908,7 @@ public:
     bool visit_functiondef(AST_FunctionDef* node) override {
         auto def = BST_FunctionDef::create(node->decorator_list.size(), node->args->defaults.size());
         def->lineno = node->lineno;
-        def->index_name = constant_vregs.addInternedString(node->name);
+        def->index_name = remapInternedString(node->name);
 
         // Decorators are evaluated before the defaults, so this *must* go before remapArguments().
         // TODO(rntz): do we have a test for this
@@ -1939,8 +1981,8 @@ public:
 
                     auto* store = new BST_LoadAttr;
                     store->lineno = import->lineno;
-                    store->index_attr = constant_vregs.addInternedString(
-                        scoping->mangleName(internString(a->name.s().substr(l, r - l))));
+                    store->index_attr
+                        = remapInternedString(scoping->mangleName(internString(a->name.s().substr(l, r - l))));
                     unmapExpr(tmpname, &store->vreg_value);
                     unmapExpr(tmpname, &store->vreg_dst);
                     push_back(store);
@@ -2150,7 +2192,7 @@ public:
 
                 BST_LoadAttr* a_lhs = new BST_LoadAttr();
                 unmapExpr(_dup(value_remapped), &a_lhs->vreg_value);
-                a_lhs->index_attr = constant_vregs.addInternedString(scoping->mangleName(a->attr));
+                a_lhs->index_attr = remapInternedString(scoping->mangleName(a->attr));
                 a_lhs->lineno = a->lineno;
                 TmpValue name_lhs = pushBackCreateDst(a_lhs);
 
@@ -2211,7 +2253,7 @@ public:
                     auto* del = new BST_DeleteAttr;
                     del->lineno = node->lineno;
                     unmapExpr(remapExpr(astattr->value), &del->vreg_value);
-                    del->index_attr = constant_vregs.addInternedString(scoping->mangleName(astattr->attr));
+                    del->index_attr = remapInternedString(scoping->mangleName(astattr->attr));
                     push_back(del);
                     break;
                 }
@@ -2219,7 +2261,7 @@ public:
                     AST_Name* s = static_cast<AST_Name*>(t);
                     auto* del = new BST_DeleteName;
                     del->lineno = node->lineno;
-                    del->index_id = constant_vregs.addInternedString(s->id);
+                    del->index_id = remapInternedString(s->id);
                     fillScopingInfo(del, s->id, scoping);
                     push_back(del);
                     break;
@@ -2453,7 +2495,7 @@ public:
     BST_stmt* makeKill(InternedString name) {
         // There might be a better way to represent this, maybe with a dedicated AST_Kill bytecode?
         auto del = new BST_DeleteName();
-        del->index_id = constant_vregs.addInternedString(name);
+        del->index_id = remapInternedString(name);
         del->lineno = 0;
         fillScopingInfo(del, name, scoping);
         return del;
@@ -3170,7 +3212,7 @@ static std::pair<CFG*, ConstantVRegInfo> computeCFG(llvm::ArrayRef<AST_stmt*> bo
         // A classdef always starts with "__module__ = __name__"
         auto module_name_value = new BST_LoadName;
         module_name_value->lineno = lineno;
-        module_name_value->index_id = visitor.constant_vregs.addInternedString(id);
+        module_name_value->index_id = visitor.remapInternedString(id);
         fillScopingInfo(module_name_value, id, scoping);
         TmpValue module_name = visitor.pushBackCreateDst(module_name_value);
         visitor.pushStoreName(stringpool.get("__module__"), module_name);
@@ -3201,7 +3243,7 @@ static std::pair<CFG*, ConstantVRegInfo> computeCFG(llvm::ArrayRef<AST_stmt*> bo
                 assert(scoping->getScopeTypeOfName(arg_name) == ScopeInfo::VarScopeType::FAST);
 
                 auto load = new BST_LoadName();
-                load->index_id = visitor.constant_vregs.addInternedString(arg_name);
+                load->index_id = visitor.remapInternedString(arg_name);
                 load->lineno = arg_expr->lineno;
                 fillScopingInfo(load, arg_name, scoping);
                 TmpValue val = visitor.pushBackCreateDst(load);

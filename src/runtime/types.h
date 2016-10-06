@@ -1075,11 +1075,22 @@ private:
     std::vector<Box*> constants;
     mutable std::vector<std::pair<BST_stmt*, BoxedCode*>> funcs_and_classes;
 
+    mutable std::vector<Box*> owned;
+
     // TODO: when we support tuple constants inside vregs we can remove it and just use a normal constant vreg for it
     std::vector<std::unique_ptr<std::vector<BoxedString*>>> keyword_names;
 
+    // Note: DenseMap doesn't work here since we don't prevent the tombstone/empty
+    // keys from reaching it.
+    mutable std::unordered_map<int64_t, BoxedInt*> int_constants;
+    // I'm not sure how well it works to use doubles as hashtable keys; thankfully
+    // it's not a big deal if we get misses.
+    mutable std::unordered_map<int64_t, BoxedFloat*> float_constants;
+
 public:
     ConstantVRegInfo() {}
+    ConstantVRegInfo(ConstantVRegInfo&&) = default;
+    ~ConstantVRegInfo() { dealloc(); }
 
     Box* getConstant(int vreg) const { return constants[-(vreg + 1)]; }
     InternedString getInternedString(int vreg) const { return InternedString::unsafe((BoxedString*)getConstant(vreg)); }
@@ -1089,9 +1100,11 @@ public:
 
     // returns the vreg num for the constant (which is a negative number)
     int addConstant(Box* o) {
-        constants.push_back(o);
+        constants.emplace_back(o);
         return -constants.size();
     }
+
+    void addOwned(Box* o) { owned.emplace_back(o); }
 
     int addInternedString(InternedString s) { return addConstant(s.getBox()); }
 
@@ -1105,11 +1118,41 @@ public:
         return keyword_names.size() - 1;
     }
 
+    BORROWED(BoxedInt*) getIntConstant(int64_t n) const {
+        BoxedInt*& r = int_constants[n];
+        if (!r)
+            r = (BoxedInt*)boxInt(n);
+        return r;
+    }
+
+    BORROWED(BoxedFloat*) getFloatConstant(double d) const {
+        int64_t double_as_int64;
+        static_assert(sizeof(double_as_int64) == sizeof(d), "");
+        memcpy(&double_as_int64, &d, sizeof(d));
+
+        BoxedFloat*& r = float_constants[double_as_int64];
+        if (!r)
+            r = (BoxedFloat*)boxFloat(d);
+        return r;
+    }
+
     void dealloc() const {
+        for (auto&& e : owned) {
+            Py_DECREF(e);
+        }
+        owned.clear();
         for (auto&& e : funcs_and_classes) {
             Py_DECREF(e.second);
         }
         funcs_and_classes.clear();
+        for (auto&& e : int_constants) {
+            Py_DECREF(e.second);
+        }
+        int_constants.clear();
+        for (auto&& e : float_constants) {
+            Py_DECREF(e.second);
+        }
+        float_constants.clear();
     }
 };
 
@@ -1292,30 +1335,9 @@ public:
     BoxedModule() {} // noop constructor to disable zero-initialization of cls
     std::string name();
 
-    BORROWED(BoxedString*) getStringConstant(llvm::StringRef ast_str, bool intern = false);
-    BORROWED(Box*) getUnicodeConstant(llvm::StringRef ast_str);
-    BORROWED(BoxedInt*) getIntConstant(int64_t n);
-    BORROWED(BoxedFloat*) getFloatConstant(double d);
-    BORROWED(Box*) getPureImaginaryConstant(double d);
-    BORROWED(Box*) getLongConstant(llvm::StringRef s);
-
     static void dealloc(Box* b) noexcept;
     static int traverse(Box* self, visitproc visit, void* arg) noexcept;
     static int clear(Box* b) noexcept;
-
-private:
-    ContiguousMap<llvm::StringRef, BoxedString*, llvm::StringMap<int>> str_constants;
-    ContiguousMap<llvm::StringRef, Box*, llvm::StringMap<int>> unicode_constants;
-    // Note: DenseMap doesn't work here since we don't prevent the tombstone/empty
-    // keys from reaching it.
-    ContiguousMap<int64_t, BoxedInt*, std::unordered_map<int64_t, int>> int_constants;
-    // I'm not sure how well it works to use doubles as hashtable keys; thankfully
-    // it's not a big deal if we get misses.
-    ContiguousMap<int64_t, BoxedFloat*, std::unordered_map<int64_t, int>> float_constants;
-    ContiguousMap<int64_t, Box*, std::unordered_map<int64_t, int>> imaginary_constants;
-    ContiguousMap<llvm::StringRef, Box*, llvm::StringMap<int>> long_constants;
-    // Other objects that this module needs to keep alive; see getStringConstant.
-    llvm::SmallVector<Box*, 8> keep_alive;
 
 public:
     DEFAULT_CLASS(module_cls);

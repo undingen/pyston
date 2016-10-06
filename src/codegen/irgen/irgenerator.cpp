@@ -725,9 +725,9 @@ public:
         return rtn;
     }
 
-    Box* getIntConstant(int64_t n) override { return irstate->getSourceInfo()->parent_module->getIntConstant(n); }
+    Box* getIntConstant(int64_t n) override { return irstate->getConstantVRegInfo().getIntConstant(n); }
 
-    Box* getFloatConstant(double d) override { return irstate->getSourceInfo()->parent_module->getFloatConstant(d); }
+    Box* getFloatConstant(double d) override { return irstate->getConstantVRegInfo().getFloatConstant(d); }
 
     void refConsumed(llvm::Value* v, llvm::Instruction* inst) override {
         irstate->getRefcounts()->refConsumed(v, inst);
