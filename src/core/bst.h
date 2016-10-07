@@ -129,6 +129,17 @@ static constexpr int VREG_UNDEFINED = std::numeric_limits<int>::min();
 
 #define PACKED __attribute__((packed)) __attribute__((__aligned__(1)))
 
+class BSTAllocator {
+public:
+    std::vector<unsigned char> mem;
+    void* allocate(int num_bytes) {
+        for (int i = 0; i < num_bytes; ++i) {
+            mem.push_back(0);
+        }
+        return &mem[mem.size() - num_bytes];
+    }
+};
+
 class BST_stmt {
 public:
     const unsigned char type_and_flags;
@@ -189,18 +200,22 @@ public:
 #define BSTFIXEDVREGS(opcode, base_class)                                                                              \
     BSTNODE(opcode)                                                                                                    \
     BST_##opcode() : base_class(BST_TYPE::opcode) {}                                                                   \
-    int size_in_bytes() const { return sizeof(*this); }
+    int size_in_bytes() const { return sizeof(*this); }                                                                \
+    static void* operator new(size_t s, BSTAllocator & alloc) { return alloc.allocate(s); }                            \
+    static void operator delete(void* ptr) { RELEASE_ASSERT(0, ""); }
 
 #define BSTVARVREGS(opcode, base_class, num_elts, vreg_dst)                                                            \
 public:                                                                                                                \
     BSTNODE(opcode)                                                                                                    \
-    static BST_##opcode* create(int num_elts) { return new (num_elts) BST_##opcode(num_elts); }                        \
-    static void operator delete(void* ptr) { ::operator delete[](ptr); }                                               \
+    static BST_##opcode* create(BSTAllocator& alloc, int num_elts) {                                                   \
+        return new (alloc, num_elts) BST_##opcode(num_elts);                                                           \
+    }                                                                                                                  \
+    static void operator delete(void* ptr) { RELEASE_ASSERT(0, ""); }                                                  \
     int size_in_bytes() const { return offsetof(BST_##opcode, vreg_dst) + num_elts * sizeof(int); }                    \
                                                                                                                        \
 private:                                                                                                               \
-    static void* operator new(size_t, int num_elts) {                                                                  \
-        return ::new char[offsetof(BST_##opcode, vreg_dst) + num_elts * sizeof(int)];                                  \
+    static void* operator new(size_t, BSTAllocator & alloc, int num_elts) {                                            \
+        return alloc.allocate(offsetof(BST_##opcode, vreg_dst) + num_elts * sizeof(int));                              \
     }                                                                                                                  \
     BST_##opcode(int num_elts) : base_class(BST_TYPE::opcode), num_elts(num_elts) {                                    \
         for (int i = 0; i < num_elts; ++i) {                                                                           \
@@ -211,15 +226,15 @@ private:                                                                        
 #define BSTVARVREGS2(opcode, base_class, num_elts, num_elts2, vreg_dst)                                                \
 public:                                                                                                                \
     BSTNODE(opcode)                                                                                                    \
-    static BST_##opcode* create(int num_elts, int num_elts2) {                                                         \
-        return new (num_elts + num_elts2) BST_##opcode(num_elts, num_elts2);                                           \
+    static BST_##opcode* create(BSTAllocator& alloc, int num_elts, int num_elts2) {                                    \
+        return new (alloc, num_elts + num_elts2) BST_##opcode(num_elts, num_elts2);                                    \
     }                                                                                                                  \
     static void operator delete(void* ptr) { ::operator delete[](ptr); }                                               \
     int size_in_bytes() const { return offsetof(BST_##opcode, vreg_dst) + (num_elts + num_elts2) * sizeof(int); }      \
                                                                                                                        \
 private:                                                                                                               \
-    static void* operator new(size_t, int num_elts_total) {                                                            \
-        return ::new char[offsetof(BST_##opcode, vreg_dst) + num_elts_total * sizeof(int)];                            \
+    static void* operator new(size_t, BSTAllocator & alloc, int num_elts_total) {                                      \
+        return alloc.allocate(offsetof(BST_##opcode, vreg_dst) + num_elts_total * sizeof(int));                        \
     }                                                                                                                  \
     BST_##opcode(int num_elts, int num_elts2)                                                                          \
         : base_class(BST_TYPE::opcode), num_elts(num_elts), num_elts2(num_elts2) {                                     \
@@ -231,15 +246,15 @@ private:                                                                        
 #define BSTVARVREGS2CALL(opcode, num_elts, num_elts2, vreg_dst)                                                        \
 public:                                                                                                                \
     BSTNODE(opcode)                                                                                                    \
-    static BST_##opcode* create(int num_elts, int num_elts2) {                                                         \
-        return new (num_elts + num_elts2) BST_##opcode(num_elts, num_elts2);                                           \
+    static BST_##opcode* create(BSTAllocator& alloc, int num_elts, int num_elts2) {                                    \
+        return new (alloc, num_elts + num_elts2) BST_##opcode(num_elts, num_elts2);                                    \
     }                                                                                                                  \
-    static void operator delete(void* ptr) { ::operator delete[](ptr); }                                               \
+    static void operator delete(void* ptr) { RELEASE_ASSERT(0, ""); }                                                  \
     int size_in_bytes() const { return offsetof(BST_##opcode, vreg_dst) + (num_elts + num_elts2) * sizeof(int); }      \
                                                                                                                        \
 private:                                                                                                               \
-    static void* operator new(size_t, int num_elts_total) {                                                            \
-        return ::new char[offsetof(BST_##opcode, vreg_dst) + num_elts_total * sizeof(int)];                            \
+    static void* operator new(size_t, BSTAllocator & alloc, int num_elts_total) {                                      \
+        return alloc.allocate(offsetof(BST_##opcode, vreg_dst) + num_elts_total * sizeof(int));                        \
     }                                                                                                                  \
     BST_##opcode(int num_elts, int num_elts2) : BST_Call(BST_TYPE::opcode, num_elts, num_elts2) {                      \
         for (int i = 0; i < num_elts + num_elts2; ++i) {                                                               \
@@ -428,6 +443,11 @@ public:
     const int num_decorator;
     int decorator[1];
 
+    static BST_ClassDef* create(int num_decorator) { return new (num_decorator) BST_ClassDef(num_decorator); }
+    static void* operator new(size_t, int num_decorator) {
+        return ::new unsigned char[offsetof(BST_ClassDef, decorator) + num_decorator * sizeof(int)];
+    }
+
     BSTVARVREGS(ClassDef, BST_stmt, num_decorator, decorator)
 } PACKED;
 
@@ -492,6 +512,13 @@ public:
     const int num_defaults;
 
     int elts[1]; // decorators followed by defaults
+
+    static BST_FunctionDef* create(int num_decorator, int num_defaults) {
+        return new (num_decorator + num_defaults) BST_FunctionDef(num_decorator, num_defaults);
+    }
+    static void* operator new(size_t, int num_elts) {
+        return ::new unsigned char[offsetof(BST_FunctionDef, elts) + num_elts * sizeof(int)];
+    }
 
     BSTVARVREGS2(FunctionDef, BST_stmt, num_decorator, num_defaults, elts)
 } PACKED;
@@ -584,6 +611,9 @@ public:
         : BST_stmt_with_dest(BST_TYPE::MakeFunction, fd->lineno), index_func_def(index_func_def) {}
     int size_in_bytes() const { return sizeof(*this); }
 
+    static void* operator new(size_t s, BSTAllocator& alloc) { return alloc.allocate(s); }
+    static void operator delete(void* ptr) { RELEASE_ASSERT(0, ""); }
+
     BSTNODE(MakeFunction)
 } PACKED;
 
@@ -594,6 +624,9 @@ public:
     BST_MakeClass(BST_ClassDef* cd, int index_class_def)
         : BST_stmt_with_dest(BST_TYPE::MakeClass, cd->lineno), index_class_def(index_class_def) {}
     int size_in_bytes() const { return sizeof(*this); }
+
+    static void* operator new(size_t s, BSTAllocator& alloc) { return alloc.allocate(s); }
+    static void operator delete(void* ptr) { RELEASE_ASSERT(0, ""); }
 
     BSTNODE(MakeClass)
 } PACKED;
@@ -627,6 +660,9 @@ public:
 
     BST_Invoke(BST_stmt* stmt) : BST_stmt(BST_TYPE::Invoke), stmt(stmt) {}
     int size_in_bytes() const { return sizeof(*this); }
+
+    static void* operator new(size_t s, BSTAllocator& alloc) { return alloc.allocate(s); }
+    static void operator delete(void* ptr) { RELEASE_ASSERT(0, ""); }
 
     BSTNODE(Invoke)
 } PACKED;
