@@ -104,7 +104,7 @@ public:
 
         bool operator!=(const iterator& rhs) const { return stmt != rhs.stmt; }
         bool operator==(const iterator& rhs) const { return stmt == rhs.stmt; }
-        iterator& operator++() {
+        iterator& operator++() __attribute__((always_inline)) {
             if (stmt) {
                 if (stmt->is_terminator())
                     *this = CFGBlock::end();
