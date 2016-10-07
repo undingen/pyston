@@ -108,12 +108,8 @@ public:
             if (stmt) {
                 if (stmt->is_terminator())
                     *this = CFGBlock::end();
-                else {
-                    int next = stmt->size_in_bytes();
-                    if (stmt->type == BST_TYPE::Invoke)
-                        next += bst_cast<BST_Invoke>(stmt)->stmt->size_in_bytes();
-                    stmt = (BST_stmt*)&((unsigned char*)stmt)[next];
-                }
+                else
+                    stmt = (BST_stmt*)&((unsigned char*)stmt)[stmt->size_in_bytes()];
             }
             return *this;
         }

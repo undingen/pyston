@@ -362,7 +362,7 @@ protected:
 
 public:
     static std::pair<SymbolTable*, bool /* created_new_sym_table */>
-    removeDestVRegsFromSymTable(const CodeConstants& code_constants, SymbolTable* sym_table, BST_Invoke* stmt) {
+    removeDestVRegsFromSymTable(const CodeConstants& code_constants, SymbolTable* sym_table, BST_stmt* stmt) {
         SymTableDstVRegDeleter visitor(code_constants, sym_table);
         stmt->accept(&visitor);
         return std::make_pair(visitor.sym_table, visitor.created_new_sym_table);
@@ -737,9 +737,9 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
 
                 SymbolTable* sym_table = ending_symbol_tables[pred];
                 bool created_new_sym_table = false;
-                if (last_inst->type == BST_TYPE::Invoke && bst_cast<BST_Invoke>(last_inst)->exc_dest == block)
+                if (last_inst->isInvoke() && last_inst->getExcBlock() == block)
                     std::tie(sym_table, created_new_sym_table) = SymTableDstVRegDeleter::removeDestVRegsFromSymTable(
-                        irstate->getCodeConstants(), sym_table, bst_cast<BST_Invoke>(last_inst));
+                        irstate->getCodeConstants(), sym_table, last_inst);
 
                 generator->copySymbolsFrom(sym_table);
                 for (auto&& p : *definedness_tables[pred]) {
@@ -816,8 +816,8 @@ static void emitBBs(IRGenState* irstate, TypeAnalysis* types, const OSREntryDesc
 
         if (ending_st.exception_state.size()) {
             BST_stmt* last_stmt = block->getLastStmt();
-            assert(last_stmt->type == BST_TYPE::Invoke);
-            CFGBlock* exc_block = bst_cast<BST_Invoke>(last_stmt)->exc_dest;
+            assert(last_stmt->isInvoke());
+            CFGBlock* exc_block = last_stmt->getExcBlock();
             assert(!incoming_exception_state.count(exc_block));
 
             incoming_exception_state.insert(std::make_pair(exc_block, ending_st.exception_state));

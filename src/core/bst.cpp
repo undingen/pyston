@@ -44,7 +44,7 @@ template <class T> static void visitVector(const std::vector<T*>& vec, BSTVisito
 }
 
 void BST_stmt::accept(BSTVisitor* v) {
-    switch (type) {
+    switch (type()) {
 #define DISPATCH_ACCEPT(x, y)                                                                                          \
     case BST_TYPE::x:                                                                                                  \
         return bst_cast<BST_##x>(this)->accept(v);
@@ -53,7 +53,7 @@ void BST_stmt::accept(BSTVisitor* v) {
 }
 
 void BST_stmt::accept_stmt(StmtVisitor* v) {
-    switch (type) {
+    switch (type()) {
 #define DISPATCH_ACCEPT_STMT(x, y)                                                                                     \
     case BST_TYPE::x:                                                                                                  \
         return bst_cast<BST_##x>(this)->accept_stmt(v);

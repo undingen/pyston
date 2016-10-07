@@ -131,7 +131,20 @@ static constexpr int VREG_UNDEFINED = std::numeric_limits<int>::min();
 
 class BST_stmt {
 public:
-    const BST_TYPE::BST_TYPE type;
+    const unsigned char type_and_flags;
+    static constexpr unsigned char invoke_flag = 64;
+
+    BST_TYPE::BST_TYPE type() const { return (BST_TYPE::BST_TYPE)(type_and_flags & (~invoke_flag)); }
+    bool isInvoke() const { return type_and_flags & invoke_flag; }
+    CFGBlock* getDefBlock() const {
+        assert(isInvoke());
+        return ((CFGBlock**)&((unsigned char*)this)[size_in_bytes()])[-2];
+    }
+    CFGBlock* getExcBlock() const {
+        assert(isInvoke());
+        return ((CFGBlock**)&((unsigned char*)this)[size_in_bytes()])[-1];
+    }
+
     uint32_t lineno;
 
     void accept(BSTVisitor* v);
@@ -140,8 +153,8 @@ public:
     inline int size_in_bytes() const __attribute__((always_inline));
     inline bool has_dest_vreg() const __attribute__((always_inline));
     bool is_terminator() const __attribute__((always_inline)) {
-        return type == BST_TYPE::Branch || type == BST_TYPE::Jump || type == BST_TYPE::Invoke
-               || type == BST_TYPE::Return || type == BST_TYPE::Raise || type == BST_TYPE::Assert;
+        return type() == BST_TYPE::Branch || type() == BST_TYPE::Jump || type() == BST_TYPE::Invoke
+               || type() == BST_TYPE::Return || type() == BST_TYPE::Raise || type() == BST_TYPE::Assert || isInvoke();
     }
 
 
@@ -155,9 +168,9 @@ private:
 public:
     BST_stmt(BST_TYPE::BST_TYPE type);
 #else
-    BST_stmt(BST_TYPE::BST_TYPE type) : type(type), lineno(0) {}
+    BST_stmt(BST_TYPE::BST_TYPE type) : type_and_flags(type), lineno(0) {}
 #endif
-    BST_stmt(BST_TYPE::BST_TYPE type, uint32_t lineno) : type(type), lineno(lineno) {}
+    BST_stmt(BST_TYPE::BST_TYPE type, uint32_t lineno) : type_and_flags(type), lineno(lineno) {}
 } PACKED;
 
 // base class of all nodes which have a single destination vreg
@@ -707,15 +720,16 @@ public:
 
 
 template <typename T> T* bst_cast(const BST_stmt* node) {
-    ASSERT(!node || node->type == T::TYPE, "%d", node ? node->type : 0);
+    ASSERT(!node || node->type() == T::TYPE, "%d", node ? node->type() : 0);
     return static_cast<T*>(node);
 }
 
 int BST_stmt::size_in_bytes() const {
-    switch (type) {
+    int s = isInvoke() ? 2 * sizeof(CFGBlock*) : 0;
+    switch (type()) {
 #define DISPATCH_SIZE(x, y)                                                                                            \
     case BST_TYPE::x:                                                                                                  \
-        return bst_cast<const BST_##x>(this)->size_in_bytes();
+        return bst_cast<const BST_##x>(this)->size_in_bytes() + s;
         FOREACH_TYPE(DISPATCH_SIZE)
     };
     assert(0);
@@ -724,7 +738,7 @@ int BST_stmt::size_in_bytes() const {
 }
 
 bool BST_stmt::has_dest_vreg() const {
-    switch (type) {
+    switch (type()) {
 #define DISPATCH_HAS_DEST(x, y)                                                                                        \
     case BST_TYPE::x:                                                                                                  \
         return std::is_base_of<BST_stmt_with_dest, BST_##x>();
@@ -758,7 +772,7 @@ public:
 };
 
 template <typename T> T* bst_cast(BST_stmt* node) {
-    ASSERT(!node || node->type == T::TYPE, "%d", node ? node->type : 0);
+    ASSERT(!node || node->type() == T::TYPE, "%d", node ? node->type() : 0);
     return static_cast<T*>(node);
 }
 

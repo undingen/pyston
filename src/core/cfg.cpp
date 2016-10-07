@@ -1781,7 +1781,7 @@ private:
     // ---------- public methods ----------
 public:
     void push_back(BST_stmt* node) {
-        assert(node->type != BST_TYPE::Invoke);
+        assert(node->type() != BST_TYPE::Invoke);
 
         if (!curblock)
             return;
@@ -1791,7 +1791,7 @@ public:
             return;
         }
 
-        BST_TYPE::BST_TYPE type = node->type;
+        BST_TYPE::BST_TYPE type = node->type();
         switch (type) {
             case BST_TYPE::Branch:
             case BST_TYPE::CopyVReg:
@@ -1816,7 +1816,7 @@ public:
         }
 
         // Deleting temporary names is safe, since we only use it to represent kills.
-        if (node->type == BST_TYPE::DeleteName) {
+        if (type == BST_TYPE::DeleteName) {
             BST_DeleteName* del = bst_cast<BST_DeleteName>(node);
             if (code_constants.getInternedString(del->index_id).s()[0] == '#') {
                 curblock->push_back(node);
@@ -1825,7 +1825,7 @@ public:
         }
 
         // We remapped asserts to just be assertion failures at this point.
-        bool is_raise = (node->type == BST_TYPE::Raise || node->type == BST_TYPE::Assert);
+        bool is_raise = (type == BST_TYPE::Raise || type == BST_TYPE::Assert);
 
         // If we invoke a raise statement, generate an invoke where both destinations
         // are the exception handler, since we know the non-exceptional path won't be taken.
@@ -3296,8 +3296,8 @@ static std::pair<CFG*, CodeConstants> computeCFG(llvm::ArrayRef<AST_stmt*> body,
         ASSERT(b->successors.size() <= 2, "%d has too many successors!", b->idx);
         if (b->successors.size() == 0) {
             BST_stmt* terminator = b->body.back();
-            assert(terminator->type == BST_TYPE::Return || terminator->type == BST_TYPE::Raise
-                   || terminator->type == BST_TYPE::Raise || terminator->type == BST_TYPE::Assert);
+            assert(terminator->type() == BST_TYPE::Return || terminator->type() == BST_TYPE::Raise
+                   || terminator->type() == BST_TYPE::Raise || terminator->type() == BST_TYPE::Assert);
         }
 
         if (b->predecessors.size() == 0) {
@@ -3414,7 +3414,7 @@ static std::pair<CFG*, CodeConstants> computeCFG(llvm::ArrayRef<AST_stmt*> body,
             if (b2->predecessors.size() != 1)
                 break;
 
-            BST_TYPE::BST_TYPE end_ast_type = b->body[b->body.size() - 1]->type;
+            BST_TYPE::BST_TYPE end_ast_type = b->body[b->body.size() - 1]->type();
             assert(end_ast_type == BST_TYPE::Jump || end_ast_type == BST_TYPE::Invoke);
             if (end_ast_type == BST_TYPE::Invoke) {
                 // TODO probably shouldn't be generating these anyway:
@@ -3457,8 +3457,10 @@ static std::pair<CFG*, CodeConstants> computeCFG(llvm::ArrayRef<AST_stmt*> body,
         old_new_blocks[block] = final_cfg->blocks.back();
         for (auto&& s : block->body) {
             exact_size += s->size_in_bytes();
-            if (s->type == BST_TYPE::Invoke)
-                exact_size += bst_cast<BST_Invoke>(s)->stmt->size_in_bytes();
+            if (s->type() == BST_TYPE::Invoke)
+                exact_size += bst_cast<BST_Invoke>(s)->stmt->size_in_bytes() + 2 * sizeof(CFGBlock*);
+            else
+                exact_size += s->size_in_bytes();
         }
     }
 
@@ -3490,25 +3492,30 @@ static std::pair<CFG*, CodeConstants> computeCFG(llvm::ArrayRef<AST_stmt*> body,
         new_block->body = (BST_stmt*)current_stmt;
         for (BST_stmt* stmt : block->body) {
             // some instruction which contain references to CFGBlocks need to get patched
-            if (stmt->type == BST_TYPE::Invoke) {
+            if (stmt->type() == BST_TYPE::Invoke) {
                 // Invokes are special they contain a pointer to a stmt
                 // We handle this copying in the stmt directly after the invoke and patching the address.
                 BST_Invoke* invoke = bst_cast<BST_Invoke>(stmt);
-                BST_Invoke* new_invoke = (BST_Invoke*)current_stmt;
-                append_stmt(stmt);
-                new_invoke->normal_dest = old_new_blocks[(CFGConstructionBlock*)invoke->normal_dest];
-                new_invoke->exc_dest = old_new_blocks[(CFGConstructionBlock*)invoke->exc_dest];
-                new_invoke->stmt = (BST_stmt*)current_stmt;
-
+                BST_stmt* new_stmt = (BST_stmt*)current_stmt;
                 append_stmt(invoke->stmt);
-            } else if (stmt->type == BST_TYPE::Branch) {
+                *(unsigned char*)new_stmt = new_stmt->type() | BST_stmt::invoke_flag;
+
+                CFGBlock** exc_block = (CFGBlock**)current_stmt;
+                exc_block[0] = old_new_blocks[(CFGConstructionBlock*)invoke->normal_dest];
+                exc_block[1] = old_new_blocks[(CFGConstructionBlock*)invoke->exc_dest];
+                current_stmt += sizeof(CFGBlock*) * 2;
+
+                assert(new_stmt->isInvoke());
+                assert(new_stmt->getDefBlock() == old_new_blocks[(CFGConstructionBlock*)invoke->normal_dest]);
+                assert(new_stmt->getExcBlock() == old_new_blocks[(CFGConstructionBlock*)invoke->exc_dest]);
+            } else if (stmt->type() == BST_TYPE::Branch) {
                 BST_Branch* br = bst_cast<BST_Branch>(stmt);
                 BST_Branch* new_branch = (BST_Branch*)current_stmt;
                 append_stmt(stmt);
 
                 new_branch->iffalse = old_new_blocks[(CFGConstructionBlock*)br->iffalse];
                 new_branch->iftrue = old_new_blocks[(CFGConstructionBlock*)br->iftrue];
-            } else if (stmt->type == BST_TYPE::Jump) {
+            } else if (stmt->type() == BST_TYPE::Jump) {
                 BST_Jump* jmp = bst_cast<BST_Jump>(stmt);
                 BST_Jump* new_jmp = (BST_Jump*)current_stmt;
                 append_stmt(stmt);
@@ -3523,7 +3530,7 @@ static std::pair<CFG*, CodeConstants> computeCFG(llvm::ArrayRef<AST_stmt*> body,
     // delete original nodes and cosntruction CFG
     for (auto block : rtn->blocks) {
         for (auto&& s : block->body) {
-            if (s->type == BST_TYPE::Invoke)
+            if (s->type() == BST_TYPE::Invoke)
                 delete bst_cast<BST_Invoke>(s)->stmt;
             delete s;
         }
