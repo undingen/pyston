@@ -180,6 +180,31 @@ public:
     void unconnectFrom(CFGConstructionBlock* successor);
 
     void print(const CodeConstants& code_constants, llvm::raw_ostream& stream = llvm::outs());
+
+
+    class iterator {
+    private:
+        BST_stmt* stmt;
+
+    public:
+        iterator(BST_stmt* stmt) : stmt(stmt) {}
+
+        bool operator!=(const iterator& rhs) const { return stmt != rhs.stmt; }
+        bool operator==(const iterator& rhs) const { return stmt == rhs.stmt; }
+        iterator& operator++() __attribute__((always_inline)) {
+            if (stmt) {
+                if (stmt->is_terminator())
+                    *this = CFGConstructionBlock::end();
+                else
+                    stmt = (BST_stmt*)&((unsigned char*)stmt)[stmt->size_in_bytes()];
+            }
+            return *this;
+        }
+        BST_stmt* operator*() const { return stmt; }
+    };
+
+    iterator begin() const { return iterator((BST_stmt*)alloc.mem.data()); }
+    static iterator end() { return iterator(NULL); }
 };
 
 class CFGConstruction {
@@ -267,7 +292,7 @@ void CFGConstructionBlock::print(const CodeConstants& code_constants, llvm::raw_
     stream << "\n";
 
     PrintVisitor pv(code_constants, 4, stream);
-    for (BST_stmt* stmt : *body) {
+    for (BST_stmt* stmt : *this) {
         stream << "    ";
         stmt->accept(&pv);
         stream << "\n";
@@ -3692,9 +3717,9 @@ static std::pair<CFG*, CodeConstants> computeCFG(llvm::ArrayRef<AST_stmt*> body,
         printf("Final cfg:\n");
         final_cfg->print(visitor.code_constants, llvm::outs());
     }
+    return std::make_pair(final_cfg, std::move(visitor.code_constants));
 #endif
     RELEASE_ASSERT(0, "");
-    return std::make_pair(final_cfg, std::move(visitor.code_constants));
 }
 
 
