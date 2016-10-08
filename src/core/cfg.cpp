@@ -164,11 +164,12 @@ static int getLastLineno(llvm::ArrayRef<AST_stmt*> body, int default_lineno) {
     return getLastLinenoSub(body.back());
 }
 
+#if 0
 class CFGConstruction;
 class CFGConstructionBlock {
 public:
     CFGConstruction* const cfg;
-    BSTAllocator alloc;
+    int offset = -1;
 
     llvm::SmallVector<CFGConstructionBlock*, 2> predecessors, successors;
     int idx; // index in the CFG
@@ -181,6 +182,7 @@ public:
 
     void print(const CodeConstants& code_constants, llvm::raw_ostream& stream = llvm::outs());
 
+    bool isPlaced() const { return offset != -1; }
 
     class iterator {
     private:
@@ -203,7 +205,7 @@ public:
         BST_stmt* operator*() const { return stmt; }
     };
 
-    iterator begin() const { return iterator((BST_stmt*)alloc.mem.data()); }
+    iterator begin() const;
     static iterator end() { return iterator(NULL); }
 };
 
@@ -214,6 +216,7 @@ private:
 
 public:
     std::vector<CFGConstructionBlock*> blocks;
+    BSTAllocator alloc;
 
 public:
     CFGConstruction() : next_idx(0) {}
@@ -231,6 +234,7 @@ public:
         next_idx++;
         CFGConstructionBlock* block = new CFGConstructionBlock(this, idx);
         blocks.push_back(block);
+        block->offset = alloc.mem.size();
 
         return block;
     }
@@ -248,10 +252,18 @@ public:
         block->idx = next_idx;
         next_idx++;
         blocks.push_back(block);
+        block->offset = alloc.mem.size();
     }
 
     void print(const CodeConstants& code_constants, llvm::raw_ostream& stream = llvm::outs());
 };
+
+CFGConstructionBlock::iterator CFGConstructionBlock::begin() const
+{ return iterator((BST_stmt*)&cfg->alloc.mem[offset]); }
+#endif
+
+#define CFGConstructionBlock CFGBlock
+#define CFGConstruction CFG
 
 void CFGConstructionBlock::connectTo(CFGConstructionBlock* successor, bool allow_backedge) {
     assert(successors.size() <= 1);
@@ -276,6 +288,7 @@ void CFGConstructionBlock::unconnectFrom(CFGConstructionBlock* successor) {
                                   successor->predecessors.end());
 }
 
+#if 0
 void CFGConstructionBlock::print(const CodeConstants& code_constants, llvm::raw_ostream& stream) {
     stream << "Block " << idx;
     if (info)
@@ -298,6 +311,7 @@ void CFGConstructionBlock::print(const CodeConstants& code_constants, llvm::raw_
         stream << "\n";
     }
 }
+#endif
 
 void CFGBlock::print(const CodeConstants& code_constants, llvm::raw_ostream& stream) {
     stream << "Block " << idx;
@@ -522,8 +536,9 @@ public:
     // ---------- private methods ----------
 private:
     template <typename T, typename... Args> T* allocAndPush(Args... args) {
+        assert(curblock->isPlaced());
         if (exc_handlers.size() == 0)
-            return new (curblock->alloc) T(args...);
+            return new (cfg->alloc) T(args...);
 
         BST_TYPE::BST_TYPE type = T::TYPE;
         switch (type) {
@@ -536,10 +551,13 @@ private:
             case BST_TYPE::SetExcInfo:
             case BST_TYPE::Tuple:
             case BST_TYPE::UncacheExcInfo:
-                return new (curblock->alloc) T(args...);
+                return new (cfg->alloc) T(args...);
             default:
                 break;
         };
+
+        cfg->alloc.mem.reserve(cfg->alloc.mem.size() + 250);
+        auto* old_start = cfg->alloc.mem.data();
 
         // We remapped asserts to just be assertion failures at this point.
         bool is_raise = (type == BST_TYPE::Raise || type == BST_TYPE::Assert);
@@ -549,18 +567,18 @@ private:
         // TODO: would be much better (both more efficient and require less special casing)
         // if we just didn't generate this control flow as exceptions.
 
-        CFGConstructionBlock* normal_dest = cfg->addBlock();
+        CFGConstructionBlock* normal_dest = cfg->addDeferredBlock();
         // Add an extra exc_dest trampoline to prevent critical edges:
         CFGConstructionBlock* exc_dest;
         if (is_raise)
             exc_dest = normal_dest;
         else
-            exc_dest = cfg->addBlock();
+            exc_dest = cfg->addDeferredBlock();
 
-        auto rtn = new (curblock->alloc) T(args...);
+        auto rtn = new (cfg->alloc) T(args...);
         *((unsigned char*)rtn) = rtn->type() | BST_stmt::invoke_flag;
-        *(CFGConstructionBlock**)curblock->alloc.allocate(sizeof(CFGConstructionBlock*)) = normal_dest;
-        *(CFGConstructionBlock**)curblock->alloc.allocate(sizeof(CFGConstructionBlock*)) = exc_dest;
+        *(CFGConstructionBlock**)cfg->alloc.allocate(sizeof(CFGConstructionBlock*)) = normal_dest;
+        *(CFGConstructionBlock**)cfg->alloc.allocate(sizeof(CFGConstructionBlock*)) = exc_dest;
 
         curblock->connectTo(normal_dest);
         if (!is_raise)
@@ -569,12 +587,13 @@ private:
         ExcBlockInfo& exc_info = exc_handlers.back();
         exc_info.maybe_taken = true;
 
+        cfg->placeBlock(exc_dest);
         curblock = exc_dest;
         // TODO: need to clear some temporaries here
-        auto* landingpad = new (curblock->alloc) BST_Landingpad;
+        auto* landingpad = new (cfg->alloc) BST_Landingpad;
         TmpValue landingpad_name = pushBackCreateDst(landingpad);
 
-        auto* exc_unpack = BST_UnpackIntoArray::create(curblock->alloc, 3);
+        auto* exc_unpack = BST_UnpackIntoArray::create(cfg->alloc, 3);
         unmapExpr(landingpad_name, &exc_unpack->vreg_src);
         int* array = exc_unpack->vreg_dst;
         unmapExpr(TmpValue(exc_info.exc_type_name, 0), &array[0]);
@@ -585,8 +604,12 @@ private:
 
         if (is_raise)
             curblock = NULL;
-        else
+        else {
             curblock = normal_dest;
+            cfg->placeBlock(normal_dest);
+        }
+
+        assert(old_start == cfg->alloc.mem.data());
 
         return rtn;
     }
@@ -808,8 +831,10 @@ private:
             BST_CopyVReg* assign = allocAndPush<BST_CopyVReg>();
             assign->lineno = val.lineno;
 
-            assert(!id_vreg.count(&assign->vreg_src));
-            id_vreg[&assign->vreg_src] = val.is;
+            int offset = (unsigned char*)&assign->vreg_src - cfg->alloc.mem.data();
+            assert(offset >= 0);
+            assert(!id_vreg.count(offset));
+            id_vreg[offset] = val.is;
 
             return pushBackCreateDst(assign);
         }
@@ -819,7 +844,7 @@ private:
     template <typename CompType> TmpValue remapComprehension(CompType* node) {
         assert(curblock);
 
-        auto* list = BST_List::create(curblock->alloc, 0);
+        auto* list = BST_List::create(cfg->alloc, 0);
         list->lineno = node->lineno;
         TmpValue rtn_name = pushBackCreateDst(list);
         std::vector<CFGConstructionBlock*> exit_blocks;
@@ -1023,7 +1048,7 @@ private:
     }
 
     TmpValue makeCall(TmpValue func, llvm::ArrayRef<TmpValue> args = {}) {
-        BST_CallFunc* rtn = BST_CallFunc::create(curblock->alloc, args.size(), 0 /* num keywords */);
+        BST_CallFunc* rtn = BST_CallFunc::create(cfg->alloc, args.size(), 0 /* num keywords */);
         unmapExpr(func, &rtn->vreg_func);
         for (int i = 0; i < args.size(); ++i) {
             unmapExpr(args[i], &rtn->elts[i]);
@@ -1035,7 +1060,7 @@ private:
     TmpValue makeCallAttr(TmpValue target, InternedString attr, bool is_cls, llvm::ArrayRef<TmpValue> args = {}) {
         BST_Call* rtn = NULL;
         if (!is_cls) {
-            BST_CallAttr* call = BST_CallAttr::create(curblock->alloc, args.size(), 0 /* num keywords */);
+            BST_CallAttr* call = BST_CallAttr::create(cfg->alloc, args.size(), 0 /* num keywords */);
             call->index_attr = remapInternedString(attr);
             unmapExpr(target, &call->vreg_value);
             for (int i = 0; i < args.size(); ++i) {
@@ -1043,7 +1068,7 @@ private:
             }
             rtn = call;
         } else {
-            BST_CallClsAttr* call = BST_CallClsAttr::create(curblock->alloc, args.size(), 0 /* num keywords */);
+            BST_CallClsAttr* call = BST_CallClsAttr::create(cfg->alloc, args.size(), 0 /* num keywords */);
             call->index_attr = remapInternedString(attr);
             unmapExpr(target, &call->vreg_value);
             for (int i = 0; i < args.size(); ++i) {
@@ -1118,14 +1143,19 @@ private:
                 elts = &_t->elts;
             }
 
-            BST_UnpackIntoArray* unpack = BST_UnpackIntoArray::create(curblock->alloc, elts->size());
+            llvm::SmallVector<TmpValue, 8> remapped_elts;
+            for (int i = 0; i < elts->size(); i++) {
+                TmpValue tmp_name(nodeName("", i), (*elts)[i]->lineno);
+                pushAssign((*elts)[i], tmp_name);
+                remapped_elts.emplace_back(tmp_name);
+            }
+
+            BST_UnpackIntoArray* unpack = BST_UnpackIntoArray::create(cfg->alloc, elts->size());
             unmapExpr(val, &unpack->vreg_src);
             unpack->lineno = val.lineno;
 
             for (int i = 0; i < elts->size(); i++) {
-                TmpValue tmp_name(nodeName("", i), (*elts)[i]->lineno);
-                pushAssign((*elts)[i], tmp_name);
-                unmapExpr(tmp_name, &unpack->vreg_dst[i]);
+                unmapExpr(remapped_elts[i], &unpack->vreg_dst[i]);
             }
 
         } else {
@@ -1183,14 +1213,33 @@ private:
     // This functions makes sure that AssignVRegsVisitor will fill in the correct vreg number in the supplied pointer to
     // a integer.
     // We needs this because the vregs get only assigned after the CFG is completely constructed.
-    llvm::DenseMap<int*, InternedString> id_vreg;
-    void unmapExpr(TmpValue val, int* vreg) {
+    llvm::DenseMap<int, InternedString> id_vreg;
+    llvm::DenseMap<int*, InternedString> idptr_vreg;
+    void unmapExprPtr(TmpValue val, int* vreg) {
         if (val.isConst()) {
             *vreg = val.vreg_const;
             return;
         } else if (val.isName()) {
-            assert(!id_vreg.count(vreg));
-            id_vreg[vreg] = val.is;
+            assert(!idptr_vreg.count(vreg));
+            idptr_vreg[vreg] = val.is;
+            return;
+        } else if (val.isUndefined()) {
+            *vreg = VREG_UNDEFINED;
+            return;
+        }
+
+        assert(0);
+    }
+    void unmapExpr(TmpValue val, int* vreg) {
+        int offset = (unsigned char*)vreg - cfg->alloc.mem.data();
+        assert(offset >= 0);
+
+        if (val.isConst()) {
+            *vreg = val.vreg_const;
+            return;
+        } else if (val.isName()) {
+            assert(!id_vreg.count(offset));
+            id_vreg[offset] = val.is;
             return;
         } else if (val.isUndefined()) {
             *vreg = VREG_UNDEFINED;
@@ -1230,8 +1279,8 @@ private:
             br->lineno = val.lineno;
 
             CFGConstructionBlock* was_block = curblock;
-            CFGConstructionBlock* next_block = cfg->addBlock();
-            CFGConstructionBlock* crit_break_block = cfg->addBlock();
+            CFGConstructionBlock* next_block = cfg->addDeferredBlock();
+            CFGConstructionBlock* crit_break_block = cfg->addDeferredBlock();
             was_block->connectTo(next_block);
             was_block->connectTo(crit_break_block);
 
@@ -1245,9 +1294,12 @@ private:
                 RELEASE_ASSERT(0, "");
             }
 
+            cfg->placeBlock(crit_break_block);
             curblock = crit_break_block;
+
             pushJump(exit_block);
 
+            cfg->placeBlock(next_block);
             curblock = next_block;
         }
 
@@ -1291,7 +1343,7 @@ private:
             auto* attr = ast_cast<AST_Attribute>(node->func);
             auto remapped_value = remapExpr(attr->value);
 
-            BST_CallAttr* rtn = BST_CallAttr::create(curblock->alloc, node->args.size(), node->keywords.size());
+            BST_CallAttr* rtn = BST_CallAttr::create(cfg->alloc, node->args.size(), node->keywords.size());
             rtn->index_attr = remapInternedString(scoping->mangleName(attr->attr));
             unmapExpr(remapped_value, &rtn->vreg_value);
             remapCallHelper(rtn, node, remapped_args, remapped_keywords);
@@ -1300,7 +1352,7 @@ private:
             auto* attr = ast_cast<AST_ClsAttribute>(node->func);
             auto remapped_value = remapExpr(attr->value);
 
-            BST_CallClsAttr* rtn = BST_CallClsAttr::create(curblock->alloc, node->args.size(), node->keywords.size());
+            BST_CallClsAttr* rtn = BST_CallClsAttr::create(cfg->alloc, node->args.size(), node->keywords.size());
             rtn->index_attr = remapInternedString(scoping->mangleName(attr->attr));
             unmapExpr(remapped_value, &rtn->vreg_value);
             remapCallHelper(rtn, node, remapped_args, remapped_keywords);
@@ -1308,7 +1360,7 @@ private:
         } else {
             auto remapped_func = remapExpr(node->func);
 
-            BST_CallFunc* rtn = BST_CallFunc::create(curblock->alloc, node->args.size(), node->keywords.size());
+            BST_CallFunc* rtn = BST_CallFunc::create(cfg->alloc, node->args.size(), node->keywords.size());
             unmapExpr(remapped_func, &rtn->vreg_func);
             remapCallHelper(rtn, node, remapped_args, remapped_keywords);
             rtn_shared = rtn;
@@ -1441,7 +1493,7 @@ private:
             remmaped_elts.emplace_back(remapSlice(node->dims[i]));
         }
 
-        auto* rtn = BST_Tuple::create(curblock->alloc, node->dims.size());
+        auto* rtn = BST_Tuple::create(cfg->alloc, node->dims.size());
         rtn->lineno = node->lineno;
         for (int i = 0; i < node->dims.size(); ++i) {
             unmapExpr(remmaped_elts[i], &rtn->elts[i]);
@@ -1614,7 +1666,7 @@ private:
         bdef->lineno = node->lineno;
 
         for (int i = 0; i < node->args->defaults.size(); ++i) {
-            unmapExpr(remapExpr(node->args->defaults[i]), &bdef->elts[i]);
+            unmapExprPtr(remapExpr(node->args->defaults[i]), &bdef->elts[i]);
         }
 
         auto name = getStaticString("<lambda>");
@@ -1641,7 +1693,7 @@ private:
         for (int i = 0; i < node->elts.size(); ++i) {
             remapped_elts.emplace_back(remapExpr(node->elts[i]));
         }
-        BST_List* rtn = BST_List::create(curblock->alloc, node->elts.size());
+        BST_List* rtn = BST_List::create(cfg->alloc, node->elts.size());
         rtn->lineno = node->lineno;
         for (int i = 0; i < node->elts.size(); ++i) {
             unmapExpr(remapped_elts[i], &rtn->elts[i]);
@@ -1663,7 +1715,7 @@ private:
             remapped_elts.emplace_back(remapExpr(node->elts[i]));
         }
 
-        BST_Set* rtn = BST_Set::create(curblock->alloc, node->elts.size());
+        BST_Set* rtn = BST_Set::create(cfg->alloc, node->elts.size());
         rtn->lineno = node->lineno;
         for (int i = 0; i < node->elts.size(); ++i) {
             unmapExpr(remapped_elts[i], &rtn->elts[i]);
@@ -1715,7 +1767,7 @@ private:
             remapped_elts.emplace_back(remapExpr(node->elts[i]));
         }
 
-        BST_Tuple* rtn = BST_Tuple::create(curblock->alloc, node->elts.size());
+        BST_Tuple* rtn = BST_Tuple::create(cfg->alloc, node->elts.size());
         rtn->lineno = node->lineno;
         for (int i = 0; i < node->elts.size(); ++i) {
             unmapExpr(remapped_elts[i], &rtn->elts[i]);
@@ -1868,7 +1920,6 @@ private:
         CFGConstructionBlock* otherwise = cfg->addDeferredBlock();
         otherwise->info = "finally_otherwise";
         pushBranch(makeCompare(AST_TYPE::Eq, whyexpr, makeNum(reason, whyexpr.lineno)), then_block, otherwise);
-        cfg->placeBlock(otherwise);
         return otherwise;
     }
 
@@ -1909,6 +1960,7 @@ private:
         exitFinally(node, why);
 
         curblock = otherwise;
+        cfg->placeBlock(otherwise);
     }
 
     // ---------- public methods ----------
@@ -2029,20 +2081,21 @@ public:
             remapped_bases.emplace_back(remapExpr(node->bases[i]));
         }
 
-        auto def = BST_ClassDef::create(curblock->alloc, node->decorator_list.size());
-        def->lineno = node->lineno;
-        def->index_name = remapInternedString(node->name);
-
-        for (int i = 0; i < node->decorator_list.size(); ++i) {
-            unmapExpr(remapped_deco[i], &def->decorator[i]);
-        }
-
-        auto* bases = BST_Tuple::create(curblock->alloc, node->bases.size());
+        auto* bases = BST_Tuple::create(cfg->alloc, node->bases.size());
         for (int i = 0; i < node->bases.size(); ++i) {
             unmapExpr(remapped_bases[i], &bases->elts[i]);
         }
         TmpValue bases_name = pushBackCreateDst(bases);
-        unmapExpr(bases_name, &def->vreg_bases_tuple);
+
+        auto def = BST_ClassDef::create(node->decorator_list.size());
+        def->lineno = node->lineno;
+        def->index_name = remapInternedString(node->name);
+
+        for (int i = 0; i < node->decorator_list.size(); ++i) {
+            unmapExprPtr(remapped_deco[i], &def->decorator[i]);
+        }
+
+        unmapExprPtr(bases_name, &def->vreg_bases_tuple);
 
         auto* code = cfgizer->runRecursively(node->body, node->name.getBox(), node->lineno, NULL, node);
         auto mkclass = allocAndPush<BST_MakeClass>(def, code_constants.addFuncOrClass(def, code));
@@ -2071,10 +2124,10 @@ public:
         // Decorators are evaluated before the defaults, so this *must* go before remapArguments().
         // TODO(rntz): do we have a test for this
         for (int i = 0; i < node->decorator_list.size(); ++i) {
-            unmapExpr(remapped_deco[i], &def->elts[i]);
+            unmapExprPtr(remapped_deco[i], &def->elts[i]);
         }
         for (int i = 0; i < node->args->defaults.size(); ++i) {
-            unmapExpr(remapped_defaults[i], &def->elts[node->decorator_list.size() + i]);
+            unmapExprPtr(remapped_defaults[i], &def->elts[node->decorator_list.size() + i]);
         }
 
         auto* code = cfgizer->runRecursively(node->body, node->name.getBox(), node->lineno, node->args, node);
@@ -2154,7 +2207,7 @@ public:
     }
 
     bool visit_importfrom(AST_ImportFrom* node) override {
-        auto tuple = BST_Tuple::create(curblock->alloc, node->names.size());
+        auto tuple = BST_Tuple::create(cfg->alloc, node->names.size());
         for (int i = 0; i < node->names.size(); i++) {
             unmapExpr(makeStr(node->names[i]->name.s()), &tuple->elts[i]);
         }
@@ -2215,7 +2268,7 @@ public:
         CFGConstructionBlock* iffalse = cfg->addBlock();
         iffalse->info = "assert_fail";
         curblock->connectTo(iffalse);
-        CFGConstructionBlock* iftrue = cfg->addBlock();
+        CFGConstructionBlock* iftrue = cfg->addDeferredBlock();
         iftrue->info = "assert_pass";
         curblock->connectTo(iftrue);
         br->iftrue = (CFGBlock*)iftrue;
@@ -2234,6 +2287,7 @@ public:
             remapped->vreg_msg = VREG_UNDEFINED;
         remapped->lineno = node->lineno;
 
+        cfg->placeBlock(iftrue);
         curblock = iftrue;
 
         return true;
@@ -2489,6 +2543,8 @@ public:
             if (i < node->values.size() - 1)
                 remapped_dest = _dup(dest);
 
+            auto remapped_value = remapExpr(v);
+
             BST_Print* remapped = allocAndPush<BST_Print>();
             remapped->lineno = node->lineno;
 
@@ -2497,8 +2553,7 @@ public:
                 remapped->nl = false;
             else
                 remapped->nl = node->nl;
-
-            unmapExpr(remapExpr(v), &remapped->vreg_value);
+            unmapExpr(remapped_value, &remapped->vreg_value);
 
             i++;
         }
@@ -2615,10 +2670,11 @@ public:
     bool visit_while(AST_While* node) override {
         assert(curblock);
 
-        CFGConstructionBlock* test_block = cfg->addBlock();
+        CFGConstructionBlock* test_block = cfg->addDeferredBlock();
         test_block->info = "while_test";
         pushJump(test_block);
 
+        cfg->placeBlock(test_block);
         curblock = test_block;
         BST_Branch* br = makeBranch(remapExpr(node->test));
         CFGConstructionBlock* test_block_end = curblock;
@@ -2691,8 +2747,9 @@ public:
         TmpValue itername(createUniqueName("#iter_"), node->lineno);
         unmapExpr(itername, &iter_call->vreg_dst);
 
-        CFGConstructionBlock* test_block = cfg->addBlock();
+        CFGConstructionBlock* test_block = cfg->addDeferredBlock();
         pushJump(test_block);
+        cfg->placeBlock(test_block);
         curblock = test_block;
 
         auto itername_dup = _dup(itername);
@@ -2703,27 +2760,30 @@ public:
 
         BST_Branch* test_br = makeBranch(tmp_has_call);
 
-        CFGConstructionBlock* test_true = cfg->addBlock();
-        CFGConstructionBlock* test_false = cfg->addBlock();
+        CFGConstructionBlock* test_true = cfg->addDeferredBlock();
+        CFGConstructionBlock* test_false = cfg->addDeferredBlock();
         test_br->iftrue = (CFGBlock*)test_true;
         test_br->iffalse = (CFGBlock*)test_false;
         curblock->connectTo(test_true);
         curblock->connectTo(test_false);
 
-        CFGConstructionBlock* loop_block = cfg->addBlock();
+        CFGConstructionBlock* loop_block = cfg->addDeferredBlock();
         CFGConstructionBlock* break_block = cfg->addDeferredBlock();
         CFGConstructionBlock* end_block = cfg->addDeferredBlock();
         CFGConstructionBlock* else_block = cfg->addDeferredBlock();
 
+        cfg->placeBlock(test_true);
         curblock = test_true;
         // TODO simplify the breaking of these crit edges?
         pushJump(loop_block);
 
+        cfg->placeBlock(test_false);
         curblock = test_false;
         pushJump(else_block);
 
         pushLoopContinuation(test_block, break_block);
 
+        cfg->placeBlock(loop_block);
         curblock = loop_block;
         TmpValue next_name = makeCallAttr(_dup(itername), internString("next"), true);
         pushAssign(node->target, next_name);
@@ -2745,7 +2805,7 @@ public:
             BST_Branch* end_br = makeBranch(tmp_end_call);
 
             CFGConstructionBlock* end_true = cfg->addBlock();
-            CFGConstructionBlock* end_false = cfg->addBlock();
+            CFGConstructionBlock* end_false = cfg->addDeferredBlock();
             end_br->iftrue = (CFGBlock*)end_true;
             end_br->iffalse = (CFGBlock*)end_false;
             curblock->connectTo(end_true);
@@ -2754,6 +2814,7 @@ public:
             curblock = end_true;
             pushJump(loop_block, true, getLastLinenoSub(node->body.back()));
 
+            cfg->placeBlock(end_false);
             curblock = end_false;
             pushJump(else_block);
         }
@@ -3010,6 +3071,7 @@ public:
                             exc_traceback_name);
 
                 curblock = noexc;
+                cfg->placeBlock(noexc);
             }
         }
 
@@ -3161,6 +3223,7 @@ void CFG::print(const CodeConstants& code_constants, llvm::raw_ostream& stream) 
     stream.flush();
 }
 
+#if 0
 void CFGConstruction::print(const CodeConstants& code_constants, llvm::raw_ostream& stream) {
     stream << "CFG:\n";
     stream << blocks.size() << " blocks\n";
@@ -3168,6 +3231,7 @@ void CFGConstruction::print(const CodeConstants& code_constants, llvm::raw_ostre
         blocks[i]->print(code_constants, stream);
     stream.flush();
 }
+#endif
 
 class AssignVRegsVisitor : public NoopBSTVisitor {
 public:
@@ -3178,19 +3242,21 @@ public:
     llvm::DenseSet<InternedString>
         name_is_read; // this is used to find unused desination vregs which we can transform to VREG_UNDEFINED
     std::vector<InternedString> vreg_sym_map;
-    llvm::DenseMap<int*, InternedString>& id_vreg;
+    llvm::DenseMap<int, InternedString>& id_vreg;
+    llvm::DenseMap<int*, InternedString>& idptr_vreg;
 
     enum Step { TrackBlockUsage = 0, UserVisible, CrossBlock, SingleBlockUse } step;
 
-    AssignVRegsVisitor(const CodeConstants& code_constants, llvm::DenseMap<int*, InternedString>& id_vreg)
-        : NoopBSTVisitor(code_constants), current_block(0), next_vreg(0), id_vreg(id_vreg) {}
+    AssignVRegsVisitor(const CodeConstants& code_constants, llvm::DenseMap<int, InternedString>& id_vreg, llvm::DenseMap<int*, InternedString>& idptr_vreg)
+        : NoopBSTVisitor(code_constants), current_block(0), next_vreg(0), id_vreg(id_vreg), idptr_vreg(idptr_vreg) {}
 
     bool visit_vreg(int* vreg, bool is_dst = false) override {
+        int offset = (unsigned char*)vreg - current_block->cfg->alloc.mem.data();
         if (is_dst) {
-            assert(id_vreg.count(vreg));
+            assert(id_vreg.count(offset));
             if (*vreg != VREG_UNDEFINED)
                 return true;
-            InternedString id = id_vreg[vreg];
+            InternedString id = id_vreg[offset];
             if (step == TrackBlockUsage) {
                 sym_blocks_map[id].insert(current_block);
                 return true;
@@ -3211,14 +3277,13 @@ public:
             return true;
         }
 
-
-        if (!id_vreg.count(vreg)) {
+        if (!id_vreg.count(offset) && !idptr_vreg.count(vreg)) {
             if (*vreg >= 0)
                 *vreg = VREG_UNDEFINED;
             return true;
         }
 
-        auto id = id_vreg[vreg];
+        auto id = id_vreg.count(offset) ? id_vreg[offset] : idptr_vreg[vreg];
 
         if (step == TrackBlockUsage) {
             name_is_read.insert(id);
@@ -3305,12 +3370,12 @@ public:
     }
 };
 
-void VRegInfo::assignVRegs(const CodeConstants& code_constants, CFGConstruction* cfg, const ParamNames& param_names,
-                           llvm::DenseMap<int*, InternedString>& id_vreg) {
+void VRegInfo::assignVRegs(const CodeConstants& code_constants, CFG* cfg, const ParamNames& param_names,
+                           llvm::DenseMap<int, InternedString>& id_vreg, llvm::DenseMap<int*, InternedString>& idptr_vreg) {
     assert(!hasVRegsAssigned());
 
     // warning: don't rearrange the steps, they need to be run in this exact order!
-    AssignVRegsVisitor visitor(code_constants, id_vreg);
+    AssignVRegsVisitor visitor(code_constants, id_vreg, idptr_vreg);
     for (auto step : { AssignVRegsVisitor::TrackBlockUsage, AssignVRegsVisitor::UserVisible,
                        AssignVRegsVisitor::CrossBlock, AssignVRegsVisitor::SingleBlockUse }) {
         visitor.step = step;
@@ -3438,7 +3503,7 @@ static std::pair<CFG*, CodeConstants> computeCFG(llvm::ArrayRef<AST_stmt*> body,
         BST_Return* rtn = visitor.allocAndPush<BST_Return>();
         rtn->lineno = getLastLineno(body, lineno);
         visitor.unmapExpr(name, &rtn->vreg_value);
-    } else {
+    } else if (visitor.curblock) {
         // Put a fake "return" statement at the end of every function just to make sure they all have one;
         // we already have to support multiple return statements in a function, but this way we can avoid
         // having to support not having a return statement:
@@ -3620,7 +3685,7 @@ static std::pair<CFG*, CodeConstants> computeCFG(llvm::ArrayRef<AST_stmt*> body,
         }
     }
 #endif
-    rtn->getVRegInfo().assignVRegs(visitor.code_constants, rtn, param_names, visitor.id_vreg);
+    rtn->getVRegInfo().assignVRegs(visitor.code_constants, rtn, param_names, visitor.id_vreg, visitor.idptr_vreg);
 
 #if 0
     // Generate the final bytecode where every instruction is directly next to each other in a single array
@@ -3719,7 +3784,13 @@ static std::pair<CFG*, CodeConstants> computeCFG(llvm::ArrayRef<AST_stmt*> body,
     }
     return std::make_pair(final_cfg, std::move(visitor.code_constants));
 #endif
-    RELEASE_ASSERT(0, "");
+
+    if (VERBOSITY("cfg") >= 2) {
+        printf("Final cfg:\n");
+        rtn->print(visitor.code_constants, llvm::outs());
+    }
+
+    return std::make_pair(rtn, std::move(visitor.code_constants));
 }
 
 

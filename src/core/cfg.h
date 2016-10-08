@@ -42,7 +42,6 @@ class BST_stmt;
 class Box;
 
 class CFG;
-class CFGConstruction;
 class ParamNames;
 class ScopeInfo;
 
@@ -80,8 +79,11 @@ public:
     llvm::SmallVector<CFGBlock*, 2> predecessors, successors;
     int idx; // index in the CFG
     const char* info;
+    int offset = -1;
 
-    CFGBlock(CFG* cfg, int idx, const char* info) : cfg(cfg), code(NULL), entry_code(NULL), idx(idx), info(info) {}
+    bool allowed_to_add_stuff = false;
+
+    CFGBlock(CFG* cfg, int idx, const char* info = NULL) : cfg(cfg), code(NULL), entry_code(NULL), idx(idx), info(info) {}
 
     BST_stmt* getLastStmt() const {
         // TODO: this is inefficient
@@ -92,8 +94,12 @@ public:
         RELEASE_ASSERT(0, "");
     }
 
+    void connectTo(CFGBlock* successor, bool allow_backedge = false);
+    void unconnectFrom(CFGBlock* successor);
+
     void print(const CodeConstants& code_constants, llvm::raw_ostream& stream = llvm::outs());
 
+    bool isPlaced() const { return offset != -1; }
 
     class iterator {
     private:
@@ -116,7 +122,7 @@ public:
         BST_stmt* operator*() const { return stmt; }
     };
 
-    iterator begin() const { return iterator(body); }
+    inline iterator begin() const;
     static iterator end() { return iterator(NULL); }
 };
 
@@ -197,25 +203,60 @@ public:
     int getNumOfCrossBlockVRegs() const { return num_vregs_cross_block; }
 
     bool hasVRegsAssigned() const { return num_vregs != -1; }
-    void assignVRegs(const CodeConstants& code_constants, CFGConstruction* cfg, const ParamNames& param_names,
-                     llvm::DenseMap<int*, InternedString>& id_vreg);
+    void assignVRegs(const CodeConstants& code_constants, CFG* cfg, const ParamNames& param_names,
+                     llvm::DenseMap<int, InternedString>& id_vreg, llvm::DenseMap<int*, InternedString>& idptr_vreg);
 };
 
 // Control Flow Graph
 class CFG {
 private:
+    int next_idx = 0;
     VRegInfo vreg_info;
 
 public:
     std::vector<CFGBlock*> blocks;
-    std::unique_ptr<unsigned char[]> bytecode;
+    BSTAllocator alloc;
 
 public:
-    CFG(VRegInfo& vreg_info) : vreg_info(vreg_info) {}
+    CFG() {}
     ~CFG() {
         for (auto&& block : blocks) {
             delete block;
         }
+    }
+
+    CFGBlock* addBlock() {
+        for (auto&& b : blocks) {
+            b->allowed_to_add_stuff = false;
+        }
+        int idx = next_idx;
+        next_idx++;
+        CFGBlock* block = new CFGBlock(this, idx);
+        blocks.push_back(block);
+        block->offset = alloc.mem.size();
+        block->allowed_to_add_stuff = true;
+
+        return block;
+    }
+
+    // Creates a block which must be placed later, using placeBlock().
+    // Must be placed on same CFG it was created on.
+    // You can also safely delete it without placing it.
+    CFGBlock* addDeferredBlock() {
+        CFGBlock* block = new CFGBlock(this, -1);
+        return block;
+    }
+
+    void placeBlock(CFGBlock* block) {
+        for (auto&& b : blocks) {
+            b->allowed_to_add_stuff = false;
+        }
+        assert(block->idx == -1);
+        block->idx = next_idx;
+        next_idx++;
+        blocks.push_back(block);
+        block->offset = alloc.mem.size();
+        block->allowed_to_add_stuff = true;
     }
 
     CFGBlock* getStartingBlock() { return blocks[0]; }
@@ -223,6 +264,8 @@ public:
 
     void print(const CodeConstants& code_constants, llvm::raw_ostream& stream = llvm::outs());
 };
+
+CFGBlock::iterator CFGBlock::begin() const { return iterator((BST_stmt*)&cfg->alloc.mem[offset]); }
 
 class VRegSet {
 private:
