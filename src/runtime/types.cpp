@@ -529,11 +529,11 @@ static PyObject* cpython_type_call(PyTypeObject* type, PyObject* args, PyObject*
 
 template <ExceptionStyle S>
 static Box* typeCallInner(CallRewriteArgs* rewrite_args, ArgPassSpec argspec, Box* arg1, Box* arg2, Box* arg3,
-                          Box** args, const std::vector<BoxedString*>* keyword_names) noexcept(S == CAPI);
+                          Box** args, BoxedTuple* keyword_names) noexcept(S == CAPI);
 
 template <ExceptionStyle S>
 static Box* typeTppCall(Box* self, CallRewriteArgs* rewrite_args, ArgPassSpec argspec, Box* arg1, Box* arg2, Box* arg3,
-                        Box** args, const std::vector<BoxedString*>* keyword_names) noexcept(S == CAPI) {
+                        Box** args, BoxedTuple* keyword_names) noexcept(S == CAPI) {
     int npassed_args = argspec.totalPassed();
 
     // Common CAPI path call this function with *args, **kw.
@@ -580,8 +580,7 @@ static Box* typeTppCall(Box* self, CallRewriteArgs* rewrite_args, ArgPassSpec ar
 
 template <ExceptionStyle S>
 static Box* typeCallInternal(BoxedFunctionBase* f, CallRewriteArgs* rewrite_args, ArgPassSpec argspec, Box* arg1,
-                             Box* arg2, Box* arg3, Box** args,
-                             const std::vector<BoxedString*>* keyword_names) noexcept(S == CAPI) {
+                             Box* arg2, Box* arg3, Box** args, BoxedTuple* keyword_names) noexcept(S == CAPI) {
     if (rewrite_args)
         assert(rewrite_args->func_guarded);
 
@@ -715,7 +714,7 @@ static Box* objectNewNoArgs(BoxedClass* cls) noexcept {
 
 template <ExceptionStyle S>
 static Box* typeCallInner(CallRewriteArgs* rewrite_args, ArgPassSpec argspec, Box* arg1, Box* arg2, Box* arg3,
-                          Box** args, const std::vector<BoxedString*>* keyword_names) noexcept(S == CAPI) {
+                          Box** args, BoxedTuple* keyword_names) noexcept(S == CAPI) {
     int npassed_args = argspec.totalPassed();
     int npositional = argspec.num_args;
 
