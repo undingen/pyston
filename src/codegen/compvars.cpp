@@ -138,7 +138,7 @@ public:
 
     CompilerVariable* call(IREmitter& emitter, const OpInfo& info, ValuedCompilerVariable<RawInstanceMethod*>* var,
                            ArgPassSpec argspec, const std::vector<CompilerVariable*>& args,
-                           const std::vector<BoxedString*>* keyword_names) override {
+                           BoxedTuple* keyword_names) override {
         std::vector<CompilerVariable*> new_args;
         new_args.push_back(var->getValue()->obj);
         new_args.insert(new_args.end(), args.begin(), args.end());
@@ -225,11 +225,10 @@ public:
     CompilerVariable* getattr(IREmitter& emitter, const OpInfo& info, ConcreteCompilerVariable* var, BoxedString* attr,
                               bool cls_only) override;
     CompilerVariable* call(IREmitter& emitter, const OpInfo& info, ConcreteCompilerVariable* var, ArgPassSpec argspec,
-                           const std::vector<CompilerVariable*>& args,
-                           const std::vector<BoxedString*>* keyword_names) override;
+                           const std::vector<CompilerVariable*>& args, BoxedTuple* keyword_names) override;
     CompilerVariable* callattr(IREmitter& emitter, const OpInfo& info, ConcreteCompilerVariable* var, BoxedString* attr,
                                CallattrFlags flags, const std::vector<CompilerVariable*>& args,
-                               const std::vector<BoxedString*>* keyword_names) override;
+                               BoxedTuple* keyword_names) override;
     ConcreteCompilerVariable* nonzero(IREmitter& emitter, const OpInfo& info, ConcreteCompilerVariable* var) override;
     ConcreteCompilerVariable* unaryop(IREmitter& emitter, const OpInfo& info, ConcreteCompilerVariable* var,
                                       AST_TYPE::AST_TYPE op_type) override;
@@ -593,10 +592,11 @@ CompilerVariable* UnknownType::getattr(IREmitter& emitter, const OpInfo& info, C
     return new ConcreteCompilerVariable(UNKNOWN, rtn_val);
 }
 
-static ConcreteCompilerVariable*
-_call(IREmitter& emitter, const OpInfo& info, llvm::Value* func, ExceptionStyle target_exception_style, void* func_addr,
-      const std::vector<llvm::Value*>& other_args, ArgPassSpec argspec, const std::vector<CompilerVariable*>& args,
-      const std::vector<BoxedString*>* keyword_names, ConcreteCompilerType* rtn_type, bool nullable_return = false) {
+static ConcreteCompilerVariable* _call(IREmitter& emitter, const OpInfo& info, llvm::Value* func,
+                                       ExceptionStyle target_exception_style, void* func_addr,
+                                       const std::vector<llvm::Value*>& other_args, ArgPassSpec argspec,
+                                       const std::vector<CompilerVariable*>& args, BoxedTuple* keyword_names,
+                                       ConcreteCompilerType* rtn_type, bool nullable_return = false) {
     bool pass_keyword_names = (keyword_names != nullptr);
     assert(pass_keyword_names == (argspec.num_keywords > 0));
 
@@ -718,7 +718,7 @@ _call(IREmitter& emitter, const OpInfo& info, llvm::Value* func, ExceptionStyle 
 
 CompilerVariable* UnknownType::call(IREmitter& emitter, const OpInfo& info, ConcreteCompilerVariable* var,
                                     ArgPassSpec argspec, const std::vector<CompilerVariable*>& args,
-                                    const std::vector<BoxedString*>* keyword_names) {
+                                    BoxedTuple* keyword_names) {
     bool pass_keywords = (argspec.num_keywords != 0);
     int npassed_args = argspec.totalPassed();
 
@@ -750,8 +750,7 @@ CompilerVariable* UnknownType::call(IREmitter& emitter, const OpInfo& info, Conc
 
 CompilerVariable* UnknownType::callattr(IREmitter& emitter, const OpInfo& info, ConcreteCompilerVariable* var,
                                         BoxedString* attr, CallattrFlags flags,
-                                        const std::vector<CompilerVariable*>& args,
-                                        const std::vector<BoxedString*>* keyword_names) {
+                                        const std::vector<CompilerVariable*>& args, BoxedTuple* keyword_names) {
     bool pass_keywords = (flags.argspec.num_keywords != 0);
     int npassed_args = flags.argspec.totalPassed();
 
@@ -1163,8 +1162,7 @@ public:
     }
 
     CompilerVariable* callattr(IREmitter& emitter, const OpInfo& info, VAR* var, BoxedString* attr, CallattrFlags flags,
-                               const std::vector<CompilerVariable*>& args,
-                               const std::vector<BoxedString*>* keyword_names) override {
+                               const std::vector<CompilerVariable*>& args, BoxedTuple* keyword_names) override {
         ConcreteCompilerVariable* converted = var->makeConverted(emitter, BOXED_INT);
         CompilerVariable* rtn = converted->callattr(emitter, info, attr, flags, args, keyword_names);
         return rtn;
@@ -1451,8 +1449,7 @@ public:
     }
 
     CompilerVariable* callattr(IREmitter& emitter, const OpInfo& info, VAR* var, BoxedString* attr, CallattrFlags flags,
-                               const std::vector<CompilerVariable*>& args,
-                               const std::vector<BoxedString*>* keyword_names) override {
+                               const std::vector<CompilerVariable*>& args, BoxedTuple* keyword_names) override {
         ConcreteCompilerVariable* converted = var->makeConverted(emitter, BOXED_FLOAT);
         CompilerVariable* rtn = converted->callattr(emitter, info, attr, flags, args, keyword_names);
         return rtn;
@@ -1839,8 +1836,7 @@ public:
     }
 
     CompilerVariable* call(IREmitter& emitter, const OpInfo& info, ConcreteCompilerVariable* var, ArgPassSpec argspec,
-                           const std::vector<CompilerVariable*>& args,
-                           const std::vector<BoxedString*>* keyword_names) override {
+                           const std::vector<CompilerVariable*>& args, BoxedTuple* keyword_names) override {
         ConcreteCompilerVariable* converted = var->makeConverted(emitter, UNKNOWN);
         CompilerVariable* rtn = converted->call(emitter, info, argspec, args, keyword_names);
         return rtn;
@@ -1848,9 +1844,8 @@ public:
 
     CompilerVariable* tryCallattrConstant(IREmitter& emitter, const OpInfo& info, ConcreteCompilerVariable* var,
                                           BoxedString* attr, bool clsonly, ArgPassSpec argspec,
-                                          const std::vector<CompilerVariable*>& args,
-                                          const std::vector<BoxedString*>* keyword_names, bool* no_attribute = NULL,
-                                          ExceptionStyle exception_style = CXX) {
+                                          const std::vector<CompilerVariable*>& args, BoxedTuple* keyword_names,
+                                          bool* no_attribute = NULL, ExceptionStyle exception_style = CXX) {
         if (!canStaticallyResolveGetattrs())
             return NULL;
 
@@ -2002,7 +1997,7 @@ public:
 
     CompilerVariable* callattr(IREmitter& emitter, const OpInfo& info, ConcreteCompilerVariable* var, BoxedString* attr,
                                CallattrFlags flags, const std::vector<CompilerVariable*>& args,
-                               const std::vector<BoxedString*>* keyword_names) override {
+                               BoxedTuple* keyword_names) override {
         ExceptionStyle exception_style = info.preferredExceptionStyle();
 
         bool no_attribute = false;
@@ -2314,8 +2309,7 @@ public:
     }
 
     CompilerVariable* callattr(IREmitter& emitter, const OpInfo& info, VAR* var, BoxedString* attr, CallattrFlags flags,
-                               const std::vector<CompilerVariable*>& args,
-                               const std::vector<BoxedString*>* keyword_names) override {
+                               const std::vector<CompilerVariable*>& args, BoxedTuple* keyword_names) override {
         ConcreteCompilerVariable* converted = var->makeConverted(emitter, STR);
         CompilerVariable* rtn = converted->callattr(emitter, info, attr, flags, args, keyword_names);
         return rtn;
@@ -2434,7 +2428,7 @@ public:
 
     CompilerVariable* callattr(IREmitter& emitter, const OpInfo& info, ConcreteCompilerVariable* var, BoxedString* attr,
                                CallattrFlags flags, const std::vector<CompilerVariable*>& args,
-                               const std::vector<BoxedString*>* keyword_names) override {
+                               BoxedTuple* keyword_names) override {
         ConcreteCompilerVariable* converted = var->makeConverted(emitter, BOXED_BOOL);
         CompilerVariable* rtn = converted->callattr(emitter, info, attr, flags, args, keyword_names);
         return rtn;
@@ -2670,8 +2664,7 @@ public:
     }
 
     CompilerVariable* callattr(IREmitter& emitter, const OpInfo& info, VAR* var, BoxedString* attr, CallattrFlags flags,
-                               const std::vector<CompilerVariable*>& args,
-                               const std::vector<BoxedString*>* keyword_names) override {
+                               const std::vector<CompilerVariable*>& args, BoxedTuple* keyword_names) override {
         return makeConverted(emitter, var, getConcreteType())
             ->callattr(emitter, info, attr, flags, args, keyword_names);
     }
@@ -2812,8 +2805,7 @@ public:
     }
 
     CompilerVariable* call(IREmitter& emitter, const OpInfo& info, VAR* var, ArgPassSpec argspec,
-                           const std::vector<CompilerVariable*>& args,
-                           const std::vector<BoxedString*>* keyword_names) override {
+                           const std::vector<CompilerVariable*>& args, BoxedTuple* keyword_names) override {
         return undefVariable();
     }
     CompilerVariable* dup(VAR* v, DupCache& cache) override {
@@ -2834,8 +2826,7 @@ public:
     }
 
     CompilerVariable* callattr(IREmitter& emitter, const OpInfo& info, VAR* var, BoxedString* attr, CallattrFlags flags,
-                               const std::vector<CompilerVariable*>& args,
-                               const std::vector<BoxedString*>* keyword_names) override {
+                               const std::vector<CompilerVariable*>& args, BoxedTuple* keyword_names) override {
         return undefVariable();
     }
 
