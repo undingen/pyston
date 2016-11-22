@@ -1225,33 +1225,45 @@ private:
         }
     }
 
+    CompilerVariable* compilerVariableFromObject(Box* o) {
+        if (o->cls == int_cls) {
+            return makeInt(((BoxedInt*)o)->n);
+        } else if (o->cls == float_cls) {
+            return makeFloat(((BoxedFloat*)o)->d);
+        } else if (o->cls == complex_cls) {
+            return makePureImaginary(emitter, o);
+        } else if (o->cls == long_cls) {
+            return makeLong(emitter, o);
+        } else if (o->cls == str_cls) {
+            llvm::Value* rtn = embedRelocatablePtr(o, g.llvm_value_type_ptr);
+            emitter.setType(rtn, RefType::BORROWED);
+            return new ConcreteCompilerVariable(STR, rtn);
+        } else if (o->cls == unicode_cls) {
+            llvm::Value* rtn = embedRelocatablePtr(o, g.llvm_value_type_ptr);
+            emitter.setType(rtn, RefType::BORROWED);
+            return new ConcreteCompilerVariable(typeFromClass(unicode_cls), rtn);
+        } else if (o->cls == none_cls) {
+            return emitter.getNone();
+        } else if (o->cls == ellipsis_cls) {
+            return getEllipsis();
+        } else if (o->cls == tuple_cls) {
+            auto* tuple = (BoxedTuple*)o;
+            std::vector<CompilerVariable*> elts;
+            for (int i = 0; i < tuple->size(); ++i) {
+                CompilerVariable* v = compilerVariableFromObject(tuple->elts[i]);
+                elts.push_back(v);
+            }
+            return makeTuple(elts);
+        } else {
+            RELEASE_ASSERT(0, "");
+        }
+    }
+
     CompilerVariable* evalVReg(int vreg, bool is_kill = true) {
         assert(vreg != VREG_UNDEFINED);
         if (vreg < 0) {
             Box* o = irstate->getCode()->code_constants.getConstant(vreg);
-            if (o->cls == int_cls) {
-                return makeInt(((BoxedInt*)o)->n);
-            } else if (o->cls == float_cls) {
-                return makeFloat(((BoxedFloat*)o)->d);
-            } else if (o->cls == complex_cls) {
-                return makePureImaginary(emitter, o);
-            } else if (o->cls == long_cls) {
-                return makeLong(emitter, o);
-            } else if (o->cls == str_cls) {
-                llvm::Value* rtn = embedRelocatablePtr(o, g.llvm_value_type_ptr);
-                emitter.setType(rtn, RefType::BORROWED);
-                return new ConcreteCompilerVariable(STR, rtn);
-            } else if (o->cls == unicode_cls) {
-                llvm::Value* rtn = embedRelocatablePtr(o, g.llvm_value_type_ptr);
-                emitter.setType(rtn, RefType::BORROWED);
-                return new ConcreteCompilerVariable(typeFromClass(unicode_cls), rtn);
-            } else if (o->cls == none_cls) {
-                return emitter.getNone();
-            } else if (o->cls == ellipsis_cls) {
-                return getEllipsis();
-            } else {
-                RELEASE_ASSERT(0, "");
-            }
+            return compilerVariableFromObject(o);
         }
         CompilerVariable* rtn = symbol_table[vreg];
         if (is_kill) {

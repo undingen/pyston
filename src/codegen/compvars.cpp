@@ -650,11 +650,16 @@ _call(IREmitter& emitter, const OpInfo& info, llvm::Value* func, ExceptionStyle 
         }
         llvm_args.push_back(arg_array);
 
-        if (pass_keyword_names)
-            llvm_args.push_back(embedRelocatablePtr(keyword_names, g.vector_ptr));
+        if (pass_keyword_names) {
+            auto ptr = embedRelocatablePtr(keyword_names, g.llvm_boxedtuple_type_ptr);
+            emitter.setType(ptr, RefType::BORROWED);
+            llvm_args.push_back(ptr);
+        }
     } else if (pass_keyword_names) {
         llvm_args.push_back(getNullPtr(g.llvm_value_type_ptr->getPointerTo()));
-        llvm_args.push_back(embedRelocatablePtr(keyword_names, g.vector_ptr));
+        auto ptr = embedRelocatablePtr(keyword_names, g.llvm_boxedtuple_type_ptr);
+        emitter.setType(ptr, RefType::BORROWED);
+        llvm_args.push_back(ptr);
     }
 
     // f->dump();
