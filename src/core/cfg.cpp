@@ -1679,9 +1679,65 @@ private:
         return rtn;
     }
 
+    bool isConstEltsTuple(AST* node) {
+        if (node->type == AST_TYPE::Str || node->type == AST_TYPE::Num)
+            return true;
+        else if (node->type == AST_TYPE::Tuple) {
+            auto* tuple = ast_cast<AST_Tuple>(node);
+            assert(tuple->ctx_type == AST_TYPE::Load);
+            for (auto&& elt : tuple->elts) {
+                if (!isConstEltsTuple(elt))
+                    return false;
+            }
+            return true;
+        } else if (node->type == AST_TYPE::Name && ast_cast<AST_Name>(node)->id.s() == "None")
+            return true;
+        return false;
+    }
+
+    Box* createConstEltsTuple(AST* node) {
+        if (node->type == AST_TYPE::Str) {
+            auto* str = ast_cast<AST_Str>(node);
+            if (str->str_type == AST_Str::STR)
+                return internStringMortal(str->str_data);
+            else if (str->str_type == AST_Str::UNICODE)
+                return decodeUTF8StringPtr(str->str_data);
+            else
+                RELEASE_ASSERT(0, "not implemented");
+        } else if (node->type == AST_TYPE::Num) {
+            auto* num = ast_cast<AST_Num>(node);
+            if (num->num_type == AST_Num::INT)
+                return boxInt(num->n_int);
+            else if (num->num_type == AST_Num::FLOAT)
+                return boxFloat(num->n_float);
+            else if (num->num_type == AST_Num::LONG)
+                return createLong(num->n_long);
+            else if (num->num_type == AST_Num::COMPLEX)
+                return createPureImaginary(num->n_float);
+            else
+                RELEASE_ASSERT(0, "not implemented");
+        } else if (node->type == AST_TYPE::Tuple) {
+            auto* tuple_node = ast_cast<AST_Tuple>(node);
+            BoxedTuple* tuple = BoxedTuple::create(tuple_node->elts.size());
+            for (int i = 0; i < tuple_node->elts.size(); ++i) {
+                tuple->elts[i] = createConstEltsTuple(tuple_node->elts[i]);
+            }
+            return tuple;
+        } else if (node->type == AST_TYPE::Name && ast_cast<AST_Name>(node)->id.s() == "None") {
+            return incref(Py_None);
+        }
+        RELEASE_ASSERT(0, "not implemented");
+    }
 
     TmpValue remapTuple(AST_Tuple* node) {
         assert(node->ctx_type == AST_TYPE::Load);
+
+        if (isConstEltsTuple(node)) {
+            BoxedTuple* tuple = (BoxedTuple*)createConstEltsTuple(node);
+            code_constants.addOwnedRef(tuple);
+            return TmpValue(addConst(tuple), node->lineno);
+        }
+
         llvm::SmallVector<TmpValue, 8> remapped_elts;
         for (int i = 0; i < node->elts.size(); ++i) {
             remapped_elts.emplace_back(remapExpr(node->elts[i]));
@@ -2037,12 +2093,6 @@ public:
     }
 
     bool visit_importfrom(AST_ImportFrom* node) override {
-        auto tuple = allocAndPush<BST_Tuple>(node->names.size());
-        for (int i = 0; i < node->names.size(); i++) {
-            unmapExpr(makeStr(node->names[i]->name.s()), &tuple->elts[i]);
-        }
-        TmpValue tuple_name = createDstName(tuple);
-
         BST_ImportName* import = allocAndPush<BST_ImportName>();
         import->lineno = node->lineno;
 
@@ -2056,7 +2106,12 @@ public:
             level = node->level;
         import->level = level;
 
-        unmapExpr(tuple_name, &import->vreg_from);
+        auto* tuple = BoxedTuple::create(node->names.size());
+        for (int i = 0; i < node->names.size(); i++) {
+            tuple->elts[i] = internStringMortal(node->names[i]->name.s());
+        }
+        code_constants.addOwnedRef(tuple);
+        import->vreg_from = addConst(tuple);
         unmapExpr(makeStr(node->module.s()), &import->vreg_name);
 
         TmpValue tmp_module_name = createDstName(import);

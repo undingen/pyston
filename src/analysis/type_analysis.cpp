@@ -130,8 +130,7 @@ private:
         return old_type;
     }
 
-    CompilerType* getConstantType(int vreg) {
-        Box* o = code_constants.getConstant(vreg);
+    CompilerType* getConstantType(Box* o) {
         if (o->cls == int_cls)
             return INT;
         else if (o->cls == float_cls)
@@ -148,8 +147,15 @@ private:
             return NONE;
         else if (o->cls == ellipsis_cls)
             return typeFromClass(ellipsis_cls);
+        else if (o->cls == tuple_cls)
+            return BOXED_TUPLE;
         else
             RELEASE_ASSERT(0, "");
+    }
+
+    CompilerType* getConstantType(int vreg) {
+        Box* o = code_constants.getConstant(vreg);
+        return getConstantType(o);
     }
 
     CompilerType* getType(int vreg) {
