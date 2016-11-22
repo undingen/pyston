@@ -89,6 +89,9 @@ extern "C" PyObject* load_source_module(char* name, char* pathname, FILE* fp) no
     try {
         BoxedModule* module = createModule(name_boxed, pathname);
         std::unique_ptr<ASTAllocator> ast_allocator;
+
+
+
         AST_Module* ast;
         std::tie(ast, ast_allocator) = caching_parse_file(pathname, /* future_flags = */ 0);
         assert(ast);

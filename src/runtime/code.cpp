@@ -256,6 +256,14 @@ extern "C" int PyCode_HasFreeVars(PyCodeObject* _code) noexcept {
     return code->source->scoping.takesClosure() ? 1 : 0;
 }
 
+extern "C" Box* PyCode_GetMarshalObj(BoxedCode* code) noexcept {
+    BoxedTuple* consts = BoxedTuple::create(code->code_constants.constants.size());
+    memcpy(consts->elts, code->code_constants.constants.data(), code->code_constants.constants.size() * sizeof(Box*));
+
+
+    return consts;
+}
+
 void setupCode() {
     code_cls->giveAttrBorrowed("__new__", Py_None); // Hacky way of preventing users from instantiating this
 

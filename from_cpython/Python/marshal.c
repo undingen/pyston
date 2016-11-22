@@ -217,6 +217,9 @@ w_PyLong(const PyLongObject *ob, WFILE *p)
 }
 #endif
 
+
+PyObject* PyCode_GetMarshalObj(PyObject* obj);
+
 static void
 w_object(PyObject *v, WFILE *p)
 {
@@ -456,6 +459,11 @@ w_object(PyObject *v, WFILE *p)
         w_long(co->co_firstlineno, p);
         w_object(co->co_lnotab, p);
         */
+        PyCodeObject *co = (PyCodeObject *)v;
+        PyObject* obj = PyCode_GetMarshalObj(v);
+        w_object(obj, p);
+        Py_DECREF(obj);
+
     }
     else if (PyObject_CheckReadBuffer(v)) {
         /* Write unknown buffer-style objects as a string */

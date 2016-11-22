@@ -21,6 +21,7 @@
 
 #include "llvm/ADT/DenseSet.h"
 #include "Python.h"
+#include "marshal.h"
 
 #include "analysis/scoping_analysis.h"
 #include "codegen/unwinding.h"
@@ -3546,6 +3547,7 @@ static std::pair<CFG*, CodeConstants> computeCFG(llvm::ArrayRef<AST_stmt*> body,
 
     // TODO add code which serializes the final bytecode to disk
 
+
     if (VERBOSITY("cfg") >= 2) {
         printf("Final cfg:\n");
         rtn->print(visitor.code_constants, llvm::outs());
@@ -3616,8 +3618,15 @@ BoxedCode* ModuleCFGProcessor::runRecursively(llvm::ArrayRef<AST_stmt*> body, Bo
 
 BoxedCode* computeAllCFGs(AST* ast, bool globals_from_module, FutureFlags future_flags, BoxedString* fn,
                           BoxedModule* bm) {
-    return ModuleCFGProcessor(ast, globals_from_module, future_flags, fn, bm)
-        .runRecursively(ast->getBody(), ast->getName(), ast->lineno, nullptr, ast);
+    BoxedCode* code = ModuleCFGProcessor(ast, globals_from_module, future_flags, fn, bm)
+                          .runRecursively(ast->getBody(), ast->getName(), ast->lineno, nullptr, ast);
+
+    FILE* file = fopen("tmp", "w");
+    if (file) {
+        PyMarshal_WriteObjectToFile(code, file, Py_MARSHAL_VERSION);
+        fclose(file);
+    }
+    return code;
 }
 
 void printCFG(CFG* cfg, const CodeConstants& code_constants) {

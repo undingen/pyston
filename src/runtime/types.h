@@ -1071,7 +1071,7 @@ public:
 static_assert(sizeof(BoxedDict) == sizeof(PyDictObject), "");
 
 class CodeConstants {
-private:
+public:
     // stores all constants accessible by vregs in the corrext order
     // constants[-(vreg + 1)] will allow one to retrieve the constant for a vreg
     // all entries are owned by code constants and will get decrefed in the destructor.
