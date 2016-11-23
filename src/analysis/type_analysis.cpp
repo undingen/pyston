@@ -148,6 +148,8 @@ private:
         else if (o->cls == ellipsis_cls)
             return typeFromClass(ellipsis_cls);
         else if (o->cls == tuple_cls) {
+            return BOXED_TUPLE;
+
             auto* tuple = (BoxedTuple*)o;
             std::vector<CompilerType*> elt_types;
             for (int i = 0; i < tuple->size(); ++i) {

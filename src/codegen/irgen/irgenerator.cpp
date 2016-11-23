@@ -1247,6 +1247,10 @@ private:
         } else if (o->cls == ellipsis_cls) {
             return getEllipsis();
         } else if (o->cls == tuple_cls) {
+            llvm::Value* rtn = embedRelocatablePtr(o, g.llvm_value_type_ptr);
+            emitter.setType(rtn, RefType::BORROWED);
+            return new ConcreteCompilerVariable(BOXED_TUPLE, rtn);
+
             auto* tuple = (BoxedTuple*)o;
             std::vector<CompilerVariable*> elts;
             for (int i = 0; i < tuple->size(); ++i) {
