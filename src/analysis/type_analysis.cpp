@@ -147,9 +147,14 @@ private:
             return NONE;
         else if (o->cls == ellipsis_cls)
             return typeFromClass(ellipsis_cls);
-        else if (o->cls == tuple_cls)
-            return BOXED_TUPLE;
-        else
+        else if (o->cls == tuple_cls) {
+            auto* tuple = (BoxedTuple*)o;
+            std::vector<CompilerType*> elt_types;
+            for (int i = 0; i < tuple->size(); ++i) {
+                elt_types.push_back(getConstantType(tuple->elts[i]));
+            }
+            return makeTupleType(elt_types, tuple);
+        } else
             RELEASE_ASSERT(0, "");
     }
 

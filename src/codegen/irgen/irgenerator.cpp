@@ -925,7 +925,7 @@ private:
         // clear this out to signal that we consumed them:
         this->incoming_exc_state.clear();
 
-        return makeTuple({ exc_type, exc_value, exc_tb });
+        return makeTuple({ exc_type, exc_value, exc_tb }, NULL);
     }
 
     CompilerVariable* evalLocals(BST_Locals* node, const UnwindInfo& unw_info) {
@@ -1243,9 +1243,13 @@ private:
             emitter.setType(rtn, RefType::BORROWED);
             return new ConcreteCompilerVariable(typeFromClass(unicode_cls), rtn);
         } else if (o->cls == tuple_cls) {
-            llvm::Value* rtn = embedRelocatablePtr(o, g.llvm_value_type_ptr);
-            emitter.setType(rtn, RefType::BORROWED);
-            return new ConcreteCompilerVariable(BOXED_TUPLE, rtn);
+            auto* tuple = (BoxedTuple*)o;
+            std::vector<CompilerVariable*> elts;
+            for (int i = 0; i < tuple->size(); ++i) {
+                CompilerVariable* v = compilerVariableFromObject(tuple->elts[i]);
+                elts.push_back(v);
+            }
+            return makeTuple(elts, tuple);
         } else if (o->cls == none_cls) {
             return emitter.getNone();
         } else if (o->cls == ellipsis_cls) {
@@ -1448,7 +1452,7 @@ private:
             elts.push_back(value);
         }
 
-        CompilerVariable* rtn = makeTuple(elts);
+        CompilerVariable* rtn = makeTuple(elts, NULL);
         return rtn;
     }
 

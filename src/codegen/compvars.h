@@ -361,10 +361,10 @@ CompilerVariable* makeUnicode(IREmitter& emitter, llvm::StringRef);
 CompilerVariable* makeFunction(IREmitter& emitter, BoxedCode*, llvm::Value* closure, llvm::Value* globals,
                                const std::vector<ConcreteCompilerVariable*>& defaults);
 ConcreteCompilerVariable* undefVariable();
-CompilerVariable* makeTuple(const std::vector<CompilerVariable*>& elts);
+CompilerVariable* makeTuple(const std::vector<CompilerVariable*>& elts, BoxedTuple* tuple);
 
 CompilerType* typeOfClassobj(BoxedClass*);
-CompilerType* makeTupleType(const std::vector<CompilerType*>& elt_types);
+CompilerType* makeTupleType(const std::vector<CompilerType*>& elt_types, BoxedTuple* tuple = NULL);
 CompilerType* makeFuncType(ConcreteCompilerType* rtn_type, const std::vector<ConcreteCompilerType*>& arg_types);
 
 ConcreteCompilerVariable* boolFromI1(IREmitter&, llvm::Value*);
