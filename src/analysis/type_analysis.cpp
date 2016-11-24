@@ -153,7 +153,7 @@ private:
             for (int i = 0; i < tuple->size(); ++i) {
                 elt_types.push_back(getConstantType(tuple->elts[i]));
             }
-            return makeTupleType(elt_types, tuple);
+            return makeTupleType(elt_types);
         } else
             RELEASE_ASSERT(0, "");
     }

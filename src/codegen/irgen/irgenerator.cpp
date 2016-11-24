@@ -925,7 +925,7 @@ private:
         // clear this out to signal that we consumed them:
         this->incoming_exc_state.clear();
 
-        return makeTuple({ exc_type, exc_value, exc_tb }, NULL);
+        return makeTuple(emitter, { exc_type, exc_value, exc_tb }, NULL);
     }
 
     CompilerVariable* evalLocals(BST_Locals* node, const UnwindInfo& unw_info) {
@@ -1255,7 +1255,7 @@ private:
                 CompilerVariable* v = compilerVariableFromObject(tuple->elts[i]);
                 elts.push_back(v);
             }
-            return makeTuple(elts, tuple);
+            return makeTuple(emitter, elts, tuple);
         } else if (o->cls == none_cls) {
             return emitter.getNone();
         } else if (o->cls == ellipsis_cls) {
@@ -1458,7 +1458,7 @@ private:
             elts.push_back(value);
         }
 
-        CompilerVariable* rtn = makeTuple(elts, NULL);
+        CompilerVariable* rtn = makeTuple(emitter, elts, NULL);
         return rtn;
     }
 

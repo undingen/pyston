@@ -2471,9 +2471,8 @@ class TupleType : public UnboxedType<const std::vector<CompilerVariable*>, Tuple
 private:
     std::string name;
     const std::vector<CompilerType*> elt_types;
-    BoxedTuple* tuple;
 
-    TupleType(const std::vector<CompilerType*>& elt_types, BoxedTuple* tuple) : elt_types(elt_types), tuple(tuple) {
+    TupleType(const std::vector<CompilerType*>& elt_types) : elt_types(elt_types) {
         std::ostringstream os("");
         os << "tuple(";
         for (int i = 0; i < elt_types.size(); i++) {
@@ -2509,11 +2508,6 @@ public:
 
     ConcreteCompilerVariable* _makeConverted(IREmitter& emitter, const VEC& v, ConcreteCompilerType* other_type) {
         assert(other_type == UNKNOWN || other_type == BOXED_TUPLE);
-        if (tuple) {
-            llvm::Value* rtn = embedRelocatablePtr(tuple, g.llvm_value_type_ptr);
-            emitter.setType(rtn, RefType::BORROWED);
-            return new ConcreteCompilerVariable(other_type, rtn);
-        }
 
         std::vector<ConcreteCompilerVariable*> converted_args;
 
@@ -2552,9 +2546,7 @@ public:
 
     ConcreteCompilerType* getBoxType() override { return BOXED_TUPLE; }
 
-    static TupleType* make(const std::vector<CompilerType*>& elt_types, BoxedTuple* tuple) {
-        return new TupleType(elt_types, tuple);
-    }
+    static TupleType* make(const std::vector<CompilerType*>& elt_types) { return new TupleType(elt_types); }
 
     CompilerVariable* getitem(IREmitter& emitter, const OpInfo& info, VAR* var, CompilerVariable* slice) override {
         assert(slice->getType() != UNBOXED_INT);
@@ -2713,16 +2705,23 @@ public:
     }
 };
 
-CompilerType* makeTupleType(const std::vector<CompilerType*>& elt_types, BoxedTuple* tuple) {
-    return TupleType::make(elt_types, tuple);
+CompilerType* makeTupleType(const std::vector<CompilerType*>& elt_types) {
+    return TupleType::make(elt_types);
 }
 
-CompilerVariable* makeTuple(const std::vector<CompilerVariable*>& elts, BoxedTuple* tuple) {
+CompilerVariable* makeTuple(IREmitter& emitter, const std::vector<CompilerVariable*>& elts, BoxedTuple* tuple) {
     std::vector<CompilerType*> elt_types;
     for (int i = 0; i < elts.size(); i++) {
         elt_types.push_back(elts[i]->getType());
     }
-    TupleType* type = TupleType::make(elt_types, tuple);
+    TupleType* type = TupleType::make(elt_types);
+
+    if (tuple) {
+        auto boxed = embedRelocatablePtr(tuple, g.llvm_value_type_ptr);
+        emitter.setType(boxed, RefType::BORROWED);
+        auto alloc_var = std::make_shared<TupleType::Unboxed>(elts, new ConcreteCompilerVariable(BOXED_TUPLE, boxed));
+        return new TupleType::VAR(type, alloc_var);
+    }
 
     auto alloc_var = std::make_shared<TupleType::Unboxed>(elts, nullptr);
     return new TupleType::VAR(type, alloc_var);
