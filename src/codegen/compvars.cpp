@@ -1365,13 +1365,13 @@ public:
 } _INT;
 CompilerType* INT = &_INT;
 
-CompilerVariable* makeInt(llvm::Value* n) {
+CompilerVariable* makeInt(llvm::Value* n, ConcreteCompilerVariable* boxed) {
     assert(n->getType() == g.i64);
-    return new IntType::VAR(&_INT, std::make_shared<IntType::Unboxed>(n, nullptr));
+    return new IntType::VAR(&_INT, std::make_shared<IntType::Unboxed>(n, boxed));
 }
 
-CompilerVariable* makeInt(int64_t n) {
-    return makeInt(llvm::ConstantInt::get(g.i64, n, true));
+CompilerVariable* makeInt(int64_t n, ConcreteCompilerVariable* boxed) {
+    return makeInt(llvm::ConstantInt::get(g.i64, n, true), boxed);
 }
 
 CompilerVariable* makeUnboxedInt(IREmitter& emitter, ConcreteCompilerVariable* v) {
@@ -1640,13 +1640,13 @@ public:
 ConcreteCompilerType* UNBOXED_INT = new PhonyUnboxedType(llvm::Type::getInt64Ty(llvm::getGlobalContext()), INT);
 ConcreteCompilerType* UNBOXED_FLOAT = new PhonyUnboxedType(llvm::Type::getDoubleTy(llvm::getGlobalContext()), FLOAT);
 
-CompilerVariable* makeFloat(llvm::Value* n) {
+CompilerVariable* makeFloat(llvm::Value* n, ConcreteCompilerVariable* boxed) {
     assert(n->getType() == g.double_);
-    return new FloatType::VAR(&_FLOAT, std::make_shared<FloatType::Unboxed>(n, nullptr));
+    return new FloatType::VAR(&_FLOAT, std::make_shared<FloatType::Unboxed>(n, boxed));
 }
 
-CompilerVariable* makeFloat(double n) {
-    return makeFloat(llvm::ConstantFP::get(g.double_, n));
+CompilerVariable* makeFloat(double n, ConcreteCompilerVariable* boxed) {
+    return makeFloat(llvm::ConstantFP::get(g.double_, n), boxed);
 }
 
 CompilerVariable* makeUnboxedFloat(IREmitter& emitter, ConcreteCompilerVariable* v) {

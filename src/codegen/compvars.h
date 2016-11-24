@@ -331,14 +331,14 @@ ConcreteCompilerVariable* doIs(IREmitter& emitter, CompilerVariable* lhs, Compil
 
 // These functions all return an INT variable, from either an unboxed representation (makeInt) or
 // a boxed representation (makeUnboxedInt)
-CompilerVariable* makeInt(int64_t);
-CompilerVariable* makeInt(llvm::Value*);
+CompilerVariable* makeInt(int64_t, ConcreteCompilerVariable* boxed = NULL);
+CompilerVariable* makeInt(llvm::Value*, ConcreteCompilerVariable* boxed = NULL);
 CompilerVariable* makeUnboxedInt(IREmitter&, ConcreteCompilerVariable*);
 CompilerVariable* makeUnboxedInt(IREmitter&, llvm::Value*);
 
 // Same for floats:
-CompilerVariable* makeFloat(llvm::Value*);
-CompilerVariable* makeFloat(double);
+CompilerVariable* makeFloat(llvm::Value*, ConcreteCompilerVariable* boxed = NULL);
+CompilerVariable* makeFloat(double, ConcreteCompilerVariable* boxed = NULL);
 CompilerVariable* makeUnboxedFloat(IREmitter&, ConcreteCompilerVariable*);
 CompilerVariable* makeUnboxedFloat(IREmitter&, llvm::Value*);
 

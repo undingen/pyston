@@ -1225,23 +1225,29 @@ private:
         }
     }
 
+    ConcreteCompilerVariable* getConst(Box* o, ConcreteCompilerType* type) {
+        llvm::Value*& rtn = irstate->const_value[o];
+        if (!rtn) {
+            rtn = embedRelocatablePtr(o, g.llvm_value_type_ptr);
+            emitter.setType(rtn, RefType::BORROWED);
+        }
+        return new ConcreteCompilerVariable(type, rtn);
+    }
+
+
     CompilerVariable* compilerVariableFromObject(Box* o) {
         if (o->cls == int_cls) {
-            return makeInt(((BoxedInt*)o)->n);
+            return makeInt(((BoxedInt*)o)->n, getConst(o, BOXED_INT));
         } else if (o->cls == float_cls) {
-            return makeFloat(((BoxedFloat*)o)->d);
+            return makeFloat(((BoxedFloat*)o)->d, getConst(o, BOXED_FLOAT));
         } else if (o->cls == complex_cls) {
             return makePureImaginary(emitter, o);
         } else if (o->cls == long_cls) {
             return makeLong(emitter, o);
         } else if (o->cls == str_cls) {
-            llvm::Value* rtn = embedRelocatablePtr(o, g.llvm_value_type_ptr);
-            emitter.setType(rtn, RefType::BORROWED);
-            return new ConcreteCompilerVariable(STR, rtn);
+            return getConst(o, STR);
         } else if (o->cls == unicode_cls) {
-            llvm::Value* rtn = embedRelocatablePtr(o, g.llvm_value_type_ptr);
-            emitter.setType(rtn, RefType::BORROWED);
-            return new ConcreteCompilerVariable(typeFromClass(unicode_cls), rtn);
+            return getConst(o, typeFromClass(unicode_cls));
         } else if (o->cls == tuple_cls) {
             auto* tuple = (BoxedTuple*)o;
             std::vector<CompilerVariable*> elts;

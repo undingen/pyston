@@ -87,6 +87,8 @@ public:
                llvm::MDNode* func_dbg_info, RefcountTracker* refcount_tracker);
     ~IRGenState();
 
+    llvm::DenseMap<Box*, llvm::Value*> const_value;
+
     CFG* getCFG() { return getSourceInfo()->cfg; }
 
     CompiledFunction* getCurFunction() { return cf; }
