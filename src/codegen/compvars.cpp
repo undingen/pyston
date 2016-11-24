@@ -650,11 +650,16 @@ _call(IREmitter& emitter, const OpInfo& info, llvm::Value* func, ExceptionStyle 
         }
         llvm_args.push_back(arg_array);
 
-        if (pass_keyword_names)
-            llvm_args.push_back(embedRelocatablePtr(keyword_names, g.vector_ptr));
+        if (pass_keyword_names) {
+            auto keyword_names_value = embedRelocatablePtr(keyword_names, g.llvm_boxedtuple_type_ptr);
+            emitter.setType(keyword_names_value, RefType::BORROWED);
+            llvm_args.push_back(keyword_names_value);
+        }
     } else if (pass_keyword_names) {
         llvm_args.push_back(getNullPtr(g.llvm_value_type_ptr->getPointerTo()));
-        llvm_args.push_back(embedRelocatablePtr(keyword_names, g.vector_ptr));
+        auto keyword_names_value = embedRelocatablePtr(keyword_names, g.llvm_boxedtuple_type_ptr);
+        emitter.setType(keyword_names_value, RefType::BORROWED);
+        llvm_args.push_back(keyword_names_value);
     }
 
     // f->dump();
@@ -2724,14 +2729,14 @@ CompilerType* makeTupleType(const std::vector<CompilerType*>& elt_types) {
     return TupleType::make(elt_types);
 }
 
-CompilerVariable* makeTuple(const std::vector<CompilerVariable*>& elts) {
+CompilerVariable* makeTuple(const std::vector<CompilerVariable*>& elts, ConcreteCompilerVariable* boxed) {
     std::vector<CompilerType*> elt_types;
     for (int i = 0; i < elts.size(); i++) {
         elt_types.push_back(elts[i]->getType());
     }
     TupleType* type = TupleType::make(elt_types);
 
-    auto alloc_var = std::make_shared<TupleType::Unboxed>(elts, nullptr);
+    auto alloc_var = std::make_shared<TupleType::Unboxed>(elts, boxed);
     return new TupleType::VAR(type, alloc_var);
 }
 
