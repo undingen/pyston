@@ -38,12 +38,14 @@ namespace pyston {
 // but doing it this way makes it clearer what's going on.
 
 static llvm::StringMap<const void*> relocatable_syms;
+static llvm::DenseMap<const void*, llvm::Constant*> add_sym_map;
 
 void clearRelocatableSymsMap() {
     relocatable_syms.clear();
+    add_sym_map.clear();
 }
 
-const void* getValueOfRelocatableSym(const std::string& str) {
+const void* getValueOfRelocatableSym(llvm::StringRef str) {
     auto it = relocatable_syms.find(str);
     if (it != relocatable_syms.end())
         return it->second;
@@ -55,6 +57,10 @@ llvm::Constant* embedRelocatablePtr(const void* addr, llvm::Type* type, llvm::St
 
     if (!ENABLE_JIT_OBJECT_CACHE)
         return embedConstantPtr(addr, type);
+
+    if (add_sym_map.count(addr)) {
+        return add_sym_map[addr];
+    }
 
     std::string name;
     if (!shared_name.empty()) {
@@ -71,8 +77,10 @@ llvm::Constant* embedRelocatablePtr(const void* addr, llvm::Type* type, llvm::St
     relocatable_syms[name] = addr;
 
     llvm::Type* var_type = type->getPointerElementType();
-    return new llvm::GlobalVariable(*g.cur_module, var_type, /* isConstant */ false,
-                                    llvm::GlobalVariable::ExternalLinkage, 0, name);
+    auto rtn = new llvm::GlobalVariable(*g.cur_module, var_type, /* isConstant */ false,
+                                        llvm::GlobalVariable::ExternalLinkage, 0, name);
+    add_sym_map[addr] = rtn;
+    return rtn;
 }
 
 llvm::Constant* embedConstantPtr(const void* addr, llvm::Type* type) {
