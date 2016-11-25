@@ -212,8 +212,9 @@ w_PyLong(const PyLongObject *ob, WFILE *p)
 static void
 w_PyLong(const PyLongObject *ob, WFILE *p)
 {
-    assert(0 && "not implemented");
-    abort();
+    PyObject* repr = PyObject_Repr((PyObject*)ob);
+    w_pstring(PyBytes_AS_STRING(repr), PyString_GET_SIZE(repr), p);
+    Py_DECREF(repr);
 }
 #endif
 
@@ -439,8 +440,8 @@ w_object(PyObject *v, WFILE *p)
     }
     else if (PyCode_Check(v)) {
         // Pyston change: not implemented
-        assert(0 && "Marshalling of code objects not implemented");
-        abort();
+        //assert(0 && "Marshalling of code objects not implemented");
+        //abort();
         /*
         PyCodeObject *co = (PyCodeObject *)v;
         w_byte(TYPE_CODE, p);

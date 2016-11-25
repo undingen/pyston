@@ -16,6 +16,7 @@
 #include <sstream>
 
 #include "codegen/baseline_jit.h"
+#include "core/cfg.h"
 #include "runtime/objmodel.h"
 #include "runtime/set.h"
 
@@ -256,12 +257,58 @@ extern "C" int PyCode_HasFreeVars(PyCodeObject* _code) noexcept {
     return code->source->scoping.takesClosure() ? 1 : 0;
 }
 
+static Box* box_scoping(ScopingResults& scoping) {
+    BoxedTuple* t = BoxedTuple::create(7);
+    t->elts[0] = boxBool(scoping.areLocalsFromModule());
+    t->elts[1] = boxBool(scoping.areGlobalsFromModule());
+    t->elts[2] = boxBool(scoping.createsClosure());
+    t->elts[3] = boxBool(scoping.takesClosure());
+    t->elts[4] = boxBool(scoping.passesThroughClosure());
+    t->elts[5] = boxBool(scoping.usesNameLookup());
+    // t[6] =
+    return t;
+}
+
+static Box* box_source_info(SourceInfo* source_info) {
+    return BoxedTuple::create3(autoDecref(boxInt(source_info->future_flags)),
+                               autoDecref(boxBool(source_info->is_generator)),
+                               autoDecref(boxInt(source_info->ast_type)));
+}
+
 extern "C" Box* PyCode_GetMarshalObj(BoxedCode* code) noexcept {
+    BoxedTuple* rtn = BoxedTuple::create(12);
     BoxedTuple* consts = BoxedTuple::create(code->code_constants.constants.size());
-    memcpy(consts->elts, code->code_constants.constants.data(), code->code_constants.constants.size() * sizeof(Box*));
+    for (int i = 0; i < code->code_constants.constants.size(); ++i) {
+        consts->elts[i] = incref(code->code_constants.constants[i]);
+    }
+    rtn->elts[0] = consts;
+    rtn->elts[1] = boxString(
+        llvm::StringRef((char*)code->source->cfg->bytecode.getData(), code->source->cfg->bytecode.getSize()));
+    rtn->elts[2] = incref(code->name);
+    rtn->elts[3] = incref(code->filename);
+    rtn->elts[4] = incref(code->_doc);
 
+    rtn->elts[5] = boxInt(code->num_args);
+    rtn->elts[6] = boxBool(code->takes_varargs);
+    rtn->elts[7] = boxBool(code->takes_kwargs);
+    rtn->elts[8] = boxInt(code->firstlineno);
 
-    return consts;
+    auto args = code->param_names.allArgsAsName();
+    BoxedTuple* args_tuple = BoxedTuple::create(args.size());
+    for (int i = 0; i < args.size(); ++i) {
+        BST_Name* name = args[i];
+        args_tuple->elts[i]
+            = BoxedTuple::create4(name->id.getBox(), autoDecref(boxInt(name->vreg)),
+                                  autoDecref(boxInt((int)name->lookup_type)), autoDecref(boxInt(name->closure_offset)));
+    }
+    rtn->elts[9] = args_tuple;
+
+    // SourceInfo
+    rtn->elts[10] = box_source_info(code->source.get());
+
+    // ScopingResults
+    rtn->elts[11] = box_scoping(code->source->scoping);
+    return rtn;
 }
 
 void setupCode() {
