@@ -705,69 +705,32 @@ private:
         return rtn;
     }
 
-    TmpValue makeNum(int64_t n, int lineno) {
-        Box* o = code_constants.getIntConstant(n);
-        int vreg_const = addConst(o);
-        return TmpValue(vreg_const, lineno);
-    }
-
     TmpValue remapNum(AST_Num* num) {
-        Box* o = NULL;
-        if (num->num_type == AST_Num::INT) {
-            o = code_constants.getIntConstant(num->n_int);
-        } else if (num->num_type == AST_Num::FLOAT) {
-            o = code_constants.getFloatConstant(num->n_float);
-        } else if (num->num_type == AST_Num::LONG) {
-            Box*& r = long_constants[num->n_long];
-            if (!r) {
-                r = createLong(num->n_long);
-                code_constants.addOwnedRef(r);
-            }
-            o = r;
-        } else if (num->num_type == AST_Num::COMPLEX) {
-            Box*& r = imaginary_constants[getDoubleBits(num->n_float)];
-            if (!r) {
-                r = createPureImaginary(num->n_float);
-                code_constants.addOwnedRef(r);
-            }
-            o = r;
-        } else
-            RELEASE_ASSERT(0, "not implemented");
-
-        int vreg_const = addConst(o);
-        return TmpValue(vreg_const, num->lineno);
+        Box* o = createConstObject(num);
+        AUTO_DECREF(o);
+        return TmpValue(addConst(o), num->lineno);
     }
 
     TmpValue makeStr(llvm::StringRef str, int lineno = 0) {
-        BoxedString*& o = str_constants[str];
-        // we always intern the string
-        if (!o) {
-            o = internStringMortal(str);
-            code_constants.addOwnedRef(o);
-        }
-        int vreg_const = addConst(o);
-        return TmpValue(vreg_const, lineno);
+        AST_Str ast_str(str.str());
+        Box* o = createConstObject(&ast_str);
+        AUTO_DECREF(o);
+        return TmpValue(addConst(o), lineno);
     }
 
     TmpValue remapStr(AST_Str* str) {
-        // TODO make this serializable
-        if (str->str_type == AST_Str::STR) {
-            return makeStr(str->str_data, str->lineno);
-        } else if (str->str_type == AST_Str::UNICODE) {
-            Box*& r = unicode_constants[str->str_data];
-            if (!r) {
-                r = decodeUTF8StringPtr(str->str_data);
-                code_constants.addOwnedRef(r);
-            }
-            return TmpValue(addConst(r), str->lineno);
-        }
-        RELEASE_ASSERT(0, "%d", str->str_type);
+        Box* o = createConstObject(str);
+        AUTO_DECREF(o);
+        return TmpValue(addConst(o), str->lineno);
     }
 
-    TmpValue makeNum(int n, int lineno) {
-        Box* o = code_constants.getIntConstant(n);
-        int vreg_const = addConst(o);
-        return TmpValue(vreg_const, lineno);
+    TmpValue makeNum(int64_t n, int lineno) {
+        AST_Num ast_num;
+        ast_num.num_type = AST_Num::INT;
+        ast_num.n_int = n;
+        Box* o = createConstObject(&ast_num);
+        AUTO_DECREF(o);
+        return TmpValue(addConst(o), lineno);
     }
 
     TmpValue makeNone(int lineno) {
@@ -1681,14 +1644,14 @@ private:
     }
 
 
-    bool isConstEltsTuple(AST* node) {
+    bool isConstObject(AST* node) {
         if (node->type == AST_TYPE::Str || node->type == AST_TYPE::Num)
             return true;
         else if (node->type == AST_TYPE::Tuple) {
             auto* tuple = ast_cast<AST_Tuple>(node);
             assert(tuple->ctx_type == AST_TYPE::Load);
             for (auto&& elt : tuple->elts) {
-                if (!isConstEltsTuple(elt))
+                if (!isConstObject(elt))
                     return false;
             }
             return true;
@@ -1697,32 +1660,53 @@ private:
         return false;
     }
 
-    Box* createConstEltsTuple(AST* node) {
+    Box* createConstObject(AST* node) {
         if (node->type == AST_TYPE::Str) {
             auto* str = ast_cast<AST_Str>(node);
-            if (str->str_type == AST_Str::STR)
-                return internStringMortal(str->str_data);
-            else if (str->str_type == AST_Str::UNICODE)
-                return decodeUTF8StringPtr(str->str_data);
-            else
+            if (str->str_type == AST_Str::STR) {
+                BoxedString*& o = str_constants[str->str_data];
+                // we always intern the string
+                if (!o) {
+                    o = internStringMortal(str->str_data);
+                    code_constants.addOwnedRef(o);
+                }
+                return incref(o);
+            } else if (str->str_type == AST_Str::UNICODE) {
+                Box*& r = unicode_constants[str->str_data];
+                if (!r) {
+                    r = decodeUTF8StringPtr(str->str_data);
+                    code_constants.addOwnedRef(r);
+                }
+                return incref(r);
+            } else
                 RELEASE_ASSERT(0, "not implemented");
         } else if (node->type == AST_TYPE::Num) {
             auto* num = ast_cast<AST_Num>(node);
             if (num->num_type == AST_Num::INT)
-                return boxInt(num->n_int);
+                return incref(code_constants.getIntConstant(num->n_int));
             else if (num->num_type == AST_Num::FLOAT)
-                return boxFloat(num->n_float);
-            else if (num->num_type == AST_Num::LONG)
-                return createLong(num->n_long);
-            else if (num->num_type == AST_Num::COMPLEX)
-                return createPureImaginary(num->n_float);
-            else
+                return incref(code_constants.getFloatConstant(num->n_float));
+            else if (num->num_type == AST_Num::LONG) {
+                Box*& r = long_constants[num->n_long];
+                if (!r) {
+                    r = createLong(num->n_long);
+                    code_constants.addOwnedRef(r);
+                }
+                return incref(r);
+            } else if (num->num_type == AST_Num::COMPLEX) {
+                Box*& r = imaginary_constants[getDoubleBits(num->n_float)];
+                if (!r) {
+                    r = createPureImaginary(num->n_float);
+                    code_constants.addOwnedRef(r);
+                }
+                return incref(r);
+            } else
                 RELEASE_ASSERT(0, "not implemented");
         } else if (node->type == AST_TYPE::Tuple) {
             auto* tuple_node = ast_cast<AST_Tuple>(node);
             BoxedTuple* tuple = BoxedTuple::create(tuple_node->elts.size());
             for (int i = 0; i < tuple_node->elts.size(); ++i) {
-                tuple->elts[i] = createConstEltsTuple(tuple_node->elts[i]);
+                tuple->elts[i] = createConstObject(tuple_node->elts[i]);
             }
             return tuple;
         } else if (node->type == AST_TYPE::Name && ast_cast<AST_Name>(node)->id.s() == "None") {
@@ -1734,8 +1718,9 @@ private:
     TmpValue remapTuple(AST_Tuple* node) {
         assert(node->ctx_type == AST_TYPE::Load);
 
-        if (isConstEltsTuple(node)) {
-            BoxedTuple* tuple = (BoxedTuple*)createConstEltsTuple(node);
+        // handle tuples where all elements are constants as a constant
+        if (isConstObject(node)) {
+            BoxedTuple* tuple = (BoxedTuple*)createConstObject(node);
             code_constants.addOwnedRef(tuple);
             return TmpValue(addConst(tuple), node->lineno);
         }
