@@ -688,11 +688,13 @@ private:
         return createDstName(rtn);
     }
 
-    int addConst(Box* o) {
+    int addConst(STOLEN(Box*) o) {
         // make sure all consts are unique
         auto it = consts.find(o);
-        if (it != consts.end())
+        if (it != consts.end()) {
+            Py_DECREF(o);
             return it->second;
+        }
         int vreg = code_constants.createVRegEntryForConstant(o);
         consts[o] = vreg;
         return vreg;
@@ -707,20 +709,17 @@ private:
 
     TmpValue remapNum(AST_Num* num) {
         Box* o = createConstObject(num);
-        AUTO_DECREF(o);
         return TmpValue(addConst(o), num->lineno);
     }
 
     TmpValue makeStr(llvm::StringRef str, int lineno = 0) {
         AST_Str ast_str(str.str());
         Box* o = createConstObject(&ast_str);
-        AUTO_DECREF(o);
         return TmpValue(addConst(o), lineno);
     }
 
     TmpValue remapStr(AST_Str* str) {
         Box* o = createConstObject(str);
-        AUTO_DECREF(o);
         return TmpValue(addConst(o), str->lineno);
     }
 
@@ -729,12 +728,11 @@ private:
         ast_num.num_type = AST_Num::INT;
         ast_num.n_int = n;
         Box* o = createConstObject(&ast_num);
-        AUTO_DECREF(o);
         return TmpValue(addConst(o), lineno);
     }
 
     TmpValue makeNone(int lineno) {
-        int vreg_const = addConst(Py_None);
+        int vreg_const = addConst(incref(Py_None));
         return TmpValue(vreg_const, lineno);
     }
 
@@ -1250,7 +1248,6 @@ private:
             for (int i = 0; i < node->keywords.size(); ++i) {
                 tuple->elts[i] = incref(node->keywords[i]->arg.getBox());
             }
-            code_constants.addOwnedRef(tuple);
             rtn_shared->index_keyword_names = addConst(tuple);
         }
 
@@ -1360,7 +1357,7 @@ private:
     }
 
     TmpValue remapEllipsis(AST_Ellipsis* node) {
-        int vreg_const = addConst(Ellipsis);
+        int vreg_const = addConst(incref(Ellipsis));
         return TmpValue(vreg_const, node->lineno);
     }
 
@@ -1438,8 +1435,7 @@ private:
         BoxedCode* code = cfgizer->runRecursively(new_body, gen_name, node->lineno, genexp_args, node);
         BST_MakeFunction* mkfunc = allocAndPush<BST_MakeFunction>(0, 0);
         mkfunc->lineno = node->lineno;
-        mkfunc->vreg_code_obj = code_constants.createVRegEntryForConstant(code);
-        code_constants.addOwnedRef(code);
+        mkfunc->vreg_code_obj = addConst(code);
         TmpValue func_var_name = createDstName(mkfunc);
 
         return makeCall(func_var_name, { first });
@@ -1498,8 +1494,7 @@ private:
         BoxedCode* code = cfgizer->runRecursively(new_body, comp_name, node->lineno, args, node);
         BST_MakeFunction* mkfunc = allocAndPush<BST_MakeFunction>(0, 0);
         mkfunc->lineno = node->lineno;
-        mkfunc->vreg_code_obj = code_constants.createVRegEntryForConstant(code);
-        code_constants.addOwnedRef(code);
+        mkfunc->vreg_code_obj = addConst(code);
         TmpValue func_var_name = createDstName(mkfunc);
 
         return makeCall(func_var_name, { first });
@@ -1554,8 +1549,7 @@ private:
 
         auto name = getStaticString("<lambda>");
         auto* code = cfgizer->runRecursively({ stmt }, name, mkfn->lineno, node->args, node);
-        mkfn->vreg_code_obj = code_constants.createVRegEntryForConstant(code);
-        code_constants.addOwnedRef(code);
+        mkfn->vreg_code_obj = addConst(code);
 
         return createDstName(mkfn);
     }
@@ -1666,18 +1660,18 @@ private:
             if (str->str_type == AST_Str::STR) {
                 BoxedString*& o = str_constants[str->str_data];
                 // we always intern the string
-                if (!o) {
+                if (!o)
                     o = internStringMortal(str->str_data);
-                    code_constants.addOwnedRef(o);
-                }
-                return incref(o);
+                else
+                    incref(o);
+                return o;
             } else if (str->str_type == AST_Str::UNICODE) {
                 Box*& r = unicode_constants[str->str_data];
-                if (!r) {
+                if (!r)
                     r = decodeUTF8StringPtr(str->str_data);
-                    code_constants.addOwnedRef(r);
-                }
-                return incref(r);
+                else
+                    incref(r);
+                return r;
             } else
                 RELEASE_ASSERT(0, "not implemented");
         } else if (node->type == AST_TYPE::Num) {
@@ -1688,18 +1682,18 @@ private:
                 return incref(code_constants.getFloatConstant(num->n_float));
             else if (num->num_type == AST_Num::LONG) {
                 Box*& r = long_constants[num->n_long];
-                if (!r) {
+                if (!r)
                     r = createLong(num->n_long);
-                    code_constants.addOwnedRef(r);
-                }
-                return incref(r);
+                else
+                    incref(r);
+                return r;
             } else if (num->num_type == AST_Num::COMPLEX) {
                 Box*& r = imaginary_constants[getDoubleBits(num->n_float)];
-                if (!r) {
+                if (!r)
                     r = createPureImaginary(num->n_float);
-                    code_constants.addOwnedRef(r);
-                }
-                return incref(r);
+                else
+                    incref(r);
+                return r;
             } else
                 RELEASE_ASSERT(0, "not implemented");
         } else if (node->type == AST_TYPE::Tuple) {
@@ -1720,8 +1714,7 @@ private:
 
         // handle tuples where all elements are constants as a constant
         if (isConstObject(node)) {
-            BoxedTuple* tuple = (BoxedTuple*)createConstObject(node);
-            code_constants.addOwnedRef(tuple);
+            Box* tuple = createConstObject(node);
             return TmpValue(addConst(tuple), node->lineno);
         }
 
@@ -1968,8 +1961,7 @@ public:
         unmapExpr(bases_name, &mkclass->vreg_bases_tuple);
 
         auto* code = cfgizer->runRecursively(node->body, node->name.getBox(), node->lineno, NULL, node);
-        mkclass->vreg_code_obj = code_constants.createVRegEntryForConstant(code);
-        code_constants.addOwnedRef(code);
+        mkclass->vreg_code_obj = addConst(code);
 
         auto tmp = createDstName(mkclass);
         pushAssign(TmpValue(scoping->mangleName(node->name), node->lineno), tmp);
@@ -2003,8 +1995,7 @@ public:
         }
 
         auto* code = cfgizer->runRecursively(node->body, node->name.getBox(), node->lineno, node->args, node);
-        mkfunc->vreg_code_obj = code_constants.createVRegEntryForConstant(code);
-        code_constants.addOwnedRef(code);
+        mkfunc->vreg_code_obj = addConst(code);
         auto tmp = createDstName(mkfunc);
         pushAssign(TmpValue(scoping->mangleName(node->name), node->lineno), tmp);
 
@@ -2097,7 +2088,6 @@ public:
         for (int i = 0; i < node->names.size(); i++) {
             tuple->elts[i] = internStringMortal(node->names[i]->name.s());
         }
-        code_constants.addOwnedRef(tuple);
         import->vreg_from = addConst(tuple);
         unmapExpr(makeStr(node->module.s()), &import->vreg_name);
 
@@ -3547,6 +3537,7 @@ static std::pair<CFG*, CodeConstants> computeCFG(llvm::ArrayRef<AST_stmt*> body,
 
     pruneUnnecessaryBlocks(rtn);
 
+    visitor.code_constants.optimizeSize();
     rtn->bytecode.optimizeSize();
     rtn->blocks.shrink_to_fit();
 
