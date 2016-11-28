@@ -177,6 +177,13 @@ ParamNames::ParamNames(const std::vector<const char*>& args, const char* vararg,
         all_args.emplace_back(kwarg);
 }
 
+ParamNames::ParamNames(const std::vector<BST_Name*>& args, bool has_vararg, bool has_kwarg)
+    : all_args_contains_names(1), takes_param_names(1), has_vararg_name(has_vararg), has_kwarg_name(has_kwarg) {
+    for (auto&& arg : args) {
+        all_args.emplace_back(arg);
+    }
+}
+
 std::vector<const char*> ParamNames::allArgsAsStr() const {
     std::vector<const char*> ret;
     ret.reserve(all_args.size());
@@ -3621,7 +3628,7 @@ BoxedCode* computeAllCFGs(AST* ast, bool globals_from_module, FutureFlags future
     BoxedCode* code = ModuleCFGProcessor(ast, globals_from_module, future_flags, fn, bm)
                           .runRecursively(ast->getBody(), ast->getName(), ast->lineno, nullptr, ast);
 
-    FILE* file = fopen("tmp", "w");
+    FILE* file = fopen((fn->s() + ".bic").str().c_str(), "wb");
     if (file) {
         PyMarshal_WriteObjectToFile(code, file, Py_MARSHAL_VERSION);
         fclose(file);

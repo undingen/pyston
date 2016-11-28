@@ -27,6 +27,8 @@
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include "marshal.h"
+
 #include "analysis/function_analysis.h"
 #include "analysis/scoping_analysis.h"
 #include "asm_writing/icinfo.h"
@@ -231,7 +233,19 @@ void compileAndRunModule(AST_Module* m, BoxedModule* bm) {
     RELEASE_ASSERT(fn, "");
 
     FutureFlags future_flags = getFutureFlags(m->body, fn);
-    BoxedCode* code = computeAllCFGs(m, /* globals_from_module */ true, future_flags, autoDecref(boxString(fn)), bm);
+
+    BoxedCode* code = NULL;
+
+    FILE* file = fopen((fn + std::string(".bic")).c_str(), "rb");
+    if (file) {
+        Box* obj = PyMarshal_ReadObjectFromFile(file);
+        if (!obj)
+            PyErr_Clear();
+        fclose(file);
+        assert(!obj || obj->cls == code_cls);
+    }
+    if (!code)
+        code = computeAllCFGs(m, /* globals_from_module */ true, future_flags, autoDecref(boxString(fn)), bm);
     AUTO_DECREF(code);
 
     static BoxedString* doc_str = getStaticString("__doc__");

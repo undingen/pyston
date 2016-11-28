@@ -220,6 +220,7 @@ w_PyLong(const PyLongObject *ob, WFILE *p)
 
 
 PyObject* PyCode_GetMarshalObj(PyObject* obj);
+PyObject* PyCode_CreateMarshalObj(PyTupleObject* obj);
 
 static void
 w_object(PyObject *v, WFILE *p)
@@ -461,6 +462,7 @@ w_object(PyObject *v, WFILE *p)
         w_object(co->co_lnotab, p);
         */
         PyCodeObject *co = (PyCodeObject *)v;
+        w_byte(TYPE_CODE, p);
         PyObject* obj = PyCode_GetMarshalObj(v);
         w_object(obj, p);
         Py_DECREF(obj);
@@ -1028,73 +1030,9 @@ r_object(RFILE *p)
             break;
         }
         else {
-            int argcount;
-            int nlocals;
-            int stacksize;
-            int flags;
-            PyObject *code = NULL;
-            PyObject *consts = NULL;
-            PyObject *names = NULL;
-            PyObject *varnames = NULL;
-            PyObject *freevars = NULL;
-            PyObject *cellvars = NULL;
-            PyObject *filename = NULL;
-            PyObject *name = NULL;
-            int firstlineno;
-            PyObject *lnotab = NULL;
-
-            v = NULL;
-
-            /* XXX ignore long->int overflows for now */
-            argcount = (int)r_long(p);
-            nlocals = (int)r_long(p);
-            stacksize = (int)r_long(p);
-            flags = (int)r_long(p);
-            code = r_object(p);
-            if (code == NULL)
-                goto code_error;
-            consts = r_object(p);
-            if (consts == NULL)
-                goto code_error;
-            names = r_object(p);
-            if (names == NULL)
-                goto code_error;
-            varnames = r_object(p);
-            if (varnames == NULL)
-                goto code_error;
-            freevars = r_object(p);
-            if (freevars == NULL)
-                goto code_error;
-            cellvars = r_object(p);
-            if (cellvars == NULL)
-                goto code_error;
-            filename = r_object(p);
-            if (filename == NULL)
-                goto code_error;
-            name = r_object(p);
-            if (name == NULL)
-                goto code_error;
-            firstlineno = (int)r_long(p);
-            lnotab = r_object(p);
-            if (lnotab == NULL)
-                goto code_error;
-
-            v = (PyObject *) PyCode_New(
-                            argcount, nlocals, stacksize, flags,
-                            code, consts, names, varnames,
-                            freevars, cellvars, filename, name,
-                            firstlineno, lnotab);
-          code_error:
-            Py_XDECREF(code);
-            Py_XDECREF(consts);
-            Py_XDECREF(names);
-            Py_XDECREF(varnames);
-            Py_XDECREF(freevars);
-            Py_XDECREF(cellvars);
-            Py_XDECREF(filename);
-            Py_XDECREF(name);
-            Py_XDECREF(lnotab);
-
+            PyTupleObject* tuple_obj = (PyTupleObject*)r_object(p);
+            v = PyCode_CreateMarshalObj(tuple_obj);
+            Py_XDECREF(tuple_obj);
         }
         retval = v;
         break;

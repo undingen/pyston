@@ -236,6 +236,7 @@ struct ParamNames {
 
     explicit ParamNames(AST_arguments* ast, InternedStringPool& pool);
     ParamNames(const std::vector<const char*>& args, const char* vararg, const char* kwarg);
+    ParamNames(const std::vector<BST_Name*>& args, bool has_vararg, bool has_kwarg);
     static ParamNames empty() { return ParamNames(); }
 
     int numNormalArgs() const { return all_args.size() - has_vararg_name - has_kwarg_name; }
@@ -449,7 +450,7 @@ class ScopeInfo;
 // metadata that is necessary during the analysis, after which we can throw it
 // away and only keep a ScopingResults object.
 struct ScopingResults {
-private:
+public:
     bool are_locals_from_module : 1;
     bool are_globals_from_module : 1;
     bool creates_closure : 1;
@@ -481,6 +482,7 @@ public:
     DerefInfo getDerefInfo(BST_LoadName*) const;
 
     ScopingResults(ScopeInfo* scope_info, bool globals_from_module);
+    ScopingResults() {}
 };
 
 // Data about a single textual function definition.

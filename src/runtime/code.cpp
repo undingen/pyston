@@ -265,7 +265,15 @@ static Box* box_scoping(ScopingResults& scoping) {
     t->elts[3] = boxBool(scoping.takesClosure());
     t->elts[4] = boxBool(scoping.passesThroughClosure());
     t->elts[5] = boxBool(scoping.usesNameLookup());
-    // t[6] =
+
+    auto deref_info = scoping.getAllDerefVarsAndInfo();
+    BoxedTuple* deref_tuple = BoxedTuple::create(deref_info.size());
+    for (int i = 0; i < deref_info.size(); ++i) {
+        deref_tuple->elts[i] = BoxedTuple::create3(
+            deref_info[i].first.getBox(), autoDecref(boxInt(deref_info[i].second.num_parents_from_passed_closure)),
+            autoDecref(boxInt(deref_info[i].second.offset)));
+    }
+    t->elts[6] = deref_tuple;
     return t;
 }
 
@@ -273,6 +281,96 @@ static Box* box_source_info(SourceInfo* source_info) {
     return BoxedTuple::create3(autoDecref(boxInt(source_info->future_flags)),
                                autoDecref(boxBool(source_info->is_generator)),
                                autoDecref(boxInt(source_info->ast_type)));
+}
+
+extern "C" Box* PyCode_CreateMarshalObj(BoxedTuple* code) noexcept {
+    BoxedTuple* constants = (BoxedTuple*)code->elts[0];
+
+    BoxedString* name = (BoxedString*)code->elts[2];
+    BoxedString* filename = (BoxedString*)code->elts[3];
+    Box* doc = code->elts[4];
+    int num_args = unboxInt(code->elts[5]);
+    bool takes_varargs = code->elts[6] == Py_True;
+    bool takes_kwargs = code->elts[7] == Py_True;
+    int firstlineno = unboxInt(code->elts[8]);
+
+    CodeConstants code_constants;
+    for (int i = 0; i < constants->size(); ++i) {
+        code_constants.createVRegEntryForConstant(incref(constants->elts[i]));
+    }
+
+    BoxedTuple* param_names_tuple = (BoxedTuple*)code->elts[9];
+    BoxedTuple* param_names_args_tuple = (BoxedTuple*)param_names_tuple->elts[0];
+    std::vector<BST_Name*> all_names;
+    for (int i = 0; i < param_names_args_tuple->size(); ++i) {
+        BoxedTuple* arg = (BoxedTuple*)param_names_args_tuple->elts[i];
+        BST_Name* name = new BST_Name(InternedString::unsafe(incref((BoxedString*)arg->elts[0])), 0);
+        name->vreg = unboxInt(arg->elts[1]);
+        name->lookup_type = (decltype(name->lookup_type))unboxInt(arg->elts[2]);
+        name->closure_offset = unboxInt(arg->elts[3]);
+        all_names.push_back(name);
+    }
+    bool has_vararg_name = param_names_tuple->elts[1] == Py_True;
+    bool has_kwarg_name = param_names_tuple->elts[2] == Py_True;
+    ParamNames param_names(all_names, has_vararg_name, has_kwarg_name);
+
+    BoxedTuple* scoping_tuple = (BoxedTuple*)code->elts[11];
+    ScopingResults scoping;
+    scoping.are_locals_from_module = scoping_tuple->elts[0] == Py_True;
+    scoping.are_globals_from_module = scoping_tuple->elts[1] == Py_True;
+    scoping.creates_closure = scoping_tuple->elts[2] == Py_True;
+    scoping.takes_closure = scoping_tuple->elts[3] == Py_True;
+    scoping.passes_through_closure = scoping_tuple->elts[4] == Py_True;
+    scoping.uses_name_lookup = scoping_tuple->elts[5] == Py_True;
+    BoxedTuple* deref_info_tuple = (BoxedTuple*)scoping_tuple->elts[6];
+    for (int i = 0; i < deref_info_tuple->size(); ++i) {
+        BoxedTuple* info = (BoxedTuple*)deref_info_tuple->elts[i];
+        DerefInfo deref;
+        deref.num_parents_from_passed_closure = unboxInt(info->elts[1]);
+        deref.offset = unboxInt(info->elts[2]);
+        scoping.deref_info.emplace_back(InternedString::unsafe(incref((BoxedString*)info->elts[0])), deref);
+    }
+
+    BoxedTuple* source_info_tuple = (BoxedTuple*)code->elts[10];
+    FutureFlags future_flags = unboxInt(source_info_tuple->elts[0]);
+    bool is_generator = source_info_tuple->elts[1] == Py_True;
+    int ast_type = unboxInt(source_info_tuple->elts[2]);
+
+    std::unique_ptr<SourceInfo> source_info
+        = std::unique_ptr<SourceInfo>(new SourceInfo(0, std::move(scoping), future_flags, ast_type, is_generator));
+
+    CFG* cfg = new CFG;
+    BoxedString* code_str = (BoxedString*)code->elts[1];
+    int code_size = code_str->size();
+    cfg->bytecode.allocate(code_size);
+    memcpy(cfg->bytecode.getData(), code_str->data(), code_size);
+
+    CFGBlock* block = cfg->addDeferredBlock();
+    cfg->placeBlock(block);
+    cfg->blocks.back()->offset_of_first_stmt = 0;
+
+    bool is_terminator = false;
+    for (BST_stmt* stmt = cfg->getStmtFromOffset(0); stmt && cfg->bytecode.isInside(stmt);
+         stmt = cfg->getStmtFromOffset(cfg->bytecode.getOffset(stmt) + stmt->size_in_bytes())) {
+        if (is_terminator) {
+            CFGBlock* block = cfg->addDeferredBlock();
+            cfg->placeBlock(block);
+            cfg->blocks.back()->offset_of_first_stmt = cfg->bytecode.getOffset(stmt);
+        }
+
+        is_terminator = stmt->is_terminator();
+    }
+
+    for (CFGBlock* b : cfg->blocks) {
+        for (auto&& b2 : b->successors()) {
+            b->connectTo(b2, true);
+        }
+    }
+
+    source_info->cfg = cfg;
+
+    return new BoxedCode(num_args, takes_varargs, takes_kwargs, firstlineno, std::move(source_info),
+                         std::move(code_constants), std::move(param_names), filename, name, doc);
 }
 
 extern "C" Box* PyCode_GetMarshalObj(BoxedCode* code) noexcept {
@@ -293,6 +391,7 @@ extern "C" Box* PyCode_GetMarshalObj(BoxedCode* code) noexcept {
     rtn->elts[7] = boxBool(code->takes_kwargs);
     rtn->elts[8] = boxInt(code->firstlineno);
 
+
     auto args = code->param_names.allArgsAsName();
     BoxedTuple* args_tuple = BoxedTuple::create(args.size());
     for (int i = 0; i < args.size(); ++i) {
@@ -301,7 +400,9 @@ extern "C" Box* PyCode_GetMarshalObj(BoxedCode* code) noexcept {
             = BoxedTuple::create4(name->id.getBox(), autoDecref(boxInt(name->vreg)),
                                   autoDecref(boxInt((int)name->lookup_type)), autoDecref(boxInt(name->closure_offset)));
     }
-    rtn->elts[9] = args_tuple;
+
+    rtn->elts[9] = BoxedTuple::create3(autoDecref(args_tuple), autoDecref(boxBool(code->param_names.has_vararg_name)),
+                                       autoDecref(boxBool(code->param_names.has_kwarg_name)));
 
     // SourceInfo
     rtn->elts[10] = box_source_info(code->source.get());
