@@ -63,20 +63,20 @@ static_assert(JitCodeBlock::scratch_size == 256, "have to update EH table!");
 constexpr int code_size = JitCodeBlock::memory_size - sizeof(eh_info);
 constexpr assembler::RegisterSet JitCodeBlock::additional_regs;
 
-JitCodeBlock::MemoryManager::MemoryManager() {
+JitCodeBlock::MemoryManager::MemoryManager() : size(JitCodeBlock::memory_size) {
     int protection = PROT_READ | PROT_WRITE | PROT_EXEC;
     int flags = MAP_PRIVATE | MAP_ANONYMOUS;
 #if ENABLE_BASELINEJIT_MAP_32BIT
     flags |= MAP_32BIT;
 #endif
-    addr = (uint8_t*)mmap(NULL, JitCodeBlock::memory_size, protection, flags, -1, 0);
+    addr = (uint8_t*)mmap(NULL, size, protection, flags, -1, 0);
 }
 
 JitCodeBlock::MemoryManager::~MemoryManager() {
     // unfortunately we can't free the memory when profiling otherwise we would reuse the same addresses which makes
     // profiling impossible
     if (!PROFILE)
-        munmap(addr, JitCodeBlock::memory_size);
+        munmap(addr, size);
     addr = NULL;
 }
 
@@ -838,6 +838,7 @@ std::pair<int, llvm::DenseSet<int>> JitFragmentWriter::finishCompilation() {
         void* ret = mremap(code_block.memory.get(), size, size * 2, 0);
         if (ret == code_block.memory.get()) {
             code_block.a.setEndAddr(code_block.a.endAddr() + size);
+            code_block.memory.size += size;
             assert(code_block.a.endAddr() - code_block.memory.get() == size * 2);
             code_block.fragmentAbort(false /* not_enough_space */);
         } else {

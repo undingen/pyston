@@ -159,8 +159,9 @@ public:
 
 public:
     struct MemoryManager {
-    private:
+    public:
         uint8_t* addr;
+        int size;
 
     public:
         MemoryManager();
