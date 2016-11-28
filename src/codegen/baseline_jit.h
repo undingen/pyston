@@ -148,7 +148,7 @@ class JitFragmentWriter;
 class JitCodeBlock {
 public:
     static constexpr int scratch_size = 256;
-    static constexpr int memory_size = 6 * 4096; // must fit the EH frame + generated code
+    static constexpr int memory_size = 2 * 4096; // must fit the EH frame + generated code
     static constexpr int num_stack_args = 2;
 
     // scratch size + space for passing additional args on the stack without having to adjust the SP when calling
@@ -157,7 +157,7 @@ public:
     static constexpr assembler::RegisterSet additional_regs = assembler::RBX | assembler::RBP | assembler::R12
                                                               | assembler::R15;
 
-private:
+public:
     struct MemoryManager {
     private:
         uint8_t* addr;

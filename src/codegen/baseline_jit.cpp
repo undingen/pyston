@@ -818,6 +818,7 @@ std::pair<int, llvm::DenseSet<int>> JitFragmentWriter::finishCompilation() {
     if (assembler->hasFailed()) {
         int bytes_written = assembler->bytesWritten();
 
+#if 0
         // don't retry JITing very large blocks
         const auto large_block_threshold = code_size - 4096;
         if (bytes_written > large_block_threshold) {
@@ -831,7 +832,23 @@ std::pair<int, llvm::DenseSet<int>> JitFragmentWriter::finishCompilation() {
             // block for the next attempt.
             code_block.fragmentAbort(true /* not_enough_space */);
         }
+
+#else
+        int size = code_block.a.endAddr() - code_block.memory.get();
+        void* ret = mremap(code_block.memory.get(), size, size * 2, 0);
+        if (ret == code_block.memory.get()) {
+            code_block.a.setEndAddr(code_block.a.endAddr() + size);
+            assert(code_block.a.endAddr() - code_block.memory.get() == size * 2);
+            code_block.fragmentAbort(false /* not_enough_space */);
+        } else {
+            static StatCounter num_jit_large_blocks("num_baselinejit_skipped_large_blocks");
+            num_jit_large_blocks.log();
+            // we ran out of space - we allow a retry and set shouldCreateNewBlock to true in order to allocate a new
+            // block for the next attempt.
+            code_block.fragmentAbort(true /* not_enough_space */);
+        }
         return std::make_pair(0, llvm::DenseSet<int>());
+#endif
     }
 
     block->code = (void*)((uint64_t)entry_code + code_offset);

@@ -69,7 +69,7 @@ enum class MovType {
 
 class Assembler {
 private:
-    uint8_t* const start_addr, *const end_addr;
+    uint8_t* const start_addr, *end_addr;
     uint8_t* addr;
     bool failed; // if the rewrite failed at the assembly-generation level for some reason
 
@@ -206,11 +206,13 @@ public:
     void skipBytes(int num);
 
     uint8_t* startAddr() const { return start_addr; }
+    uint8_t* endAddr() const { return end_addr; }
     int bytesLeft() const { return end_addr - addr; }
     int bytesWritten() const { return addr - start_addr; }
     int size() const { return end_addr - start_addr; }
     uint8_t* curInstPointer() { return addr; }
     void setCurInstPointer(uint8_t* ptr) { addr = ptr; }
+    void setEndAddr(uint8_t* ptr) { end_addr = ptr; }
     bool isExactlyFull() const { return addr == end_addr; }
     uint8_t* getStartAddr() { return start_addr; }
 };
