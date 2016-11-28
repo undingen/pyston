@@ -2780,6 +2780,7 @@ public:
 
 #ifndef NDEBUG
     void giveLocalSymbol(InternedString name, CompilerVariable* var) override {
+#if 0
         assert(name.s() != "None");
         assert(name.s() != FRAME_INFO_PTR_NAME);
         assert(name.s() != CREATED_CLOSURE_NAME);
@@ -2789,6 +2790,7 @@ public:
 
         int vreg = irstate->getSourceInfo()->cfg->getVRegInfo().getVReg(name);
         giveLocalSymbol(vreg, var);
+#endif
     }
 #endif
 

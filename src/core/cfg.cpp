@@ -3243,13 +3243,17 @@ void VRegInfo::assignVRegs(const CodeConstants& code_constants, CFG* cfg, const 
         if (step == AssignVRegsVisitor::UserVisible) {
             num_vregs_user_visible = visitor.sym_vreg_map.size();
 #ifndef NDEBUG
+#if 0
             sym_vreg_map_user_visible = visitor.sym_vreg_map;
+#endif
 #endif
         } else if (step == AssignVRegsVisitor::CrossBlock)
             num_vregs = num_vregs_cross_block = visitor.next_vreg;
     }
 #ifndef NDEBUG
+#if 0
     sym_vreg_map = std::move(visitor.sym_vreg_map);
+#endif
 #endif
     vreg_sym_map = std::move(visitor.vreg_sym_map);
     vreg_sym_map.shrink_to_fit();

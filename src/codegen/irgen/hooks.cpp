@@ -27,8 +27,6 @@
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/Support/raw_ostream.h"
 
-#include "marshal.h"
-
 #include "analysis/function_analysis.h"
 #include "analysis/scoping_analysis.h"
 #include "asm_writing/icinfo.h"
@@ -226,26 +224,12 @@ CompiledFunction* compileFunction(BoxedCode* code, FunctionSpecialization* spec,
     return cf;
 }
 
-void compileAndRunModule(AST_Module* m, BoxedModule* bm) {
+void compileAndRunModule(BoxedCode* code, BoxedModule* bm) {
     Timer _t("for compileModule()");
 
     const char* fn = PyModule_GetFilename(bm);
     RELEASE_ASSERT(fn, "");
 
-    FutureFlags future_flags = getFutureFlags(m->body, fn);
-
-    BoxedCode* code = NULL;
-
-    FILE* file = fopen((fn + std::string(".bic")).c_str(), "rb");
-    if (file) {
-        Box* obj = PyMarshal_ReadObjectFromFile(file);
-        if (!obj)
-            PyErr_Clear();
-        fclose(file);
-        assert(!obj || obj->cls == code_cls);
-    }
-    if (!code)
-        code = computeAllCFGs(m, /* globals_from_module */ true, future_flags, autoDecref(boxString(fn)), bm);
     AUTO_DECREF(code);
 
     static BoxedString* doc_str = getStaticString("__doc__");
@@ -259,6 +243,19 @@ void compileAndRunModule(AST_Module* m, BoxedModule* bm) {
     Box* r = astInterpretFunction(code, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
     assert(r == Py_None);
     Py_DECREF(r);
+}
+
+void compileAndRunModule(AST_Module* m, BoxedModule* bm) {
+    Timer _t("for compileModule()");
+
+    const char* fn = PyModule_GetFilename(bm);
+    RELEASE_ASSERT(fn, "");
+
+    FutureFlags future_flags = getFutureFlags(m->body, fn);
+
+    BoxedCode* code = code
+        = computeAllCFGs(m, /* globals_from_module */ true, future_flags, autoDecref(boxString(fn)), bm);
+    compileAndRunModule(code, bm);
 }
 
 Box* evalOrExec(BoxedCode* code, Box* globals, Box* boxedLocals) {

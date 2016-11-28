@@ -258,7 +258,7 @@ extern "C" int PyCode_HasFreeVars(PyCodeObject* _code) noexcept {
 }
 
 static Box* box_scoping(ScopingResults& scoping) {
-    BoxedTuple* t = BoxedTuple::create(7);
+    BoxedTuple* t = BoxedTuple::create(8);
     t->elts[0] = boxBool(scoping.areLocalsFromModule());
     t->elts[1] = boxBool(scoping.areGlobalsFromModule());
     t->elts[2] = boxBool(scoping.createsClosure());
@@ -274,6 +274,7 @@ static Box* box_scoping(ScopingResults& scoping) {
             autoDecref(boxInt(deref_info[i].second.offset)));
     }
     t->elts[6] = deref_tuple;
+    t->elts[7] = boxInt(scoping.closure_size);
     return t;
 }
 
@@ -283,7 +284,22 @@ static Box* box_source_info(SourceInfo* source_info) {
                                autoDecref(boxInt(source_info->ast_type)));
 }
 
+__attribute__((never_inline)) void setExc(BST_stmt* stmt, CFGBlock* normal, CFGBlock* exc) {
+    RELEASE_ASSERT(normal, "");
+    RELEASE_ASSERT(exc, "");
+    *&((CFGBlock * *volatile) & ((unsigned char*)stmt)[stmt->size_in_bytes()])[-2] = normal;
+    *&((CFGBlock * *volatile) & ((unsigned char*)stmt)[stmt->size_in_bytes()])[-1] = exc;
+}
+
 extern "C" Box* PyCode_CreateMarshalObj(BoxedTuple* code) noexcept {
+
+    int v = 5;
+#ifndef NDEBUG
+    v += 10;
+#endif
+
+    if (!code || code->size() != 15 || unboxInt(code->elts[14]) != v)
+        return NULL;
     BoxedTuple* constants = (BoxedTuple*)code->elts[0];
 
     BoxedString* name = (BoxedString*)code->elts[2];
@@ -304,7 +320,7 @@ extern "C" Box* PyCode_CreateMarshalObj(BoxedTuple* code) noexcept {
     std::vector<BST_Name*> all_names;
     for (int i = 0; i < param_names_args_tuple->size(); ++i) {
         BoxedTuple* arg = (BoxedTuple*)param_names_args_tuple->elts[i];
-        BST_Name* name = new BST_Name(InternedString::unsafe(incref((BoxedString*)arg->elts[0])), 0);
+        BST_Name* name = new BST_Name(InternedString::unsafe((BoxedString*)arg->elts[0]), 0);
         name->vreg = unboxInt(arg->elts[1]);
         name->lookup_type = (decltype(name->lookup_type))unboxInt(arg->elts[2]);
         name->closure_offset = unboxInt(arg->elts[3]);
@@ -328,8 +344,9 @@ extern "C" Box* PyCode_CreateMarshalObj(BoxedTuple* code) noexcept {
         DerefInfo deref;
         deref.num_parents_from_passed_closure = unboxInt(info->elts[1]);
         deref.offset = unboxInt(info->elts[2]);
-        scoping.deref_info.emplace_back(InternedString::unsafe(incref((BoxedString*)info->elts[0])), deref);
+        scoping.deref_info.emplace_back(InternedString::unsafe((BoxedString*)info->elts[0]), deref);
     }
+    scoping.closure_size = unboxInt(scoping_tuple->elts[7]);
 
     BoxedTuple* source_info_tuple = (BoxedTuple*)code->elts[10];
     FutureFlags future_flags = unboxInt(source_info_tuple->elts[0]);
@@ -345,26 +362,63 @@ extern "C" Box* PyCode_CreateMarshalObj(BoxedTuple* code) noexcept {
     cfg->bytecode.allocate(code_size);
     memcpy(cfg->bytecode.getData(), code_str->data(), code_size);
 
-    CFGBlock* block = cfg->addDeferredBlock();
-    cfg->placeBlock(block);
-    cfg->blocks.back()->offset_of_first_stmt = 0;
 
-    bool is_terminator = false;
+    llvm::DenseMap<CFGBlock*, CFGBlock*> block_map;
+    BoxedTuple* block_tuple = (BoxedTuple*)code->elts[12];
+    // printf("%d\n", (int)block_tuple->size());
+    for (int i = 0; i < block_tuple->size(); ++i) {
+        BoxedTuple* e = (BoxedTuple*)block_tuple->elts[i];
+        CFGBlock* b = (CFGBlock*)((unsigned long)unboxInt(e->elts[0]) ^ 0xdeaddeadul);
+        // printf("%p\n", b);
+        fflush(stdout);
+        int offset = unboxInt(e->elts[1]);
+
+        CFGBlock* block = cfg->addDeferredBlock();
+        cfg->placeBlock(block);
+        cfg->blocks.back()->offset_of_first_stmt = offset;
+        block_map[b] = cfg->blocks.back();
+    }
+
     for (BST_stmt* stmt = cfg->getStmtFromOffset(0); stmt && cfg->bytecode.isInside(stmt);
          stmt = cfg->getStmtFromOffset(cfg->bytecode.getOffset(stmt) + stmt->size_in_bytes())) {
-        if (is_terminator) {
-            CFGBlock* block = cfg->addDeferredBlock();
-            cfg->placeBlock(block);
-            cfg->blocks.back()->offset_of_first_stmt = cfg->bytecode.getOffset(stmt);
+        if (stmt->is_terminator()) {
+            if (stmt->is_invoke()) {
+                auto new_normal = block_map[stmt->get_normal_block()];
+                // printf("%p %p\n", new_normal, stmt->get_normal_block());
+                auto new_exc = block_map[stmt->get_exc_block()];
+                setExc(stmt, new_normal, new_exc);
+                RELEASE_ASSERT(stmt->get_normal_block() == new_normal, "");
+                RELEASE_ASSERT(stmt->get_exc_block() == new_exc, "");
+            } else if (stmt->type() == BST_TYPE::Jump) {
+                BST_Jump* jump = bst_cast<BST_Jump>(stmt);
+                jump->target = block_map[jump->target];
+            } else if (stmt->type() == BST_TYPE::Branch) {
+                BST_Branch* br = bst_cast<BST_Branch>(stmt);
+                br->iftrue = block_map[br->iftrue];
+                br->iffalse = block_map[br->iffalse];
+            }
         }
-
-        is_terminator = stmt->is_terminator();
     }
 
     for (CFGBlock* b : cfg->blocks) {
         for (auto&& b2 : b->successors()) {
+            RELEASE_ASSERT(std::find(cfg->blocks.begin(), cfg->blocks.end(), b2) != cfg->blocks.end(), "%p %d", b2,
+                           b->getTerminator()->type());
             b->connectTo(b2, true);
         }
+    }
+
+
+    // vreg info
+    BoxedTuple* vreg_info_tuple = (BoxedTuple*)code->elts[13];
+    BoxedTuple* vreg_info_tuple2 = (BoxedTuple*)vreg_info_tuple->elts[0];
+    cfg->vreg_info.num_vregs_cross_block = unboxInt(vreg_info_tuple2->elts[0]);
+    cfg->vreg_info.num_vregs_user_visible = unboxInt(vreg_info_tuple2->elts[1]);
+    cfg->vreg_info.num_vregs = unboxInt(vreg_info_tuple2->elts[2]);
+
+    BoxedTuple* vreg_info_tuple3 = (BoxedTuple*)vreg_info_tuple->elts[1];
+    for (int i = 0; i < vreg_info_tuple3->size(); ++i) {
+        cfg->vreg_info.vreg_sym_map.push_back(InternedString::unsafe((BoxedString*)vreg_info_tuple3->elts[i]));
     }
 
     source_info->cfg = cfg;
@@ -374,7 +428,7 @@ extern "C" Box* PyCode_CreateMarshalObj(BoxedTuple* code) noexcept {
 }
 
 extern "C" Box* PyCode_GetMarshalObj(BoxedCode* code) noexcept {
-    BoxedTuple* rtn = BoxedTuple::create(12);
+    BoxedTuple* rtn = BoxedTuple::create(15);
     BoxedTuple* consts = BoxedTuple::create(code->code_constants.constants.size());
     for (int i = 0; i < code->code_constants.constants.size(); ++i) {
         consts->elts[i] = incref(code->code_constants.constants[i]);
@@ -409,6 +463,33 @@ extern "C" Box* PyCode_GetMarshalObj(BoxedCode* code) noexcept {
 
     // ScopingResults
     rtn->elts[11] = box_scoping(code->source->scoping);
+
+    auto& blocks = code->source->cfg->blocks;
+    BoxedTuple* blocks_tuple = BoxedTuple::create(blocks.size());
+    for (int i = 0; i < blocks.size(); ++i) {
+        blocks_tuple->elts[i] = BoxedTuple::create2(autoDecref(boxInt((unsigned long)blocks[i] ^ 0xdeaddeadul)),
+                                                    autoDecref(boxInt(blocks[i]->offset_of_first_stmt)));
+    }
+
+    rtn->elts[12] = blocks_tuple;
+
+    // vreg_info
+    auto& vreg_info = code->source->cfg->getVRegInfo();
+    auto vregs = BoxedTuple::create3(autoDecref(boxInt(vreg_info.num_vregs_cross_block)),
+                                     autoDecref(boxInt(vreg_info.num_vregs_user_visible)),
+                                     autoDecref(boxInt(vreg_info.num_vregs)));
+    auto* vreg_names = BoxedTuple::create(vreg_info.vreg_sym_map.size());
+    for (int i = 0; i < vreg_info.vreg_sym_map.size(); ++i) {
+        vreg_names->elts[i] = incref(vreg_info.vreg_sym_map[i].getBox());
+    }
+    rtn->elts[13] = BoxedTuple::create2(autoDecref(vregs), autoDecref(vreg_names));
+
+    int v = 5;
+#ifndef NDEBUG
+    v += 10;
+#endif
+
+    rtn->elts[14] = boxInt(v);
     return rtn;
 }
 

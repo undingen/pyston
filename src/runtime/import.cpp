@@ -19,6 +19,8 @@
 #include <limits.h>
 #include <link.h>
 
+#include "marshal.h"
+
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
 
@@ -83,6 +85,15 @@ extern "C" PyObject* _PyImport_LoadDynamicModule(char* name, char* pathname, FIL
     }
 }
 
+static void setModule(BoxedCode* code, BoxedModule* bm) {
+    code->source->parent_module = bm;
+    for (auto&& e : code->code_constants.constants) {
+        if (e->cls == code_cls) {
+            setModule((BoxedCode*)e, bm);
+        }
+    }
+}
+
 extern "C" PyObject* load_source_module(char* name, char* pathname, FILE* fp) noexcept {
     BoxedString* name_boxed = boxString(name);
     AUTO_DECREF(name_boxed);
@@ -90,12 +101,31 @@ extern "C" PyObject* load_source_module(char* name, char* pathname, FILE* fp) no
         BoxedModule* module = createModule(name_boxed, pathname);
         std::unique_ptr<ASTAllocator> ast_allocator;
 
+        BoxedCode* code = NULL;
+        FILE* file = fopen((pathname + std::string(".bic")).c_str(), "rb");
+        if (file) {
+            Box* obj = PyMarshal_ReadObjectFromFile(file);
+            if (!obj)
+                PyErr_Clear();
+            else {
+                code = (BoxedCode*)obj;
+                setModule(code, module);
+            }
+            fclose(file);
+            assert(!obj || obj->cls == code_cls);
+        }
 
+        if (code) {
+            compileAndRunModule(code, module);
+            static StatCounter stat("num_new_bst_cache");
+            stat.log();
+        } else {
+            AST_Module* ast;
+            std::tie(ast, ast_allocator) = caching_parse_file(pathname, /* future_flags = */ 0);
+            assert(ast);
+            compileAndRunModule(ast, module);
+        }
 
-        AST_Module* ast;
-        std::tie(ast, ast_allocator) = caching_parse_file(pathname, /* future_flags = */ 0);
-        assert(ast);
-        compileAndRunModule(ast, module);
         Box* r = getSysModulesDict()->getOrNull(name_boxed);
         if (!r) {
             PyErr_Format(ImportError, "Loaded module %.200s not found in sys.modules", name);

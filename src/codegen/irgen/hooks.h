@@ -33,6 +33,7 @@ extern "C" char* reoptCompiledFunc(CompiledFunction*);
 
 class AST_Module;
 class BoxedModule;
+void compileAndRunModule(BoxedCode* code, BoxedModule* bm);
 void compileAndRunModule(AST_Module* m, BoxedModule* bm);
 
 // will we always want to generate unique function names? (ie will this function always be reasonable?)

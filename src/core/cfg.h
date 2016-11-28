@@ -157,11 +157,13 @@ public:
 // baseline jit: [user visible] [cross block]
 // llvm jit    : [user visible]
 class VRegInfo {
-private:
+public:
 #ifndef NDEBUG
+#if 0
     // this maps use too much memory, we only use them in the debug build for asserts
     llvm::DenseMap<InternedString, DefaultedInt<VREG_UNDEFINED>> sym_vreg_map_user_visible;
     llvm::DenseMap<InternedString, DefaultedInt<VREG_UNDEFINED>> sym_vreg_map;
+#endif
 #endif
 
     // Reverse map, from vreg->symbol name.
@@ -174,6 +176,7 @@ private:
 
 public:
 #ifndef NDEBUG
+#if 0
     // map of all assigned names. if the name is block local the vreg number is not unique because this vregs get reused
     // between blocks.
     const llvm::DenseMap<InternedString, DefaultedInt<VREG_UNDEFINED>>& getSymVRegMap() const { return sym_vreg_map; }
@@ -189,6 +192,7 @@ public:
         assert(it->second != -1);
         return it->second;
     }
+#endif
 #endif
 
     llvm::ArrayRef<InternedString> getVRegSymUserVisibleMap() const {
@@ -225,7 +229,7 @@ public:
 
 // Control Flow Graph
 class CFG {
-private:
+public:
     int next_idx;
     VRegInfo vreg_info;
 
@@ -282,7 +286,7 @@ public:
     }
 
     BST_stmt* getStmtFromOffset(int offset) {
-        if (offset == -1)
+        if (offset == -1 || bytecode.getSize() <= offset)
             return NULL;
         return (BST_stmt*)&bytecode.getData()[offset];
     }

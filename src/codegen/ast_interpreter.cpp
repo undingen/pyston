@@ -165,9 +165,11 @@ public:
     const VRegInfo& getVRegInfo() const { return source_info->cfg->getVRegInfo(); }
 
 #ifndef NDEBUG
+#if 0
     const llvm::DenseMap<InternedString, DefaultedInt<VREG_UNDEFINED>>& getSymVRegMap() const {
         return getVRegInfo().getSymVRegMap();
     }
+#endif
 #endif
 
     BST_stmt* getCurrentStatement() { return source_info->cfg->getStmtFromOffset(getFrameInfo()->stmt_offset); }
@@ -517,7 +519,9 @@ void ASTInterpreter::doStoreArg(BST_Name* node, STOLEN(Value) value) {
         if (closure) {
             ASTInterpreterJitInterface::setLocalClosureHelper(this, node->vreg, node->closure_offset, value.o);
         } else {
+#if 0
             assert(getVRegInfo().getVReg(node->id) == node->vreg);
+#endif
             frame_info.num_vregs = std::max(frame_info.num_vregs, node->vreg + 1);
             Box* prev = vregs[node->vreg];
             vregs[node->vreg] = value.o;
@@ -1355,9 +1359,9 @@ void ASTInterpreter::visit_deletename(BST_DeleteName* target) {
         ASTInterpreterJitInterface::delNameHelper(this, id);
     } else {
         assert(vst == ScopeInfo::VarScopeType::FAST);
-
+#if 0
         assert(getVRegInfo().getVReg(id) == target->vreg);
-
+#endif
         if (id.s()[0] == '#') {
             assert(vregs[target->vreg] != NULL);
             if (jit)
@@ -1608,7 +1612,9 @@ Value ASTInterpreter::visit_loadname(BST_LoadName* node) {
             }
 
             assert(node->vreg >= 0);
+#if 0
             assert(getVRegInfo().getVReg(id) == node->vreg);
+#endif
             frame_info.num_vregs = std::max(frame_info.num_vregs, node->vreg + 1);
             Box* val = vregs[node->vreg];
 
@@ -1712,7 +1718,9 @@ void ASTInterpreter::visit_storename(BST_StoreName* node) {
         if (closure) {
             ASTInterpreterJitInterface::setLocalClosureHelper(this, node->vreg, node->closure_offset, value.o);
         } else {
+#if 0
             assert(getVRegInfo().getVReg(name) == node->vreg);
+#endif
             frame_info.num_vregs = std::max(frame_info.num_vregs, node->vreg + 1);
             Box* prev = vregs[node->vreg];
             vregs[node->vreg] = value.o;
