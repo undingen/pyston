@@ -237,8 +237,29 @@ void frameInvalidateBack(BoxedFrame* frame) {
 }
 
 extern "C" void initFrame(FrameInfo* frame_info) {
-    frame_info->back = (FrameInfo*)(cur_thread_state.frame_info);
+    FrameInfo* back = (FrameInfo*)(cur_thread_state.frame_info);
+    frame_info->back = back;
     cur_thread_state.frame_info = frame_info;
+
+    Box* builtins;
+    static BoxedString* builtins_str = getStaticString("__builtins__");
+    if (back == NULL || back->globals != frame_info->globals) {
+        if (PyModule_Check(frame_info->globals))
+            builtins = frame_info->globals->getattr(builtins_str);
+        else
+            builtins = PyDict_GetItem(frame_info->globals, builtins_str);
+        if (builtins && builtins->cls == attrwrapper_cls)
+            builtins = unwrapAttrWrapper(builtins);
+        if (builtins == NULL) {
+            builtins = PyDict_New();
+            if (builtins == NULL || PyDict_SetItemString(builtins, "None", Py_None) < 0)
+                RELEASE_ASSERT(0, "error");
+        } else
+            Py_INCREF(builtins);
+    } else {
+        builtins = incref(back->builtins);
+    }
+    frame_info->builtins = builtins;
 }
 
 FrameInfo* const FrameInfo::NO_DEINIT = (FrameInfo*)-2; // not -1 to not match memset(-1)
@@ -305,6 +326,7 @@ extern "C" void deinitFrame(FrameInfo* frame_info) noexcept {
     Py_CLEAR(frame_info->boxedLocals);
 
     Py_CLEAR(frame_info->globals);
+    Py_CLEAR(frame_info->builtins);
 
     assert(!PyErr_Occurred());
     if (restore_exc)

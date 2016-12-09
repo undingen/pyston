@@ -7399,30 +7399,46 @@ extern "C" Box* getGlobal(Box* globals, BoxedString* name) {
         static StatCounter stat_builtins("getglobal_builtins");
         stat_builtins.log();
 
-        Box* rtn;
-        if (rewriter.get()) {
-            RewriterVar* builtins = rewriter->loadConst((intptr_t)builtins_module, Location::any());
-            GetattrRewriteArgs rewrite_args(rewriter.get(), builtins, rewriter->getReturnDestination());
-            rewrite_args.obj_shape_guarded = true; // always builtin module
-            rtn = builtins_module->getattr(name, &rewrite_args);
+        Box* builtins = ((FrameInfo*)cur_thread_state.frame_info)->builtins;
+        if (builtins->cls == module_cls) {
+            Box* rtn;
+            if (rewriter.get() && builtins == builtins_module) {
+                RewriterVar* r_builtins = rewriter->loadConst((intptr_t)builtins, Location::any());
+                GetattrRewriteArgs rewrite_args(rewriter.get(), r_builtins, rewriter->getReturnDestination());
+                rewrite_args.obj_shape_guarded = true; // always builtin module
+                rtn = builtins->getattr(name, &rewrite_args);
 
-            if (!rewrite_args.isSuccessful())
-                rewriter.reset(NULL);
-            else if (rtn) {
-                auto r_rtn = rewrite_args.getReturn(ReturnConvention::HAS_RETURN);
-                rewriter->commitReturning(r_rtn);
+                if (!rewrite_args.isSuccessful())
+                    rewriter.reset(NULL);
+                else if (rtn) {
+                    auto r_rtn = rewrite_args.getReturn(ReturnConvention::HAS_RETURN);
+                    rewriter->commitReturning(r_rtn);
+                } else {
+                    rewrite_args.getReturn(); // just to make the asserts happy
+                    rewriter.reset(NULL);
+                }
             } else {
-                rewrite_args.getReturn(); // just to make the asserts happy
-                rewriter.reset(NULL);
+                rtn = builtins->getattr(name);
+            }
+
+            if (rtn) {
+                assert(rtn->ob_refcnt > 0);
+                Py_INCREF(rtn);
+                return rtn;
             }
         } else {
-            rtn = builtins_module->getattr(name);
-        }
+            ASSERT(builtins->cls == dict_cls || builtins->cls == attrwrapper_cls, "%s", builtins->cls->tp_name);
+            BoxedDict* d = static_cast<BoxedDict*>(builtins);
 
-        if (rtn) {
-            assert(rtn->ob_refcnt > 0);
-            Py_INCREF(rtn);
-            return rtn;
+            rewriter.reset(NULL);
+            REWRITE_ABORTED("Rewriting not implemented for getGlobals with a dict builtins yet");
+
+            auto it = d->d.find(name);
+            if (it != d->d.end()) {
+                assert(it->second->ob_refcnt > 0);
+                Py_INCREF(it->second);
+                return it->second;
+            }
         }
     }
 

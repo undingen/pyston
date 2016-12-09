@@ -1059,6 +1059,8 @@ struct FrameInfo {
     // TODO does this need to be owned?  how does cpython do it?
     BORROWED(BoxedCode*) code;
 
+    BORROWED(Box*) builtins;
+
     BORROWED(Box*) updateBoxedLocals();
 
     static FrameInfo* const NO_DEINIT;
@@ -1078,7 +1080,8 @@ struct FrameInfo {
           stmt_offset(-1),
           globals(0),
           back(0),
-          code(0) {}
+          code(0),
+          builtins(0) {}
 };
 
 // callattr() takes a number of flags and arguments, and for performance we pack them into a single register:
