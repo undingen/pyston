@@ -1469,8 +1469,10 @@ private:
         std::vector<llvm::Value*> args;
         args.push_back(irstate->getPassedGenerator());
         args.push_back(convertedValue->getValue());
-        args.push_back(getConstantInt(0, g.i32)); // the refcounting inserter handles yields specially and adds all
-                                                  // owned objects as additional arguments to it
+        args.push_back(getNullPtr(g.llvm_value_type_ptr_ptr));
+        args.push_back(getConstantInt(0, g.i32));
+        // the refcounting inserter handles yields specially and adds all
+        // owned objects as additional arguments to it
 
         // put the yield call at the beginning of a new basic block to make it easier for the refcounting inserter.
         llvm::BasicBlock* yield_block = emitter.createBasicBlock("yield_block");

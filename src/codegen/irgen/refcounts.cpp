@@ -1253,26 +1253,35 @@ void RefcountTracker::addRefcounts(IRGenState* irstate) {
     // we have to create a new call instruction because we can't add arguments to an existing call instruction
     for (auto&& old_yield : yields) {
         auto&& state = states[bbg.bb_idx[old_yield->getParent()]];
-        assert(old_yield->getNumArgOperands() == 3);
+        assert(old_yield->getNumArgOperands() == 4);
         llvm::Value* yield_value = old_yield->getArgOperand(1);
 
-        llvm::SmallVector<llvm::Value*, 8> args;
-        args.push_back(old_yield->getArgOperand(0)); // generator
-        args.push_back(yield_value);                 // value
-        args.push_back(NULL); // num live values. we replace it with the actual number of varargs after inserting them
-        // we can just traverse state.ending_refs because when generating the yield we make sure that it's at the start
-        // of the BB.
+        llvm::SmallVector<llvm::Value*, 8> live_values;
         for (auto ref : state.ending_refs) {
             if (rt->vars.lookup(ref.first).reftype == RefType::OWNED) {
                 if (yield_value != ref.first) // ignore this value because yield steals it!
-                    args.push_back(ref.first);
+                    live_values.push_back(ref.first);
             }
         }
-        int num_live_values = args.size() - 3;
-        if (num_live_values == 0)
+
+        if (live_values.empty())
             continue; // nothing to do
 
-        args[2] = getConstantInt(num_live_values, g.i32); // replace the dummy value the actual amount
+        llvm::Value* scratch = new llvm::BitCastInst(irstate->getScratchSpace(live_values.size() * sizeof(Box*)),
+                                                     g.llvm_value_type_ptr_ptr, "", old_yield);
+
+        int i = 0;
+        for (auto it = live_values.rbegin(), it_end = live_values.rend(); it != it_end; ++it, ++i) {
+            auto* gep = llvm::GetElementPtrInst::CreateInBounds(scratch, { getConstantInt(i, g.i32) }, "", old_yield);
+            new llvm::StoreInst(*it, gep, old_yield);
+        }
+
+        llvm::SmallVector<llvm::Value*, 4> args;
+        args.push_back(old_yield->getArgOperand(0)); // generator
+        args.push_back(yield_value);                 // value
+        args.push_back(scratch);
+        args.push_back(getConstantInt(live_values.size(), g.i32));
+
 
         llvm::CallInst* new_yield = llvm::CallInst::Create(g.funcs.yield_capi, args, llvm::Twine(), old_yield);
         old_yield->replaceAllUsesWith(new_yield);

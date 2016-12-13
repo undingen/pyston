@@ -426,15 +426,7 @@ static Box* yieldInternal(BoxedGenerator* obj, STOLEN(Box*) value,
     return r;
 }
 
-extern "C" Box* yield_capi(BoxedGenerator* obj, STOLEN(Box*) value, int num_live_values, ...) noexcept {
-    Box** live_values = (Box**)alloca(sizeof(Box*) * num_live_values);
-    va_list ap;
-    va_start(ap, num_live_values);
-    for (int i = 0; i < num_live_values; ++i) {
-        live_values[i] = va_arg(ap, Box*);
-    }
-    va_end(ap);
-
+extern "C" Box* yield_capi(BoxedGenerator* obj, STOLEN(Box*) value, Box** live_values, int num_live_values) noexcept {
     return yieldInternal<CAPI>(obj, value, llvm::makeArrayRef(live_values, num_live_values));
 }
 
