@@ -726,25 +726,7 @@ Box* ASTInterpreter::doOSR(BST_Jump* node) {
 
         // TODO can we just get rid of this?
         for (auto&& p : sorted_symbol_table) {
-            // printf("%d %s\n", p.first, p.second->cls->tp_name);
-
-            if (create_type_specialiced_osr) {
-                if (p.second->cls == int_cls) {
-                    entry->args[p.first] = BOXED_INT;
-                } else if (p.second->cls == float_cls) {
-                    entry->args[p.first] = BOXED_FLOAT;
-                } else if (p.second->cls == list_cls) {
-                    entry->args[p.first] = LIST;
-                } else if (p.second->cls == tuple_cls) {
-                    entry->args[p.first] = BOXED_TUPLE;
-                } else if (p.second->cls == str_cls) {
-                    entry->args[p.first] = STR;
-                } else if (p.second->cls == xrange_cls) {
-                    entry->args[p.first] = typeFromClass(xrange_cls);
-                } else
-                    entry->args[p.first] = typeFromClass(p.second->cls);
-            } else
-                entry->args[p.first] = UNKNOWN;
+            entry->args[p.first] = create_type_specialiced_osr ? typeFromClass(p.second->cls) : UNKNOWN;
         }
 
         entry->potentially_undefined = potentially_undefined;
