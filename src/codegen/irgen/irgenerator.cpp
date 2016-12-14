@@ -105,14 +105,14 @@ void IRGenState::setPassedGenerator(llvm::Value* v) {
     passed_generator = v;
 }
 
-llvm::Value* IRGenState::getScratchSpace(int min_bytes) {
+std::pair<llvm::Value*, int> IRGenState::getScratchSpace(int min_bytes) {
     llvm::BasicBlock& entry_block = getLLVMFunction()->getEntryBlock();
 
     if (scratch_space) {
         assert(scratch_space->getParent() == &entry_block);
         assert(scratch_space->isStaticAlloca());
         if (scratch_size >= min_bytes)
-            return scratch_space;
+            return std::make_pair(scratch_space, scratch_size);
     }
 
     llvm::AllocaInst* new_scratch_space;
@@ -132,7 +132,7 @@ llvm::Value* IRGenState::getScratchSpace(int min_bytes) {
     scratch_size = min_bytes;
     scratch_space = new_scratch_space;
 
-    return scratch_space;
+    return std::make_pair(scratch_space, scratch_size);
 }
 
 ExceptionStyle UnwindInfo::preferredExceptionStyle() const {
@@ -584,8 +584,9 @@ private:
 
         pp_args.insert(pp_args.end(), args.begin(), args.end());
 
-        int num_scratch_bytes = info->scratchSize();
-        llvm::Value* scratch_space = irstate->getScratchSpace(num_scratch_bytes);
+        int num_scratch_bytes = 0;
+        llvm::Value* scratch_space = NULL;
+        std::tie(scratch_space, num_scratch_bytes) = irstate->getScratchSpace(info->scratchSize());
         pp_args.push_back(scratch_space);
 
         pp_args.insert(pp_args.end(), ic_stackmap_args.begin(), ic_stackmap_args.end());
@@ -631,7 +632,7 @@ public:
         return llvm::Intrinsic::getDeclaration(g.cur_module, intrinsic_id);
     }
 
-    llvm::Value* getScratch(int num_bytes) override { return irstate->getScratchSpace(num_bytes); }
+    llvm::Value* getScratch(int num_bytes) override { return irstate->getScratchSpace(num_bytes).first; }
 
     void releaseScratch(llvm::Value* scratch) override { assert(0); }
 

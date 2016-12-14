@@ -105,7 +105,7 @@ public:
                            llvm::Value* frame_info_arg = NULL);
     void setupFrameInfoVarOSR(llvm::Value* frame_info_arg) { return setupFrameInfoVar(NULL, NULL, frame_info_arg); }
 
-    llvm::Value* getScratchSpace(int min_bytes);
+    std::pair<llvm::Value*, int /* real size*/> getScratchSpace(int min_bytes);
     llvm::Value* getFrameInfoVar();
     llvm::Value* getBoxedLocalsVar();
     llvm::Value* getVRegsVar();

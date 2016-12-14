@@ -1267,8 +1267,15 @@ void RefcountTracker::addRefcounts(IRGenState* irstate) {
         if (live_values.empty())
             continue; // nothing to do
 
-        llvm::Value* scratch = new llvm::BitCastInst(irstate->getScratchSpace(live_values.size() * sizeof(Box*)),
-                                                     g.llvm_value_type_ptr_ptr, "", old_yield);
+        int scratch_size = live_values.size() * sizeof(Box*);
+
+        llvm::Module* m = f->getParent();
+        auto scratch_uncasted = irstate->getScratchSpace(scratch_size);
+        llvm::CallInst::Create(llvm::Intrinsic::getDeclaration(m, llvm::Intrinsic::lifetime_start),
+                               { getConstantInt(scratch_uncasted.second, g.i64), scratch_uncasted.first }, "",
+                               old_yield);
+
+        llvm::Value* scratch = new llvm::BitCastInst(scratch_uncasted.first, g.llvm_value_type_ptr_ptr, "", old_yield);
 
         int i = 0;
         for (auto it = live_values.rbegin(), it_end = live_values.rend(); it != it_end; ++it, ++i) {
@@ -1282,8 +1289,12 @@ void RefcountTracker::addRefcounts(IRGenState* irstate) {
         args.push_back(scratch);
         args.push_back(getConstantInt(live_values.size(), g.i32));
 
-
         llvm::CallInst* new_yield = llvm::CallInst::Create(g.funcs.yield_capi, args, llvm::Twine(), old_yield);
+
+        llvm::CallInst::Create(llvm::Intrinsic::getDeclaration(m, llvm::Intrinsic::lifetime_end),
+                               { getConstantInt(scratch_uncasted.second, g.i64), scratch_uncasted.first }, "",
+                               old_yield);
+
         old_yield->replaceAllUsesWith(new_yield);
         old_yield->eraseFromParent();
     }
