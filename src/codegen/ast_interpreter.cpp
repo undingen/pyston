@@ -721,7 +721,7 @@ Box* ASTInterpreter::doOSR(BST_Jump* node) {
     if (found_entry == nullptr) {
         OSREntryDescriptor* entry = OSREntryDescriptor::create(getCode(), node, CXX);
 
-        bool create_type_specialiced_osr = getCode()->osr_versions.empty();
+        bool create_type_specialiced_osr = getCode()->osr_versions.size() < 2;
 
         // TODO can we just get rid of this?
         for (auto&& p : sorted_symbol_table) {
