@@ -539,14 +539,11 @@ void CompiledFunction::speculationFailed() {
         }
 
         if (!found) {
-            code->osr_versions.remove_if([&](CompiledFunction* e) {
-                if (e == this) {
-                    this->dependent_callsites.invalidateAll();
-                    found = true;
-                    return true;
-                }
-                return false;
-            });
+            auto it = std::find(code->osr_versions.begin(), code->osr_versions.end(), this);
+            if (it != code->osr_versions.end()) {
+                this->dependent_callsites.invalidateAll();
+                found = true;
+            }
         }
 
         if (!found) {
@@ -558,7 +555,6 @@ void CompiledFunction::speculationFailed() {
     }
 }
 
-std::unordered_set<CompiledFunction*> all_compiled_functions;
 CompiledFunction::CompiledFunction(BoxedCode* code_obj, FunctionSpecialization* spec, void* code, EffortLevel effort,
                                    ExceptionStyle exception_style, const OSREntryDescriptor* entry_descriptor)
     : code_obj(code_obj),
